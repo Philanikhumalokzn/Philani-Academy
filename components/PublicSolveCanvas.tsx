@@ -34,6 +34,10 @@ const PUBLIC_SOLVE_TRACKED_ELEMENT_TYPE = 'freedraw'
 const PUBLIC_SOLVE_DEFAULT_GUIDE_SPACING = 48
 const PUBLIC_SOLVE_MIN_GUIDE_SPACING = 20
 const PUBLIC_SOLVE_MAX_GUIDE_SPACING = 96
+const PUBLIC_SOLVE_MIN_PROMPT_ZOOM = 1
+const PUBLIC_SOLVE_MAX_PROMPT_ZOOM = 2.4
+
+type PublicSolvePromptMode = 'passive' | 'active'
 
 const PUBLIC_SOLVE_PERSISTED_APP_STATE_KEYS = [
   'scrollX',
@@ -434,6 +438,11 @@ export function PublicSolveComposer({
   const excalidrawApiRef = useRef<any>(null)
   const sceneRef = useRef<PublicSolveScene>(normalizePublicSolveScene(initialScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() })
   const lastAppliedInitialSceneKeyRef = useRef(buildPublicSolveSceneResetKey(sceneRef.current))
+  const promptDismissDragRef = useRef<{ pointerId: number | null; startY: number; dragOffsetY: number }>({
+    pointerId: null,
+    startY: 0,
+    dragOffsetY: 0,
+  })
   const [composerInstanceKey, setComposerInstanceKey] = useState(0)
   const [composerInitialData, setComposerInitialData] = useState(() => buildInitialData(sceneRef.current))
   const [isReady, setIsReady] = useState(false)
@@ -443,6 +452,19 @@ export function PublicSolveComposer({
     const sceneMeta = normalizePublicSolveSceneMeta(sceneRef.current.sceneMeta)
     return resolveSceneGuideSpacing(sceneRef.current.elements, sceneMeta, getAppStateZoomValue(sceneRef.current.appState))
   })
+  const [promptMode, setPromptMode] = useState<PublicSolvePromptMode>('passive')
+  const [canvasOpacityPercent, setCanvasOpacityPercent] = useState(100)
+  const [promptZoom, setPromptZoom] = useState(1)
+  const [promptDismissDragOffset, setPromptDismissDragOffset] = useState(0)
+
+  const promptSummary = useMemo(() => {
+    const normalized = String(prompt || '').trim().replace(/\s+/g, ' ')
+    if (!normalized) return ''
+    if (normalized.length <= 96) return normalized
+    return `${normalized.slice(0, 96).trim()}...`
+  }, [prompt])
+
+  const canvasOpacity = canvasOpacityPercent / 100
 
   const applySceneSnapshot = useCallback((nextScene: PublicSolveScene, options?: { syncApi?: boolean }) => {
     const normalized = normalizePublicSolveScene(nextScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
@@ -475,6 +497,14 @@ export function PublicSolveComposer({
   }, [applySceneSnapshot, initialScene])
 
   useEffect(() => {
+    setPromptMode('passive')
+    setCanvasOpacityPercent(100)
+    setPromptZoom(1)
+    setPromptDismissDragOffset(0)
+    promptDismissDragRef.current = { pointerId: null, startY: 0, dragOffsetY: 0 }
+  }, [title, prompt, imageUrl])
+
+  useEffect(() => {
     const api = excalidrawApiRef.current
     if (!api?.setActiveTool || !api?.updateScene) return
 
@@ -501,14 +531,105 @@ export function PublicSolveComposer({
     return () => window.clearTimeout(settle)
   }, [isReady])
 
+  const enterActivePromptMode = useCallback(() => {
+    setPromptDismissDragOffset(0)
+    promptDismissDragRef.current = { pointerId: null, startY: 0, dragOffsetY: 0 }
+    setPromptMode('active')
+  }, [])
+
+  const handlePromptWheel = useCallback((event: any) => {
+    if (promptMode !== 'active') return
+    if (!event.ctrlKey && !event.metaKey) return
+    event.preventDefault()
+    const delta = Number(event.deltaY || 0)
+    const nextZoom = Math.min(
+      PUBLIC_SOLVE_MAX_PROMPT_ZOOM,
+      Math.max(PUBLIC_SOLVE_MIN_PROMPT_ZOOM, promptZoom + (delta < 0 ? 0.08 : -0.08))
+    )
+    setPromptZoom(Number(nextZoom.toFixed(2)))
+  }, [promptMode, promptZoom])
+
+  const handlePromptDismissPointerDown = useCallback((event: any) => {
+    if (promptMode !== 'active') return
+    promptDismissDragRef.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      dragOffsetY: 0,
+    }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }, [promptMode])
+
+  const handlePromptDismissPointerMove = useCallback((event: any) => {
+    const state = promptDismissDragRef.current
+    if (promptMode !== 'active') return
+    if (state.pointerId !== event.pointerId) return
+    const rawDelta = Number(event.clientY || 0) - state.startY
+    const nextOffset = Math.min(0, rawDelta)
+    state.dragOffsetY = nextOffset
+    setPromptDismissDragOffset(nextOffset)
+  }, [promptMode])
+
+  const handlePromptDismissPointerEnd = useCallback((event: any) => {
+    const state = promptDismissDragRef.current
+    if (state.pointerId !== event.pointerId) return
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    const shouldDismiss = state.dragOffsetY <= -72
+    promptDismissDragRef.current = { pointerId: null, startY: 0, dragOffsetY: 0 }
+    setPromptDismissDragOffset(0)
+    if (shouldDismiss) {
+      setPromptMode('passive')
+    }
+  }, [])
+
+  const promptViewportStyle = useMemo(() => {
+    const transition = promptMode === 'active' && promptDismissDragRef.current.pointerId != null
+      ? 'none'
+      : 'transform 180ms ease, opacity 180ms ease'
+    return {
+      transform: `translateY(${promptDismissDragOffset}px)`,
+      transition,
+      touchAction: promptMode === 'active' ? 'pan-x pan-y pinch-zoom' : 'none',
+      opacity: promptMode === 'active' ? 1 : 0.98,
+      pointerEvents: promptMode === 'active' ? 'auto' : 'none',
+    } as any
+  }, [promptDismissDragOffset, promptMode])
+
+  const promptDocumentStyle = useMemo(() => {
+    const safeZoom = Math.min(PUBLIC_SOLVE_MAX_PROMPT_ZOOM, Math.max(PUBLIC_SOLVE_MIN_PROMPT_ZOOM, promptZoom))
+    return {
+      zoom: safeZoom,
+    } as any
+  }, [promptZoom])
+
   return (
     <div className="flex h-full flex-col bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_32%),linear-gradient(180deg,#eef4ff_0%,#f8fbff_28%,#ffffff_100%)] text-slate-900">
       <div className="border-b border-slate-200/80 bg-white/85 px-4 py-3 backdrop-blur-xl sm:px-6">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#1877f2]">Solve</div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#1877f2]">
+              <span>Solve</span>
+              <span className="rounded-full border border-[#1877f2]/15 bg-[#1877f2]/8 px-2 py-0.5 text-[10px] tracking-[0.18em] text-[#176ad8]">
+                Prompt {promptMode === 'active' ? 'active' : 'passive'}
+              </span>
+            </div>
             <h1 className="mt-1 text-xl font-semibold tracking-[-0.02em] text-slate-950">{title}</h1>
-            {prompt ? <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{prompt}</p> : null}
+            <button
+              type="button"
+              className="mt-2 max-w-3xl rounded-2xl border border-slate-200 bg-white/92 px-3 py-2 text-left shadow-[0_10px_26px_rgba(15,23,42,0.05)] transition hover:border-slate-300 hover:bg-white"
+              onClick={enterActivePromptMode}
+            >
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Problem prompt</div>
+              {promptSummary ? (
+                <p className="mt-1 text-sm leading-5 text-slate-700">{promptSummary}</p>
+              ) : (
+                <p className="mt-1 text-sm leading-5 text-slate-500">Tap to bring the full prompt in front of the canvas.</p>
+              )}
+              <div className="mt-2 text-[11px] font-medium text-[#1877f2]">
+                Tap here to inspect the full prompt above the canvas.
+              </div>
+            </button>
           </div>
           {onCancel ? (
             <button
@@ -521,54 +642,136 @@ export function PublicSolveComposer({
           ) : null}
         </div>
 
-        {imageUrl ? (
-          <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-            <img src={imageUrl} alt={title} className="max-h-[180px] w-full object-contain" />
-          </div>
-        ) : null}
       </div>
 
-      <div className="flex-1 min-h-0 px-3 py-3 sm:px-6 sm:py-5">
-        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.10)]">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/90 px-4 py-3 text-xs text-slate-500">
-            <span>Draw directly on the notebook guides.</span>
-            <span className="hidden sm:inline">Submitted canvases are view-only for everyone else.</span>
-          </div>
-          <div className="relative min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>
-            <LessonStyledExcalidraw
-              key={`public-solve-composer-${composerInstanceKey}`}
-              className="h-full"
-              initialData={composerInitialData}
-              UIOptions={editorUiOptions}
-              zenModeEnabled={false}
-              gridModeEnabled={false}
-              onChange={(elements: any[], appState: any, files: any) => {
-                const previousScene = normalizePublicSolveScene(sceneRef.current) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
-                const previousMeta = normalizePublicSolveSceneMeta(previousScene.sceneMeta)
-                const nextElements = cloneScenePart(Array.isArray(elements) ? elements : [])
-                let nextMeta = cloneSceneMeta(previousMeta)
-                const currentZoom = getAppStateZoomValue(appState)
-
-                if (currentZoom != null) {
-                  nextMeta.lastObservedZoom = currentZoom
-                }
-                nextMeta.guideSpacing = resolveSceneGuideSpacing(nextElements, nextMeta, currentZoom ?? nextMeta.lastObservedZoom)
-                const nextScene: PublicSolveScene = {
-                  elements: nextElements,
-                  appState: pickPersistedPublicSolveAppState(appState),
-                  files: files && typeof files === 'object' ? cloneScenePart(files) : undefined,
-                  updatedAt: new Date().toISOString(),
-                  sceneMeta: nextMeta,
-                }
-                applySceneSnapshot(nextScene)
-              }}
-              excalidrawAPI={(api: any) => {
-                excalidrawApiRef.current = api
-                if (!isReady) setIsReady(true)
-              }}
-              renderTopRightUI={() => null}
+      <div className="relative flex-1 min-h-0 px-3 py-3 sm:px-6 sm:py-5">
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-[7] flex items-center pl-2 sm:pl-3">
+          <div className="pointer-events-auto flex h-[232px] w-11 flex-col items-center justify-center gap-2 rounded-full border border-slate-200/90 bg-white/92 px-1 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 [writing-mode:vertical-rl] rotate-180">
+              Canvas
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={canvasOpacityPercent}
+              onChange={(event) => setCanvasOpacityPercent(Number(event.target.value || 0))}
+              aria-label="Canvas opacity"
+              className="h-36 w-5 cursor-pointer bg-transparent [-webkit-appearance:slider-vertical] [appearance:slider-vertical]"
             />
-            <NotebookGuidesOverlay zoom={guideViewportState.zoom} scrollY={guideViewportState.scrollY} guideSpacing={guideSpacing} />
+            <div className="text-[10px] font-semibold text-slate-500">{canvasOpacityPercent}%</div>
+          </div>
+        </div>
+
+        <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.10)]">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/90 px-4 py-3 text-xs text-slate-500">
+            <span>
+              {promptMode === 'active'
+                ? 'Prompt is in front. Scroll or pinch-zoom the prompt directly.'
+                : 'Draw directly on the notebook guides. Adjust canvas opacity to reveal the prompt underneath.'}
+            </span>
+            <span className="hidden sm:inline">
+              {promptMode === 'active'
+                ? 'Drag the bottom handle upward to return to the canvas.'
+                : 'Tap the prompt header above to bring it in front.'}
+            </span>
+          </div>
+
+          <div className="relative min-h-0 flex-1 overflow-hidden bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.96))]">
+            <div
+              className={`absolute inset-0 overflow-auto ${promptMode === 'active' ? 'z-[6]' : 'z-[1]'}`}
+              onWheel={handlePromptWheel}
+              style={promptViewportStyle}
+            >
+              <div className="mx-auto min-h-full w-full max-w-3xl px-5 py-6 pb-28 sm:px-8" style={promptDocumentStyle}>
+                <div className="space-y-5">
+                  <section className="rounded-[28px] border border-slate-200/80 bg-white/94 px-5 py-5 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:px-6">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#1877f2]">Problem prompt</div>
+                    <h2 className="mt-2 text-2xl font-semibold tracking-[-0.02em] text-slate-950">{title}</h2>
+                    {prompt ? (
+                      <div className="mt-4 whitespace-pre-wrap text-[15px] leading-7 text-slate-700">{prompt}</div>
+                    ) : (
+                      <div className="mt-4 text-sm leading-6 text-slate-500">No prompt text was attached to this solve.</div>
+                    )}
+                  </section>
+
+                  {imageUrl ? (
+                    <section className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/94 shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+                      <div className="border-b border-slate-200 bg-slate-50/90 px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Attached image
+                      </div>
+                      <div className="bg-slate-50 p-4 sm:p-5">
+                        <img src={imageUrl} alt={title} className="max-h-[720px] w-full rounded-[22px] object-contain" />
+                      </div>
+                    </section>
+                  ) : null}
+                </div>
+              </div>
+
+              {promptMode === 'active' ? (
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[7] flex justify-center pb-4">
+                  <div className="pointer-events-auto flex flex-col items-center gap-2 rounded-[24px] border border-slate-200 bg-white/94 px-4 py-3 shadow-[0_16px_34px_rgba(15,23,42,0.12)] backdrop-blur-xl">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Drag up to return</div>
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      className="flex h-9 w-24 items-center justify-center rounded-full border border-slate-200 bg-slate-100/90"
+                      onPointerDown={handlePromptDismissPointerDown}
+                      onPointerMove={handlePromptDismissPointerMove}
+                      onPointerUp={handlePromptDismissPointerEnd}
+                      onPointerCancel={handlePromptDismissPointerEnd}
+                    >
+                      <span className="h-1.5 w-10 rounded-full bg-slate-400" />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div
+              className={`absolute inset-0 ${promptMode === 'active' ? 'z-[2]' : 'z-[4]'}`}
+              style={{ opacity: canvasOpacity, transition: 'opacity 160ms ease', pointerEvents: promptMode === 'active' ? 'none' : 'auto' }}
+            >
+              <div className="flex h-full min-h-0 flex-col bg-white/96">
+                <div className="relative min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>
+                  <LessonStyledExcalidraw
+                    key={`public-solve-composer-${composerInstanceKey}`}
+                    className="h-full"
+                    initialData={composerInitialData}
+                    UIOptions={editorUiOptions}
+                    zenModeEnabled={false}
+                    gridModeEnabled={false}
+                    onChange={(elements: any[], appState: any, files: any) => {
+                      const previousScene = normalizePublicSolveScene(sceneRef.current) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
+                      const previousMeta = normalizePublicSolveSceneMeta(previousScene.sceneMeta)
+                      const nextElements = cloneScenePart(Array.isArray(elements) ? elements : [])
+                      let nextMeta = cloneSceneMeta(previousMeta)
+                      const currentZoom = getAppStateZoomValue(appState)
+
+                      if (currentZoom != null) {
+                        nextMeta.lastObservedZoom = currentZoom
+                      }
+                      nextMeta.guideSpacing = resolveSceneGuideSpacing(nextElements, nextMeta, currentZoom ?? nextMeta.lastObservedZoom)
+                      const nextScene: PublicSolveScene = {
+                        elements: nextElements,
+                        appState: pickPersistedPublicSolveAppState(appState),
+                        files: files && typeof files === 'object' ? cloneScenePart(files) : undefined,
+                        updatedAt: new Date().toISOString(),
+                        sceneMeta: nextMeta,
+                      }
+                      applySceneSnapshot(nextScene)
+                    }}
+                    excalidrawAPI={(api: any) => {
+                      excalidrawApiRef.current = api
+                      if (!isReady) setIsReady(true)
+                    }}
+                    renderTopRightUI={() => null}
+                  />
+                  <NotebookGuidesOverlay zoom={guideViewportState.zoom} scrollY={guideViewportState.scrollY} guideSpacing={guideSpacing} />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -334,63 +334,53 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })
     }
 
+    const updateLatestRecord = async (opts?: { resetChallengeFeedback?: boolean; bumpCreatedAt?: boolean }) => {
+      const existing = await learnerResponse.findFirst({
+        where: { sessionKey, userId },
+        orderBy: { updatedAt: 'desc' },
+      })
+      if (!existing?.id) return null
+
+      const updated = await learnerResponse.update({
+        where: { id: existing.id },
+        data: {
+          latex: safeLatex,
+          studentText: safeStudentText,
+          excalidrawScene: safeExcalidrawScene,
+          userEmail,
+          quizId: safeQuizId,
+          prompt: safePrompt,
+          quizLabel: safeQuizLabel,
+          quizPhaseKey: safeQuizPhaseKey,
+          quizPointId: safeQuizPointId,
+          quizPointIndex: safeQuizPointIndex,
+          ownerId: challengeOwnerId,
+          ...(opts?.resetChallengeFeedback ? { gradingJson: null, feedback: null } : {}),
+          ...(opts?.bumpCreatedAt ? { createdAt: new Date() } : {}),
+        },
+      })
+
+      if (opts?.resetChallengeFeedback) {
+        await learnerResponse.deleteMany({
+          where: { sessionKey, userId, id: { not: existing.id } },
+        }).catch(() => null)
+      }
+
+      return updated
+    }
+
     try {
       if (!isChallengeSession) {
-        const existing = await learnerResponse.findFirst({
-          where: { sessionKey, userId },
-          orderBy: { updatedAt: 'desc' },
-        })
-
-        if (existing?.id) {
-          const updated = await learnerResponse.update({
-            where: { id: existing.id },
-            data: {
-              latex: safeLatex,
-              studentText: safeStudentText,
-              excalidrawScene: safeExcalidrawScene,
-              userEmail,
-              quizId: safeQuizId,
-              prompt: safePrompt,
-              quizLabel: safeQuizLabel,
-              quizPhaseKey: safeQuizPhaseKey,
-              quizPointId: safeQuizPointId,
-              quizPointIndex: safeQuizPointIndex,
-              ownerId: challengeOwnerId,
-            },
-          })
+        const updated = await updateLatestRecord()
+        if (updated) {
           return res.status(200).json(updated)
         }
       }
 
       // Unlimited attempts: overwrite the latest response instead of appending.
       if (isChallengeSession && challengeMaxAttempts === null) {
-        const existing = await learnerResponse.findFirst({
-          where: { sessionKey, userId },
-          orderBy: { updatedAt: 'desc' },
-        })
-        if (existing?.id) {
-          const updated = await learnerResponse.update({
-            where: { id: existing.id },
-            data: {
-              latex: safeLatex,
-              studentText: safeStudentText,
-              excalidrawScene: safeExcalidrawScene,
-              userEmail,
-              quizId: safeQuizId,
-              prompt: safePrompt,
-              quizLabel: safeQuizLabel,
-              quizPhaseKey: safeQuizPhaseKey,
-              quizPointId: safeQuizPointId,
-              quizPointIndex: safeQuizPointIndex,
-              ownerId: challengeOwnerId,
-              gradingJson: null,
-              feedback: null,
-              createdAt: new Date(),
-            },
-          })
-          await learnerResponse.deleteMany({
-            where: { sessionKey, userId, id: { not: existing.id } },
-          }).catch(() => null)
+        const updated = await updateLatestRecord({ resetChallengeFeedback: true, bumpCreatedAt: true })
+        if (updated) {
           await notifyOwner(updated?.id || '')
           return res.status(200).json(updated)
         }
@@ -403,9 +393,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const code = err?.code || err?.name
       const target = err?.meta?.target
       const targetStr = Array.isArray(target) ? target.join(',') : String(target || '')
+      const errMessage = String(err?.message || '')
+      const uniqueSessionUserMentioned = /sessionkey/i.test(`${targetStr} ${errMessage}`) && /userid/i.test(`${targetStr} ${errMessage}`)
 
       // Backwards-compat: if DB still has UNIQUE(sessionKey,userId,quizId), create a distinct quizId per attempt.
-      const isTripletUnique = code === 'P2002' && /sessionKey/i.test(targetStr) && /userId/i.test(targetStr) && /quizId/i.test(targetStr)
+      const isTripletUnique = code === 'P2002' && /sessionkey/i.test(`${targetStr} ${errMessage}`) && /userid/i.test(`${targetStr} ${errMessage}`) && /quizid/i.test(`${targetStr} ${errMessage}`)
       if (isTripletUnique) {
         try {
           const attemptId = `${safeQuizId}-${Date.now().toString(36)}`
@@ -419,30 +411,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // Backwards-compat: legacy UNIQUE(sessionKey,userId) means history is impossible without migration.
       // Update the existing record so learners aren't blocked.
-      const isLegacyUnique = code === 'P2002' && /sessionKey/i.test(targetStr) && /userId/i.test(targetStr) && !/quizId/i.test(targetStr)
+      const isLegacyUnique = code === 'P2002' && uniqueSessionUserMentioned && !/quizid/i.test(`${targetStr} ${errMessage}`)
       if (isLegacyUnique) {
         try {
-          const existing = await learnerResponse.findFirst({
-            where: { sessionKey, userId },
-            orderBy: { updatedAt: 'desc' },
+          const updated = await updateLatestRecord({
+            resetChallengeFeedback: isChallengeSession && challengeMaxAttempts === null,
+            bumpCreatedAt: isChallengeSession && challengeMaxAttempts === null,
           })
-          if (existing?.id) {
-            const updated = await learnerResponse.update({
-              where: { id: existing.id },
-              data: {
-                latex: safeLatex,
-                studentText: safeStudentText,
-                excalidrawScene: safeExcalidrawScene,
-                userEmail,
-                quizId: safeQuizId,
-                prompt: safePrompt,
-                quizLabel: safeQuizLabel,
-                quizPhaseKey: safeQuizPhaseKey,
-                quizPointId: safeQuizPointId,
-                quizPointIndex: safeQuizPointIndex,
-                ownerId: challengeOwnerId,
-              },
-            })
+          if (updated) {
             await notifyOwner(updated?.id || '')
             return res.status(200).json(updated)
           }

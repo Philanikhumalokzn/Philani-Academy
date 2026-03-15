@@ -16,6 +16,7 @@ export type PublicSolveSceneMeta = {
   version: number
   baselineSegmentId: string | null
   activeSegmentId: string | null
+  guideSpacing: number | null
   lastObservedZoom: number | null
   segments: PublicSolveSegmentMeta[]
 }
@@ -31,6 +32,9 @@ export type PublicSolveScene = {
 const PUBLIC_SOLVE_SCENE_META_VERSION = 1
 const PUBLIC_SOLVE_TRACKED_ELEMENT_TYPE = 'freedraw'
 const PUBLIC_SOLVE_ZOOM_EPSILON = 0.01
+const PUBLIC_SOLVE_DEFAULT_GUIDE_SPACING = 48
+const PUBLIC_SOLVE_MIN_GUIDE_SPACING = 20
+const PUBLIC_SOLVE_MAX_GUIDE_SPACING = 96
 
 const PUBLIC_SOLVE_PERSISTED_APP_STATE_KEYS = [
   'scrollX',
@@ -80,6 +84,7 @@ const createEmptyPublicSolveSceneMeta = (): PublicSolveSceneMeta => ({
   version: PUBLIC_SOLVE_SCENE_META_VERSION,
   baselineSegmentId: null,
   activeSegmentId: null,
+  guideSpacing: null,
   lastObservedZoom: null,
   segments: [],
 })
@@ -107,6 +112,7 @@ const cloneSceneMeta = (sceneMeta: PublicSolveSceneMeta): PublicSolveSceneMeta =
   version: PUBLIC_SOLVE_SCENE_META_VERSION,
   baselineSegmentId: typeof sceneMeta?.baselineSegmentId === 'string' ? sceneMeta.baselineSegmentId : null,
   activeSegmentId: typeof sceneMeta?.activeSegmentId === 'string' ? sceneMeta.activeSegmentId : null,
+  guideSpacing: clampGuideSpacing(sceneMeta?.guideSpacing),
   lastObservedZoom: normalizeZoomValue(sceneMeta?.lastObservedZoom),
   segments: Array.isArray(sceneMeta?.segments)
     ? sceneMeta.segments.map((segment) => ({
@@ -121,6 +127,12 @@ const cloneSceneMeta = (sceneMeta: PublicSolveSceneMeta): PublicSolveSceneMeta =
       }))
     : [],
 })
+
+const clampGuideSpacing = (value: unknown) => {
+  const num = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(num) || num <= 0) return null
+  return Math.min(PUBLIC_SOLVE_MAX_GUIDE_SPACING, Math.max(PUBLIC_SOLVE_MIN_GUIDE_SPACING, num))
+}
 
 const normalizePublicSolveSceneMeta = (value: any): PublicSolveSceneMeta => {
   if (!value || typeof value !== 'object') return createEmptyPublicSolveSceneMeta()
@@ -198,10 +210,14 @@ const getElementNumericBounds = (element: any) => {
     minY: Math.min(y, y2),
     maxX: Math.max(x, x2),
     maxY: Math.max(y, y2),
+    width: Math.abs(width),
+    height: Math.abs(height),
+    centerX: (Math.min(x, x2) + Math.max(x, x2)) / 2,
+    centerY: (Math.min(y, y2) + Math.max(y, y2)) / 2,
   }
 }
 
-const getElementsGroupBounds = (elements: any[]) => {
+const getElementsBoundingBox = (elements: any[]) => {
   const visible = (Array.isArray(elements) ? elements : []).filter((element) => element && !element.isDeleted)
   if (!visible.length) return null
 
@@ -223,9 +239,101 @@ const getElementsGroupBounds = (elements: any[]) => {
   }
 
   return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
     centerX: (minX + maxX) / 2,
     centerY: (minY + maxY) / 2,
   }
+}
+
+const getElementsGroupBounds = (elements: any[]) => {
+  const bounds = getElementsBoundingBox(elements)
+  if (!bounds) return null
+
+  return {
+    centerX: bounds.centerX,
+    centerY: bounds.centerY,
+  }
+}
+
+const getSegmentElements = (elements: any[], segment: PublicSolveSegmentMeta | null) => {
+  if (!segment) return []
+  const ids = new Set(segment.elementIds.map((id) => String(id || '')))
+  return (Array.isArray(elements) ? elements : []).filter((element: any) => ids.has(String(element?.id || '')) && isTrackableFreedrawElement(element))
+}
+
+const buildFreedrawGlyphClusters = (elements: any[], guideSpacing: number) => {
+  const safeSpacing = clampGuideSpacing(guideSpacing) || PUBLIC_SOLVE_DEFAULT_GUIDE_SPACING
+  const sorted = (Array.isArray(elements) ? elements : [])
+    .filter(isTrackableFreedrawElement)
+    .map((element: any) => ({ element, bounds: getElementNumericBounds(element) }))
+    .sort((left, right) => (
+      left.bounds.minX - right.bounds.minX
+      || left.bounds.minY - right.bounds.minY
+    ))
+
+  const gapThreshold = Math.max(safeSpacing * 0.28, 10)
+  const verticalThreshold = Math.max(safeSpacing * 0.45, 12)
+  const clusters: Array<{ elements: any[]; elementIds: string[]; bounds: ReturnType<typeof getElementsBoundingBox> }> = []
+
+  for (const item of sorted) {
+    const lastCluster = clusters[clusters.length - 1]
+    if (!lastCluster?.bounds) {
+      clusters.push({
+        elements: [item.element],
+        elementIds: [String(item.element.id)],
+        bounds: getElementsBoundingBox([item.element]),
+      })
+      continue
+    }
+
+    const lastBounds = lastCluster.bounds
+    const overlapsX = item.bounds.minX <= lastBounds.maxX + 2
+    const gapX = item.bounds.minX - lastBounds.maxX
+    const sameBand = Math.abs(item.bounds.centerY - lastBounds.centerY) <= verticalThreshold
+
+    if (overlapsX || (gapX <= gapThreshold && sameBand)) {
+      const nextElements = [...lastCluster.elements, item.element]
+      lastCluster.elements = nextElements
+      lastCluster.elementIds = [...lastCluster.elementIds, String(item.element.id)]
+      lastCluster.bounds = getElementsBoundingBox(nextElements)
+      continue
+    }
+
+    clusters.push({
+      elements: [item.element],
+      elementIds: [String(item.element.id)],
+      bounds: getElementsBoundingBox([item.element]),
+    })
+  }
+
+  return clusters.filter((cluster) => cluster.bounds)
+}
+
+const estimateGuideSpacingFromElements = (elements: any[], preferredSpacing?: number | null) => {
+  const seedSpacing = clampGuideSpacing(preferredSpacing) || PUBLIC_SOLVE_DEFAULT_GUIDE_SPACING
+  const clusters = buildFreedrawGlyphClusters(elements, seedSpacing)
+  const heights = clusters
+    .map((cluster) => Number(cluster.bounds?.height || 0))
+    .filter((value) => Number.isFinite(value) && value > 4)
+    .sort((left, right) => left - right)
+
+  if (!heights.length) return null
+  const percentileIndex = Math.min(heights.length - 1, Math.max(0, Math.round((heights.length - 1) * 0.7)))
+  return clampGuideSpacing(heights[percentileIndex])
+}
+
+const resolveSceneGuideSpacing = (elements: any[], sceneMeta: PublicSolveSceneMeta) => {
+  const explicit = clampGuideSpacing(sceneMeta.guideSpacing)
+  if (explicit) return explicit
+  const baselineSegment = getSegmentById(sceneMeta, sceneMeta.baselineSegmentId)
+  const baselineSpacing = estimateGuideSpacingFromElements(getSegmentElements(elements, baselineSegment), explicit)
+  if (baselineSpacing) return baselineSpacing
+  return estimateGuideSpacingFromElements(elements, explicit) || PUBLIC_SOLVE_DEFAULT_GUIDE_SPACING
 }
 
 const scaleExcalidrawFreedrawPoint = (point: any, factor: number) => {
@@ -250,6 +358,113 @@ const scaleFreedrawElementAroundPoint = (element: any, factor: number, anchorX: 
     version: Number.isFinite(version) ? version + 1 : 2,
     versionNonce: Math.floor(Math.random() * 2_147_483_647),
   }
+}
+
+const translateFreedrawElement = (element: any, deltaX: number, deltaY: number) => {
+  const version = Number(element?.version || 1)
+  return {
+    ...element,
+    x: Number(element?.x || 0) + deltaX,
+    y: Number(element?.y || 0) + deltaY,
+    version: Number.isFinite(version) ? version + 1 : 2,
+    versionNonce: Math.floor(Math.random() * 2_147_483_647),
+  }
+}
+
+const quantizeClusterToNotebookGuides = (
+  clusterBounds: NonNullable<ReturnType<typeof getElementsBoundingBox>>,
+  guideSpacing: number,
+) => {
+  const bottom = clusterBounds.maxY
+  const height = Math.max(clusterBounds.height, 1)
+  const nearestLineIndex = Math.round(bottom / guideSpacing)
+  const sizes = [guideSpacing, guideSpacing / 2, guideSpacing / 4]
+  const candidates: Array<{ targetHeight: number; targetBottom: number; score: number }> = []
+
+  for (let lineOffset = -1; lineOffset <= 1; lineOffset += 1) {
+    const lineY = (nearestLineIndex + lineOffset) * guideSpacing
+    for (const targetHeight of sizes) {
+      const laneBottoms = new Set<number>([lineY])
+      if (targetHeight <= guideSpacing / 2 + 0.001) {
+        laneBottoms.add(lineY - guideSpacing / 2)
+      }
+      if (targetHeight <= guideSpacing / 4 + 0.001) {
+        laneBottoms.add(lineY + guideSpacing / 4)
+      }
+
+      for (const targetBottom of laneBottoms) {
+        const scaleCost = Math.abs(Math.log(targetHeight / height))
+        const verticalCost = Math.abs(targetBottom - bottom) / guideSpacing
+        const targetCenterY = targetBottom - (targetHeight / 2)
+        const centerCost = Math.abs(targetCenterY - clusterBounds.centerY) / guideSpacing
+        candidates.push({
+          targetHeight,
+          targetBottom,
+          score: (scaleCost * 1.35) + verticalCost + (centerCost * 0.35),
+        })
+      }
+    }
+  }
+
+  candidates.sort((left, right) => left.score - right.score)
+  return candidates[0] || { targetHeight: guideSpacing, targetBottom: bottom, score: 0 }
+}
+
+const quantizeSegmentToNotebookGuides = (
+  elements: any[],
+  segment: PublicSolveSegmentMeta,
+  guideSpacing: number,
+) => {
+  const segmentElements = getSegmentElements(elements, segment)
+  const clusters = buildFreedrawGlyphClusters(segmentElements, guideSpacing)
+  if (!clusters.length) return elements
+
+  const replacements = new Map<string, any>()
+  for (const cluster of clusters) {
+    if (!cluster.bounds) continue
+    const choice = quantizeClusterToNotebookGuides(cluster.bounds, guideSpacing)
+    const factor = choice.targetHeight / Math.max(cluster.bounds.height, 1)
+    const shiftY = choice.targetBottom - cluster.bounds.maxY
+
+    for (const element of cluster.elements) {
+      const scaled = scaleFreedrawElementAroundPoint(element, factor, cluster.bounds.centerX, cluster.bounds.maxY)
+      replacements.set(String(element.id), translateFreedrawElement(scaled, 0, shiftY))
+    }
+  }
+
+  return elements.map((element: any) => replacements.get(String(element?.id || '')) || element)
+}
+
+function NotebookGuidesOverlay({
+  appState,
+  guideSpacing,
+}: {
+  appState: Record<string, any> | undefined
+  guideSpacing: number
+}) {
+  const zoomValue = getAppStateZoomValue(appState) || 1
+  const safeSpacing = Math.max(guideSpacing * zoomValue, 12)
+  const quarter = safeSpacing / 4
+  const half = safeSpacing / 2
+  const scrollY = Number(appState?.scrollY || 0)
+  const offset = scrollY * zoomValue
+
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 z-[1]"
+      style={{
+        backgroundImage: [
+          'linear-gradient(to bottom, rgba(14,116,144,0.14) 0, rgba(14,116,144,0.14) 1px, transparent 1px, transparent 100%)',
+          'linear-gradient(to bottom, rgba(14,116,144,0.08) 0, rgba(14,116,144,0.08) 1px, transparent 1px, transparent 100%)',
+          'linear-gradient(to bottom, rgba(14,116,144,0.05) 0, rgba(14,116,144,0.05) 1px, transparent 1px, transparent 100%)',
+          'linear-gradient(to bottom, rgba(14,116,144,0.05) 0, rgba(14,116,144,0.05) 1px, transparent 1px, transparent 100%)',
+        ].join(','),
+        backgroundSize: `100% ${safeSpacing}px, 100% ${safeSpacing}px, 100% ${safeSpacing}px, 100% ${safeSpacing}px`,
+        backgroundPosition: `0 ${offset}px, 0 ${offset + half}px, 0 ${offset + quarter}px, 0 ${offset + (quarter * 3)}px`,
+      }}
+    />
+  )
 }
 
 export const normalizePublicSolveScene = (value: any): PublicSolveScene | null => {
@@ -369,16 +584,24 @@ export function PublicSolveComposer({
   const [isReady, setIsReady] = useState(false)
   const [hasContent, setHasContent] = useState(publicSolveSceneHasContent(sceneRef.current))
   const [canNormalizeCurrentSegment, setCanNormalizeCurrentSegment] = useState(computePublicSolveNormalizationState(sceneRef.current))
+  const [canvasAppState, setCanvasAppState] = useState<Record<string, any> | undefined>(() => sceneRef.current.appState)
 
   const applySceneSnapshot = useCallback((nextScene: PublicSolveScene, options?: { syncApi?: boolean }) => {
     const normalized = normalizePublicSolveScene(nextScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
     sceneRef.current = normalized
     setHasContent(publicSolveSceneHasContent(normalized))
     setCanNormalizeCurrentSegment(computePublicSolveNormalizationState(normalized))
+    setCanvasAppState(normalized.appState)
     if (options?.syncApi && excalidrawApiRef.current?.updateScene) {
       excalidrawApiRef.current.updateScene(buildInitialData(normalized))
     }
   }, [])
+
+  const guideSpacing = useMemo(() => {
+    const normalized = normalizePublicSolveScene(sceneRef.current) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
+    const sceneMeta = normalizePublicSolveSceneMeta(normalized.sceneMeta)
+    return resolveSceneGuideSpacing(normalized.elements, sceneMeta)
+  }, [canvasAppState])
 
   useEffect(() => {
     const normalized = normalizePublicSolveScene(initialScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
@@ -410,14 +633,17 @@ export function PublicSolveComposer({
     const bounds = getElementsGroupBounds(targetElements)
     if (!targetElements.length || !bounds) return
 
-    const nextElements = normalized.elements.map((element: any) => {
+    const scaledElements = normalized.elements.map((element: any) => {
       if (!targetIds.has(String(element?.id || '')) || !isTrackableFreedrawElement(element)) return element
       return scaleFreedrawElementAroundPoint(element, factor, bounds.centerX, bounds.centerY)
     })
+    const resolvedGuideSpacing = resolveSceneGuideSpacing(scaledElements, sceneMeta)
+    const nextElements = quantizeSegmentToNotebookGuides(scaledElements, activeSegment, resolvedGuideSpacing)
 
     const nowIso = new Date().toISOString()
     const nextMeta = prunePublicSolveSceneMeta({
       ...sceneMeta,
+      guideSpacing: resolvedGuideSpacing,
       activeSegmentId: null,
       segments: sceneMeta.segments.map((segment) => (
         segment.id === activeSegment.id
@@ -443,7 +669,7 @@ export function PublicSolveComposer({
           type="button"
           className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white/95 px-4 text-sm font-semibold text-slate-700 shadow-[0_12px_28px_rgba(15,23,42,0.12)] backdrop-blur transition hover:border-slate-300 hover:bg-white"
           onClick={normalizeCurrentSegment}
-          title="Resize your latest handwriting to match earlier writing."
+          title="Resize and snap your latest handwriting to the notebook guide lines."
         >
           Match writing size
         </button>
@@ -508,10 +734,10 @@ export function PublicSolveComposer({
       <div className="flex-1 min-h-0 px-3 py-3 sm:px-6 sm:py-5">
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.10)]">
           <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/90 px-4 py-3 text-xs text-slate-500">
-            <span>Draw your solution naturally, then submit it to the public solve thread.</span>
+            <span>Draw on the notebook guides, then use Match writing size to snap handwriting to full, half, or quarter spacing.</span>
             <span className="hidden sm:inline">Submitted canvases are view-only for everyone else.</span>
           </div>
-          <div className="min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>
+          <div className="relative min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>
             <LessonStyledExcalidraw
               className="h-full"
               initialData={buildInitialData(sceneRef.current)}
@@ -575,6 +801,7 @@ export function PublicSolveComposer({
                 }
 
                 nextMeta = prunePublicSolveSceneMeta(nextMeta, nextElements)
+                nextMeta.guideSpacing = resolveSceneGuideSpacing(nextElements, nextMeta)
                 const nextScene: PublicSolveScene = {
                   elements: nextElements,
                   appState: pickPersistedPublicSolveAppState(appState),
@@ -590,6 +817,7 @@ export function PublicSolveComposer({
               }}
               renderTopRightUI={renderComposerTopRightUi}
             />
+            <NotebookGuidesOverlay appState={canvasAppState} guideSpacing={guideSpacing} />
           </div>
         </div>
       </div>

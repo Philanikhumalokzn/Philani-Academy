@@ -898,7 +898,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [myResponses, setMyResponses] = useState<any[]>([])
   const [myResponsesLoading, setMyResponsesLoading] = useState(false)
   const [myResponsesError, setMyResponsesError] = useState<string | null>(null)
-  const [lessonSolveOverlay, setLessonSolveOverlay] = useState<null | { sessionId: string; title: string; prompt: string; imageUrl?: string | null }>(null)
+  const [lessonSolveOverlay, setLessonSolveOverlay] = useState<null | { sessionId: string; title: string; prompt: string; imageUrl?: string | null; initialScene?: any | null }>(null)
   const [lessonSolveSubmitting, setLessonSolveSubmitting] = useState(false)
   const [lessonSolveError, setLessonSolveError] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
@@ -5959,7 +5959,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     void router.push(`/challenges/${encodeURIComponent(challengeId)}`)
   }, [router])
 
-  const openLessonCommentThread = useCallback((sessionId: string) => {
+  const openLessonSolveComposer = useCallback((sessionId: string, options?: { initialScene?: any | null }) => {
     if (!sessionId) return
     const sessionRecord = sessionById.get(String(sessionId))
     setLessonSolveError(null)
@@ -5968,8 +5968,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       title: String(sessionRecord?.title || 'Lesson'),
       prompt: String((sessionRecord as any)?.description || sessionRecord?.title || 'Share your solve for this lesson.'),
       imageUrl: null,
+      initialScene: options?.initialScene ?? null,
     })
   }, [sessionById])
+
+  const openLessonCommentThread = useCallback((sessionId: string) => {
+    openLessonSolveComposer(sessionId)
+  }, [openLessonSolveComposer])
 
   const submitLessonSolve = useCallback(async (scene: any) => {
     if (!lessonSolveOverlay?.sessionId) return
@@ -8011,35 +8016,64 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   ) : sessionDetailsTab === 'responses' ? (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <div className="font-semibold text-sm">Quizzes</div>
-                        {expandedSessionId && (
-                          <button
-                            type="button"
-                            className="text-xs font-semibold text-white/70 hover:text-white disabled:opacity-50"
-                            onClick={() => fetchMyResponses(expandedSessionId)}
-                            disabled={myResponsesLoading}
-                          >
-                            {myResponsesLoading ? 'Refreshing...' : 'Refresh'}
-                          </button>
-                        )}
+                        <div className="font-semibold text-sm">Solutions</div>
+                        <div className="flex items-center gap-2">
+                          {expandedSessionId ? (() => {
+                            const effectiveCurrentUserId = String(currentUserId || viewerId || '')
+                            const ownResponse = myResponses.find((response: any) => effectiveCurrentUserId && String(response?.userId || '') === effectiveCurrentUserId)
+                            return (
+                              <button
+                                type="button"
+                                className="text-xs font-semibold text-[#1877f2] hover:text-[#176ad8] disabled:opacity-50"
+                                onClick={() => openLessonSolveComposer(expandedSessionId, { initialScene: ownResponse?.excalidrawScene || null })}
+                                disabled={myResponsesLoading}
+                              >
+                                {ownResponse ? 'Edit your solution' : 'Share a solution'}
+                              </button>
+                            )
+                          })() : null}
+                          {expandedSessionId && (
+                            <button
+                              type="button"
+                              className="text-xs font-semibold text-white/70 hover:text-white disabled:opacity-50"
+                              onClick={() => fetchMyResponses(expandedSessionId)}
+                              disabled={myResponsesLoading}
+                            >
+                              {myResponsesLoading ? 'Refreshing...' : 'Refresh'}
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       {myResponsesError ? (
                         <div className="text-sm text-red-600">{myResponsesError}</div>
                       ) : myResponsesLoading ? (
-                        <div className="text-sm muted">Loading responses...</div>
+                        <div className="text-sm muted">Loading solutions...</div>
                       ) : myResponses.length === 0 ? (
-                        <div className="text-sm muted">No responses submitted yet.</div>
+                        <div className="text-sm muted">No solutions shared yet.</div>
                       ) : (
                         <div className="space-y-2">
                           {myResponses.map((r: any) => (
                             <div key={r.id} className="p-3 border rounded bg-white space-y-1">
-                              {r?.updatedAt ? (
-                                <div className="text-xs text-slate-600">{new Date(r.updatedAt).toLocaleString()}</div>
-                              ) : null}
-                              {r?.userName ? (
-                                <div className="text-sm font-semibold text-slate-900">{String(r.userName)}</div>
-                              ) : null}
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 space-y-1">
+                                  {r?.updatedAt ? (
+                                    <div className="text-xs text-slate-600">{new Date(r.updatedAt).toLocaleString()}</div>
+                                  ) : null}
+                                  {r?.userName ? (
+                                    <div className="text-sm font-semibold text-slate-900">{String(r.userName)}</div>
+                                  ) : null}
+                                </div>
+                                {String(r?.userId || '') === String(currentUserId || viewerId || '') ? (
+                                  <button
+                                    type="button"
+                                    className="shrink-0 text-xs font-semibold text-[#1877f2] hover:text-[#176ad8]"
+                                    onClick={() => openLessonSolveComposer(String(expandedSessionId || ''), { initialScene: r?.excalidrawScene || null })}
+                                  >
+                                    Edit
+                                  </button>
+                                ) : null}
+                              </div>
                               {r?.quizLabel ? (
                                 <div className="text-sm font-semibold text-slate-900">{String(r.quizLabel)}</div>
                               ) : null}
@@ -12214,6 +12248,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 title={lessonSolveOverlay.title}
                 prompt={lessonSolveOverlay.prompt}
                 imageUrl={lessonSolveOverlay.imageUrl || null}
+                initialScene={lessonSolveOverlay.initialScene || null}
                 submitting={lessonSolveSubmitting}
                 onCancel={() => {
                   if (lessonSolveSubmitting) return

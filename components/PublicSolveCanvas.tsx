@@ -581,6 +581,8 @@ export function PublicSolveComposer({
   const excalidrawApiRef = useRef<any>(null)
   const sceneRef = useRef<PublicSolveScene>(normalizePublicSolveScene(initialScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() })
   const pendingSegmentStartRef = useRef(false)
+  const [composerInstanceKey, setComposerInstanceKey] = useState(0)
+  const [composerInitialData, setComposerInitialData] = useState(() => buildInitialData(sceneRef.current))
   const [isReady, setIsReady] = useState(false)
   const [hasContent, setHasContent] = useState(publicSolveSceneHasContent(sceneRef.current))
   const [canNormalizeCurrentSegment, setCanNormalizeCurrentSegment] = useState(computePublicSolveNormalizationState(sceneRef.current))
@@ -606,7 +608,10 @@ export function PublicSolveComposer({
   useEffect(() => {
     const normalized = normalizePublicSolveScene(initialScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
     pendingSegmentStartRef.current = false
-    applySceneSnapshot(normalized, { syncApi: true })
+    setIsReady(false)
+    setComposerInitialData(buildInitialData(normalized))
+    setComposerInstanceKey((prev) => prev + 1)
+    applySceneSnapshot(normalized)
   }, [applySceneSnapshot, initialScene])
 
   const normalizeCurrentSegment = useCallback(() => {
@@ -739,8 +744,9 @@ export function PublicSolveComposer({
           </div>
           <div className="relative min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>
             <LessonStyledExcalidraw
+              key={`public-solve-composer-${composerInstanceKey}`}
               className="h-full"
-              initialData={buildInitialData(sceneRef.current)}
+              initialData={composerInitialData}
               UIOptions={editorUiOptions}
               zenModeEnabled={false}
               gridModeEnabled={false}

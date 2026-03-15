@@ -9968,7 +9968,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     <div
       ref={studentMobilePanelsRef}
       onScroll={onStudentPanelsScroll}
-      className="flex w-full flex-1 overflow-x-auto snap-x snap-mandatory"
+      className="flex w-full overflow-x-auto snap-x snap-mandatory"
       style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}
     >
       <div
@@ -10040,7 +10040,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
 
     return (
-      <div className="flex-1 flex flex-col pb-8 pt-0">
+      <div className="pb-8 pt-0">
         {mobilePanels.announcements && (
           <FullScreenGlassOverlay
             title="Announcements"
@@ -10180,7 +10180,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </div>
         </div>
 
-        <div className="flex-1">
+        <div>
           {renderMobileActivePanel()}
         </div>
 

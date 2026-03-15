@@ -241,7 +241,7 @@ export default function Signup() {
 
   return (
     <main className="deep-page min-h-screen px-4 py-12">
-      <div className="mx-auto flex min-h-[calc(100vh-6rem)] max-w-md flex-col items-center justify-center gap-6">
+      <div className="mx-auto max-w-md space-y-6">
         <div className="w-full bg-white text-slate-900 shadow-md rounded-3xl p-8 fade-up">
           <div className="flex items-center justify-between gap-3 mb-6">
             <NavArrows backHref="/api/auth/signin" forwardHref="/verify-email" />

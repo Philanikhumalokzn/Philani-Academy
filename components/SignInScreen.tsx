@@ -111,7 +111,7 @@ export default function SignInScreen({ title = 'Sign in | Philani Academy' }: Si
   if (status === 'authenticated') {
     return (
       <div className="deep-page min-h-screen px-4 py-12">
-        <div className="mx-auto flex min-h-[calc(100vh-6rem)] max-w-md flex-col items-center justify-center gap-6">
+        <div className="mx-auto max-w-md space-y-6">
           <div className="w-full bg-white text-slate-900 shadow-md rounded-3xl p-8 text-center space-y-4">
             <BrandLogo height={56} className="mx-auto" />
             <p className="text-sm text-slate-600">Loading your dashboard...</p>
@@ -128,7 +128,7 @@ export default function SignInScreen({ title = 'Sign in | Philani Academy' }: Si
         <title>{title}</title>
       </Head>
       <div className="deep-page min-h-screen px-4 py-12">
-        <div className="mx-auto flex min-h-[calc(100vh-6rem)] max-w-md flex-col items-center justify-center gap-6">
+        <div className="mx-auto max-w-md space-y-6">
           <div className="w-full bg-white text-slate-900 shadow-md rounded-3xl p-8">
             <div className="space-y-3 mb-6 text-center">
               <div className="flex justify-center">

@@ -960,7 +960,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }>(null)
   const [postSolveSubmitting, setPostSolveSubmitting] = useState(false)
   const [postSolveError, setPostSolveError] = useState<string | null>(null)
-  const [postThreadOverlay, setPostThreadOverlay] = useState<null | { postId: string; threadKey: string; title: string; prompt: string; imageUrl?: string | null }>(null)
+  const [postThreadOverlay, setPostThreadOverlay] = useState<null | {
+    postId: string
+    threadKey: string
+    title: string
+    prompt: string
+    imageUrl?: string | null
+    authorName?: string | null
+    authorAvatarUrl?: string | null
+  }>(null)
   const [postThreadLoading, setPostThreadLoading] = useState(false)
   const [postThreadError, setPostThreadError] = useState<string | null>(null)
   const [postThreadResponses, setPostThreadResponses] = useState<any[]>([])
@@ -6401,8 +6409,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const threadKey = typeof post?.threadKey === 'string' ? post.threadKey : `post:${postId}`
     if (!postId || !threadKey) return
 
-    const authorName = (post?.createdBy?.name || '').trim() || 'Original post'
-    const authorAvatarUrl = typeof post?.createdBy?.avatar === 'string' ? post.createdBy.avatar.trim() : ''
+    const authorName = String(
+      post?.authorName ||
+      post?.createdBy?.name ||
+      post?.user?.name ||
+      post?.userName ||
+      post?.createdBy?.email ||
+      post?.user?.email ||
+      ''
+    ).trim() || 'Poster'
+    const authorAvatarUrl = String(
+      post?.authorAvatarUrl ||
+      post?.createdBy?.avatar ||
+      post?.user?.avatar ||
+      post?.userAvatar ||
+      ''
+    ).trim()
 
     setPostSolveError(null)
     let initialScene = options?.initialScene ?? null
@@ -6478,6 +6500,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         title: postSolveOverlay.title,
         prompt: postSolveOverlay.prompt,
         imageUrl: postSolveOverlay.imageUrl || null,
+        authorName: postSolveOverlay.authorName || null,
+        authorAvatarUrl: postSolveOverlay.authorAvatarUrl || null,
       }
       setPostSolveOverlay(null)
       await openPostThread(overlayPost, { forceOpen: true })

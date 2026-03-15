@@ -473,7 +473,15 @@ export function PublicSolveComposer({
   }, [authorAvatarUrl])
 
   const resolvedAuthorInitial = useMemo(() => {
-    return resolvedAuthorName.slice(0, 1).toUpperCase() || 'P'
+    const parts = resolvedAuthorName
+      .split(/\s+/)
+      .map((part) => part.trim())
+      .filter(Boolean)
+    if (parts.length === 0) return 'P'
+    if (parts.length === 1) {
+      return parts[0].slice(0, 2).toUpperCase() || 'P'
+    }
+    return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase() || 'P'
   }, [resolvedAuthorName])
 
   const canvasOpacity = canvasOpacityPercent / 100

@@ -1203,6 +1203,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [lastSharedSocialItemKey, setLastSharedSocialItemKey] = useState<string | null>(null)
   const socialShareResetTimeoutRef = useRef<number | null>(null)
   const postFeedItemRefs = useRef<Record<string, HTMLLIElement | null>>({})
+  const handledFeedThreadJumpKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -6500,11 +6501,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [markSocialShareHandled])
 
-  const openChallengeCommentThread = useCallback((challengeId: string) => {
+  const openChallengeCommentThread = useCallback((challengeId: string, options?: { forceOpen?: boolean }) => {
     const safeChallengeId = String(challengeId || '')
     if (!safeChallengeId) return
     const nextKey = `challenge:${safeChallengeId}`
-    if (expandedSolutionThreadKey === nextKey && expandedSolutionThreadKind === 'challenge') {
+    if (!options?.forceOpen && expandedSolutionThreadKey === nextKey && expandedSolutionThreadKind === 'challenge') {
       setExpandedSolutionThreadKey(null)
       setExpandedSolutionThreadKind(null)
       setChallengeResponseError(null)
@@ -6563,12 +6564,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const openFeedThreadId = typeof router.query.openFeedThreadId === 'string' ? router.query.openFeedThreadId.trim() : ''
     const openFeedThreadKindRaw = typeof router.query.openFeedThreadKind === 'string' ? router.query.openFeedThreadKind.trim().toLowerCase() : ''
     const openFeedThreadKind = openFeedThreadKindRaw === 'post' ? 'post' : (openFeedThreadKindRaw === 'challenge' ? 'challenge' : '')
-    if (!openFeedThreadId || !openFeedThreadKind) return
+    if (!openFeedThreadId || !openFeedThreadKind) {
+      handledFeedThreadJumpKeyRef.current = null
+      return
+    }
     if (studentFeedLoading) return
 
     const targetKey = `${openFeedThreadKind}:${openFeedThreadId}`
+    if (handledFeedThreadJumpKeyRef.current === targetKey) return
     const targetItem = (Array.isArray(studentFeedPosts) ? studentFeedPosts : []).find((item: any) => getDashboardItemKey(item) === targetKey)
     if (!targetItem) return
+    handledFeedThreadJumpKeyRef.current = targetKey
 
     if (activeSection !== 'overview') setActiveSection('overview')
     if (dashboardSectionOverlay) setDashboardSectionOverlay(null)
@@ -6579,7 +6585,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (openFeedThreadKind === 'post') {
       void openPostThread(targetItem, { forceOpen: true })
     } else {
-      openChallengeCommentThread(openFeedThreadId)
+      openChallengeCommentThread(openFeedThreadId, { forceOpen: true })
     }
 
     const nextQuery: Record<string, any> = { ...router.query }
@@ -6599,6 +6605,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     studentFeedPosts,
     studentMobileTab,
     studentQuickOverlay,
+    expandedSolutionThreadKey,
+    expandedSolutionThreadKind,
   ])
 
   useEffect(() => {

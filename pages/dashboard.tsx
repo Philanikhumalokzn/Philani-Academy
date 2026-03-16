@@ -3912,15 +3912,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       return
     }
 
-    applyInteractiveViewportSceneLocally(safeResponseId, normalizedScene)
-    setInteractiveViewportErrorByResponseId((prev) => {
-      if (!prev[safeResponseId]) return prev
-      const next = { ...prev }
-      delete next[safeResponseId]
-      return next
-    })
-
-    if (interactiveViewportSavedSceneRef.current[safeResponseId] === serialized) {
+    const savedSerialized = interactiveViewportSavedSceneRef.current[safeResponseId]
+    const queuedSerialized = interactiveViewportQueuedSceneRef.current[safeResponseId]?.serialized
+    if (savedSerialized === serialized || queuedSerialized === serialized) {
       setInteractiveViewportSavingByResponseId((prev) => {
         if (!prev[safeResponseId]) return prev
         const next = { ...prev }
@@ -3929,6 +3923,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       })
       return
     }
+
+    applyInteractiveViewportSceneLocally(safeResponseId, normalizedScene)
+    setInteractiveViewportErrorByResponseId((prev) => {
+      if (!prev[safeResponseId]) return prev
+      const next = { ...prev }
+      delete next[safeResponseId]
+      return next
+    })
 
     interactiveViewportQueuedSceneRef.current[safeResponseId] = {
       threadKey: safeThreadKey,

@@ -4891,7 +4891,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               return (
                 <div
                   key={String(response?.id || idx)}
-                  className="rounded-2xl border border-black/10 bg-white px-4 py-4"
+                  className="py-1"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-start gap-3">

@@ -4252,12 +4252,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }) => (
       <button
         type="button"
-        className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em] transition ${opts.active ? 'bg-[#e7f3ff] text-[#1877f2]' : 'text-[#65676b] hover:bg-[#f0f2f5]'} ${opts.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+        className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em] transition ${opts.active ? 'bg-[#e7f3ff] text-[#1877f2]' : 'text-[#65676b] hover:bg-[#f0f2f5]'} ${opts.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
         onClick={opts.onClick}
         disabled={opts.disabled}
       >
         <span className="shrink-0">{opts.icon}</span>
-        <span>{opts.statusLabel || opts.label}</span>
+        <span className="truncate whitespace-nowrap">{opts.statusLabel || opts.label}</span>
       </button>
     )
 

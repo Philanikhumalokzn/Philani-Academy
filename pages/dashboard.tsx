@@ -11,7 +11,7 @@ import TextOverlayModule from '../components/TextOverlayModule'
 import AssignmentSubmissionOverlay from '../components/AssignmentSubmissionOverlay'
 import AppFooter from '../components/AppFooter'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
-import { PublicSolveCanvasViewer, PublicSolveComposer } from '../components/PublicSolveCanvas'
+import { PublicSolveCanvasViewer, PublicSolveComposer, type PublicSolveScene } from '../components/PublicSolveCanvas'
 import TaskManageMenu from '../components/TaskManageMenu'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
 import BottomSheet from '../components/BottomSheet'
@@ -493,6 +493,26 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     latexHistory?: string[]
   }
 
+  type PostSolveOverlayState = {
+    postId: string
+    threadKey: string
+    title: string
+    prompt: string
+    imageUrl?: string | null
+    authorName?: string | null
+    authorAvatarUrl?: string | null
+    initialScene?: any | null
+    postRecord?: any | null
+  }
+
+  type PostSolvePreviewState = {
+    draft: PostSolveOverlayState
+    draftScene: PublicSolveScene
+    responses: any[]
+    loading: boolean
+    error: string | null
+  }
+
   const LESSON_AUTHORING_STORAGE_KEY = 'philani:lesson-authoring:draft-v2'
   const buildLessonAuthoringBoardId = (kind: 'diagram' | 'latex' | 'canvas', phaseKey: LessonPhaseKey, pointId: string) => {
     return `lesson-author-${kind}-${phaseKey}-${pointId}`
@@ -948,18 +968,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [lessonSolveOverlay, setLessonSolveOverlay] = useState<null | { sessionId: string; threadKey: string; title: string; prompt: string; imageUrl?: string | null; initialScene?: any | null }>(null)
   const [lessonSolveSubmitting, setLessonSolveSubmitting] = useState(false)
   const [lessonSolveError, setLessonSolveError] = useState<string | null>(null)
-  const [postSolveOverlay, setPostSolveOverlay] = useState<null | {
-    postId: string
-    threadKey: string
-    title: string
-    prompt: string
-    imageUrl?: string | null
-    authorName?: string | null
-    authorAvatarUrl?: string | null
-    initialScene?: any | null
-  }>(null)
+  const [postSolveOverlay, setPostSolveOverlay] = useState<PostSolveOverlayState | null>(null)
   const [postSolveSubmitting, setPostSolveSubmitting] = useState(false)
   const [postSolveError, setPostSolveError] = useState<string | null>(null)
+  const [postSolvePreviewOverlay, setPostSolvePreviewOverlay] = useState<PostSolvePreviewState | null>(null)
   const [postThreadOverlay, setPostThreadOverlay] = useState<null | {
     postId: string
     threadKey: string
@@ -3762,6 +3774,36 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return orderThreadResponsesForFeed(challengeThreadResponses)
   }, [challengeThreadResponses, orderThreadResponsesForFeed])
 
+  const postSolvePreviewResponseId = 'draft-post-solve-preview-response'
+
+  const postSolvePreviewResponses = useMemo(() => {
+    if (!postSolvePreviewOverlay) return []
+
+    const effectiveCurrentUserId = String(currentUserId || viewerId || '')
+    const responseUserName = String(session?.user?.name || session?.user?.email || 'You')
+    const responseUserAvatar = String((session as any)?.user?.avatar || (session as any)?.user?.image || '').trim()
+    const draftResponse = {
+      id: postSolvePreviewResponseId,
+      userId: effectiveCurrentUserId,
+      user: {
+        id: effectiveCurrentUserId,
+        name: responseUserName,
+        email: String(session?.user?.email || ''),
+        avatar: responseUserAvatar || null,
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      latex: '',
+      studentText: null,
+      feedback: null,
+      gradingJson: null,
+      excalidrawScene: postSolvePreviewOverlay.draftScene,
+      __draftPreview: true,
+    }
+
+    return orderThreadResponsesForFeed([draftResponse, ...(Array.isArray(postSolvePreviewOverlay.responses) ? postSolvePreviewOverlay.responses : [])])
+  }, [currentUserId, orderThreadResponsesForFeed, postSolvePreviewOverlay, session, viewerId])
+
   const formatSolutionsLabel = useCallback((count: unknown) => {
     const safeCount = typeof count === 'number' && Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0
     if (safeCount <= 0) return 'Solutions'
@@ -4852,16 +4894,36 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     </div>
   )
 
-  const renderInlineSolutionsThread = (item: any, options: { kind: 'post' | 'challenge'; canAttempt?: boolean; href?: string }) => {
+  const renderInlineSolutionsThread = (item: any, options: {
+    kind: 'post' | 'challenge'
+    canAttempt?: boolean
+    href?: string
+    forceOpen?: boolean
+    overrideResponses?: any[]
+    overrideLoading?: boolean
+    overrideError?: string | null
+    overrideThreadUnlocked?: boolean
+    onOwnPostEditSolution?: (response: any) => void
+    interactiveViewportResponseId?: string | null
+    onInteractiveViewportChange?: (scene: PublicSolveScene) => void
+  }) => {
     const itemId = String(item?.id || '')
     if (!itemId) return null
     const itemKey = `${options.kind}:${itemId}`
-    if (expandedSolutionThreadKey !== itemKey || expandedSolutionThreadKind !== options.kind) return null
+    if (!options.forceOpen && (expandedSolutionThreadKey !== itemKey || expandedSolutionThreadKind !== options.kind)) return null
 
-    const responses = options.kind === 'post' ? displayPostThreadResponses : displayChallengeThreadResponses
-    const loading = options.kind === 'post' ? postThreadLoading : challengeResponseLoading
-    const error = options.kind === 'post' ? postThreadError : challengeResponseError
-    const threadUnlocked = options.kind === 'post' ? true : canViewChallengeThread
+    const responses = Array.isArray(options.overrideResponses)
+      ? options.overrideResponses
+      : (options.kind === 'post' ? displayPostThreadResponses : displayChallengeThreadResponses)
+    const loading = typeof options.overrideLoading === 'boolean'
+      ? options.overrideLoading
+      : (options.kind === 'post' ? postThreadLoading : challengeResponseLoading)
+    const error = typeof options.overrideError !== 'undefined'
+      ? options.overrideError
+      : (options.kind === 'post' ? postThreadError : challengeResponseError)
+    const threadUnlocked = typeof options.overrideThreadUnlocked === 'boolean'
+      ? options.overrideThreadUnlocked
+      : (options.kind === 'post' ? true : canViewChallengeThread)
 
     return (
       <div className="mt-3 border-t border-black/10 pt-3">
@@ -4925,7 +4987,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         <button
                           type="button"
                           className="shrink-0 text-xs font-semibold text-[#65676b] hover:text-[#1c1e21]"
-                          onClick={() => void openPostSolveComposer(item, { initialScene: response?.excalidrawScene || null })}
+                          onClick={() => {
+                            if (options.onOwnPostEditSolution) {
+                              options.onOwnPostEditSolution(response)
+                              return
+                            }
+                            void openPostSolveComposer(item, { initialScene: response?.excalidrawScene || null })
+                          }}
                         >
                           Edit solution
                         </button>
@@ -4955,7 +5023,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                   {response?.excalidrawScene ? (
                     <div className="mt-3">
-                      <PublicSolveCanvasViewer scene={response.excalidrawScene} />
+                      <PublicSolveCanvasViewer
+                        scene={response.excalidrawScene}
+                        onViewportChange={options.onInteractiveViewportChange && options.interactiveViewportResponseId === String(response?.id || '')
+                          ? options.onInteractiveViewportChange
+                          : undefined}
+                      />
                     </div>
                   ) : null}
 
@@ -4971,6 +5044,192 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
         ) : null}
       </div>
+    )
+  }
+
+  const renderPostSolveLivePreviewCard = () => {
+    if (!postSolvePreviewOverlay) return null
+
+    const basePost = postSolvePreviewOverlay.draft.postRecord || {
+      id: postSolvePreviewOverlay.draft.postId,
+      threadKey: postSolvePreviewOverlay.draft.threadKey,
+      title: postSolvePreviewOverlay.draft.title,
+      prompt: postSolvePreviewOverlay.draft.prompt,
+      imageUrl: postSolvePreviewOverlay.draft.imageUrl || null,
+      authorName: postSolvePreviewOverlay.draft.authorName || null,
+      authorAvatarUrl: postSolvePreviewOverlay.draft.authorAvatarUrl || null,
+    }
+
+    const item = {
+      ...basePost,
+      id: postSolvePreviewOverlay.draft.postId,
+      threadKey: postSolvePreviewOverlay.draft.threadKey,
+      title: postSolvePreviewOverlay.draft.title,
+      prompt: postSolvePreviewOverlay.draft.prompt,
+      imageUrl: postSolvePreviewOverlay.draft.imageUrl || null,
+      hasOwnResponse: true,
+      solutionCount: Math.max(
+        1,
+        Number((basePost as any)?.solutionCount || 0) + (basePost?.hasOwnResponse ? 0 : 1),
+      ),
+    }
+
+    const title = (item?.title || '').trim() || 'Post'
+    const createdAt = item?.createdAt ? formatFeedPostDate(item.createdAt) : ''
+    const authorName = (item?.createdBy?.name || item?.authorName || '').trim() || 'Learner'
+    const authorId = item?.createdBy?.id ? String(item.createdBy.id) : null
+    const authorAvatar = typeof item?.createdBy?.avatar === 'string'
+      ? item.createdBy.avatar.trim()
+      : typeof item?.authorAvatarUrl === 'string'
+        ? item.authorAvatarUrl.trim()
+        : ''
+    const authorRole = String(item?.createdBy?.role || '').toLowerCase()
+    const authorVerified = hasLessonCapabilityForRole(authorRole, 'canOrchestrateLesson')
+    const authorHasAvatar = Boolean(authorAvatar)
+    const showAuthorAvatarTick = authorVerified && authorHasAvatar
+    const showAuthorNameTick = authorVerified && !authorHasAvatar
+    const prompt = (item?.prompt || '').trim()
+    const imageUrl = typeof item?.imageUrl === 'string' ? item.imageUrl.trim() : ''
+    const socialItemKey = `post:${String(item?.id || title)}`
+
+    return (
+      <li className="border-b border-black/10 bg-white px-4 py-3 sm:rounded-2xl sm:border sm:border-black/10 sm:px-5 sm:py-4 sm:shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3">
+              <UserLink userId={authorId} className="shrink-0" title="View profile">
+                <div className="relative overflow-visible">
+                  <div className="h-9 w-9 aspect-square rounded-full border border-black/10 bg-[#f0f2f5] overflow-hidden flex items-center justify-center profile-avatar-container">
+                    {authorAvatar ? (
+                      <img src={authorAvatar} alt={authorName} className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="text-xs font-semibold text-[#1c1e21]">{authorName.slice(0, 1).toUpperCase()}</span>
+                    )}
+                  </div>
+                  {showAuthorAvatarTick ? (
+                    <span
+                      className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none"
+                      aria-label="Verified"
+                      title="Verified"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M9.00016 16.2L4.80016 12L3.40016 13.4L9.00016 19L21.0002 7.00001L19.6002 5.60001L9.00016 16.2Z" fill="currentColor" />
+                      </svg>
+                    </span>
+                  ) : null}
+                </div>
+              </UserLink>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <UserLink userId={authorId} className="truncate text-[15px] font-semibold tracking-[-0.015em] text-[#1c1e21] hover:underline" title="View profile">
+                    {authorName}
+                  </UserLink>
+                  {showAuthorNameTick ? (
+                    <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
+                      <svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" aria-hidden="true">
+                        <path
+                          d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z"
+                          fill="currentColor"
+                        />
+                      </svg>
+                    </span>
+                  ) : null}
+                </div>
+                {createdAt ? <div className="mt-0.5 text-[12px] font-medium tracking-[0.01em] text-[#65676b]">{createdAt}</div> : null}
+              </div>
+            </div>
+
+            <div className="mt-3 text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{title}</div>
+            {prompt ? <div className="mt-1.5 text-[14px] leading-6 text-[#334155] break-words">{prompt.slice(0, 220)}{prompt.length > 220 ? '...' : ''}</div> : null}
+            {imageUrl ? (
+              <div className="mt-3 overflow-hidden rounded-2xl border border-black/10 bg-[#f8fafc]">
+                <img
+                  src={imageUrl}
+                  alt="Post screenshot"
+                  className="max-h-[420px] w-full object-cover"
+                />
+              </div>
+            ) : null}
+
+          </div>
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            <button
+              type="button"
+              className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
+              onClick={() => {}}
+            >
+              {formatSolutionsLabel((item as any)?.solutionCount)}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-3 border-t border-black/10 pt-2 text-[#65676b]">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em] transition ${socialLikedItems[socialItemKey] ? 'bg-[#e7f3ff] text-[#1877f2]' : 'text-[#65676b] hover:bg-[#f0f2f5]'}`}
+              onClick={() => toggleSocialLike(socialItemKey)}
+            >
+              <span className="shrink-0">
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                  <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </span>
+              <span className="truncate whitespace-nowrap">Like</span>
+            </button>
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em] text-[#65676b] hover:bg-[#f0f2f5]"
+              onClick={() => {}}
+            >
+              <span className="shrink-0">
+                <span className="flex items-center gap-1" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+                    <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none">
+                    <path d="M4 20H8L18.5 9.5C19.3284 8.67157 19.3284 7.32843 18.5 6.5C17.6716 5.67157 16.3284 5.67157 15.5 6.5L5 17V20Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M14.5 7.5L17.5 10.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+              </span>
+              <span className="truncate whitespace-nowrap">{formatSolutionsLabel((item as any)?.solutionCount)}</span>
+            </button>
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em] text-[#65676b] hover:bg-[#f0f2f5]"
+              onClick={() => shareDashboardItem({
+                itemKey: socialItemKey,
+                title,
+                text: prompt || title,
+                path: `/dashboard?postId=${encodeURIComponent(String(item?.id || ''))}`,
+              })}
+            >
+              <span className="shrink-0">
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                  <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M4 19V17C4 13.6863 6.68629 11 10 11H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </span>
+              <span className="truncate whitespace-nowrap">{lastSharedSocialItemKey === socialItemKey ? 'Copied' : 'Share'}</span>
+            </button>
+          </div>
+          {renderInlineSolutionsThread(item, {
+            kind: 'post',
+            forceOpen: true,
+            overrideResponses: postSolvePreviewResponses,
+            overrideLoading: postSolvePreviewOverlay.loading,
+            overrideError: postSolvePreviewOverlay.error,
+            overrideThreadUnlocked: true,
+            interactiveViewportResponseId: postSolvePreviewResponseId,
+            onInteractiveViewportChange: updatePostSolvePreviewScene,
+            onOwnPostEditSolution: () => {
+              closePostSolvePreview()
+            },
+          })}
+        </div>
+      </li>
     )
   }
 
@@ -6453,8 +6712,62 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       authorName,
       authorAvatarUrl,
       initialScene,
+      postRecord: post,
     })
   }, [currentUserId, fetchPublicThreadResponses, viewerId])
+
+  const openPostSolvePreview = useCallback(async (scene: PublicSolveScene) => {
+    if (!postSolveOverlay?.postId || !postSolveOverlay?.threadKey) return
+
+    setPostSolveError(null)
+    setPostSolveOverlay((prev) => (prev ? { ...prev, initialScene: scene } : prev))
+    setPostSolvePreviewOverlay({
+      draft: {
+        ...postSolveOverlay,
+        initialScene: scene,
+      },
+      draftScene: scene,
+      responses: [],
+      loading: true,
+      error: null,
+    })
+
+    try {
+      const responses = await fetchPublicThreadResponses(postSolveOverlay.threadKey)
+      const effectiveCurrentUserId = String(currentUserId || viewerId || '')
+      const otherResponses = responses.filter((response: any) => String(response?.userId || response?.user?.id || '') !== effectiveCurrentUserId)
+      setPostSolvePreviewOverlay((prev) => {
+        if (!prev || prev.draft.threadKey !== postSolveOverlay.threadKey) return prev
+        return {
+          ...prev,
+          responses: otherResponses,
+          loading: false,
+          error: null,
+        }
+      })
+    } catch (err: any) {
+      setPostSolvePreviewOverlay((prev) => {
+        if (!prev || prev.draft.threadKey !== postSolveOverlay.threadKey) return prev
+        return {
+          ...prev,
+          responses: [],
+          loading: false,
+          error: err?.message || 'Failed to load solutions',
+        }
+      })
+    }
+  }, [currentUserId, fetchPublicThreadResponses, postSolveOverlay, viewerId])
+
+  const closePostSolvePreview = useCallback(() => {
+    if (postSolvePreviewOverlay?.draftScene) {
+      setPostSolveOverlay((draft) => (draft ? { ...draft, initialScene: postSolvePreviewOverlay.draftScene } : draft))
+    }
+    setPostSolvePreviewOverlay(null)
+  }, [postSolvePreviewOverlay])
+
+  const updatePostSolvePreviewScene = useCallback((scene: PublicSolveScene) => {
+    setPostSolvePreviewOverlay((prev) => (prev ? { ...prev, draftScene: scene } : prev))
+  }, [])
 
   const submitPostSolve = useCallback(async (scene: any) => {
     if (!postSolveOverlay?.postId || !postSolveOverlay?.threadKey) return
@@ -6508,6 +6821,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         authorName: postSolveOverlay.authorName || null,
         authorAvatarUrl: postSolveOverlay.authorAvatarUrl || null,
       }
+      setPostSolvePreviewOverlay(null)
       setPostSolveOverlay(null)
       await openPostThread(overlayPost, { forceOpen: true })
     } catch (err: any) {
@@ -12774,9 +13088,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 submitting={postSolveSubmitting}
                 onCancel={() => {
                   if (postSolveSubmitting) return
+                  setPostSolvePreviewOverlay(null)
                   setPostSolveOverlay(null)
                   setPostSolveError(null)
                 }}
+                onPreviewSubmit={openPostSolvePreview}
                 onSubmit={submitPostSolve}
               />
             </div>
@@ -12788,6 +13104,46 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
         </OverlayPortal>
       )}
+
+      {postSolvePreviewOverlay ? (
+        <OverlayPortal>
+          <div
+            className="fixed inset-0 z-[69] bg-[#f0f2f5]"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Post solution preview"
+          >
+            <div className="h-full overflow-auto pb-28 pt-3 sm:pt-5">
+              <div className="mx-auto w-full max-w-3xl">
+                <div className="bg-[#f0f2f5]">
+                  {renderPostSolveLivePreviewCard()}
+                </div>
+              </div>
+            </div>
+
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[70] flex justify-center px-3 pb-3 sm:px-5 sm:pb-5">
+              <div className="pointer-events-auto flex w-full max-w-3xl items-center justify-between gap-3 rounded-[24px] border border-black/10 bg-white/96 px-4 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.16)] backdrop-blur-xl">
+                <button
+                  type="button"
+                  className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                  onClick={closePostSolvePreview}
+                  disabled={postSolveSubmitting}
+                >
+                  Back to response
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex h-11 items-center justify-center rounded-full bg-[#1877f2] px-5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(24,119,242,0.28)] transition hover:bg-[#176ad8] disabled:cursor-not-allowed disabled:opacity-55"
+                  onClick={() => void submitPostSolve(postSolvePreviewOverlay.draftScene)}
+                  disabled={postSolveSubmitting}
+                >
+                  {postSolveSubmitting ? 'Posting...' : 'Post solution'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      ) : null}
 
       {postThreadOverlay && (
         <OverlayPortal>

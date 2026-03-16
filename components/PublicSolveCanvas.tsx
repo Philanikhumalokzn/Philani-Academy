@@ -395,10 +395,7 @@ export function PublicSolveCanvasViewer({
   }
 
   return (
-    <div className={`overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.08)] ${className}`.trim()}>
-      <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-        Submitted canvas
-      </div>
+    <div className={`philani-solution-viewer overflow-hidden rounded-[24px] border border-slate-200 bg-white ${className}`.trim()}>
       <div className="h-[420px] bg-white">
         <LessonStyledExcalidraw
           key={normalizedScene?.updatedAt || 'viewer'}

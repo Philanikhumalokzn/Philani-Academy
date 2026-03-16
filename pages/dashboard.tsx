@@ -4889,62 +4889,42 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               const grade = normalizeChallengeGrade(response?.gradingJson, steps.length)
 
               return (
-                <div key={String(response?.id || idx)} className="flex items-start gap-3">
-                  <UserLink userId={responseUserId || null} className="shrink-0" title="View profile">
-                    <div className="h-8 w-8 rounded-full border border-black/10 bg-[#f0f2f5] overflow-hidden flex items-center justify-center">
-                      {responseAvatar ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={responseAvatar} alt={responseUserName} className="h-full w-full object-cover" />
-                      ) : (
-                        <span className="text-[11px] font-semibold text-[#1c1e21]">{responseUserName.slice(0, 1).toUpperCase()}</span>
-                      )}
-                    </div>
-                  </UserLink>
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className={`rounded-2xl px-3 py-3 ${isMine ? 'bg-[#e7f3ff]' : 'bg-[#f0f2f5]'}`}>
-                      <div className="flex flex-wrap items-center gap-2 pb-1">
-                        <UserLink userId={responseUserId || null} className="text-[13px] font-semibold text-[#1c1e21] hover:underline" title="View profile">
-                          {responseUserName}
-                        </UserLink>
-                        {isMine ? (
-                          <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#1877f2]">
-                            {idx === 0 ? 'Pinned' : 'You'}
-                          </span>
-                        ) : null}
-                        {responseCreatedAt ? <span className="text-[11px] font-medium text-[#65676b]">{formatFeedPostDate(responseCreatedAt)}</span> : null}
+                <div
+                  key={String(response?.id || idx)}
+                  className={`rounded-2xl border px-4 py-4 ${isMine ? 'border-[#bfdbfe] bg-[#eff6ff]' : 'border-black/10 bg-white'}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <UserLink userId={responseUserId || null} className="shrink-0" title="View profile">
+                        <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f0f2f5]">
+                          {responseAvatar ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={responseAvatar} alt={responseUserName} className="h-full w-full object-cover" />
+                          ) : (
+                            <span className="text-[11px] font-semibold text-[#1c1e21]">{responseUserName.slice(0, 1).toUpperCase()}</span>
+                          )}
+                        </div>
+                      </UserLink>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <UserLink userId={responseUserId || null} className="text-[13px] font-semibold text-[#1c1e21] hover:underline" title="View profile">
+                            {responseUserName}
+                          </UserLink>
+                          {isMine ? (
+                            <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#1877f2]">
+                              {idx === 0 ? 'Pinned' : 'You'}
+                            </span>
+                          ) : null}
+                        </div>
+                        {responseCreatedAt ? <div className="text-[11px] font-medium text-[#65676b]">{formatFeedPostDate(responseCreatedAt)}</div> : null}
                       </div>
-
-                      {String(response?.studentText || '').trim() ? (
-                        <div className="text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{String(response.studentText)}</div>
-                      ) : null}
-
-                      {latex.trim() ? (
-                        latexHtml ? (
-                          <div className="pt-2 leading-relaxed text-[#1c1e21]" dangerouslySetInnerHTML={{ __html: latexHtml }} />
-                        ) : (
-                          <div className="pt-2 text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{renderTextWithKatex(latex)}</div>
-                        )
-                      ) : null}
-
-                      {response?.excalidrawScene ? (
-                        <div className="pt-2">
-                          <PublicSolveCanvasViewer scene={response.excalidrawScene} />
-                        </div>
-                      ) : null}
-
-                      {grade || String(response?.feedback || '').trim() ? (
-                        <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                          {grade ? <div className="font-semibold">Grade: {grade.earnedMarks}/{grade.totalMarks}</div> : null}
-                          {String(response?.feedback || '').trim() ? <div className="mt-1 whitespace-pre-wrap break-words">{String(response.feedback)}</div> : null}
-                        </div>
-                      ) : null}
                     </div>
 
                     {isMine ? (
                       options.kind === 'post' ? (
                         <button
                           type="button"
-                          className="ml-3 text-xs font-semibold text-[#65676b] hover:text-[#1c1e21]"
+                          className="shrink-0 text-xs font-semibold text-[#65676b] hover:text-[#1c1e21]"
                           onClick={() => void openPostSolveComposer(item, { initialScene: response?.excalidrawScene || null })}
                         >
                           Edit solution
@@ -4952,7 +4932,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       ) : options.canAttempt && options.href ? (
                         <button
                           type="button"
-                          className="ml-3 text-xs font-semibold text-[#65676b] hover:text-[#1c1e21]"
+                          className="shrink-0 text-xs font-semibold text-[#65676b] hover:text-[#1c1e21]"
                           onClick={() => void router.push(options.href || '#')}
                         >
                           Edit solution
@@ -4960,6 +4940,31 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       ) : null
                     ) : null}
                   </div>
+
+                  {String(response?.studentText || '').trim() ? (
+                    <div className="mt-3 text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{String(response.studentText)}</div>
+                  ) : null}
+
+                  {latex.trim() ? (
+                    latexHtml ? (
+                      <div className="mt-3 leading-relaxed text-[#1c1e21]" dangerouslySetInnerHTML={{ __html: latexHtml }} />
+                    ) : (
+                      <div className="mt-3 text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{renderTextWithKatex(latex)}</div>
+                    )
+                  ) : null}
+
+                  {response?.excalidrawScene ? (
+                    <div className="mt-3">
+                      <PublicSolveCanvasViewer scene={response.excalidrawScene} />
+                    </div>
+                  ) : null}
+
+                  {grade || String(response?.feedback || '').trim() ? (
+                    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                      {grade ? <div className="font-semibold">Grade: {grade.earnedMarks}/{grade.totalMarks}</div> : null}
+                      {String(response?.feedback || '').trim() ? <div className="mt-1 whitespace-pre-wrap break-words">{String(response.feedback)}</div> : null}
+                    </div>
+                  ) : null}
                 </div>
               )
             })}

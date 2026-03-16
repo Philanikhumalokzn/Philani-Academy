@@ -153,6 +153,15 @@
   box-shadow: none !important;
 }
 
+.philani-solution-viewer .excalidraw .App-top-bar,
+.philani-solution-viewer .excalidraw .App-bottom-bar,
+.philani-solution-viewer .excalidraw .App-menu_top,
+.philani-solution-viewer .excalidraw .mobile-misc-tools-container,
+.philani-solution-viewer .excalidraw .dropdown-menu-button,
+.philani-solution-viewer .excalidraw [data-testid="main-menu-trigger"] {
+  display: none !important;
+}
+
 
 :root{
   --bg: #030712;

@@ -217,9 +217,56 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ responses: records })
   }
 
-  // PATCH: Challenge owner can update gradingJson and feedback for a learner's response
-  if (req.method === 'PATCH' && isChallengeSession) {
-    // Only the challenge owner can grade
+  if (req.method === 'PATCH') {
+    const { responseId, gradingJson, feedback, excalidrawScene } = req.body || {}
+    if (!responseId) return res.status(400).json({ message: 'Missing responseId' })
+
+    const existing = await learnerResponse.findUnique({
+      where: { id: String(responseId) },
+      select: {
+        id: true,
+        userId: true,
+        sessionKey: true,
+      },
+    })
+
+    if (!existing) return res.status(404).json({ message: 'Response not found' })
+    if (!responseThreadKeys.includes(String(existing.sessionKey || ''))) {
+      return res.status(404).json({ message: 'Response not found in this thread' })
+    }
+
+    if (typeof excalidrawScene !== 'undefined') {
+      if (String(existing.userId) !== String(userId)) {
+        return res.status(403).json({ message: 'Only the response owner can update the saved view' })
+      }
+      if (!excalidrawScene || typeof excalidrawScene !== 'object') {
+        return res.status(400).json({ message: 'Canvas response is invalid' })
+      }
+
+      try {
+        const sanitizedScene = sanitizeExcalidrawScene(excalidrawScene)
+        const sceneJson = JSON.stringify(sanitizedScene)
+        if (sceneJson.length > MAX_EXCALIDRAW_SCENE_LENGTH) {
+          return res.status(400).json({ message: 'Canvas response is too large' })
+        }
+
+        const updated = await learnerResponse.update({
+          where: { id: String(responseId) },
+          data: {
+            excalidrawScene: JSON.parse(sceneJson),
+          },
+        })
+
+        return res.status(200).json(updated)
+      } catch {
+        return res.status(400).json({ message: 'Canvas response is invalid' })
+      }
+    }
+
+    if (!isChallengeSession) {
+      return res.status(400).json({ message: 'No supported fields to update' })
+    }
+
     if (!challengeId) return res.status(400).json({ message: 'Invalid challenge session id' })
     const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any
     const challenge = await userChallenge.findUnique({
@@ -230,11 +277,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (String(challenge.createdById) !== String(userId)) {
       return res.status(403).json({ message: 'Only the challenge creator can grade responses' })
     }
-    const { responseId, gradingJson, feedback } = req.body || {}
-    if (!responseId) return res.status(400).json({ message: 'Missing responseId' })
+
     try {
       const updated = await learnerResponse.update({
-        where: { id: responseId },
+        where: { id: String(responseId) },
         data: {
           gradingJson: gradingJson ?? undefined,
           feedback: typeof feedback === 'string' ? feedback : undefined,
@@ -470,6 +516,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
-  res.setHeader('Allow', ['GET', 'POST'])
+  res.setHeader('Allow', ['GET', 'POST', 'PATCH'])
   return res.status(405).end(`Method ${req.method} Not Allowed`)
 }

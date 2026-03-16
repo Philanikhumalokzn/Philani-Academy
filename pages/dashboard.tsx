@@ -11,7 +11,7 @@ import TextOverlayModule from '../components/TextOverlayModule'
 import AssignmentSubmissionOverlay from '../components/AssignmentSubmissionOverlay'
 import AppFooter from '../components/AppFooter'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
-import { PublicSolveCanvasViewer, PublicSolveComposer, type PublicSolveScene } from '../components/PublicSolveCanvas'
+import { PublicSolveCanvasViewer, PublicSolveComposer, normalizePublicSolveScene, type PublicSolveScene } from '../components/PublicSolveCanvas'
 import TaskManageMenu from '../components/TaskManageMenu'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
 import BottomSheet from '../components/BottomSheet'
@@ -1201,9 +1201,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [studentFeedError, setStudentFeedError] = useState<string | null>(null)
   const [socialLikedItems, setSocialLikedItems] = useState<Record<string, boolean>>({})
   const [lastSharedSocialItemKey, setLastSharedSocialItemKey] = useState<string | null>(null)
+  const [interactiveViewportSavingByResponseId, setInteractiveViewportSavingByResponseId] = useState<Record<string, boolean>>({})
+  const [interactiveViewportErrorByResponseId, setInteractiveViewportErrorByResponseId] = useState<Record<string, string>>({})
   const socialShareResetTimeoutRef = useRef<number | null>(null)
   const postFeedItemRefs = useRef<Record<string, HTMLLIElement | null>>({})
   const handledFeedThreadJumpKeyRef = useRef<string | null>(null)
+  const interactiveViewportSaveTimeoutsRef = useRef<Record<string, number>>({})
+  const interactiveViewportQueuedSceneRef = useRef<Record<string, { threadKey: string; scene: PublicSolveScene; serialized: string }>>({})
+  const interactiveViewportSavedSceneRef = useRef<Record<string, string>>({})
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -1241,6 +1246,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       if (socialShareResetTimeoutRef.current !== null) {
         window.clearTimeout(socialShareResetTimeoutRef.current)
       }
+      Object.values(interactiveViewportSaveTimeoutsRef.current).forEach((timeoutId) => {
+        window.clearTimeout(timeoutId)
+      })
     }
   }, [])
 
@@ -3715,6 +3723,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         return bT - aT
       })
 
+      rememberInteractiveViewportScenes(responses)
       setChallengeResponseChallenge(challengeData)
       setChallengeThreadResponses(responses)
     } catch (err: any) {
@@ -3724,7 +3733,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setChallengeResponseLoading(false)
     }
-  }, [])
+  }, [rememberInteractiveViewportScenes])
 
   const challengeOwnResponses = useMemo(() => {
     const effectiveCurrentUserId = String(currentUserId || viewerId || '')
@@ -3776,6 +3785,167 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const displayChallengeThreadResponses = useMemo(() => {
     return orderThreadResponsesForFeed(challengeThreadResponses)
   }, [challengeThreadResponses, orderThreadResponsesForFeed])
+
+  function rememberInteractiveViewportScenes(responses: any[]) {
+    for (const response of Array.isArray(responses) ? responses : []) {
+      const responseId = String(response?.id || '')
+      if (!responseId) continue
+      const normalizedScene = normalizePublicSolveScene(response?.excalidrawScene)
+      if (!normalizedScene) continue
+      try {
+        interactiveViewportSavedSceneRef.current[responseId] = JSON.stringify(normalizedScene)
+      } catch {
+        // ignore serialization issues and fall back to live saves only
+      }
+    }
+  }
+
+  const applyInteractiveViewportSceneLocally = useCallback((responseId: string, scene: PublicSolveScene) => {
+    const safeResponseId = String(responseId || '')
+    if (!safeResponseId) return
+
+    const updateResponseList = (responses: any[]) => (
+      Array.isArray(responses)
+        ? responses.map((response: any) => String(response?.id || '') === safeResponseId
+          ? { ...(response || {}), excalidrawScene: scene }
+          : response)
+        : responses
+    )
+
+    setPostThreadResponses((prev) => updateResponseList(prev))
+    setChallengeThreadResponses((prev) => updateResponseList(prev))
+    setStudentFeedPosts((prev: any[]) => (
+      Array.isArray(prev)
+        ? prev.map((item: any) => {
+            if (String(item?.ownResponse?.id || '') !== safeResponseId) return item
+            return {
+              ...(item || {}),
+              ownResponse: {
+                ...(item?.ownResponse || {}),
+                excalidrawScene: scene,
+              },
+            }
+          })
+        : prev
+    ))
+    setTimelineChallenges((prev: any[]) => (
+      Array.isArray(prev)
+        ? prev.map((item: any) => {
+            if (String(item?.ownResponse?.id || '') !== safeResponseId) return item
+            return {
+              ...(item || {}),
+              ownResponse: {
+                ...(item?.ownResponse || {}),
+                excalidrawScene: scene,
+              },
+            }
+          })
+        : prev
+    ))
+  }, [])
+
+  const flushInteractiveViewportSave = useCallback(async (responseId: string) => {
+    const safeResponseId = String(responseId || '')
+    if (!safeResponseId) return
+    const pending = interactiveViewportQueuedSceneRef.current[safeResponseId]
+    if (!pending?.threadKey) return
+
+    try {
+      const res = await fetch(`/api/threads/${encodeURIComponent(pending.threadKey)}/responses`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          responseId: safeResponseId,
+          excalidrawScene: pending.scene,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to save view (${res.status})`)
+      }
+
+      interactiveViewportSavedSceneRef.current[safeResponseId] = pending.serialized
+      setInteractiveViewportSavingByResponseId((prev) => {
+        if (!prev[safeResponseId]) return prev
+        const next = { ...prev }
+        delete next[safeResponseId]
+        return next
+      })
+      setInteractiveViewportErrorByResponseId((prev) => {
+        if (!prev[safeResponseId]) return prev
+        const next = { ...prev }
+        delete next[safeResponseId]
+        return next
+      })
+    } catch (err: any) {
+      setInteractiveViewportSavingByResponseId((prev) => {
+        if (!prev[safeResponseId]) return prev
+        const next = { ...prev }
+        delete next[safeResponseId]
+        return next
+      })
+      setInteractiveViewportErrorByResponseId((prev) => ({
+        ...prev,
+        [safeResponseId]: err?.message || 'Failed to save view',
+      }))
+    } finally {
+      delete interactiveViewportQueuedSceneRef.current[safeResponseId]
+      const timeoutId = interactiveViewportSaveTimeoutsRef.current[safeResponseId]
+      if (typeof timeoutId === 'number' && typeof window !== 'undefined') {
+        window.clearTimeout(timeoutId)
+      }
+      delete interactiveViewportSaveTimeoutsRef.current[safeResponseId]
+    }
+  }, [])
+
+  const queueInteractiveViewportSave = useCallback((threadKey: string, responseId: string, scene: PublicSolveScene) => {
+    const safeThreadKey = String(threadKey || '').trim()
+    const safeResponseId = String(responseId || '').trim()
+    const normalizedScene = normalizePublicSolveScene(scene)
+    if (!safeThreadKey || !safeResponseId || !normalizedScene) return
+
+    let serialized = ''
+    try {
+      serialized = JSON.stringify(normalizedScene)
+    } catch {
+      return
+    }
+
+    applyInteractiveViewportSceneLocally(safeResponseId, normalizedScene)
+    setInteractiveViewportErrorByResponseId((prev) => {
+      if (!prev[safeResponseId]) return prev
+      const next = { ...prev }
+      delete next[safeResponseId]
+      return next
+    })
+
+    if (interactiveViewportSavedSceneRef.current[safeResponseId] === serialized) {
+      setInteractiveViewportSavingByResponseId((prev) => {
+        if (!prev[safeResponseId]) return prev
+        const next = { ...prev }
+        delete next[safeResponseId]
+        return next
+      })
+      return
+    }
+
+    interactiveViewportQueuedSceneRef.current[safeResponseId] = {
+      threadKey: safeThreadKey,
+      scene: normalizedScene,
+      serialized,
+    }
+    setInteractiveViewportSavingByResponseId((prev) => ({ ...prev, [safeResponseId]: true }))
+
+    if (typeof window === 'undefined') return
+    const existingTimeoutId = interactiveViewportSaveTimeoutsRef.current[safeResponseId]
+    if (typeof existingTimeoutId === 'number') {
+      window.clearTimeout(existingTimeoutId)
+    }
+    interactiveViewportSaveTimeoutsRef.current[safeResponseId] = window.setTimeout(() => {
+      void flushInteractiveViewportSave(safeResponseId)
+    }, 320)
+  }, [applyInteractiveViewportSceneLocally, flushInteractiveViewportSave])
 
   const postSolvePreviewResponseId = 'draft-post-solve-preview-response'
 
@@ -4954,7 +5124,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               closePostSolvePreview()
                             },
                           })
-                        : renderInlineSolutionsThread(p, { kind: isPost ? 'post' : 'challenge', canAttempt, href })}
+                        : renderInlineSolutionsThread(p, {
+                            kind: isPost ? 'post' : 'challenge',
+                            canAttempt,
+                            href,
+                            onLiveResponseViewportChange: (responseId, scene) => {
+                              const threadKey = isPost ? `post:${String(p?.id || '')}` : `challenge:${String(p?.id || '')}`
+                              queueInteractiveViewportSave(threadKey, responseId, scene)
+                            },
+                          })}
                     </div>
                   </li>
                 )
@@ -4983,6 +5161,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     onOwnPostEditSolution?: (response: any) => void
     interactiveViewportResponseId?: string | null
     onInteractiveViewportChange?: (scene: PublicSolveScene) => void
+    onLiveResponseViewportChange?: (responseId: string, scene: PublicSolveScene) => void
   }) => {
     const itemId = String(item?.id || '')
     if (!itemId) return null
@@ -5026,6 +5205,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               const latexHtml = latex.trim() ? renderKatexDisplayHtml(latex) : ''
               const steps = splitLatexIntoSteps(latex)
               const grade = normalizeChallengeGrade(response?.gradingJson, steps.length)
+              const responseId = String(response?.id || '')
+              const viewportSaving = Boolean(interactiveViewportSavingByResponseId[responseId])
+              const viewportError = String(interactiveViewportErrorByResponseId[responseId] || '').trim()
 
               return (
                 <div
@@ -5056,6 +5238,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           ) : null}
                         </div>
                         {responseCreatedAt ? <div className="text-[11px] font-medium text-[#65676b]">{formatFeedPostDate(responseCreatedAt)}</div> : null}
+                        {isMine && response?.excalidrawScene ? (
+                          <div className="mt-1 text-[11px] font-medium text-[#65676b]">
+                            {viewportError ? viewportError : (viewportSaving ? 'Saving view...' : 'Pan or zoom to adjust the shared view.')}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
 
@@ -5102,9 +5289,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <div className="mt-3">
                       <PublicSolveCanvasViewer
                         scene={response.excalidrawScene}
-                        onViewportChange={options.onInteractiveViewportChange && options.interactiveViewportResponseId === String(response?.id || '')
+                        onViewportChange={options.onInteractiveViewportChange && options.interactiveViewportResponseId === responseId
                           ? options.onInteractiveViewportChange
-                          : undefined}
+                          : (options.onLiveResponseViewportChange && isMine && responseId
+                            ? (scene) => options.onLiveResponseViewportChange?.(responseId, scene)
+                            : undefined)}
                       />
                     </div>
                   ) : null}
@@ -6550,6 +6739,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setPostThreadError(null)
     try {
       const responses = await fetchPublicThreadResponses(threadKey)
+      rememberInteractiveViewportScenes(responses)
       setPostThreadResponses(responses)
     } catch (err: any) {
       setPostThreadResponses([])
@@ -6557,7 +6747,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setPostThreadLoading(false)
     }
-  }, [expandedSolutionThreadKey, expandedSolutionThreadKind, fetchPublicThreadResponses])
+  }, [expandedSolutionThreadKey, expandedSolutionThreadKind, fetchPublicThreadResponses, rememberInteractiveViewportScenes])
 
   useEffect(() => {
     if (!router.isReady) return
@@ -6768,6 +6958,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         throw new Error(data?.message || `Failed to submit solve (${res.status})`)
       }
 
+      if (data?.id && scene) {
+        rememberInteractiveViewportScenes([{ id: data.id, excalidrawScene: scene }])
+      }
+
       setStudentFeedPosts((prev: any[]) => (Array.isArray(prev)
         ? prev.map((item) => getDashboardItemKey(item) === `post:${activeDraft.postId}`
           ? {
@@ -6806,7 +7000,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setPostSolveSubmitting(false)
     }
-  }, [openPostThread, postSolveOverlay, postSolvePreviewOverlay])
+  }, [openPostThread, postSolveOverlay, postSolvePreviewOverlay, rememberInteractiveViewportScenes])
 
   const openLessonSolveComposer = useCallback((sessionId: string, options?: { initialScene?: any | null }) => {
     if (!sessionId) return
@@ -12975,6 +13169,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                   {isMine ? <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/75">You</span> : null}
                                 </div>
                                 {responseCreatedAt ? <div className="text-xs text-white/55">{formatFeedPostDate(responseCreatedAt)}</div> : null}
+                                {isMine && resp?.excalidrawScene ? (
+                                  <div className="mt-1 text-[11px] font-medium text-white/55">
+                                    {interactiveViewportErrorByResponseId[String(resp?.id || '')]
+                                      || (interactiveViewportSavingByResponseId[String(resp?.id || '')] ? 'Saving view...' : 'Pan or zoom to adjust the shared view.')}
+                                  </div>
+                                ) : null}
                               </div>
                               {isMine && selectedChallengeResponseId && ((challengeResponseChallenge as any)?.attemptsOpen !== false) ? (
                                 <button
@@ -13008,7 +13208,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             ) : null}
 
                             {resp?.excalidrawScene ? (
-                              <PublicSolveCanvasViewer scene={resp.excalidrawScene} />
+                              <PublicSolveCanvasViewer
+                                scene={resp.excalidrawScene}
+                                onViewportChange={isMine && resp?.id
+                                  ? (scene) => queueInteractiveViewportSave(`challenge:${String(selectedChallengeResponseId || '')}`, String(resp.id), scene)
+                                  : undefined}
+                              />
                             ) : null}
 
                             {grade || String(resp?.feedback || '').trim() ? (
@@ -13092,7 +13297,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   setPostSolveOverlay(null)
                   setPostSolveError(null)
                 }}
-                onPreviewSubmit={openPostSolvePreview}
                 onSubmit={submitPostSolve}
               />
             </div>
@@ -13166,6 +13370,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               {responseUserName}
                             </UserLink>
                             {responseCreatedAt ? <div className="text-xs text-white/55">{formatFeedPostDate(responseCreatedAt)}</div> : null}
+                            {isMine && response?.excalidrawScene ? (
+                              <div className="mt-1 text-[11px] font-medium text-white/55">
+                                {interactiveViewportErrorByResponseId[String(response?.id || '')]
+                                  || (interactiveViewportSavingByResponseId[String(response?.id || '')] ? 'Saving view...' : 'Pan or zoom to adjust the shared view.')}
+                              </div>
+                            ) : null}
                           </div>
                           {isMine ? (
                             <button
@@ -13178,7 +13388,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           ) : null}
                         </div>
                         {response?.excalidrawScene ? (
-                          <PublicSolveCanvasViewer scene={response.excalidrawScene} />
+                          <PublicSolveCanvasViewer
+                            scene={response.excalidrawScene}
+                            onViewportChange={isMine && response?.id
+                              ? (scene) => queueInteractiveViewportSave(String(postThreadOverlay?.threadKey || ''), String(response.id), scene)
+                              : undefined}
+                          />
                         ) : (
                           <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-white/70">No canvas attached.</div>
                         )}

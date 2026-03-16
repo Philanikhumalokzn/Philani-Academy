@@ -134,8 +134,8 @@ type LiveWindowConfig = {
   subtitle?: string
   roomIdOverride?: string
   boardIdOverride?: string
-  roleProfileOverride?: LessonRoleProfile
   isAdminOverride?: boolean
+  roleProfileOverride?: LessonRoleProfile
   quizMode?: boolean
   lessonAuthoring?: { phaseKey: string; pointId: string }
   autoOpenDiagramTray?: boolean
@@ -163,26 +163,6 @@ type LocalCacheEntry<T> = {
   data: T
 }
 
-type DashboardCreateKind = 'quiz' | 'post'
-
-const getDashboardItemKind = (item: any): 'challenge' | 'post' => {
-  return String(item?.kind || '').toLowerCase() === 'post' ? 'post' : 'challenge'
-}
-
-const getDashboardItemKey = (item: any) => {
-  const kind = getDashboardItemKind(item)
-  const id = String(item?.id || '').trim()
-  return id ? `${kind}:${id}` : `${kind}:unknown`
-}
-
-const sortDashboardItemsByCreatedAt = (items: any[]) => {
-  return [...items].sort((a, b) => {
-    const aTs = a?.createdAt ? new Date(a.createdAt).getTime() : 0
-    const bTs = b?.createdAt ? new Date(b.createdAt).getTime() : 0
-    return bTs - aTs
-  })
-}
-
 const readLocalCache = <T,>(key: string): LocalCacheEntry<T> | null => {
   if (typeof window === 'undefined') return null
   try {
@@ -199,12 +179,32 @@ const writeLocalCache = <T,>(key: string, data: T) => {
   try {
     const payload: LocalCacheEntry<T> = {
       updatedAt: new Date().toISOString(),
-      data
+      data,
     }
     window.localStorage.setItem(key, JSON.stringify(payload))
   } catch {
     // ignore storage errors
   }
+}
+
+type DashboardCreateKind = 'quiz' | 'post'
+
+const getDashboardItemKind = (item: any): 'challenge' | 'post' => {
+  return String(item?.kind || '').toLowerCase() === 'post' ? 'post' : 'challenge'
+}
+
+const getDashboardItemKey = (item: any) => {
+  const kind = getDashboardItemKind(item)
+  const id = String(item?.id || '').trim()
+  return id ? `${kind}:${id}` : `${kind}:unknown`
+}
+
+const sortDashboardItemsByCreatedAt = (items: any[]) => {
+  return [...(Array.isArray(items) ? items : [])].sort((left: any, right: any) => {
+    const leftTs = left?.createdAt ? new Date(left.createdAt).getTime() : 0
+    const rightTs = right?.createdAt ? new Date(right.createdAt).getTime() : 0
+    return rightTs - leftTs
+  })
 }
 
 export default function Dashboard({ initialIsMobile = false }: { initialIsMobile?: boolean }) {
@@ -984,6 +984,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [postThreadLoading, setPostThreadLoading] = useState(false)
   const [postThreadError, setPostThreadError] = useState<string | null>(null)
   const [postThreadResponses, setPostThreadResponses] = useState<any[]>([])
+  const [pendingFeedThreadJumpKey, setPendingFeedThreadJumpKey] = useState<string | null>(null)
   const [expandedSolutionThreadKey, setExpandedSolutionThreadKey] = useState<string | null>(null)
   const [expandedSolutionThreadKind, setExpandedSolutionThreadKind] = useState<'post' | 'challenge' | null>(null)
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
@@ -3821,9 +3822,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     let timeoutId: number | null = null
     let attempts = 0
+    const previewKey = `post:${previewPostId}`
 
     const scrollToTarget = () => {
-      const target = postFeedItemRefs.current[previewPostId]
+      const target = postFeedItemRefs.current[previewKey]
       if (!target) return false
       target.scrollIntoView({ block: 'start', behavior: 'smooth' })
       return true
@@ -4683,7 +4685,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           <div className="border-b border-black/10 bg-white px-4 py-6 text-sm text-[#65676b]">No posts yet.</div>
         ) : (
           <ul className="space-y-0">
-            {(postSolvePreviewOverlay ? studentFeedPosts : studentFeedPosts.slice(0, 15)).map((rawPost: any) => {
+            {(postSolvePreviewOverlay || pendingFeedThreadJumpKey ? studentFeedPosts : studentFeedPosts.slice(0, 15)).map((rawPost: any) => {
                 const previewPostId = String(postSolvePreviewOverlay?.draft?.postId || '')
                 const isPreviewTarget = previewPostId !== '' && String(rawPost?.id || '') === previewPostId
                 const p = isPreviewTarget
@@ -4718,6 +4720,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const hasAttempted = myAttemptCount > 0
                 const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
                 const itemId = p?.id ? String(p.id) : ''
+                const itemKey = itemId ? `${kind}:${itemId}` : `${kind}:${title}`
                 const socialItemKey = itemId ? `${kind}:${itemId}` : `${kind}:${title}`
                 const href = !isPost && itemId ? `/challenges/${encodeURIComponent(itemId)}` : '#'
 
@@ -4725,10 +4728,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   <li
                     key={getDashboardItemKey(p)}
                     ref={(el) => {
-                      if (!isPost || !itemId) return
-                      postFeedItemRefs.current[itemId] = el
+                      if (!itemId) return
+                      postFeedItemRefs.current[itemKey] = el
                     }}
-                    data-post-id={isPost ? itemId : undefined}
+                    data-post-id={itemId || undefined}
                     className="border-b border-black/10 bg-white px-4 py-3"
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -6554,6 +6557,81 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setPostThreadLoading(false)
     }
   }, [expandedSolutionThreadKey, expandedSolutionThreadKind, fetchPublicThreadResponses])
+
+  useEffect(() => {
+    if (!router.isReady) return
+    const openFeedThreadId = typeof router.query.openFeedThreadId === 'string' ? router.query.openFeedThreadId.trim() : ''
+    const openFeedThreadKindRaw = typeof router.query.openFeedThreadKind === 'string' ? router.query.openFeedThreadKind.trim().toLowerCase() : ''
+    const openFeedThreadKind = openFeedThreadKindRaw === 'post' ? 'post' : (openFeedThreadKindRaw === 'challenge' ? 'challenge' : '')
+    if (!openFeedThreadId || !openFeedThreadKind) return
+    if (studentFeedLoading) return
+
+    const targetKey = `${openFeedThreadKind}:${openFeedThreadId}`
+    const targetItem = (Array.isArray(studentFeedPosts) ? studentFeedPosts : []).find((item: any) => getDashboardItemKey(item) === targetKey)
+    if (!targetItem) return
+
+    if (activeSection !== 'overview') setActiveSection('overview')
+    if (dashboardSectionOverlay) setDashboardSectionOverlay(null)
+    if (studentQuickOverlay) setStudentQuickOverlay(null)
+    if (studentMobileTab !== 'timeline') setStudentMobileTab('timeline')
+
+    setPendingFeedThreadJumpKey(targetKey)
+    if (openFeedThreadKind === 'post') {
+      void openPostThread(targetItem, { forceOpen: true })
+    } else {
+      openChallengeCommentThread(openFeedThreadId)
+    }
+
+    const nextQuery: Record<string, any> = { ...router.query }
+    delete nextQuery.openFeedThreadId
+    delete nextQuery.openFeedThreadKind
+    void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
+  }, [
+    activeSection,
+    dashboardSectionOverlay,
+    openChallengeCommentThread,
+    openPostThread,
+    router,
+    router.isReady,
+    router.pathname,
+    router.query,
+    studentFeedLoading,
+    studentFeedPosts,
+    studentMobileTab,
+    studentQuickOverlay,
+  ])
+
+  useEffect(() => {
+    if (!pendingFeedThreadJumpKey) return
+    if (typeof window === 'undefined') return
+
+    let timeoutId: number | null = null
+    let attempts = 0
+
+    const scrollToTarget = () => {
+      const target = postFeedItemRefs.current[pendingFeedThreadJumpKey]
+      if (!target) return false
+      target.scrollIntoView({ block: 'start', behavior: 'smooth' })
+      setPendingFeedThreadJumpKey(null)
+      return true
+    }
+
+    if (!scrollToTarget()) {
+      const retry = () => {
+        attempts += 1
+        if (scrollToTarget() || attempts >= 20) {
+          if (attempts >= 20) setPendingFeedThreadJumpKey(null)
+          return
+        }
+        timeoutId = window.setTimeout(retry, 60)
+      }
+      timeoutId = window.setTimeout(retry, 0)
+    }
+
+    return () => {
+      if (timeoutId !== null) window.clearTimeout(timeoutId)
+    }
+  }, [pendingFeedThreadJumpKey])
 
   const openPostSolveComposer = useCallback(async (post: any, options?: { initialScene?: any | null }) => {
     const postId = String(post?.id || '')

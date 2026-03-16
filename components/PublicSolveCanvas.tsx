@@ -353,6 +353,22 @@ const buildInitialData = (scene: PublicSolveScene | null | undefined) => {
   }
 }
 
+const mergePersistedAppStateIntoScene = (
+  scene: PublicSolveScene | null | undefined,
+  appState: any,
+): PublicSolveScene => {
+  const normalized = normalizePublicSolveScene(scene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
+  const nextAppState = {
+    ...(normalized.appState || {}),
+    ...(pickPersistedPublicSolveAppState(appState) || {}),
+  }
+  return {
+    ...normalized,
+    appState: Object.keys(nextAppState).length ? nextAppState : undefined,
+    updatedAt: new Date().toISOString(),
+  }
+}
+
 const editorUiOptions = {
   canvasActions: {
     loadScene: false,
@@ -412,6 +428,58 @@ export function PublicSolveCanvasViewer({
   )
 }
 
+function PublicSolveSubmissionPreview({
+  scene,
+  onViewportChange,
+}: {
+  scene: PublicSolveScene | null | undefined
+  onViewportChange?: (scene: PublicSolveScene) => void
+}) {
+  const normalizedScene = useMemo(() => normalizePublicSolveScene(scene), [scene])
+
+  if (!publicSolveSceneHasContent(normalizedScene)) {
+    return (
+      <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+        Draw something on the canvas first, then open the preview.
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.10)]">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-[linear-gradient(180deg,#f8fbff_0%,#eff6ff_100%)] px-5 py-4">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#1877f2]">Solutions thread preview</div>
+          <div className="mt-1 text-sm font-semibold text-slate-900">Pan and zoom this canvas until the important work is centered.</div>
+        </div>
+        <div className="rounded-full bg-[#1877f2]/10 px-3 py-1 text-[11px] font-semibold text-[#1877f2]">You</div>
+      </div>
+      <div className="border-b border-slate-200 bg-slate-50/80 px-5 py-3 text-xs leading-5 text-slate-600">
+        This uses the same canvas window size as the solutions thread. Drag to pan, pinch to zoom, or use your trackpad or mouse wheel the same way you would when viewing the post.
+      </div>
+      <div className="bg-white p-4 sm:p-5">
+        <div className="philani-solution-viewer overflow-hidden rounded-2xl border border-slate-200">
+          <div className="h-[420px] bg-white">
+            <LessonStyledExcalidraw
+              key={buildPublicSolveSceneResetKey(normalizedScene)}
+              className="h-full"
+              initialData={buildInitialData(normalizedScene)}
+              onChange={(_elements: any[], appState: any) => {
+                onViewportChange?.(mergePersistedAppStateIntoScene(normalizedScene, appState))
+              }}
+              viewModeEnabled
+              zenModeEnabled
+              gridModeEnabled={false}
+              UIOptions={viewerUiOptions}
+              renderTopRightUI={() => null}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function PublicSolveComposer({
   title,
   prompt,
@@ -458,6 +526,7 @@ export function PublicSolveComposer({
   const [canvasOpacityPercent, setCanvasOpacityPercent] = useState(100)
   const [promptZoom, setPromptZoom] = useState(1)
   const [promptDismissDragOffset, setPromptDismissDragOffset] = useState(0)
+  const [submissionPreviewOpen, setSubmissionPreviewOpen] = useState(false)
 
   const resolvedAuthorName = useMemo(() => {
     const normalized = String(authorName || '').trim()
@@ -518,6 +587,7 @@ export function PublicSolveComposer({
     setCanvasOpacityPercent(100)
     setPromptZoom(1)
     setPromptDismissDragOffset(0)
+    setSubmissionPreviewOpen(false)
     promptDismissDragRef.current = { pointerId: null, startY: 0, dragOffsetY: 0 }
   }, [title, prompt, imageUrl])
 
@@ -547,6 +617,26 @@ export function PublicSolveComposer({
 
     return () => window.clearTimeout(settle)
   }, [isReady])
+
+  const syncComposerViewport = useCallback(() => {
+    const api = excalidrawApiRef.current
+    if (!api?.updateScene) return
+    api.updateScene(buildInitialData(sceneRef.current))
+  }, [])
+
+  const openSubmissionPreview = useCallback(() => {
+    if (!hasContent || !isReady || submitting) return
+    setSubmissionPreviewOpen(true)
+  }, [hasContent, isReady, submitting])
+
+  const closeSubmissionPreview = useCallback(() => {
+    setSubmissionPreviewOpen(false)
+    syncComposerViewport()
+  }, [syncComposerViewport])
+
+  const handleSubmissionPreviewViewportChange = useCallback((nextScene: PublicSolveScene) => {
+    applySceneSnapshot(nextScene)
+  }, [applySceneSnapshot])
 
   const enterActivePromptMode = useCallback(() => {
     setPromptDismissDragOffset(0)
@@ -760,28 +850,57 @@ export function PublicSolveComposer({
                 </div>
               </div>
             </div>
+
+            {submissionPreviewOpen ? (
+              <div className="absolute inset-0 z-[8] overflow-auto bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.10),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(241,245,249,0.96))] p-4 sm:p-6">
+                <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col justify-center">
+                  <PublicSolveSubmissionPreview
+                    scene={sceneRef.current}
+                    onViewportChange={handleSubmissionPreviewViewportChange}
+                  />
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
 
       <div className="border-t border-slate-200 bg-white/92 px-4 py-3 backdrop-blur-xl sm:px-6">
         <div className="flex items-center justify-between gap-3">
-          {onCancel ? (
-            <button
-              type="button"
-              className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-              onClick={onCancel}
-            >
-              {cancelLabel}
-            </button>
-          ) : <div />}
+          <div className="flex items-center gap-3">
+            {onCancel ? (
+              <button
+                type="button"
+                className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                onClick={onCancel}
+              >
+                {cancelLabel}
+              </button>
+            ) : null}
+            {submissionPreviewOpen ? (
+              <button
+                type="button"
+                className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                onClick={closeSubmissionPreview}
+                disabled={submitting}
+              >
+                Back to canvas
+              </button>
+            ) : null}
+          </div>
           <button
             type="button"
             className="inline-flex h-11 items-center justify-center rounded-full bg-[#1877f2] px-5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(24,119,242,0.28)] transition hover:bg-[#176ad8] disabled:cursor-not-allowed disabled:opacity-55"
-            onClick={() => onSubmit(sceneRef.current)}
+            onClick={() => {
+              if (!submissionPreviewOpen) {
+                openSubmissionPreview()
+                return
+              }
+              onSubmit(sceneRef.current)
+            }}
             disabled={!isReady || !hasContent || submitting}
           >
-            {submitting ? 'Submitting...' : submitLabel}
+            {submitting ? 'Submitting...' : submissionPreviewOpen ? 'Post to thread' : submitLabel}
           </button>
         </div>
       </div>

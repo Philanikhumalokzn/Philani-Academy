@@ -395,7 +395,7 @@ export function PublicSolveCanvasViewer({
   }
 
   return (
-    <div className={`philani-solution-viewer overflow-hidden rounded-[24px] border border-slate-200 bg-white ${className}`.trim()}>
+    <div className={`philani-solution-viewer ${className}`.trim()}>
       <div className="h-[420px] bg-white">
         <LessonStyledExcalidraw
           key={normalizedScene?.updatedAt || 'viewer'}

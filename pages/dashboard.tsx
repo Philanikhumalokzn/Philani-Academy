@@ -4478,9 +4478,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           Quizzes
                         </button>
 
-                        <div className="relative ml-auto flex items-center gap-2">
+                        <div className="relative ml-auto flex items-center gap-2 pr-2">
                           {resolvedCurrentLesson.startsAt ? (
-                            <div className="absolute bottom-full right-0 mb-1 grid grid-cols-[44px_minmax(0,1fr)] gap-x-2 whitespace-nowrap text-[11px] leading-4 text-[#65676b]">
+                            <div className="absolute bottom-full right-2 mb-1 grid grid-cols-[44px_minmax(0,1fr)] gap-x-2 whitespace-nowrap text-[11px] leading-4 text-[#65676b]">
                               <span className="font-semibold text-[#4b5563]">Start:</span>
                               <span>{formatCompactLessonMoment(resolvedCurrentLesson.startsAt)}</span>
                               <span className="font-semibold text-[#4b5563]">End:</span>

@@ -1,6 +1,6 @@
 import type { InkStroke, StructuralRoleKind } from './types'
 
-export type HandwritingFixtureName = 'superscript' | 'fraction' | 'nested' | 'adjacentAmbiguous' | 'crossingFour' | 'superscriptThenBar'
+export type HandwritingFixtureName = 'superscript' | 'fraction' | 'nested' | 'adjacentAmbiguous' | 'crossingFour' | 'superscriptThenBar' | 'fractionWithExponent'
 
 export type HandwritingFixtureExpectation = {
   groupCount: number
@@ -96,9 +96,22 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
     ],
     expectation: { groupCount: 3, requiredRoles: ['baseline', 'superscript', 'fractionBar'] },
   },
+  fractionWithExponent: {
+    name: 'fractionWithExponent',
+    label: 'Fraction with exponent',
+    description: 'A numerator root carrying a superscript, with a denominator below a fraction bar.',
+    strokes: [
+      makeStroke('x-1', [[124, 198], [158, 242]]),
+      makeStroke('x-2', [[158, 198], [124, 242]]),
+      makeStroke('two-1', [[198, 144], [224, 129], [244, 134], [240, 156], [209, 170], [243, 170]]),
+      makeStroke('bar-1', [[112, 284], [286, 284]], 6),
+      makeStroke('den-1', [[176, 326], [205, 364], [234, 326]]),
+    ],
+    expectation: { groupCount: 4, requiredRoles: ['fractionBar', 'numerator', 'superscript', 'denominator'] },
+  },
 }
 
-export const HANDWRITING_FIXTURE_ORDER: HandwritingFixtureName[] = ['superscript', 'fraction', 'nested', 'adjacentAmbiguous', 'crossingFour', 'superscriptThenBar']
+export const HANDWRITING_FIXTURE_ORDER: HandwritingFixtureName[] = ['superscript', 'fraction', 'nested', 'adjacentAmbiguous', 'crossingFour', 'superscriptThenBar', 'fractionWithExponent']
 
 export const getHandwritingFixture = (name: HandwritingFixtureName) => {
   const fixture = fixtures[name]

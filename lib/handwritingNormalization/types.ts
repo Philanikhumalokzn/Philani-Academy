@@ -91,6 +91,20 @@ export type StructuralAmbiguity = {
   candidates: StructuralRoleCandidate[]
 }
 
+export type LocalSubexpressionAttachment = {
+  parentGroupId: string
+  childGroupId: string
+  role: 'superscript' | 'subscript'
+  score: number
+}
+
+export type LocalSubexpression = {
+  rootGroupId: string
+  memberGroupIds: string[]
+  attachments: LocalSubexpressionAttachment[]
+  rootRole: 'baseline' | 'numerator' | 'denominator'
+}
+
 export type NormalizedGroup = {
   id: string
   bounds: InkBounds
@@ -109,5 +123,6 @@ export type HandwritingAnalysis = {
   edges: LayoutEdge[]
   roles: StructuralRole[]
   ambiguities: StructuralAmbiguity[]
+  subexpressions: LocalSubexpression[]
   normalization: NormalizationResult
 }

@@ -70,18 +70,40 @@ export type StructuralRoleKind =
   | 'denominator'
   | 'fractionBar'
 
+export type StructuralRoleFamily = 'expressionRoot' | 'script' | 'fractionStructure' | 'fractionMember'
+
+export type StructuralRoleZone = 'center' | 'upper' | 'lower'
+
+export type StructuralRoleAnchor = 'inline' | 'right' | 'centered'
+
+export type StructuralRoleShape = 'freeform' | 'horizontalLine'
+
+export type StructuralRoleDescriptor = {
+  kind: StructuralRoleKind
+  family: StructuralRoleFamily
+  zone: StructuralRoleZone
+  anchor: StructuralRoleAnchor
+  shape: StructuralRoleShape
+  canOwnScripts: boolean
+  ancestry: string[]
+  discriminators: string[]
+}
+
 export type StructuralRole = {
   groupId: string
   role: StructuralRoleKind
+  descriptor: StructuralRoleDescriptor
   score: number
   depth: number
   parentGroupId?: string | null
+  evidence: string[]
 }
 
 export type StructuralRoleCandidate = {
   role: StructuralRoleKind
   score: number
   parentGroupId?: string | null
+  evidence?: string[]
 }
 
 export type StructuralAmbiguity = {

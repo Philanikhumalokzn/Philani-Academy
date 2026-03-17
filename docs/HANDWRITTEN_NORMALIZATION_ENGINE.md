@@ -44,7 +44,7 @@ An admin-only footer action opens the normalization lab from the dashboard.
 The lab currently provides:
 
 - freehand stroke capture
-- sample loading for superscript, nested exponent chains, fractions, and fraction-with-exponent cases
+- sample loading for superscript, nested exponent chains, fractions, fraction-with-exponent cases, and horizontal-line subscript cases
 - deterministic ambiguous adjacency fixture for `x2` vs `x²` style cases
 - raw stroke view
 - grouped stroke boxes
@@ -103,6 +103,23 @@ The first pass currently infers:
 - denominator
 - fraction bar
 
+These roles are no longer treated as a flat label set only. Each assigned role now carries taxonomy metadata including:
+
+- role family
+- vertical zone
+- anchor preference
+- shape expectation
+- ancestry chain
+- discriminating evidence strings collected during inference
+
+This makes the roles array more useful for disambiguation, because related roles can share family-level behavior while still enforcing hard local distinctions.
+
+Examples:
+
+- `superscript` and `subscript` are both script-family roles, but `superscript` prefers above-right while `subscript` prefers below-right
+- `numerator` and `denominator` are both fraction-member roles, but one must sit above and the other below a fraction bar
+- `fractionBar` is in the fraction-structure family, requires a horizontal line-like shape, and prefers a centered span above it instead of a below-right attachment pattern
+
 Fraction bars are currently approximated using flat wide groups. This is useful for testing, but it is still heuristic and should be validated against a broader handwritten sample set.
 
 Role inference now has an explicit local ownership layer before broader structure claiming:
@@ -116,6 +133,13 @@ This matters for cases such as chained exponents and fractions with nested scrip
 
 - in `2^2^2`, the middle `2` can remain a superscript relative to the left root while still acting as the parent of the rightmost superscript locally
 - in a fraction numerator with an exponent, the numerator root can be claimed by the fraction bar without flattening the exponent into a separate numerator group
+
+The current fraction-family disambiguation is now explicitly size-aware and span-aware:
+
+- a bar candidate must be line-like
+- it must have a reasonably centered local span above it to be recognized as a fraction bar at all
+- it only claims numerator and denominator members when there is compatible centered support on both sides
+- a lower-right horizontal line can still become a `subscript` when it behaves like a script attachment instead of a centered fraction structure
 
 #### Normalization
 
@@ -136,11 +160,11 @@ Known limitations:
 
 - grouping is still the highest-risk stage
 - ambiguity is reported, but final role assignment is still heuristic
-- fraction detection is only a first approximation
+- fraction detection is now more explicit than before, but still only covers a narrow family of handwritten fraction layouts
 - local ownership currently covers script nesting, but not full enclosure-style ownership or multi-root local operators yet
 - no enclosure or radical handling yet
 - no explicit baseline-line estimation across full expressions yet
-- fixture coverage is still small even though it now includes chained superscripts and numerator-with-exponent cases
+- fixture coverage is still small even though it now includes chained superscripts, numerator-with-exponent cases, and horizontal-line subscript disambiguation
 - no persistent save/load format yet for lab sessions
 
 ## Review gates

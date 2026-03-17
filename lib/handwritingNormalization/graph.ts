@@ -30,9 +30,18 @@ export const buildLayoutGraph = (groups: StrokeGroup[]) => {
       const overlapY = getBoundsOverlapY(from.bounds, to.bounds)
       const scale = Math.max(18, Math.max(from.bounds.width, from.bounds.height))
       const sizeRatio = Math.max(0.35, Math.min(1.85, Math.max(to.bounds.height, 1) / Math.max(from.bounds.height, 1)))
+      const widthRatio = Math.max(0.2, Math.min(4.2, Math.max(to.bounds.width, 1) / Math.max(from.bounds.width, 1)))
       const smallerRightGroupBias = to.bounds.height <= from.bounds.height * 1.05 ? 1 : 0.72
       const rightwardScore = dx > 0 ? clamp(1 - horizontalGap / (scale * 1.75), 0, 1) : 0
       const verticalAlignmentScore = clamp(1 - Math.abs(dy) / Math.max(24, scale * 0.72), 0, 1)
+      const centeredXScore = clamp(1 - Math.abs(dx) / Math.max(20, from.bounds.width * 0.42), 0, 1)
+      const belowRightScore = dx > 0 && dy > 0
+        ? clamp(1 - Math.abs(dx - Math.max(14, from.bounds.width * 0.48)) / Math.max(22, from.bounds.width * 0.9), 0, 1)
+        : 0
+      const directlyBelowScore = dy > 0
+        ? centeredXScore * clamp(1 - verticalGap / Math.max(18, from.bounds.height * 1.2), 0, 1)
+        : 0
+      const spanSimilarity = clamp(1 - Math.abs(widthRatio - 1) / 0.82, 0, 1)
       const horizontalSequenceAffinity = clamp(1 - Math.abs(dy) / Math.max(34, scale * 1.15), 0, 1)
       const sequenceScore = (rightwardScore * 0.42 + horizontalSequenceAffinity * 0.18 + overlapY * 0.1) * 0.46 * (dy < -from.bounds.height * 0.18 ? 0.72 : 1) * smallerRightGroupBias
 
@@ -44,6 +53,11 @@ export const buildLayoutGraph = (groups: StrokeGroup[]) => {
         overlapX,
         overlapY,
         sizeRatio,
+        widthRatio,
+        centeredXScore,
+        belowRightScore,
+        directlyBelowScore,
+        spanSimilarity,
       })
 
       const superscriptZoneScore = dy < 0
@@ -71,8 +85,9 @@ export const buildLayoutGraph = (groups: StrokeGroup[]) => {
       const subscriptSpatialCloseness = dx > 0
         ? clamp(1 - horizontalGap / Math.max(18, scale * 1.18), 0, 1)
         : 0
+      const directBelowPenalty = directlyBelowScore * clamp(spanSimilarity * 0.9 + Math.max(widthRatio - 1, 0) * 0.15, 0, 1)
       const subScore = dx > 0
-        ? subscriptZoneScore * 0.6 + subscriptSpatialCloseness * 0.26 + subscriptSizeScore * 0.14
+        ? Math.max(0, subscriptZoneScore * 0.44 + subscriptSpatialCloseness * 0.18 + subscriptSizeScore * 0.12 + belowRightScore * 0.26 - directBelowPenalty * 0.24)
         : 0
       pushEdge(edges, from.id, to.id, 'subscriptCandidate', subScore, {
         dx,
@@ -80,6 +95,11 @@ export const buildLayoutGraph = (groups: StrokeGroup[]) => {
         horizontalGap,
         overlapX,
         sizeRatio,
+        widthRatio,
+        centeredXScore,
+        belowRightScore,
+        directlyBelowScore,
+        spanSimilarity,
       })
 
       const stackedAboveScore = dy < 0
@@ -100,6 +120,9 @@ export const buildLayoutGraph = (groups: StrokeGroup[]) => {
         dy,
         verticalGap,
         overlapX,
+        centeredXScore,
+        directlyBelowScore,
+        spanSimilarity,
       })
 
       const insideScore = isInsideBounds(to.bounds, from.bounds)

@@ -18,9 +18,11 @@ test.describe('handwriting normalization fixtures', () => {
   test('fraction fixture recognizes fraction structure', async () => {
     const fixture = getHandwritingFixture('fraction')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const barRole = analysis.roles.find((role) => role.role === 'fractionBar')
 
     expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
-    expect(analysis.roles.some((role) => role.role === 'fractionBar')).toBe(true)
+    expect(barRole).toBeTruthy()
+    expect(barRole?.descriptor.family).toBe('fractionStructure')
     expect(analysis.roles.some((role) => role.role === 'numerator')).toBe(true)
     expect(analysis.roles.some((role) => role.role === 'denominator')).toBe(true)
   })
@@ -86,5 +88,17 @@ test.describe('handwriting normalization fixtures', () => {
     expect(analysis.roles.some((role) => role.role === 'denominator')).toBe(true)
     expect(nestedSuperscript?.parentGroupId).toBe(numeratorRoot?.groupId)
     expect(analysis.subexpressions.some((subexpression) => subexpression.rootGroupId === numeratorRoot?.groupId && subexpression.memberGroupIds.length === 2 && subexpression.rootRole === 'numerator')).toBe(true)
+  })
+
+  test('horizontal line below-right is treated as subscript rather than fraction structure', async () => {
+    const fixture = getHandwritingFixture('offsetLineSubscript')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const subscript = analysis.roles.find((role) => role.role === 'subscript')
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(subscript).toBeTruthy()
+    expect(subscript?.descriptor.family).toBe('script')
+    expect(analysis.roles.some((role) => role.role === 'fractionBar')).toBe(false)
+    expect(subscript?.evidence.some((entry) => entry.includes('below-right='))).toBe(true)
   })
 })

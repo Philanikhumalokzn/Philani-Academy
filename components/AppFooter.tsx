@@ -4,9 +4,19 @@ type AppFooterProps = {
   tone?: 'dark' | 'light'
   className?: string
   respectSafeBottom?: boolean
+  adminActionLabel?: string
+  onAdminAction?: () => void
+  showAdminAction?: boolean
 }
 
-export default function AppFooter({ tone = 'dark', className = '', respectSafeBottom = false }: AppFooterProps) {
+export default function AppFooter({
+  tone = 'dark',
+  className = '',
+  respectSafeBottom = false,
+  adminActionLabel = 'Normalization Lab',
+  onAdminAction,
+  showAdminAction = false,
+}: AppFooterProps) {
   const currentYear = new Date().getFullYear()
   const isDark = tone === 'dark'
 
@@ -28,6 +38,15 @@ export default function AppFooter({ tone = 'dark', className = '', respectSafeBo
         <Link href="/terms" className={linkClass}>Terms</Link>
         <Link href="/help" className={linkClass}>Help</Link>
         <a href="mailto:support@philaniacademy.org" className={linkClass}>Contact</a>
+        {showAdminAction && onAdminAction ? (
+          <button
+            type="button"
+            onClick={onAdminAction}
+            className={`rounded-full border px-3 py-1 text-[12px] font-semibold transition ${isDark ? 'border-[#78b8ff]/35 bg-[#0d2748] text-[#dbeafe] hover:bg-[#14345b]' : 'border-[#c9dbfb] bg-[#eef4ff] text-[#16345e] hover:bg-[#dfeafb]'}`}
+          >
+            {adminActionLabel}
+          </button>
+        ) : null}
       </div>
       <div className={`mt-3 text-[12px] leading-5 ${metaClass}`}>
         Educational platform. Use of the service is subject to platform policies and applicable law.

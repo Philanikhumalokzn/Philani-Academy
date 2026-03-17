@@ -10,6 +10,7 @@ import DiagramOverlayModule from '../components/DiagramOverlayModule'
 import TextOverlayModule from '../components/TextOverlayModule'
 import AssignmentSubmissionOverlay from '../components/AssignmentSubmissionOverlay'
 import AppFooter from '../components/AppFooter'
+import HandwritingNormalizationOverlay from '../components/HandwritingNormalizationOverlay'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import { PublicSolveCanvasViewer, PublicSolveComposer, normalizePublicSolveScene, type PublicSolveScene } from '../components/PublicSolveCanvas'
 import TaskManageMenu from '../components/TaskManageMenu'
@@ -989,6 +990,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [expandedSolutionThreadKind, setExpandedSolutionThreadKind] = useState<'post' | 'challenge' | null>(null)
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
   const [dashboardSectionOverlay, setDashboardSectionOverlay] = useState<OverlaySectionId | null>(null)
+  const [handwritingNormalizationOverlayOpen, setHandwritingNormalizationOverlayOpen] = useState(false)
   const [accountSnapshotOverlayOpen, setAccountSnapshotOverlayOpen] = useState(false)
     useEffect(() => {
       if (!router.isReady) return
@@ -10978,7 +10980,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }
 
   const renderDashboardFooter = (tone: 'desktop' | 'mobile') => {
-    return <AppFooter tone={tone === 'desktop' ? 'dark' : 'light'} className={tone === 'mobile' ? 'mx-4 mt-4' : ''} respectSafeBottom={tone === 'mobile'} />
+    return (
+      <AppFooter
+        tone={tone === 'desktop' ? 'dark' : 'light'}
+        className={tone === 'mobile' ? 'mx-4 mt-4' : ''}
+        respectSafeBottom={tone === 'mobile'}
+        showAdminAction={isAdmin}
+        adminActionLabel="Normalization Lab"
+        onAdminAction={() => setHandwritingNormalizationOverlayOpen(true)}
+      />
+    )
   }
 
   const renderDesktopFeedShell = () => {
@@ -11928,6 +11939,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           {renderSection(dashboardSectionOverlay)}
         </FullScreenGlassOverlay>
       )}
+
+      <HandwritingNormalizationOverlay
+        open={handwritingNormalizationOverlayOpen && isAdmin}
+        onClose={() => setHandwritingNormalizationOverlayOpen(false)}
+      />
 
       {createOverlayOpen && (
         <OverlayPortal>

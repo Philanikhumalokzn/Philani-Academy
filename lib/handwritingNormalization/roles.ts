@@ -1,6 +1,6 @@
 import { clamp } from './geometry'
 import { getRoleDescriptor, getRoleLocalityBias, roleAllowsChildRole, roleCanOwnScripts } from './roleTaxonomy'
-import type { EnclosureStructure, LayoutEdge, LocalSubexpression, StrokeGroup, StructuralAmbiguity, StructuralFlag, StructuralRole, StructuralRoleCandidate, StructuralRoleKind } from './types'
+import type { EnclosureStructure, ExpressionContext, LayoutEdge, LocalSubexpression, StrokeGroup, StructuralAmbiguity, StructuralFlag, StructuralRole, StructuralRoleCandidate, StructuralRoleKind } from './types'
 
 const FRACTION_BAR_MAX_HEIGHT = 18
 const FRACTION_BAR_MIN_WIDTH = 70
@@ -51,13 +51,15 @@ const makeCandidate = (role: StructuralRoleKind, score: number, parentGroupId?: 
   evidence,
 })
 
-const makeRole = (groupId: string, role: StructuralRoleKind, score: number, depth: number, parentGroupId?: string | null, evidence: string[] = [], containerGroupIds: string[] = []): StructuralRole => ({
+const makeRole = (groupId: string, role: StructuralRoleKind, score: number, depth: number, parentGroupId?: string | null, evidence: string[] = [], containerGroupIds: string[] = [], associationContextId?: string | null, normalizationAnchorGroupIds: string[] = []): StructuralRole => ({
   groupId,
   role,
   descriptor: getRoleDescriptor(role),
   score,
   depth,
   parentGroupId: parentGroupId ?? null,
+  associationContextId: associationContextId ?? null,
+  normalizationAnchorGroupIds,
   containerGroupIds,
   evidence,
 })
@@ -428,7 +430,110 @@ const makeUnsupportedRole = (role: StructuralRole, evidence: string[]) => makeRo
     `family=${getRoleDescriptor('unsupportedSymbol').family}`,
   ],
   role.containerGroupIds,
+  role.associationContextId,
+  role.normalizationAnchorGroupIds,
 )
+
+const uniqueIds = (values: string[]) => Array.from(new Set(values.filter(Boolean)))
+
+const buildExpressionContexts = (
+  groups: StrokeGroup[],
+  roles: StructuralRole[],
+  subexpressions: LocalSubexpression[],
+  enclosures: EnclosureStructure[],
+) => {
+  const contexts: ExpressionContext[] = []
+  const roleMap = new Map(roles.map((role) => [role.groupId, role]))
+
+  contexts.push({
+    id: 'context:root',
+    kind: 'root',
+    parentContextId: null,
+    semanticRootGroupId: null,
+    anchorGroupIds: uniqueIds(roles.filter((role) => role.role === 'baseline' && role.containerGroupIds.length === 0).map((role) => role.groupId)),
+    memberGroupIds: groups.filter((group) => (roleMap.get(group.id)?.containerGroupIds.length || 0) === 0).map((group) => group.id),
+  })
+
+  for (const enclosure of enclosures) {
+    const memberRoles = enclosure.memberRootIds.map((groupId) => roleMap.get(groupId)).filter(Boolean) as StructuralRole[]
+    const semanticRoot = memberRoles.sort((left, right) => {
+      const leftIsBaseline = left.role === 'baseline' ? 0 : 1
+      const rightIsBaseline = right.role === 'baseline' ? 0 : 1
+      if (leftIsBaseline !== rightIsBaseline) return leftIsBaseline - rightIsBaseline
+      return left.groupId.localeCompare(right.groupId)
+    })[0] || null
+    const parentContextId = semanticRoot?.containerGroupIds.length ? `context:enclosure:${semanticRoot.containerGroupIds.join(':')}` : 'context:root'
+    contexts.push({
+      id: `context:enclosure:${enclosure.openGroupId}:${enclosure.closeGroupId}`,
+      kind: 'enclosure',
+      parentContextId,
+      semanticRootGroupId: semanticRoot?.groupId || enclosure.memberRootIds[0] || null,
+      anchorGroupIds: uniqueIds([enclosure.openGroupId, enclosure.closeGroupId, ...(semanticRoot ? [semanticRoot.groupId] : [])]),
+      memberGroupIds: uniqueIds([enclosure.openGroupId, enclosure.closeGroupId, ...enclosure.memberRootIds]),
+    })
+  }
+
+  for (const subexpression of subexpressions) {
+    if (subexpression.rootRole !== 'numerator' && subexpression.rootRole !== 'denominator') continue
+    const rootRole = roleMap.get(subexpression.rootGroupId)
+    if (!rootRole?.parentGroupId) continue
+    contexts.push({
+      id: `context:${subexpression.rootRole}:${subexpression.rootGroupId}`,
+      kind: subexpression.rootRole,
+      parentContextId: 'context:root',
+      semanticRootGroupId: subexpression.rootGroupId,
+      anchorGroupIds: uniqueIds([rootRole.parentGroupId, subexpression.rootGroupId]),
+      memberGroupIds: uniqueIds(subexpression.memberGroupIds),
+    })
+  }
+
+  return contexts
+}
+
+const annotateRolesWithContexts = (roles: StructuralRole[], contexts: ExpressionContext[]) => {
+  const roleMap = new Map(roles.map((role) => [role.groupId, role]))
+  const enclosureContexts = contexts.filter((context) => context.kind === 'enclosure')
+
+  return roles.map((role) => {
+    if ((role.role !== 'superscript' && role.role !== 'subscript') || !role.parentGroupId) {
+      const defaultContextId = role.containerGroupIds.length
+        ? enclosureContexts.find((context) => role.containerGroupIds.every((groupId) => context.anchorGroupIds.includes(groupId)))?.id || 'context:root'
+        : 'context:root'
+      return {
+        ...role,
+        associationContextId: role.associationContextId || defaultContextId,
+        normalizationAnchorGroupIds: role.normalizationAnchorGroupIds.length ? role.normalizationAnchorGroupIds : [role.groupId],
+      }
+    }
+
+    const parentRole = roleMap.get(role.parentGroupId)
+    const childContainerIds = new Set(role.containerGroupIds)
+    const parentOnlyContainers = (parentRole?.containerGroupIds || []).filter((groupId) => !childContainerIds.has(groupId))
+    const enclosureContext = parentOnlyContainers.length
+      ? enclosureContexts.find((context) => parentOnlyContainers.every((groupId) => context.anchorGroupIds.includes(groupId))) || null
+      : null
+
+    if (!enclosureContext) {
+      return {
+        ...role,
+        associationContextId: role.associationContextId || (role.containerGroupIds.length ? `context:enclosure:${role.containerGroupIds.join(':')}` : 'context:root'),
+        normalizationAnchorGroupIds: role.normalizationAnchorGroupIds.length ? role.normalizationAnchorGroupIds : [role.parentGroupId],
+      }
+    }
+
+    const anchorGroupIds = uniqueIds([role.parentGroupId, ...enclosureContext.anchorGroupIds])
+    return {
+      ...role,
+      associationContextId: enclosureContext.id,
+      normalizationAnchorGroupIds: anchorGroupIds,
+      evidence: [...role.evidence, `association-context=${enclosureContext.id}`, `normalization-anchors=${anchorGroupIds.join(',')}`],
+    }
+  }).map((role) => ({
+    ...role,
+    associationContextId: role.associationContextId || 'context:root',
+    normalizationAnchorGroupIds: role.normalizationAnchorGroupIds.length ? role.normalizationAnchorGroupIds : [role.groupId],
+  }))
+}
 
 const resolveStructuralAdmissibility = (groups: StrokeGroup[], roles: StructuralRole[], edges: LayoutEdge[]) => {
   const groupMap = new Map(groups.map((group) => [group.id, group]))
@@ -830,12 +935,20 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     })
     .sort((left, right) => left.depth - right.depth)
   const { roles: admissibleRoles, flags } = resolveStructuralAdmissibility(groups, resolvedRoles, edges)
+  const contexts = buildExpressionContexts(groups, admissibleRoles, subexpressions, enclosures)
+  const annotatedRoles = annotateRolesWithContexts(admissibleRoles, contexts)
+  const annotatedRoleMap = new Map(annotatedRoles.map((role) => [role.groupId, role]))
+  const contextualizedRoles = annotatedRoles.map((role) => ({
+    ...role,
+    depth: role.parentGroupId ? roleDepth(annotatedRoleMap, role.groupId) : 0,
+  }))
 
   return {
-    roles: admissibleRoles,
+    roles: contextualizedRoles,
     flags,
     subexpressions,
     enclosures,
+    contexts,
     ambiguities,
   }
 }

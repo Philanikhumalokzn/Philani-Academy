@@ -112,6 +112,8 @@ export type StructuralRole = {
   score: number
   depth: number
   parentGroupId?: string | null
+  associationContextId?: string | null
+  normalizationAnchorGroupIds: string[]
   containerGroupIds: string[]
   evidence: string[]
 }
@@ -171,6 +173,15 @@ export type EnclosureStructure = {
   score: number
 }
 
+export type ExpressionContext = {
+  id: string
+  kind: 'root' | 'enclosure' | 'numerator' | 'denominator'
+  parentContextId?: string | null
+  semanticRootGroupId?: string | null
+  anchorGroupIds: string[]
+  memberGroupIds: string[]
+}
+
 export type NormalizedGroup = {
   id: string
   bounds: InkBounds
@@ -192,5 +203,6 @@ export type HandwritingAnalysis = {
   flags: StructuralFlag[]
   subexpressions: LocalSubexpression[]
   enclosures: EnclosureStructure[]
+  contexts: ExpressionContext[]
   normalization: NormalizationResult
 }

@@ -196,6 +196,15 @@ The same admissibility idea now applies to local scripts as well:
 - when sibling script rows conflict, spatial closeness to the shared parent is treated as the strongest locality signal and size comparability is used only as a secondary tie-breaker
 - a demoted conflicting script is preserved as ink and surfaced as an `unsupported symbol` warning rather than deleted
 
+The engine now also exposes first-class expression contexts instead of leaving broader-scope bases implicit:
+
+- a root context represents the current top-level algebraic row
+- an enclosure context represents a local expression span such as `(x^2)` with its own semantic root and anchor groups
+- fraction-member contexts represent numerator and denominator spans as local expression regions
+- roles can now carry an association context id and explicit normalization anchor group ids
+- this means a script outside an enclosure can attach to the enclosed expression span as a broader-scope base instead of collapsing onto the inner glyph alone
+- the normalization layer now consumes those explicit anchors rather than reconstructing broader scope heuristically
+
 #### Normalization
 
 The first pass normalizes by applying role-aware transforms to original strokes:
@@ -217,7 +226,7 @@ Known limitations:
 - ambiguity is reported, but final role assignment is still heuristic
 - fraction detection is now more explicit than before, but still only covers a narrow family of handwritten fraction layouts
 - local ownership now covers script nesting, enclosure boundaries, and first-pass mixed barrier redirection, but not full multi-operator local parsing yet
-- same-context stacked baseline and same-parent stacked script admissibility exist, but full context-tree row admissibility is not implemented yet
+- same-context stacked baseline and same-parent stacked script admissibility exist, and the engine now exposes first-pass expression contexts and explicit normalization anchors, but a full recursive context-tree with general operator precedence is not implemented yet
 - no radical handling yet
 - no explicit baseline-line estimation across full expressions yet
 - fixture coverage is still small even though it now includes chained superscripts, numerator-with-exponent cases, horizontal-line subscript disambiguation, parenthesized local structures, and mixed parenthesized layouts

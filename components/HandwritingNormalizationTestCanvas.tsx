@@ -98,6 +98,7 @@ export default function HandwritingNormalizationTestCanvas() {
       return `${subexpression.rootGroupId}: ${subexpression.rootRole} [${members}]${attachments ? ` :: ${attachments}` : ''}`
     })
     const enclosures = analysis.enclosures.map((enclosure) => `${enclosure.kind}: ${enclosure.openGroupId} ... ${enclosure.closeGroupId} members=[${enclosure.memberRootIds.join(', ')}] score=${enclosure.score.toFixed(2)}`)
+    const contexts = analysis.contexts.map((context) => `${context.id}: ${context.kind}${context.parentContextId ? ` parent=${context.parentContextId}` : ''}${context.semanticRootGroupId ? ` root=${context.semanticRootGroupId}` : ''} anchors=[${context.anchorGroupIds.join(', ')}] members=[${context.memberGroupIds.join(', ')}]`)
 
     return [
       {
@@ -136,8 +137,12 @@ export default function HandwritingNormalizationTestCanvas() {
         title: 'Enclosures',
         fields: enclosures.length ? enclosures.map((value, index) => ({ label: `E${index + 1}`, value })) : [{ label: 'Enclosures', value: 'No enclosure structures detected' }],
       },
+      {
+        title: 'Contexts',
+        fields: contexts.length ? contexts.map((value, index) => ({ label: `C${index + 1}`, value })) : [{ label: 'Contexts', value: 'No explicit expression contexts detected' }],
+      },
     ]
-  }, [analysis.ambiguities, analysis.edges, analysis.enclosures, analysis.flags, analysis.groups, analysis.roles, analysis.subexpressions, normalizationEnabled, strokes.length])
+  }, [analysis.ambiguities, analysis.contexts, analysis.edges, analysis.enclosures, analysis.flags, analysis.groups, analysis.roles, analysis.subexpressions, normalizationEnabled, strokes.length])
 
   const updateActiveStroke = (clientX: number, clientY: number, target: SVGSVGElement) => {
     const current = activeStrokeRef.current

@@ -176,6 +176,9 @@ test.describe('handwriting normalization fixtures', () => {
     expect(normalizedClose).toBeTruthy()
     expect((normalizedOuter?.bounds.left || 0)).toBeGreaterThan((normalizedInner?.bounds.right || 0) + 12)
     expect((normalizedOuter?.bounds.left || 0)).toBeGreaterThan((normalizedClose?.bounds.right || 0) - 4)
+    expect(outerSuperscript?.associationContextId?.startsWith('context:enclosure:')).toBe(true)
+    expect(outerSuperscript?.normalizationAnchorGroupIds).toEqual(expect.arrayContaining([baseline?.groupId || '', closeBoundary?.groupId || '']))
+    expect(analysis.contexts.some((context) => context.kind === 'enclosure' && context.semanticRootGroupId === baseline?.groupId)).toBe(true)
   })
 
   test('enclosed local expression can serve as a fraction numerator while preserving its internal ownership', async () => {

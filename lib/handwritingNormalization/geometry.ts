@@ -8,6 +8,92 @@ export const distance = (left: InkPoint, right: InkPoint) => {
   return Math.sqrt(dx * dx + dy * dy)
 }
 
+const dot = (ax: number, ay: number, bx: number, by: number) => ax * bx + ay * by
+
+const cross = (ax: number, ay: number, bx: number, by: number) => ax * by - ay * bx
+
+const segmentVector = (from: InkPoint, to: InkPoint) => ({ x: to.x - from.x, y: to.y - from.y })
+
+export const distancePointToSegment = (point: InkPoint, start: InkPoint, end: InkPoint) => {
+  const segment = segmentVector(start, end)
+  const lengthSq = dot(segment.x, segment.y, segment.x, segment.y)
+  if (lengthSq <= 0.0001) return distance(point, start)
+  const projection = dot(point.x - start.x, point.y - start.y, segment.x, segment.y) / lengthSq
+  const t = clamp(projection, 0, 1)
+  const projected = { x: start.x + segment.x * t, y: start.y + segment.y * t }
+  return distance(point, projected)
+}
+
+const orientation = (a: InkPoint, b: InkPoint, c: InkPoint) => {
+  const value = cross(b.x - a.x, b.y - a.y, c.x - a.x, c.y - a.y)
+  if (Math.abs(value) < 0.001) return 0
+  return value > 0 ? 1 : -1
+}
+
+const onSegment = (a: InkPoint, b: InkPoint, c: InkPoint) => {
+  return c.x >= Math.min(a.x, b.x) - 0.001 && c.x <= Math.max(a.x, b.x) + 0.001 && c.y >= Math.min(a.y, b.y) - 0.001 && c.y <= Math.max(a.y, b.y) + 0.001
+}
+
+export const segmentsIntersect = (a1: InkPoint, a2: InkPoint, b1: InkPoint, b2: InkPoint) => {
+  const o1 = orientation(a1, a2, b1)
+  const o2 = orientation(a1, a2, b2)
+  const o3 = orientation(b1, b2, a1)
+  const o4 = orientation(b1, b2, a2)
+
+  if (o1 !== o2 && o3 !== o4) return true
+  if (o1 === 0 && onSegment(a1, a2, b1)) return true
+  if (o2 === 0 && onSegment(a1, a2, b2)) return true
+  if (o3 === 0 && onSegment(b1, b2, a1)) return true
+  if (o4 === 0 && onSegment(b1, b2, a2)) return true
+  return false
+}
+
+const getStrokeSegments = (stroke: InkStroke) => {
+  const segments: Array<[InkPoint, InkPoint]> = []
+  for (let index = 1; index < stroke.points.length; index += 1) {
+    segments.push([stroke.points[index - 1], stroke.points[index]])
+  }
+  return segments
+}
+
+export const minStrokeDistance = (left: InkStroke, right: InkStroke) => {
+  const leftSegments = getStrokeSegments(left)
+  const rightSegments = getStrokeSegments(right)
+  if (!leftSegments.length || !rightSegments.length) {
+    if (!left.points.length || !right.points.length) return Number.POSITIVE_INFINITY
+    return Math.min(
+      ...left.points.map((point) => Math.min(...right.points.map((other) => distance(point, other)))),
+      ...right.points.map((point) => Math.min(...left.points.map((other) => distance(point, other))))
+    )
+  }
+
+  let best = Number.POSITIVE_INFINITY
+  for (const [leftStart, leftEnd] of leftSegments) {
+    for (const [rightStart, rightEnd] of rightSegments) {
+      if (segmentsIntersect(leftStart, leftEnd, rightStart, rightEnd)) return 0
+      best = Math.min(
+        best,
+        distancePointToSegment(leftStart, rightStart, rightEnd),
+        distancePointToSegment(leftEnd, rightStart, rightEnd),
+        distancePointToSegment(rightStart, leftStart, leftEnd),
+        distancePointToSegment(rightEnd, leftStart, leftEnd)
+      )
+    }
+  }
+  return best
+}
+
+export const strokesVisiblyOverlap = (left: InkStroke, right: InkStroke) => {
+  const leftBounds = getStrokeBounds(left)
+  const rightBounds = getStrokeBounds(right)
+  const overlapX = Math.max(0, Math.min(leftBounds.right, rightBounds.right) - Math.max(leftBounds.left, rightBounds.left))
+  const overlapY = Math.max(0, Math.min(leftBounds.bottom, rightBounds.bottom) - Math.max(leftBounds.top, rightBounds.top))
+  const minDimension = Math.max(1, Math.min(Math.max(leftBounds.width, leftBounds.height), Math.max(rightBounds.width, rightBounds.height)))
+  const closeDistanceThreshold = Math.max(4, minDimension * 0.12)
+  if (overlapX > 0 && overlapY > 0) return true
+  return minStrokeDistance(left, right) <= closeDistanceThreshold
+}
+
 export const getStrokeBounds = (stroke: InkStroke): InkBounds => {
   const points = stroke.points || []
   if (!points.length) {

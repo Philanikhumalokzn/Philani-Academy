@@ -1,6 +1,6 @@
 import type { InkStroke, StructuralRoleKind } from './types'
 
-export type HandwritingFixtureName = 'superscript' | 'fraction' | 'nested' | 'adjacentAmbiguous'
+export type HandwritingFixtureName = 'superscript' | 'fraction' | 'nested' | 'adjacentAmbiguous' | 'crossingFour'
 
 export type HandwritingFixtureExpectation = {
   groupCount: number
@@ -74,9 +74,19 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
     ],
     expectation: { groupCount: 2, requiredRoles: ['baseline'], minAmbiguities: 1 },
   },
+  crossingFour: {
+    name: 'crossingFour',
+    label: 'Crossing 4 sample',
+    description: 'Two visibly overlapping strokes that should be treated as one handwritten symbol.',
+    strokes: [
+      makeStroke('four-l', [[130, 270], [176, 222], [176, 300]]),
+      makeStroke('four-v', [[150, 218], [150, 304]]),
+    ],
+    expectation: { groupCount: 1, requiredRoles: ['baseline'] },
+  },
 }
 
-export const HANDWRITING_FIXTURE_ORDER: HandwritingFixtureName[] = ['superscript', 'fraction', 'nested', 'adjacentAmbiguous']
+export const HANDWRITING_FIXTURE_ORDER: HandwritingFixtureName[] = ['superscript', 'fraction', 'nested', 'adjacentAmbiguous', 'crossingFour']
 
 export const getHandwritingFixture = (name: HandwritingFixtureName) => {
   const fixture = fixtures[name]

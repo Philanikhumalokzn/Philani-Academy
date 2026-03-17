@@ -1,4 +1,4 @@
-import { clamp, distance, getStrokeBounds, getStrokeCentroid, mergeBounds } from './geometry'
+import { clamp, distance, getStrokeBounds, getStrokeCentroid, mergeBounds, minStrokeDistance, strokesVisiblyOverlap } from './geometry'
 import type { InkStroke, StrokeGroup } from './types'
 
 const getStrokeStart = (stroke: InkStroke, fallback: number) => {
@@ -83,8 +83,15 @@ const scorePairCompatibility = (left: InkStroke, right: InkStroke) => {
   const crossingBias = leftOrientation.diagonal * rightOrientation.diagonal
   const plusBias = Math.max(leftOrientation.horizontal * rightOrientation.vertical, leftOrientation.vertical * rightOrientation.horizontal)
   const lineBias = Math.max(crossingBias, plusBias)
+  const explicitOverlap = strokesVisiblyOverlap(left, right)
+  const minDistance = minStrokeDistance(left, right)
+  const distanceBias = clamp(1 - minDistance / Math.max(6, scale * 0.18), 0, 1)
 
-  return proximityScore * 0.42 + overlapScore * 0.18 + temporalScore * 0.15 + lineBias * 0.25
+  if (explicitOverlap) {
+    return Math.max(0.94, proximityScore * 0.28 + temporalScore * 0.08 + lineBias * 0.18 + distanceBias * 0.46)
+  }
+
+  return proximityScore * 0.33 + overlapScore * 0.12 + temporalScore * 0.12 + lineBias * 0.18 + distanceBias * 0.25
 }
 
 const scoreStrokeToGroup = (stroke: InkStroke, group: StrokeGroup) => {
@@ -100,8 +107,13 @@ const scoreStrokeToGroup = (stroke: InkStroke, group: StrokeGroup) => {
   const overlapY = Math.max(0, Math.min(strokeBounds.bottom, group.bounds.bottom) - Math.max(strokeBounds.top, group.bounds.top))
   const overlapScore = clamp((overlapX + overlapY) / Math.max(1, scale), 0, 1)
   const pairCompatibility = group.strokes.reduce((sum, candidate) => sum + scorePairCompatibility(stroke, candidate), 0) / Math.max(1, group.strokes.length)
+  const overlapDominance = group.strokes.some((candidate) => strokesVisiblyOverlap(stroke, candidate))
 
-  return distanceScore * 0.34 + temporalScore * 0.14 + overlapScore * 0.14 + pairCompatibility * 0.38
+  if (overlapDominance) {
+    return Math.max(0.94, pairCompatibility)
+  }
+
+  return distanceScore * 0.24 + temporalScore * 0.1 + overlapScore * 0.1 + pairCompatibility * 0.56
 }
 
 const mergeConnectedSeeds = (strokes: InkStroke[]) => {

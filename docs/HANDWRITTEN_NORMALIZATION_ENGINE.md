@@ -114,6 +114,9 @@ These roles are no longer treated as a flat label set only. Each assigned role n
 - vertical zone
 - anchor preference
 - shape expectation
+- operator kind
+- operand reference mode
+- operand requirements and allowed operand roles
 - allowed child roles
 - forbidden child roles
 - peer roles on the same structural rank
@@ -128,14 +131,16 @@ This makes the roles array more useful for disambiguation, because related roles
 Examples:
 
 - `superscript` and `subscript` are both script-family roles, but `superscript` prefers above-right while `subscript` prefers below-right
+- `superscript` and `subscript` are also operator-like roles: they require a parent-style operand reference and only attach to allowed base-like roles
 - `numerator` and `denominator` are both fraction-member roles, but one must sit above and the other below a fraction bar
-- `fractionBar` is in the fraction-structure family, requires a horizontal line-like shape, and prefers a centered span above it instead of a below-right attachment pattern
+- `fractionBar` is in the fraction-structure family, behaves like a binary layout operator, requires a horizontal line-like shape, and expects numerator and denominator operands rather than a parent-style operand
 - `enclosureOpen` and `enclosureClose` are boundary roles in the enclosure-structure family, act as structural barriers, and do not host scripts or fraction members directly
 
 The taxonomy now also encodes negative information explicitly:
 
 - if a role does not list a child role as allowed, that absence becomes a fast discriminator during inference
 - if a role explicitly forbids a child role, that incompatibility is used immediately instead of waiting for later ambiguity cleanup
+- if a role is operator-like and the available operand role is not allowed, that mismatch becomes a quick discriminator before normalization
 - sibling and peer-role metadata makes it easier to reason about same-rank structures such as numerator vs denominator or open vs close enclosure boundaries
 
 Fraction bars are currently approximated using flat wide groups. This is useful for testing, but it is still heuristic and should be validated against a broader handwritten sample set.

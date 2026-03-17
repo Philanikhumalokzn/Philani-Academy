@@ -83,6 +83,10 @@ export type StructuralRoleShape = 'freeform' | 'horizontalLine'
 
 export type StructuralAssociationWeight = 'blocked' | 'weak' | 'medium' | 'strong'
 
+export type StructuralOperatorKind = 'none' | 'unaryReference' | 'binaryStructure'
+
+export type StructuralOperandReferenceMode = 'none' | 'parent' | 'children'
+
 export type StructuralLocalityProfile = {
   local: number
   adjacent: number
@@ -95,6 +99,10 @@ export type StructuralRoleDescriptor = {
   zone: StructuralRoleZone
   anchor: StructuralRoleAnchor
   shape: StructuralRoleShape
+  operatorKind: StructuralOperatorKind
+  operandReferenceMode: StructuralOperandReferenceMode
+  requiresOperandReference: boolean
+  allowedOperandRoles: StructuralRoleKind[]
   canOwnScripts: boolean
   allowedChildRoles: StructuralRoleKind[]
   forbiddenChildRoles: StructuralRoleKind[]

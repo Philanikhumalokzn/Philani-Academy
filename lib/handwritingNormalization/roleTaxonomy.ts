@@ -9,6 +9,10 @@ export const ROLE_TAXONOMY: Record<StructuralRoleKind, StructuralRoleDescriptor>
     zone: 'center',
     anchor: 'inline',
     shape: 'freeform',
+    operatorKind: 'none',
+    operandReferenceMode: 'none',
+    requiresOperandReference: false,
+    allowedOperandRoles: [],
     canOwnScripts: true,
     allowedChildRoles: ['superscript', 'subscript'],
     forbiddenChildRoles: ['numerator', 'denominator', 'fractionBar'],
@@ -24,6 +28,10 @@ export const ROLE_TAXONOMY: Record<StructuralRoleKind, StructuralRoleDescriptor>
     zone: 'center',
     anchor: 'inline',
     shape: 'freeform',
+    operatorKind: 'none',
+    operandReferenceMode: 'none',
+    requiresOperandReference: false,
+    allowedOperandRoles: [],
     canOwnScripts: false,
     allowedChildRoles: [],
     forbiddenChildRoles: ['superscript', 'subscript', 'numerator', 'denominator', 'fractionBar', 'baseline', 'enclosureOpen', 'enclosureClose'],
@@ -39,6 +47,10 @@ export const ROLE_TAXONOMY: Record<StructuralRoleKind, StructuralRoleDescriptor>
     zone: 'upper',
     anchor: 'right',
     shape: 'freeform',
+    operatorKind: 'unaryReference',
+    operandReferenceMode: 'parent',
+    requiresOperandReference: true,
+    allowedOperandRoles: ['baseline', 'numerator', 'denominator', 'superscript', 'subscript'],
     canOwnScripts: true,
     allowedChildRoles: ['superscript', 'subscript'],
     forbiddenChildRoles: ['numerator', 'denominator', 'fractionBar'],
@@ -54,6 +66,10 @@ export const ROLE_TAXONOMY: Record<StructuralRoleKind, StructuralRoleDescriptor>
     zone: 'lower',
     anchor: 'right',
     shape: 'freeform',
+    operatorKind: 'unaryReference',
+    operandReferenceMode: 'parent',
+    requiresOperandReference: true,
+    allowedOperandRoles: ['baseline', 'numerator', 'denominator', 'superscript', 'subscript'],
     canOwnScripts: true,
     allowedChildRoles: ['superscript', 'subscript'],
     forbiddenChildRoles: ['numerator', 'denominator', 'fractionBar'],
@@ -69,6 +85,10 @@ export const ROLE_TAXONOMY: Record<StructuralRoleKind, StructuralRoleDescriptor>
     zone: 'upper',
     anchor: 'centered',
     shape: 'freeform',
+    operatorKind: 'none',
+    operandReferenceMode: 'none',
+    requiresOperandReference: false,
+    allowedOperandRoles: [],
     canOwnScripts: true,
     allowedChildRoles: ['superscript', 'subscript'],
     forbiddenChildRoles: ['numerator', 'denominator', 'fractionBar'],
@@ -84,6 +104,10 @@ export const ROLE_TAXONOMY: Record<StructuralRoleKind, StructuralRoleDescriptor>
     zone: 'lower',
     anchor: 'centered',
     shape: 'freeform',
+    operatorKind: 'none',
+    operandReferenceMode: 'none',
+    requiresOperandReference: false,
+    allowedOperandRoles: [],
     canOwnScripts: true,
     allowedChildRoles: ['superscript', 'subscript'],
     forbiddenChildRoles: ['numerator', 'denominator', 'fractionBar'],
@@ -99,6 +123,10 @@ export const ROLE_TAXONOMY: Record<StructuralRoleKind, StructuralRoleDescriptor>
     zone: 'lower',
     anchor: 'centered',
     shape: 'horizontalLine',
+    operatorKind: 'binaryStructure',
+    operandReferenceMode: 'children',
+    requiresOperandReference: true,
+    allowedOperandRoles: ['numerator', 'denominator'],
     canOwnScripts: false,
     allowedChildRoles: ['numerator', 'denominator'],
     forbiddenChildRoles: ['superscript', 'subscript', 'fractionBar', 'baseline'],
@@ -114,6 +142,10 @@ export const ROLE_TAXONOMY: Record<StructuralRoleKind, StructuralRoleDescriptor>
     zone: 'center',
     anchor: 'inline',
     shape: 'freeform',
+    operatorKind: 'none',
+    operandReferenceMode: 'none',
+    requiresOperandReference: false,
+    allowedOperandRoles: [],
     canOwnScripts: false,
     allowedChildRoles: [],
     forbiddenChildRoles: ['superscript', 'subscript', 'numerator', 'denominator', 'fractionBar', 'baseline', 'enclosureOpen', 'enclosureClose'],
@@ -129,6 +161,10 @@ export const ROLE_TAXONOMY: Record<StructuralRoleKind, StructuralRoleDescriptor>
     zone: 'center',
     anchor: 'inline',
     shape: 'freeform',
+    operatorKind: 'none',
+    operandReferenceMode: 'none',
+    requiresOperandReference: false,
+    allowedOperandRoles: [],
     canOwnScripts: false,
     allowedChildRoles: [],
     forbiddenChildRoles: ['superscript', 'subscript', 'numerator', 'denominator', 'fractionBar', 'baseline', 'enclosureOpen', 'enclosureClose'],
@@ -143,6 +179,17 @@ export const ROLE_TAXONOMY: Record<StructuralRoleKind, StructuralRoleDescriptor>
 export const getRoleDescriptor = (kind: StructuralRoleKind) => ROLE_TAXONOMY[kind]
 
 export const roleCanOwnScripts = (kind: StructuralRoleKind) => ROLE_TAXONOMY[kind].canOwnScripts
+
+export const roleRequiresOperandReference = (kind: StructuralRoleKind) => ROLE_TAXONOMY[kind].requiresOperandReference
+
+export const roleUsesParentOperand = (kind: StructuralRoleKind) => ROLE_TAXONOMY[kind].operandReferenceMode === 'parent'
+
+export const roleUsesChildOperands = (kind: StructuralRoleKind) => ROLE_TAXONOMY[kind].operandReferenceMode === 'children'
+
+export const roleAllowsOperandRole = (operatorRole: StructuralRoleKind, operandRole: StructuralRoleKind) => {
+  const descriptor = ROLE_TAXONOMY[operatorRole]
+  return descriptor.allowedOperandRoles.includes(operandRole)
+}
 
 export const roleAllowsChildRole = (parentRole: StructuralRoleKind, childRole: StructuralRoleKind) => {
   const descriptor = ROLE_TAXONOMY[parentRole]

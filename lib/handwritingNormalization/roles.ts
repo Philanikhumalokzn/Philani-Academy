@@ -1,5 +1,5 @@
 import { clamp } from './geometry'
-import { getRoleDescriptor, getRoleLocalityBias, roleAllowsChildRole, roleCanOwnScripts } from './roleTaxonomy'
+import { getRoleDescriptor, getRoleLocalityBias, roleAllowsChildRole, roleAllowsOperandRole, roleCanOwnScripts, roleRequiresOperandReference, roleUsesParentOperand } from './roleTaxonomy'
 import type { EnclosureStructure, ExpressionContext, LayoutEdge, LocalSubexpression, StrokeGroup, StructuralAmbiguity, StructuralFlag, StructuralRole, StructuralRoleCandidate, StructuralRoleKind } from './types'
 
 const FRACTION_BAR_MAX_HEIGHT = 18
@@ -751,6 +751,9 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
   for (const { bar, context } of confirmedFractionBars) {
     roles.set(bar.id, makeRole(bar.id, 'fractionBar', context.barRecognitionScore, 0, null, [
       `family=${getRoleDescriptor('fractionBar').family}`,
+      `operator-kind=${getRoleDescriptor('fractionBar').operatorKind}`,
+      `operand-mode=${getRoleDescriptor('fractionBar').operandReferenceMode}`,
+      `allowed-operands=${getRoleDescriptor('fractionBar').allowedOperandRoles.join(',')}`,
       `allowed-children=${getRoleDescriptor('fractionBar').allowedChildRoles.join(',')}`,
       `forbidden-children=${getRoleDescriptor('fractionBar').forbiddenChildRoles.join(',')}`,
       `shape=${context.shapeScore.toFixed(2)}`,
@@ -873,14 +876,20 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     }
 
     const parentRole = resolvedParentGroupId ? roles.get(resolvedParentGroupId) : null
+    const assumedOperandRole = parentRole?.role || 'baseline'
     const parentSupportsAttachment = Boolean(resolvedParentGroupId)
       && !fractionBarIds.has(resolvedParentGroupId)
+      && (!roleRequiresOperandReference(best.role) || roleUsesParentOperand(best.role))
+      && roleAllowsOperandRole(best.role, assumedOperandRole)
       && (!parentRole || (roleCanOwnScripts(parentRole.role) && roleAllowsChildRole(parentRole.role, best.role)))
 
     if ((best.role === 'superscript' || best.role === 'subscript') && best.score >= 0.45 && resolvedParentGroupId && parentSupportsAttachment) {
       const nextRole = makeRole(group.id, best.role, best.score, 1, resolvedParentGroupId, [
         ...(best.evidence || []),
         `parent-family=${parentRole ? parentRole.descriptor.family : 'expressionRoot'}`,
+        `operator-kind=${getRoleDescriptor(best.role).operatorKind}`,
+        `operand-mode=${getRoleDescriptor(best.role).operandReferenceMode}`,
+        `operand-allows=${String(roleAllowsOperandRole(best.role, assumedOperandRole))}`,
         `redirected-parent=${best.parentGroupId && best.parentGroupId !== resolvedParentGroupId ? `${best.parentGroupId}->${resolvedParentGroupId}` : 'none'}`,
         `parent-allows=${parentRole ? String(roleAllowsChildRole(parentRole.role, best.role)) : 'true'}`,
         `ancestry=${getRoleDescriptor(best.role).ancestry.join('>')}`,

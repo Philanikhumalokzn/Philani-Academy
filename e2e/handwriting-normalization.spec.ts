@@ -198,6 +198,7 @@ test.describe('handwriting normalization fixtures', () => {
 
   test('role taxonomy encodes child constraints and sibling ranks', async () => {
     const baseline = getRoleDescriptor('baseline')
+    const superscript = getRoleDescriptor('superscript')
     const fractionBar = getRoleDescriptor('fractionBar')
     const numerator = getRoleDescriptor('numerator')
     const enclosureOpen = getRoleDescriptor('enclosureOpen')
@@ -207,6 +208,14 @@ test.describe('handwriting normalization fixtures', () => {
     expect(roleAllowsChildRole('fractionBar', 'superscript')).toBe(false)
     expect(roleAllowsChildRole('fractionBar', 'subscript')).toBe(false)
     expect(roleAllowsChildRole('fractionBar', 'numerator')).toBe(true)
+    expect(superscript.operatorKind).toBe('unaryReference')
+    expect(superscript.operandReferenceMode).toBe('parent')
+    expect(superscript.requiresOperandReference).toBe(true)
+    expect(superscript.allowedOperandRoles).toEqual(expect.arrayContaining(['baseline', 'superscript', 'subscript']))
+    expect(fractionBar.operatorKind).toBe('binaryStructure')
+    expect(fractionBar.operandReferenceMode).toBe('children')
+    expect(fractionBar.requiresOperandReference).toBe(true)
+    expect(fractionBar.allowedOperandRoles).toEqual(expect.arrayContaining(['numerator', 'denominator']))
     expect(fractionBar.structuralBarrier).toBe(true)
     expect(roleAllowsChildRole('enclosureOpen', 'superscript')).toBe(false)
     expect(enclosureOpen.structuralBarrier).toBe(true)

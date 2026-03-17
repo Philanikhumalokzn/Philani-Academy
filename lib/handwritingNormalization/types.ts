@@ -69,8 +69,10 @@ export type StructuralRoleKind =
   | 'numerator'
   | 'denominator'
   | 'fractionBar'
+  | 'enclosureOpen'
+  | 'enclosureClose'
 
-export type StructuralRoleFamily = 'expressionRoot' | 'script' | 'fractionStructure' | 'fractionMember'
+export type StructuralRoleFamily = 'expressionRoot' | 'script' | 'fractionStructure' | 'fractionMember' | 'enclosureStructure'
 
 export type StructuralRoleZone = 'center' | 'upper' | 'lower'
 
@@ -109,6 +111,7 @@ export type StructuralRole = {
   score: number
   depth: number
   parentGroupId?: string | null
+  containerGroupIds: string[]
   evidence: string[]
 }
 
@@ -140,6 +143,15 @@ export type LocalSubexpression = {
   rootRole: 'baseline' | 'numerator' | 'denominator'
 }
 
+export type EnclosureStructure = {
+  id: string
+  kind: 'parentheses'
+  openGroupId: string
+  closeGroupId: string
+  memberRootIds: string[]
+  score: number
+}
+
 export type NormalizedGroup = {
   id: string
   bounds: InkBounds
@@ -159,5 +171,6 @@ export type HandwritingAnalysis = {
   roles: StructuralRole[]
   ambiguities: StructuralAmbiguity[]
   subexpressions: LocalSubexpression[]
+  enclosures: EnclosureStructure[]
   normalization: NormalizationResult
 }

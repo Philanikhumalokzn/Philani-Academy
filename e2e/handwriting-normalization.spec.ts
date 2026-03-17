@@ -102,10 +102,26 @@ test.describe('handwriting normalization fixtures', () => {
     expect(subscript?.evidence.some((entry) => entry.includes('below-right='))).toBe(true)
   })
 
+  test('parenthesized superscript creates an enclosure structure without breaking local script ownership', async () => {
+    const fixture = getHandwritingFixture('parenthesizedSuperscript')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const baseline = analysis.roles.find((role) => role.role === 'baseline')
+    const superscript = analysis.roles.find((role) => role.role === 'superscript')
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(analysis.roles.some((role) => role.role === 'enclosureOpen')).toBe(true)
+    expect(analysis.roles.some((role) => role.role === 'enclosureClose')).toBe(true)
+    expect(analysis.enclosures).toHaveLength(1)
+    expect(baseline?.containerGroupIds).toHaveLength(2)
+    expect(superscript?.parentGroupId).toBe(baseline?.groupId)
+    expect(superscript?.containerGroupIds).toHaveLength(2)
+  })
+
   test('role taxonomy encodes child constraints and sibling ranks', async () => {
     const baseline = getRoleDescriptor('baseline')
     const fractionBar = getRoleDescriptor('fractionBar')
     const numerator = getRoleDescriptor('numerator')
+    const enclosureOpen = getRoleDescriptor('enclosureOpen')
 
     expect(roleAllowsChildRole('baseline', 'superscript')).toBe(true)
     expect(roleAllowsChildRole('baseline', 'subscript')).toBe(true)
@@ -113,6 +129,8 @@ test.describe('handwriting normalization fixtures', () => {
     expect(roleAllowsChildRole('fractionBar', 'subscript')).toBe(false)
     expect(roleAllowsChildRole('fractionBar', 'numerator')).toBe(true)
     expect(fractionBar.structuralBarrier).toBe(true)
+    expect(roleAllowsChildRole('enclosureOpen', 'superscript')).toBe(false)
+    expect(enclosureOpen.structuralBarrier).toBe(true)
     expect(numerator.peerRoles).toContain('denominator')
     expect(baseline.allowedChildRoles).toEqual(expect.arrayContaining(['superscript', 'subscript']))
   })

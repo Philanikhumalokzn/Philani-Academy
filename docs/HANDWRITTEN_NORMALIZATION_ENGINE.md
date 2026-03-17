@@ -44,7 +44,7 @@ An admin-only footer action opens the normalization lab from the dashboard.
 The lab currently provides:
 
 - freehand stroke capture
-- sample loading for superscript, nested exponent chains, fractions, fraction-with-exponent cases, and horizontal-line subscript cases
+- sample loading for superscript, nested exponent chains, fractions, fraction-with-exponent cases, horizontal-line subscript cases, and parenthesized local structures
 - deterministic ambiguous adjacency fixture for `x2` vs `x²` style cases
 - raw stroke view
 - grouped stroke boxes
@@ -52,6 +52,7 @@ The lab currently provides:
 - inferred role inspection
 - ambiguity inspection
 - local subexpression ownership inspection
+- enclosure structure inspection
 - normalized ink preview
 
 ### Engine modules
@@ -102,6 +103,8 @@ The first pass currently infers:
 - numerator
 - denominator
 - fraction bar
+- enclosure open boundary
+- enclosure close boundary
 
 These roles are no longer treated as a flat label set only. Each assigned role now carries taxonomy metadata including:
 
@@ -109,8 +112,14 @@ These roles are no longer treated as a flat label set only. Each assigned role n
 - vertical zone
 - anchor preference
 - shape expectation
+- allowed child roles
+- forbidden child roles
+- peer roles on the same structural rank
+- locality bias for local, adjacent, and distant associations
+- structural barrier flags
 - ancestry chain
 - discriminating evidence strings collected during inference
+- container ids when a role sits inside a local enclosure
 
 This makes the roles array more useful for disambiguation, because related roles can share family-level behavior while still enforcing hard local distinctions.
 
@@ -119,6 +128,13 @@ Examples:
 - `superscript` and `subscript` are both script-family roles, but `superscript` prefers above-right while `subscript` prefers below-right
 - `numerator` and `denominator` are both fraction-member roles, but one must sit above and the other below a fraction bar
 - `fractionBar` is in the fraction-structure family, requires a horizontal line-like shape, and prefers a centered span above it instead of a below-right attachment pattern
+- `enclosureOpen` and `enclosureClose` are boundary roles in the enclosure-structure family, act as structural barriers, and do not host scripts or fraction members directly
+
+The taxonomy now also encodes negative information explicitly:
+
+- if a role does not list a child role as allowed, that absence becomes a fast discriminator during inference
+- if a role explicitly forbids a child role, that incompatibility is used immediately instead of waiting for later ambiguity cleanup
+- sibling and peer-role metadata makes it easier to reason about same-rank structures such as numerator vs denominator or open vs close enclosure boundaries
 
 Fraction bars are currently approximated using flat wide groups. This is useful for testing, but it is still heuristic and should be validated against a broader handwritten sample set.
 
@@ -141,6 +157,19 @@ The current fraction-family disambiguation is now explicitly size-aware and span
 - it only claims numerator and denominator members when there is compatible centered support on both sides
 - a lower-right horizontal line can still become a `subscript` when it behaves like a script attachment instead of a centered fraction structure
 
+The same taxonomy idea now extends into enclosure-style local structures:
+
+- tall narrow boundary groups can form a local enclosure pair around one or more owned subexpressions
+- the enclosed content keeps its own internal local ownership, such as superscripts and subscripts
+- enclosure boundaries are treated as structural barriers rather than expression roots
+- enclosed roles keep container ids so the engine can preserve both local role identity and enclosing context at the same time
+
+This pushes the engine closer to locality-first parsing:
+
+- local attachments inside a structure should be stronger than distant associations across that structure
+- a fraction bar creates a strong divide, so local associations above it are evaluated as a coherent span before broader associations
+- enclosure boundaries similarly create a local region that should be resolved internally before external interpretation is allowed to dominate
+
 #### Normalization
 
 The first pass normalizes by applying role-aware transforms to original strokes:
@@ -161,10 +190,10 @@ Known limitations:
 - grouping is still the highest-risk stage
 - ambiguity is reported, but final role assignment is still heuristic
 - fraction detection is now more explicit than before, but still only covers a narrow family of handwritten fraction layouts
-- local ownership currently covers script nesting, but not full enclosure-style ownership or multi-root local operators yet
-- no enclosure or radical handling yet
+- local ownership now covers script nesting and a first enclosure-style boundary pass, but not full multi-operator local parsing yet
+- no radical handling yet
 - no explicit baseline-line estimation across full expressions yet
-- fixture coverage is still small even though it now includes chained superscripts, numerator-with-exponent cases, and horizontal-line subscript disambiguation
+- fixture coverage is still small even though it now includes chained superscripts, numerator-with-exponent cases, horizontal-line subscript disambiguation, and parenthesized local structures
 - no persistent save/load format yet for lab sessions
 
 ## Review gates
@@ -178,8 +207,8 @@ Before adding more complexity, review the engine in this order:
 
 ## Next recommended work
 
-1. Expand local ownership beyond script trees into enclosure-like and operator-bound subexpressions.
+1. Extend operator-bound local parsing beyond parentheses into radicals and other enclosure families.
 2. Improve full-expression baseline estimation so local roots can be placed relative to broader context more reliably.
-3. Add deterministic fixtures for deeper nested expressions and mixed local structures.
-4. Add enclosure and radical-like structure handling.
+3. Add deterministic fixtures for mixed nested structures such as `(x^2)/y`, `(a/b)^2`, and radical-like layouts.
+4. Generalize structural barriers so BODMAS-style local precedence can be expressed across more operator families.
 5. Add visual toggles for confidence thresholds to make failure cases easier to inspect.

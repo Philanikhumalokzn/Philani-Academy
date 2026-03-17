@@ -1,6 +1,6 @@
 import type { InkStroke, StructuralRoleKind } from './types'
 
-export type HandwritingFixtureName = 'superscript' | 'fraction' | 'nested' | 'adjacentAmbiguous' | 'crossingFour' | 'superscriptThenBar' | 'fractionWithExponent' | 'offsetLineSubscript'
+export type HandwritingFixtureName = 'superscript' | 'fraction' | 'nested' | 'adjacentAmbiguous' | 'crossingFour' | 'superscriptThenBar' | 'fractionWithExponent' | 'offsetLineSubscript' | 'parenthesizedSuperscript'
 
 export type HandwritingFixtureExpectation = {
   groupCount: number
@@ -120,9 +120,22 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
     ],
     expectation: { groupCount: 2, requiredRoles: ['baseline', 'subscript'] },
   },
+  parenthesizedSuperscript: {
+    name: 'parenthesizedSuperscript',
+    label: '(x^2) sample',
+    description: 'A locally enclosed base-plus-superscript expression bounded by tall left and right enclosure marks.',
+    strokes: [
+      makeStroke('open-1', [[116, 140], [98, 188], [94, 248], [100, 306], [118, 354]]),
+      makeStroke('x-1', [[162, 232], [198, 278]]),
+      makeStroke('x-2', [[198, 232], [162, 278]]),
+      makeStroke('two-1', [[226, 168], [252, 151], [272, 156], [268, 176], [239, 191], [272, 192]]),
+      makeStroke('close-1', [[320, 140], [338, 188], [342, 248], [336, 306], [318, 354]]),
+    ],
+    expectation: { groupCount: 4, requiredRoles: ['baseline', 'superscript', 'enclosureOpen', 'enclosureClose'] },
+  },
 }
 
-export const HANDWRITING_FIXTURE_ORDER: HandwritingFixtureName[] = ['superscript', 'fraction', 'nested', 'adjacentAmbiguous', 'crossingFour', 'superscriptThenBar', 'fractionWithExponent', 'offsetLineSubscript']
+export const HANDWRITING_FIXTURE_ORDER: HandwritingFixtureName[] = ['superscript', 'fraction', 'nested', 'adjacentAmbiguous', 'crossingFour', 'superscriptThenBar', 'fractionWithExponent', 'offsetLineSubscript', 'parenthesizedSuperscript']
 
 export const getHandwritingFixture = (name: HandwritingFixtureName) => {
   const fixture = fixtures[name]

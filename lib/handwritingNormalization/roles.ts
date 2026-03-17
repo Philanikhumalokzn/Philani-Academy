@@ -1,6 +1,6 @@
 import { clamp } from './geometry'
 import { getRoleDescriptor, getRoleLocalityBias, roleAllowsChildRole, roleCanOwnScripts } from './roleTaxonomy'
-import type { LayoutEdge, LocalSubexpression, StrokeGroup, StructuralAmbiguity, StructuralRole, StructuralRoleCandidate, StructuralRoleKind } from './types'
+import type { EnclosureStructure, LayoutEdge, LocalSubexpression, StrokeGroup, StructuralAmbiguity, StructuralRole, StructuralRoleCandidate, StructuralRoleKind } from './types'
 
 const FRACTION_BAR_MAX_HEIGHT = 18
 const FRACTION_BAR_MIN_WIDTH = 70
@@ -51,13 +51,14 @@ const makeCandidate = (role: StructuralRoleKind, score: number, parentGroupId?: 
   evidence,
 })
 
-const makeRole = (groupId: string, role: StructuralRoleKind, score: number, depth: number, parentGroupId?: string | null, evidence: string[] = []): StructuralRole => ({
+const makeRole = (groupId: string, role: StructuralRoleKind, score: number, depth: number, parentGroupId?: string | null, evidence: string[] = [], containerGroupIds: string[] = []): StructuralRole => ({
   groupId,
   role,
   descriptor: getRoleDescriptor(role),
   score,
   depth,
   parentGroupId: parentGroupId ?? null,
+  containerGroupIds,
   evidence,
 })
 
@@ -279,6 +280,78 @@ const scoreFractionContext = (bar: StrokeGroup, subexpressions: LocalSubexpressi
   }
 }
 
+const isEnclosureBoundaryCandidate = (group: StrokeGroup) => {
+  const tallEnough = group.bounds.height >= 56
+  const narrowEnough = group.bounds.width <= Math.max(34, group.bounds.height * 0.68)
+  return tallEnough && narrowEnough && group.aspectRatio <= 0.75 && group.bounds.width > 6
+}
+
+const detectEnclosures = (groups: StrokeGroup[], subexpressions: LocalSubexpression[], groupMap: Map<string, StrokeGroup>, blockedGroupIds: Set<string>) => {
+  const candidates = groups
+    .filter((group) => !blockedGroupIds.has(group.id))
+    .filter(isEnclosureBoundaryCandidate)
+    .sort((left, right) => left.bounds.left - right.bounds.left)
+
+  const rootsWithBounds = subexpressions.map((subexpression) => ({
+    subexpression,
+    bounds: getSubexpressionBounds(subexpression, groupMap),
+  }))
+
+  const scoredPairs: Array<EnclosureStructure & { memberGroupIds: string[] }> = []
+  for (let leftIndex = 0; leftIndex < candidates.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < candidates.length; rightIndex += 1) {
+      const open = candidates[leftIndex]
+      const close = candidates[rightIndex]
+      const members = rootsWithBounds.filter(({ bounds }) => {
+        const insideHorizontally = bounds.left >= open.bounds.right - 10 && bounds.right <= close.bounds.left + 10
+        const verticallyCovered = bounds.top >= Math.min(open.bounds.top, close.bounds.top) - 22 && bounds.bottom <= Math.max(open.bounds.bottom, close.bounds.bottom) + 22
+        return insideHorizontally && verticallyCovered
+      })
+      if (!members.length) continue
+
+      const contentBounds = mergeBounds(members.map((member) => member.bounds))
+      const leftGap = contentBounds.left - open.bounds.right
+      const rightGap = close.bounds.left - contentBounds.right
+      if (leftGap < -10 || rightGap < -10) continue
+
+      const heightSimilarity = clamp(1 - Math.abs(open.bounds.height - close.bounds.height) / Math.max(open.bounds.height, close.bounds.height, 1), 0, 1)
+      const verticalAlignment = clamp(1 - Math.abs(open.bounds.centerY - close.bounds.centerY) / Math.max(24, Math.max(open.bounds.height, close.bounds.height) * 0.45), 0, 1)
+      const contentCoverage = clamp(Math.min(open.bounds.bottom, close.bounds.bottom) - Math.max(open.bounds.top, close.bounds.top), 0, contentBounds.bottom - contentBounds.top + 24) / Math.max(24, contentBounds.bottom - contentBounds.top + 24)
+      const innerSpacing = clamp(1 - (Math.max(leftGap, 0) + Math.max(rightGap, 0)) / Math.max(40, contentBounds.right - contentBounds.left + 40), 0, 1)
+      const score = heightSimilarity * 0.26 + verticalAlignment * 0.24 + contentCoverage * 0.24 + innerSpacing * 0.26
+      if (score < 0.64) continue
+
+      const memberRootIds = members.map((member) => member.subexpression.rootGroupId)
+      const memberGroupIds = members.flatMap((member) => member.subexpression.memberGroupIds)
+      scoredPairs.push({
+        id: `enclosure:${open.id}:${close.id}`,
+        kind: 'parentheses',
+        openGroupId: open.id,
+        closeGroupId: close.id,
+        memberRootIds,
+        memberGroupIds,
+        score,
+      })
+    }
+  }
+
+  const usedBoundaryIds = new Set<string>()
+  const usedMemberIds = new Set<string>()
+  const resolved: Array<EnclosureStructure & { memberGroupIds: string[] }> = []
+  for (const pair of scoredPairs.sort((left, right) => right.score - left.score)) {
+    if (usedBoundaryIds.has(pair.openGroupId) || usedBoundaryIds.has(pair.closeGroupId)) continue
+    if (pair.memberRootIds.some((memberId) => usedMemberIds.has(memberId))) continue
+    usedBoundaryIds.add(pair.openGroupId)
+    usedBoundaryIds.add(pair.closeGroupId)
+    for (const memberId of pair.memberRootIds) {
+      usedMemberIds.add(memberId)
+    }
+    resolved.push(pair)
+  }
+
+  return resolved
+}
+
 export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[]) => {
   const roles = new Map<string, StructuralRole>()
   const ambiguities: StructuralAmbiguity[] = []
@@ -288,6 +361,26 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
   const groupMap = new Map(groups.map((group) => [group.id, group]))
   const { subexpressions, rootClaims } = buildLocalSubexpressions(groups, stableAttachments, fractionBarIds)
   const childIds = new Set(stableAttachments.map((attachment) => attachment.childId))
+  const enclosures = detectEnclosures(groups, subexpressions, groupMap, fractionBarIds)
+  const containerIdsByGroupId = new Map<string, string[]>()
+
+  for (const enclosure of enclosures) {
+    roles.set(enclosure.openGroupId, makeRole(enclosure.openGroupId, 'enclosureOpen', enclosure.score, 0, null, [
+      'left enclosure boundary',
+      `members=${enclosure.memberRootIds.join(',')}`,
+      `peers=${getRoleDescriptor('enclosureOpen').peerRoles.join(',')}`,
+    ]))
+    roles.set(enclosure.closeGroupId, makeRole(enclosure.closeGroupId, 'enclosureClose', enclosure.score, 0, null, [
+      'right enclosure boundary',
+      `members=${enclosure.memberRootIds.join(',')}`,
+      `peers=${getRoleDescriptor('enclosureClose').peerRoles.join(',')}`,
+    ]))
+    for (const memberGroupId of enclosure.memberGroupIds) {
+      const current = containerIdsByGroupId.get(memberGroupId) || []
+      containerIdsByGroupId.set(memberGroupId, [...current, enclosure.openGroupId, enclosure.closeGroupId])
+    }
+  }
+
   const confirmedFractionBars = fractionBarLikeGroups
     .map((bar) => ({ bar, context: scoreFractionContext(bar, subexpressions, groupMap) }))
     .filter(({ context }) => context.barRecognitionScore >= 0.5 && context.numeratorRoots.length > 0)
@@ -318,7 +411,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
       roles.set(numerator.rootGroupId, makeRole(numerator.rootGroupId, 'numerator', 0.82, 1, bar.id, [
         'centered above fraction structure',
         `ancestry=${getRoleDescriptor('numerator').ancestry.join('>')}`,
-      ]))
+      ], containerIdsByGroupId.get(numerator.rootGroupId) || []))
       ambiguities.push({
         groupId: numerator.rootGroupId,
         reason: 'fraction-membership',
@@ -337,7 +430,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
       roles.set(denominator.rootGroupId, makeRole(denominator.rootGroupId, 'denominator', 0.82, 1, bar.id, [
         'centered below fraction structure',
         `ancestry=${getRoleDescriptor('denominator').ancestry.join('>')}`,
-      ]))
+      ], containerIdsByGroupId.get(denominator.rootGroupId) || []))
       ambiguities.push({
         groupId: denominator.rootGroupId,
         reason: 'fraction-membership',
@@ -364,6 +457,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
           `allowed-children=${getRoleDescriptor(subexpression.rootRole).allowedChildRoles.join(',') || 'none'}`,
           `forbidden-children=${getRoleDescriptor(subexpression.rootRole).forbiddenChildRoles.join(',') || 'none'}`,
         ],
+        containerIdsByGroupId.get(subexpression.rootGroupId) || [],
       ))
     }
     for (const attachment of subexpression.attachments) {
@@ -371,7 +465,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
         'owned by local subexpression',
         `family=${getRoleDescriptor(attachment.role).family}`,
         `peers=${getRoleDescriptor(attachment.role).peerRoles.join(',') || 'none'}`,
-      ]))
+      ], containerIdsByGroupId.get(attachment.childGroupId) || []))
     }
   }
 
@@ -417,7 +511,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
         `parent-family=${parentRole ? parentRole.descriptor.family : 'expressionRoot'}`,
         `parent-allows=${parentRole ? String(roleAllowsChildRole(parentRole.role, best.role)) : 'true'}`,
         `ancestry=${getRoleDescriptor(best.role).ancestry.join('>')}`,
-      ])
+      ], containerIdsByGroupId.get(group.id) || [])
       roles.set(group.id, nextRole)
       if ((bestSequence && bestSequence.score >= 0.16 && Math.abs(best.score - bestSequence.score) <= 0.3) || (runnerUp && Math.abs(best.score - runnerUp.score) <= 0.14)) {
         ambiguities.push({
@@ -433,7 +527,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     roles.set(group.id, makeRole(group.id, 'baseline', sortedCandidates[0]?.score || 0.34, 0, null, [
       'defaulted to baseline after candidate comparison',
       `family=${getRoleDescriptor('baseline').family}`,
-    ]))
+    ], containerIdsByGroupId.get(group.id) || []))
 
     const closeScriptCandidate = [...superCandidates, ...subCandidates][0] || null
     if (
@@ -455,9 +549,10 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
 
   return {
     roles: groups
-    .map((group) => roles.get(group.id) || makeRole(group.id, 'baseline', 0.5, 0, null, ['fallback default']))
+    .map((group) => roles.get(group.id) || makeRole(group.id, 'baseline', 0.5, 0, null, ['fallback default'], containerIdsByGroupId.get(group.id) || []))
     .sort((left, right) => left.depth - right.depth),
     subexpressions,
+    enclosures,
     ambiguities,
   }
 }

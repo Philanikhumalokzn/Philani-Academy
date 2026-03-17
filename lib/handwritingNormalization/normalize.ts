@@ -7,6 +7,10 @@ const getRoleScale = (role: StructuralRole) => {
   return 1
 }
 
+const isBaselineLikeRole = (roleName: StructuralRole['role']) => {
+  return roleName === 'baseline' || roleName === 'enclosureOpen' || roleName === 'enclosureClose'
+}
+
 export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[]): NormalizationResult => {
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
   const groupMap = new Map(groups.map((group) => [group.id, group]))
@@ -14,7 +18,7 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
   const transformedGroups: NormalizationResult['groups'] = []
   const transformedBounds = new Map<string, ReturnType<typeof mergeBounds>>()
 
-  const baselineGroups = groups.filter((group) => roleMap.get(group.id)?.role === 'baseline')
+  const baselineGroups = groups.filter((group) => isBaselineLikeRole(roleMap.get(group.id)?.role || 'baseline'))
   const baselineHeight = baselineGroups.length
     ? baselineGroups.reduce((sum, group) => sum + Math.max(group.bounds.height, 24), 0) / baselineGroups.length
     : 44
@@ -39,7 +43,7 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     let dx = 0
     let dy = 0
 
-    if (role.role === 'baseline') {
+    if (isBaselineLikeRole(role.role)) {
       dy = baselineY - scaledBounds.bottom
       const targetHeight = baselineHeight
       const heightAdjust = targetHeight - scaledBounds.height

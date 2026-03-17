@@ -63,6 +63,7 @@ const roleColor = (role: string) => {
   if (role === 'fractionBar') return '#ffda6b'
   if (role === 'numerator') return '#f6a6ff'
   if (role === 'denominator') return '#ff9e7a'
+  if (role === 'enclosureOpen' || role === 'enclosureClose') return '#ffd39a'
   return '#8fa7d8'
 }
 
@@ -84,7 +85,7 @@ export default function HandwritingNormalizationTestCanvas() {
   const debugSections = useMemo<DebugSection[]>(() => {
     const grouped = analysis.groups.map((group) => `${group.id}: ${group.strokeIds.length} stroke(s), ${Math.round(group.bounds.width)}x${Math.round(group.bounds.height)}`)
     const edges = analysis.edges.slice(0, 12).map((edge) => `${edge.kind} ${edge.fromId} -> ${edge.toId} (${edge.score.toFixed(2)})`)
-    const roles = analysis.roles.map((role) => `${role.groupId}: ${role.role} family=${role.descriptor.family} depth=${role.depth} score=${role.score.toFixed(2)}${role.parentGroupId ? ` parent=${role.parentGroupId}` : ''}${role.evidence.length ? ` :: ${role.evidence.join(' | ')}` : ''}`)
+    const roles = analysis.roles.map((role) => `${role.groupId}: ${role.role} family=${role.descriptor.family} depth=${role.depth} score=${role.score.toFixed(2)}${role.parentGroupId ? ` parent=${role.parentGroupId}` : ''}${role.containerGroupIds.length ? ` containers=${role.containerGroupIds.join(',')}` : ''}${role.evidence.length ? ` :: ${role.evidence.join(' | ')}` : ''}`)
     const ambiguities = analysis.ambiguities.map((ambiguity) => {
       const alternatives = ambiguity.candidates.map((candidate) => `${candidate.role}:${candidate.score.toFixed(2)}`).join(' | ')
       return `${ambiguity.groupId}: ${ambiguity.reason} -> ${ambiguity.chosenRole} [${alternatives}]`
@@ -94,6 +95,7 @@ export default function HandwritingNormalizationTestCanvas() {
       const attachments = subexpression.attachments.map((attachment) => `${attachment.parentGroupId}->${attachment.childGroupId}:${attachment.role}`).join(' | ')
       return `${subexpression.rootGroupId}: ${subexpression.rootRole} [${members}]${attachments ? ` :: ${attachments}` : ''}`
     })
+    const enclosures = analysis.enclosures.map((enclosure) => `${enclosure.kind}: ${enclosure.openGroupId} ... ${enclosure.closeGroupId} members=[${enclosure.memberRootIds.join(', ')}] score=${enclosure.score.toFixed(2)}`)
 
     return [
       {
@@ -124,8 +126,12 @@ export default function HandwritingNormalizationTestCanvas() {
         title: 'Subexpressions',
         fields: subexpressions.length ? subexpressions.map((value, index) => ({ label: `S${index + 1}`, value })) : [{ label: 'Subexpressions', value: 'No owned local structures detected' }],
       },
+      {
+        title: 'Enclosures',
+        fields: enclosures.length ? enclosures.map((value, index) => ({ label: `E${index + 1}`, value })) : [{ label: 'Enclosures', value: 'No enclosure structures detected' }],
+      },
     ]
-  }, [analysis.ambiguities, analysis.edges, analysis.groups, analysis.roles, analysis.subexpressions, normalizationEnabled, strokes.length])
+  }, [analysis.ambiguities, analysis.edges, analysis.enclosures, analysis.groups, analysis.roles, analysis.subexpressions, normalizationEnabled, strokes.length])
 
   const updateActiveStroke = (clientX: number, clientY: number, target: SVGSVGElement) => {
     const current = activeStrokeRef.current

@@ -1,5 +1,5 @@
 import { clamp } from './geometry'
-import { getRoleDescriptor, getRoleLocalityBias, roleAllowsChildRole, roleAllowsOperandRole, roleCanOwnScripts, roleRequiresOperandReference, roleUsesParentOperand } from './roleTaxonomy'
+import { getRoleDescriptor, getRoleLocalityBias, roleAllowsChildRole, roleAllowsOperandRole, roleCanOwnScripts, roleRequiresOperandReference, roleUsesChildOperands, roleUsesParentOperand } from './roleTaxonomy'
 import type { EnclosureStructure, ExpressionContext, LayoutEdge, LocalSubexpression, StrokeGroup, StructuralAmbiguity, StructuralFlag, StructuralRole, StructuralRoleCandidate, StructuralRoleKind } from './types'
 
 const FRACTION_BAR_MAX_HEIGHT = 18
@@ -768,7 +768,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     const denominatorRoots = context.memberClaimScore >= 0.46 && context.denominatorRoots.length > 0 ? context.denominatorRoots : []
 
     for (const numerator of numeratorRoots) {
-      if (!roleAllowsChildRole('fractionBar', 'numerator')) continue
+      if (!roleUsesChildOperands('fractionBar') || !roleAllowsChildRole('fractionBar', 'numerator') || !roleAllowsOperandRole('fractionBar', 'numerator')) continue
       rootClaims.set(numerator.rootGroupId, { rootGroupId: numerator.rootGroupId, role: 'numerator' })
       const candidates: StructuralRoleCandidate[] = [
         makeCandidate('numerator', 0.82, bar.id, ['centered above confirmed fraction bar', 'inherits fraction-member ancestry']),
@@ -787,7 +787,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     }
 
     for (const denominator of denominatorRoots) {
-      if (!roleAllowsChildRole('fractionBar', 'denominator')) continue
+      if (!roleUsesChildOperands('fractionBar') || !roleAllowsChildRole('fractionBar', 'denominator') || !roleAllowsOperandRole('fractionBar', 'denominator')) continue
       rootClaims.set(denominator.rootGroupId, { rootGroupId: denominator.rootGroupId, role: 'denominator' })
       const candidates: StructuralRoleCandidate[] = [
         makeCandidate('denominator', 0.82, bar.id, ['centered below confirmed fraction bar', 'inherits fraction-member ancestry']),

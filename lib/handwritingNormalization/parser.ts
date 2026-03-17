@@ -41,12 +41,125 @@ export const buildExpressionParseForest = (
   const fractionNodeIdByExpressionContextId = new Map<string, string>()
   const enclosureNodeMetaById = new Map<string, { expressionContextId: string }>()
   const fractionNodeMetaById = new Map<string, { expressionContextId?: string | null, numeratorGroupId?: string | null, denominatorGroupId?: string | null }>()
-  const parseScopedAmbiguities = ambiguities.filter((ambiguity) => ambiguity.reason === 'fraction-wide-script-vs-baseline' || ambiguity.reason === 'enclosure-wide-script-vs-baseline')
+  const parseScopedAmbiguities = ambiguities.filter((ambiguity) => (
+    ambiguity.reason === 'fraction-wide-script-vs-baseline'
+    || ambiguity.reason === 'enclosure-wide-script-vs-baseline'
+    || ambiguity.reason === 'sequence-vs-script'
+    || ambiguity.reason === 'fraction-membership'
+  ))
   const parseScopedAmbiguityGroupIds = new Set(parseScopedAmbiguities.map((ambiguity) => ambiguity.groupId))
 
   const getFallbackContextIdForRole = (role: Pick<StructuralRole, 'associationContextId' | 'containerGroupIds'>) => {
     if (role.associationContextId) return role.associationContextId
     return getContainerContextId(contexts, role.containerGroupIds)
+  }
+
+  const getSharedFractionMemberContextId = (groupId: string, parentGroupId?: string | null) => {
+    if (!parentGroupId) return null
+    return contexts.find((context) => (
+      (context.kind === 'numerator' || context.kind === 'denominator')
+      && context.memberGroupIds.includes(groupId)
+      && context.memberGroupIds.includes(parentGroupId)
+    ))?.id || null
+  }
+
+  const getDefaultInlineContextId = (groupId: string, containerGroupIds: string[]) => {
+    const containerContextId = getContainerContextId(contexts, containerGroupIds)
+    if (containerContextId !== 'context:root') return containerContextId
+    return getMostLocalContextId([groupId], 'context:root')
+  }
+
+  const resolveCandidateRole = (ambiguity: StructuralAmbiguity, candidate: StructuralRoleCandidate) => {
+    const resolvedRole = roleMap.get(ambiguity.groupId)
+    if (!resolvedRole) return null
+
+    const chosenScriptCandidate = (candidate.role === 'superscript' || candidate.role === 'subscript')
+      && candidate.role === ambiguity.chosenRole
+      && resolvedRole.role === candidate.role
+
+    if (chosenScriptCandidate) {
+      return {
+        ...resolvedRole,
+        score: candidate.score,
+        evidence: candidate.evidence || resolvedRole.evidence,
+      }
+    }
+
+    if (candidate.role === 'numerator' || candidate.role === 'denominator') {
+      const memberContextId = contextMap.has(`context:${candidate.role}:${ambiguity.groupId}`)
+        ? `context:${candidate.role}:${ambiguity.groupId}`
+        : getDefaultInlineContextId(ambiguity.groupId, resolvedRole.containerGroupIds)
+      return {
+        ...resolvedRole,
+        role: candidate.role,
+        score: candidate.score,
+        parentGroupId: candidate.parentGroupId ?? null,
+        associationContextId: candidate.associationContextId || memberContextId,
+        containerGroupIds: candidate.containerGroupIds || resolvedRole.containerGroupIds,
+        normalizationAnchorGroupIds: candidate.normalizationAnchorGroupIds || uniqueIds([ambiguity.groupId, ...(candidate.parentGroupId ? [candidate.parentGroupId] : [])]),
+        evidence: candidate.evidence || resolvedRole.evidence,
+      }
+    }
+
+    if (candidate.role === 'baseline') {
+      const fractionParentContextId = ambiguity.reason === 'fraction-membership' && resolvedRole.parentGroupId
+        ? contextMap.get(`context:fraction:${resolvedRole.parentGroupId}`)?.parentContextId || null
+        : null
+      return {
+        ...resolvedRole,
+        role: 'baseline',
+        score: candidate.score,
+        parentGroupId: null,
+        associationContextId: candidate.associationContextId || fractionParentContextId || getDefaultInlineContextId(ambiguity.groupId, resolvedRole.containerGroupIds),
+        containerGroupIds: candidate.containerGroupIds || resolvedRole.containerGroupIds,
+        normalizationAnchorGroupIds: candidate.normalizationAnchorGroupIds || [ambiguity.groupId],
+        evidence: candidate.evidence || resolvedRole.evidence,
+      }
+    }
+
+    if (candidate.role === 'superscript' || candidate.role === 'subscript') {
+      const parentRole = candidate.parentGroupId ? roleMap.get(candidate.parentGroupId) || null : null
+      const candidateContainerGroupIds = candidate.containerGroupIds || resolvedRole.containerGroupIds
+      const parentOnlyContainers = (parentRole?.containerGroupIds || []).filter((groupId) => !candidateContainerGroupIds.includes(groupId))
+      const enclosureContextId = parentOnlyContainers.length
+        ? contexts.find((context) => context.kind === 'enclosure' && parentOnlyContainers.every((groupId) => context.anchorGroupIds.includes(groupId)))?.id || null
+        : null
+      const sharedFractionMemberContextId = getSharedFractionMemberContextId(ambiguity.groupId, candidate.parentGroupId)
+      const fractionContextId = parentRole?.parentGroupId && contextMap.has(`context:fraction:${parentRole.parentGroupId}`)
+        ? `context:fraction:${parentRole.parentGroupId}`
+        : null
+      const associationContextId = candidate.associationContextId
+        || enclosureContextId
+        || sharedFractionMemberContextId
+        || fractionContextId
+        || getDefaultInlineContextId(ambiguity.groupId, candidateContainerGroupIds)
+      const normalizationAnchorGroupIds = candidate.normalizationAnchorGroupIds || uniqueIds([
+        ...(candidate.parentGroupId ? [candidate.parentGroupId] : []),
+        ...(enclosureContextId ? (contextMap.get(enclosureContextId)?.anchorGroupIds || []) : []),
+      ])
+
+      return {
+        ...resolvedRole,
+        role: candidate.role,
+        score: candidate.score,
+        parentGroupId: candidate.parentGroupId ?? null,
+        associationContextId,
+        containerGroupIds: candidateContainerGroupIds,
+        normalizationAnchorGroupIds: normalizationAnchorGroupIds.length ? normalizationAnchorGroupIds : [ambiguity.groupId],
+        evidence: candidate.evidence || resolvedRole.evidence,
+      }
+    }
+
+    return {
+      ...resolvedRole,
+      role: candidate.role,
+      score: candidate.score,
+      parentGroupId: candidate.parentGroupId ?? null,
+      associationContextId: candidate.associationContextId || getDefaultInlineContextId(ambiguity.groupId, resolvedRole.containerGroupIds),
+      containerGroupIds: candidate.containerGroupIds || resolvedRole.containerGroupIds,
+      normalizationAnchorGroupIds: candidate.normalizationAnchorGroupIds || resolvedRole.normalizationAnchorGroupIds,
+      evidence: candidate.evidence || resolvedRole.evidence,
+    }
   }
 
   const getScriptNodeId = (scriptRole: StructuralRole, fallbackParentGroupId?: string | null, nodeId = `parse:script:${scriptRole.groupId}`) => {
@@ -99,21 +212,17 @@ export const buildExpressionParseForest = (
     rank: number,
   ): ExpressionParseAlternative | null => {
     const resolvedRole = roleMap.get(ambiguity.groupId)
-    if (!resolvedRole) return null
-    const candidateRole: StructuralRole = {
-      ...resolvedRole,
-      role: candidate.role,
-      score: candidate.score,
-      parentGroupId: candidate.parentGroupId ?? null,
-      associationContextId: candidate.associationContextId ?? null,
-      containerGroupIds: candidate.containerGroupIds || [],
-      normalizationAnchorGroupIds: candidate.normalizationAnchorGroupIds || [],
-      evidence: candidate.evidence || resolvedRole.evidence,
-    }
+    const candidateRole = resolveCandidateRole(ambiguity, candidate)
+    if (!resolvedRole || !candidateRole) return null
 
     const isChosenCandidate = candidate.role === ambiguity.chosenRole
-      && (candidate.parentGroupId ?? null) === (resolvedRole.parentGroupId ?? null)
-      && (candidate.associationContextId ?? resolvedRole.associationContextId ?? null) === (resolvedRole.associationContextId ?? null)
+      && (
+        candidate.role === 'superscript'
+        || candidate.role === 'subscript'
+        ? (candidateRole.parentGroupId ?? null) === (resolvedRole.parentGroupId ?? null)
+          && (candidateRole.associationContextId ?? null) === (resolvedRole.associationContextId ?? null)
+        : true
+      )
 
     const branchKey = `ambiguity:${ambiguity.reason}:${rank}:${candidate.role}:${candidate.parentGroupId || 'root'}:${candidate.associationContextId || 'context:root'}`
 

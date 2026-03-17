@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import { analyzeHandwrittenExpression, getHandwritingFixture, getRoleDescriptor, roleAllowsChildRole } from '../lib/handwritingNormalization'
+import { buildExpressionParseForest } from '../lib/handwritingNormalization/parser'
 import { inferStructuralRoles } from '../lib/handwritingNormalization/roles'
 import type { InkStroke, LayoutEdge, StrokeGroup } from '../lib/handwritingNormalization'
 
@@ -54,12 +55,19 @@ test.describe('handwriting normalization fixtures', () => {
     const fixture = getHandwritingFixture('fraction')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
     const barRole = analysis.roles.find((role) => role.role === 'fractionBar')
+    const numerator = analysis.roles.find((role) => role.role === 'numerator')
+    const numeratorAmbiguityParseNode = analysis.parseNodes.find((node) => node.kind === 'ambiguityExpression' && node.groupIds.includes(numerator?.groupId || '') && node.ambiguityReason === 'fraction-membership')
 
     expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
     expect(barRole).toBeTruthy()
     expect(barRole?.descriptor.family).toBe('fractionStructure')
     expect(analysis.roles.some((role) => role.role === 'numerator')).toBe(true)
     expect(analysis.roles.some((role) => role.role === 'denominator')).toBe(true)
+    expect(numeratorAmbiguityParseNode).toBeTruthy()
+    expect(numeratorAmbiguityParseNode?.alternatives?.map((alternative) => `${alternative.role}:${alternative.nodeKind}:${alternative.contextId || 'none'}`)).toEqual([
+      `numerator:group:context:numerator:${numerator?.groupId || 'none'}`,
+      'baseline:group:context:root',
+    ])
   })
 
   test('nested fixture preserves chained local ownership', async () => {
@@ -438,6 +446,25 @@ test.describe('handwriting normalization fixtures', () => {
     expect(analysis.roles.filter((role) => role.role === 'superscript')).toHaveLength(1)
     expect(analysis.roles.filter((role) => role.role === 'unsupportedSymbol')).toHaveLength(1)
     expect(analysis.flags.some((flag) => flag.kind === 'sameParentStackedScripts' && flag.scriptRole === 'superscript')).toBe(true)
+  })
+
+  test('sequence-vs-script ambiguity is materialized as branch-local parse alternatives', async () => {
+    const groups = [
+      makeGroup('base', { left: 120, top: 226, right: 166, bottom: 278, width: 46, height: 52, centerX: 143, centerY: 252 }),
+      makeGroup('candidate', { left: 201, top: 171, right: 241, bottom: 212, width: 40, height: 41, centerX: 221, centerY: 191.5 }),
+    ]
+    const edges = [
+      makeEdge('base', 'candidate', 'superscriptCandidate', 0.56, { dx: 78, dy: -60.5, sizeRatio: 0.79 }),
+      makeEdge('base', 'candidate', 'sequence', 0.47, { dx: 78, dy: -60.5 }),
+    ]
+    const analysis = inferStructuralRoles(groups, edges)
+    const { parseNodes } = buildExpressionParseForest(groups, analysis.roles, analysis.contexts, analysis.enclosures, analysis.ambiguities)
+    const ambiguityParseNode = parseNodes.find((node) => node.kind === 'ambiguityExpression' && node.groupIds.includes('candidate') && node.ambiguityReason === 'sequence-vs-script')
+
+    expect(analysis.ambiguities.some((ambiguity) => ambiguity.groupId === 'candidate' && ambiguity.reason === 'sequence-vs-script')).toBe(true)
+    expect(ambiguityParseNode).toBeTruthy()
+    expect(ambiguityParseNode?.alternatives?.some((alternative) => alternative.role === 'superscript' && alternative.nodeKind === 'scriptApplication')).toBe(true)
+    expect(ambiguityParseNode?.alternatives?.some((alternative) => alternative.role === 'baseline' && alternative.nodeKind === 'group' && alternative.contextId === 'context:root')).toBe(true)
   })
 
   test('stacked same-parent subscripts are reduced to one local script row', async () => {

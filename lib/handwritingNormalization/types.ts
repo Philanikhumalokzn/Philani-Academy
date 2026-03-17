@@ -129,6 +129,14 @@ export type StructuralAmbiguity = {
   candidates: StructuralRoleCandidate[]
 }
 
+export type StructuralFlag = {
+  kind: 'sameContextStackedBaselines'
+  severity: 'warning'
+  groupIds: string[]
+  message: string
+  contextKey: string
+}
+
 export type LocalSubexpressionAttachment = {
   parentGroupId: string
   childGroupId: string
@@ -170,6 +178,7 @@ export type HandwritingAnalysis = {
   edges: LayoutEdge[]
   roles: StructuralRole[]
   ambiguities: StructuralAmbiguity[]
+  flags: StructuralFlag[]
   subexpressions: LocalSubexpression[]
   enclosures: EnclosureStructure[]
   normalization: NormalizationResult

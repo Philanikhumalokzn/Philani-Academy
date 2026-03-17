@@ -51,6 +51,7 @@ The lab currently provides:
 - scored relation overlays
 - inferred role inspection
 - ambiguity inspection
+- structural warning inspection for unsupported same-context layouts
 - local subexpression ownership inspection
 - enclosure structure inspection
 - normalized ink preview
@@ -177,6 +178,13 @@ This pushes the engine closer to locality-first parsing:
 - enclosure boundaries similarly create a local region that should be resolved internally before external interpretation is allowed to dominate
 - when a structural barrier is encountered, ownership can be redirected to the local semantic root behind that barrier instead of treating the barrier glyph as the parent
 
+The engine now also treats baseline more carefully at the local-context level:
+
+- `baseline` is intended to mean membership in the primary horizontal row of a local expression context
+- two plain baseline-like groups stacked vertically in the same local context are not silently treated as a legal row
+- when that unsupported situation appears, the groups are preserved as separate non-overlapping symbol groups and surfaced as structural warnings instead of being deleted or force-merged
+- this keeps the raw ink intact while making the violation visible for later context-tree work
+
 #### Normalization
 
 The first pass normalizes by applying role-aware transforms to original strokes:
@@ -198,6 +206,7 @@ Known limitations:
 - ambiguity is reported, but final role assignment is still heuristic
 - fraction detection is now more explicit than before, but still only covers a narrow family of handwritten fraction layouts
 - local ownership now covers script nesting, enclosure boundaries, and first-pass mixed barrier redirection, but not full multi-operator local parsing yet
+- same-context stacked baseline warnings exist, but full context-tree row admissibility is not implemented yet
 - no radical handling yet
 - no explicit baseline-line estimation across full expressions yet
 - fixture coverage is still small even though it now includes chained superscripts, numerator-with-exponent cases, horizontal-line subscript disambiguation, parenthesized local structures, and mixed parenthesized layouts

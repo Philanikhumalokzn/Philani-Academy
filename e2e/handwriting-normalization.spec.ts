@@ -163,4 +163,14 @@ test.describe('handwriting normalization fixtures', () => {
     expect(numerator.peerRoles).toContain('denominator')
     expect(baseline.allowedChildRoles).toEqual(expect.arrayContaining(['superscript', 'subscript']))
   })
+
+  test('stacked plain baselines are preserved as separate groups and flagged', async () => {
+    const fixture = getHandwritingFixture('stackedBaselinesUnsupported')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(analysis.roles.filter((role) => role.role === 'baseline')).toHaveLength(2)
+    expect(analysis.flags.some((flag) => flag.kind === 'sameContextStackedBaselines')).toBe(true)
+    expect(analysis.groups.every((group) => group.strokeIds.length >= 1)).toBe(true)
+  })
 })

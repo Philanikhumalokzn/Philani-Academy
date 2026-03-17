@@ -1,6 +1,6 @@
 import { clamp } from './geometry'
 import { getRoleDescriptor, getRoleLocalityBias, roleAllowsChildRole, roleCanOwnScripts } from './roleTaxonomy'
-import type { EnclosureStructure, LayoutEdge, LocalSubexpression, StrokeGroup, StructuralAmbiguity, StructuralRole, StructuralRoleCandidate, StructuralRoleKind } from './types'
+import type { EnclosureStructure, LayoutEdge, LocalSubexpression, StrokeGroup, StructuralAmbiguity, StructuralFlag, StructuralRole, StructuralRoleCandidate, StructuralRoleKind } from './types'
 
 const FRACTION_BAR_MAX_HEIGHT = 18
 const FRACTION_BAR_MIN_WIDTH = 70
@@ -367,6 +367,54 @@ const detectEnclosures = (groups: StrokeGroup[], subexpressions: LocalSubexpress
   return resolved
 }
 
+const getRoleContextKey = (role: StructuralRole) => {
+  const containers = [...role.containerGroupIds].sort().join(',') || 'root'
+  return `parent:${role.parentGroupId || 'none'}|containers:${containers}`
+}
+
+const detectStructuralFlags = (groups: StrokeGroup[], roles: StructuralRole[]) => {
+  const groupMap = new Map(groups.map((group) => [group.id, group]))
+  const baselineRoles = roles.filter((role) => role.role === 'baseline')
+  const byContext = new Map<string, StructuralRole[]>()
+
+  for (const role of baselineRoles) {
+    const contextKey = getRoleContextKey(role)
+    const bucket = byContext.get(contextKey) || []
+    bucket.push(role)
+    byContext.set(contextKey, bucket)
+  }
+
+  const flags: StructuralFlag[] = []
+  for (const [contextKey, bucket] of byContext.entries()) {
+    const ordered = bucket.sort((left, right) => (groupMap.get(left.groupId)?.bounds.top || 0) - (groupMap.get(right.groupId)?.bounds.top || 0))
+    for (let index = 0; index < ordered.length - 1; index += 1) {
+      const upperRole = ordered[index]
+      const lowerRole = ordered[index + 1]
+      const upper = groupMap.get(upperRole.groupId)
+      const lower = groupMap.get(lowerRole.groupId)
+      if (!upper || !lower) continue
+
+      const overlapWidth = Math.max(0, Math.min(upper.bounds.right, lower.bounds.right) - Math.max(upper.bounds.left, lower.bounds.left))
+      const minWidth = Math.max(1, Math.min(upper.bounds.width, lower.bounds.width))
+      const horizontalAlignment = Math.abs(upper.bounds.centerX - lower.bounds.centerX) <= Math.max(26, (upper.bounds.width + lower.bounds.width) * 0.22)
+      const verticallyStacked = lower.bounds.top > upper.bounds.bottom + 10 && lower.bounds.top - upper.bounds.bottom <= Math.max(140, (upper.bounds.height + lower.bounds.height) * 2.4)
+      const sameColumn = overlapWidth / minWidth >= 0.18 || horizontalAlignment
+
+      if (!verticallyStacked || !sameColumn) continue
+
+      flags.push({
+        kind: 'sameContextStackedBaselines',
+        severity: 'warning',
+        groupIds: [upperRole.groupId, lowerRole.groupId],
+        contextKey,
+        message: 'Two plain baselines are vertically stacked in the same local context. They were preserved as separate non-overlapping groups and flagged as an unsupported same-row configuration.',
+      })
+    }
+  }
+
+  return flags
+}
+
 export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[]) => {
   const roles = new Map<string, StructuralRole>()
   const ambiguities: StructuralAmbiguity[] = []
@@ -577,10 +625,14 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     role.depth = roleDepth(roles, role.groupId)
   }
 
-  return {
-    roles: groups
+  const resolvedRoles = groups
     .map((group) => roles.get(group.id) || makeRole(group.id, 'baseline', 0.5, 0, null, ['fallback default'], containerIdsByGroupId.get(group.id) || []))
-    .sort((left, right) => left.depth - right.depth),
+    .sort((left, right) => left.depth - right.depth)
+  const flags = detectStructuralFlags(groups, resolvedRoles)
+
+  return {
+    roles: resolvedRoles,
+    flags,
     subexpressions,
     enclosures,
     ambiguities,

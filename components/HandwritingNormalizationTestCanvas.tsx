@@ -90,6 +90,7 @@ export default function HandwritingNormalizationTestCanvas() {
       const alternatives = ambiguity.candidates.map((candidate) => `${candidate.role}:${candidate.score.toFixed(2)}`).join(' | ')
       return `${ambiguity.groupId}: ${ambiguity.reason} -> ${ambiguity.chosenRole} [${alternatives}]`
     })
+    const flags = analysis.flags.map((flag) => `${flag.kind}: ${flag.groupIds.join(', ')} :: ${flag.message}`)
     const subexpressions = analysis.subexpressions.map((subexpression) => {
       const members = subexpression.memberGroupIds.join(', ')
       const attachments = subexpression.attachments.map((attachment) => `${attachment.parentGroupId}->${attachment.childGroupId}:${attachment.role}`).join(' | ')
@@ -123,6 +124,10 @@ export default function HandwritingNormalizationTestCanvas() {
         fields: ambiguities.length ? ambiguities.map((value, index) => ({ label: `A${index + 1}`, value })) : [{ label: 'Ambiguities', value: 'No close competing interpretations detected' }],
       },
       {
+        title: 'Flags',
+        fields: flags.length ? flags.map((value, index) => ({ label: `F${index + 1}`, value })) : [{ label: 'Flags', value: 'No structural warnings detected' }],
+      },
+      {
         title: 'Subexpressions',
         fields: subexpressions.length ? subexpressions.map((value, index) => ({ label: `S${index + 1}`, value })) : [{ label: 'Subexpressions', value: 'No owned local structures detected' }],
       },
@@ -131,7 +136,7 @@ export default function HandwritingNormalizationTestCanvas() {
         fields: enclosures.length ? enclosures.map((value, index) => ({ label: `E${index + 1}`, value })) : [{ label: 'Enclosures', value: 'No enclosure structures detected' }],
       },
     ]
-  }, [analysis.ambiguities, analysis.edges, analysis.enclosures, analysis.groups, analysis.roles, analysis.subexpressions, normalizationEnabled, strokes.length])
+  }, [analysis.ambiguities, analysis.edges, analysis.enclosures, analysis.flags, analysis.groups, analysis.roles, analysis.subexpressions, normalizationEnabled, strokes.length])
 
   const updateActiveStroke = (clientX: number, clientY: number, target: SVGSVGElement) => {
     const current = activeStrokeRef.current

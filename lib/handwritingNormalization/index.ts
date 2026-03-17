@@ -13,7 +13,7 @@ export { getHandwritingFixture, HANDWRITING_FIXTURE_ORDER, listHandwritingFixtur
 export const analyzeHandwrittenExpression = (strokes: InkStroke[]): HandwritingAnalysis => {
   const groups = groupInkStrokes(strokes)
   const edges = buildLayoutGraph(groups)
-  const { roles, ambiguities, subexpressions, enclosures } = inferStructuralRoles(groups, edges)
+  const { roles, ambiguities, flags, subexpressions, enclosures } = inferStructuralRoles(groups, edges)
   const normalization = normalizeInkLayout(groups, roles)
-  return { groups, edges, roles, ambiguities, subexpressions, enclosures, normalization }
+  return { groups, edges, roles, ambiguities, flags, subexpressions, enclosures, normalization }
 }

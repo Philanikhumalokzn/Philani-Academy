@@ -135,7 +135,7 @@ export type StructuralRoleCandidate = {
 
 export type StructuralAmbiguity = {
   groupId: string
-  reason: 'competing-relations' | 'sequence-vs-script' | 'fraction-membership'
+  reason: 'competing-relations' | 'sequence-vs-script' | 'fraction-membership' | 'fraction-wide-script-vs-baseline' | 'enclosure-wide-script-vs-baseline'
   chosenRole: StructuralRoleKind
   candidates: StructuralRoleCandidate[]
 }
@@ -156,6 +156,13 @@ export type StructuralFlag =
     contextKey: string
     parentGroupId: string
     scriptRole: 'superscript' | 'subscript'
+  }
+  | {
+    kind: 'missingOperandReference'
+    severity: 'warning'
+    groupIds: string[]
+    message: string
+    operatorRole: 'superscript' | 'subscript'
   }
 
 export type LocalSubexpressionAttachment = {
@@ -190,7 +197,18 @@ export type ExpressionContext = {
   memberGroupIds: string[]
 }
 
-export type ExpressionParseNodeKind = 'group' | 'scriptApplication' | 'enclosureExpression' | 'fractionExpression' | 'sequenceExpression'
+export type ExpressionParseNodeKind = 'group' | 'scriptApplication' | 'enclosureExpression' | 'fractionExpression' | 'sequenceExpression' | 'ambiguityExpression'
+
+export type ExpressionParseAlternative = {
+  nodeId: string
+  role: StructuralRoleKind
+  rank: number
+  score: number
+  parentGroupId?: string | null
+  contextId?: string | null
+  relation: 'chosen' | 'alternative'
+  label: string
+}
 
 export type ExpressionParseNode = {
   id: string
@@ -200,6 +218,9 @@ export type ExpressionParseNode = {
   childNodeIds: string[]
   operatorGroupId?: string | null
   role?: StructuralRoleKind
+  ambiguityReason?: StructuralAmbiguity['reason']
+  preferredChildNodeId?: string | null
+  alternatives?: ExpressionParseAlternative[]
   label: string
 }
 

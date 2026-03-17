@@ -44,7 +44,7 @@ An admin-only footer action opens the normalization lab from the dashboard.
 The lab currently provides:
 
 - freehand stroke capture
-- sample loading for superscript, nested exponent chains, fractions, fraction-with-exponent cases, bare-fraction outer-exponent cases from both numerator-side and denominator-side temptations, horizontal-line subscript cases, parenthesized local structures, and mixed parenthesized operator-bound layouts including a parenthesized fraction with an outer exponent
+- sample loading for superscript, nested exponent chains, fractions, fraction-with-exponent cases, bare-fraction outer-script cases from both numerator-side and denominator-side temptations for superscripts and subscripts, horizontal-line subscript cases, parenthesized local structures, and mixed parenthesized operator-bound layouts including a parenthesized fraction with an outer exponent
 - deterministic ambiguous adjacency fixture for `x2` vs `x²` style cases
 - raw stroke view
 - grouped stroke boxes
@@ -138,6 +138,7 @@ Examples:
 
 - `superscript` and `subscript` are both script-family roles, but `superscript` prefers above-right while `subscript` prefers below-right
 - `superscript` and `subscript` are also operator-like roles: they require a parent-style operand reference and only attach to allowed base-like roles
+- if a unary script candidate survives without a parent operand reference, it is now demoted to `unsupported symbol` and surfaced as a structural warning instead of remaining a free-standing script role
 - `numerator` and `denominator` are both fraction-member roles, but one must sit above and the other below a fraction bar
 - `fractionBar` is in the fraction-structure family, behaves like a binary layout operator, requires a horizontal line-like shape, and expects numerator and denominator operands rather than a parent-style operand
 - `enclosureOpen` and `enclosureClose` are boundary roles in the enclosure-structure family, act as structural barriers, and do not host scripts or fraction members directly
@@ -182,6 +183,9 @@ Mixed operator-bound layouts are now handled one step further:
 - an outer script next to an enclosure boundary can be redirected to the enclosed semantic root instead of attaching to the boundary itself
 - an enclosed local expression can serve as a fraction numerator while preserving its own internal script ownership
 - a script that sits clearly beyond the right span of a fraction can be promoted from a numerator-local or denominator-local attachment into a broader fraction-wide base attachment
+- when that broader fraction-wide promotion is close to a detached-baseline reading, the engine now records that uncertainty explicitly instead of hiding it completely inside the chosen role
+- the same explicit uncertainty recording now applies to enclosure-wide outer scripts, so `( ... )^x` style promotions can retain a detached-baseline alternative instead of only a single committed attachment
+- the parse forest now carries that uncertainty with ranked ambiguity-node alternatives, including the preferred branch, alternative branch, and their relative scores
 - this allows locality to survive across barriers instead of losing the inner structure when a larger construct is added
 
 This pushes the engine closer to locality-first parsing:
@@ -222,6 +226,8 @@ The engine now also emits a lightweight parse forest on top of those contexts in
 
 - every stroke group can appear as a `group` parse node
 - trusted local operator families can create higher-order parse nodes such as `scriptApplication`, `enclosureExpression`, and `fractionExpression`
+- fraction-wide script promotions that are still close to a detached-baseline reading can now emit an `ambiguityExpression` parse node so the parse layer retains the competing interpretation explicitly
+- enclosure-wide outer-script promotions can also emit an `ambiguityExpression` parse node when the script could plausibly remain detached baseline ink
 - each expression context now gets an ordered `sequenceExpression` root that collects the top-level parse nodes in left-to-right order
 - each parse root explicitly points at that rooted sequence node, which makes the default algebraic flow of a context visible in the lab and available to later parser work
 

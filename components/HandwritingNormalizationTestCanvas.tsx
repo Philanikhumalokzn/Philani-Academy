@@ -99,7 +99,12 @@ export default function HandwritingNormalizationTestCanvas() {
     })
     const enclosures = analysis.enclosures.map((enclosure) => `${enclosure.kind}: ${enclosure.openGroupId} ... ${enclosure.closeGroupId} members=[${enclosure.memberRootIds.join(', ')}] score=${enclosure.score.toFixed(2)}`)
     const contexts = analysis.contexts.map((context) => `${context.id}: ${context.kind}${context.parentContextId ? ` parent=${context.parentContextId}` : ''}${context.semanticRootGroupId ? ` root=${context.semanticRootGroupId}` : ''} anchors=[${context.anchorGroupIds.join(', ')}] members=[${context.memberGroupIds.join(', ')}]`)
-    const parseNodes = analysis.parseNodes.map((node) => `${node.id}: ${node.kind} ctx=${node.contextId}${node.role ? ` role=${node.role}` : ''}${node.operatorGroupId ? ` op=${node.operatorGroupId}` : ''} groups=[${node.groupIds.join(', ')}] children=[${node.childNodeIds.join(', ')}]`)
+    const parseNodes = analysis.parseNodes.map((node) => {
+      const alternatives = node.alternatives?.length
+        ? ` alternatives=[${node.alternatives.map((alternative) => `#${alternative.rank}:${alternative.role}@${alternative.nodeId} score=${alternative.score.toFixed(2)} ${alternative.relation}`).join(' | ')}]`
+        : ''
+      return `${node.id}: ${node.kind} ctx=${node.contextId}${node.role ? ` role=${node.role}` : ''}${node.operatorGroupId ? ` op=${node.operatorGroupId}` : ''}${node.ambiguityReason ? ` ambiguity=${node.ambiguityReason}` : ''}${node.preferredChildNodeId ? ` preferred=${node.preferredChildNodeId}` : ''} groups=[${node.groupIds.join(', ')}] children=[${node.childNodeIds.join(', ')}]${alternatives}`
+    })
     const parseRoots = analysis.parseRoots.map((root) => `${root.contextId}: root=${root.rootNodeId || 'none'} nodes=[${root.nodeIds.join(', ')}]`)
 
     return [

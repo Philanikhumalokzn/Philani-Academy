@@ -1,4 +1,4 @@
-import type { ContextParseRoot, EnclosureStructure, ExpressionContext, ExpressionParseNode, StrokeGroup, StructuralRole } from './types'
+import type { ContextParseRoot, EnclosureStructure, ExpressionContext, ExpressionParseAlternative, ExpressionParseNode, StrokeGroup, StructuralAmbiguity, StructuralRole, StructuralRoleKind } from './types'
 
 const uniqueIds = (values: string[]) => Array.from(new Set(values.filter(Boolean)))
 
@@ -12,6 +12,7 @@ export const buildExpressionParseForest = (
   roles: StructuralRole[],
   contexts: ExpressionContext[],
   enclosures: EnclosureStructure[],
+  ambiguities: StructuralAmbiguity[],
 ) => {
   const nodes: ExpressionParseNode[] = []
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
@@ -25,6 +26,84 @@ export const buildExpressionParseForest = (
   const fractionNodeIdByExpressionContextId = new Map<string, string>()
   const enclosureNodeMetaById = new Map<string, { expressionContextId: string }>()
   const fractionNodeMetaById = new Map<string, { expressionContextId?: string | null, numeratorGroupId?: string | null, denominatorGroupId?: string | null }>()
+
+  const getFallbackContextIdForRole = (role: Pick<StructuralRole, 'associationContextId' | 'containerGroupIds'>) => {
+    if (role.associationContextId) return role.associationContextId
+    return getContainerContextId(contexts, role.containerGroupIds)
+  }
+
+  const getScriptNodeId = (scriptRole: StructuralRole, fallbackParentGroupId?: string | null) => {
+    const nodeId = `parse:script:${scriptRole.groupId}`
+    if (nodeMap.has(nodeId)) return nodeId
+
+    const operandNodeId = buildScriptOperandNodeId(scriptRole, fallbackParentGroupId)
+    if (!operandNodeId) return null
+
+    const parentGroupId = fallbackParentGroupId || scriptRole.parentGroupId
+    const fallbackContextId = scriptRole.containerGroupIds.length
+      ? getContainerContextId(contexts, scriptRole.containerGroupIds)
+      : getFallbackContextIdForRole(scriptRole)
+    const contextId = getMostLocalContextId(uniqueIds([scriptRole.groupId, ...(parentGroupId ? [parentGroupId] : [])]), fallbackContextId)
+
+    addNode({
+      id: nodeId,
+      kind: 'scriptApplication',
+      contextId,
+      groupIds: uniqueIds([scriptRole.groupId, ...(parentGroupId ? [parentGroupId] : [])]),
+      childNodeIds: [operandNodeId],
+      operatorGroupId: scriptRole.groupId,
+      role: scriptRole.role,
+      label: `${scriptRole.role}:${scriptRole.groupId}`,
+    })
+
+    return nodeId
+  }
+
+  const buildCandidateParseAlternative = (
+    ambiguity: StructuralAmbiguity,
+    chosenRole: StructuralRole,
+    candidate: StructuralAmbiguity['candidates'][number],
+    rank: number,
+  ): ExpressionParseAlternative | null => {
+    const candidateRole: StructuralRole = {
+      ...chosenRole,
+      role: candidate.role,
+      score: candidate.score,
+      parentGroupId: candidate.parentGroupId ?? chosenRole.parentGroupId,
+      evidence: candidate.evidence || chosenRole.evidence,
+    }
+
+    let nodeId: string | null = null
+    if (candidate.role === 'superscript' || candidate.role === 'subscript') {
+      nodeId = getScriptNodeId(candidateRole, candidate.parentGroupId)
+    } else {
+      nodeId = getOrCreateGroupNode(ambiguity.groupId)
+    }
+    if (!nodeId) return null
+
+    return {
+      nodeId,
+      role: candidate.role,
+      rank,
+      score: candidate.score,
+      parentGroupId: candidate.parentGroupId ?? null,
+      contextId: candidateRole.associationContextId || null,
+      relation: candidate.role === ambiguity.chosenRole ? 'chosen' : 'alternative',
+      label: `${candidate.role}:${ambiguity.groupId}`,
+    }
+  }
+
+  const buildScriptOperandNodeId = (scriptRole: StructuralRole, fallbackParentGroupId?: string | null) => {
+    if (scriptRole.associationContextId && enclosureNodeIdByContextId.has(scriptRole.associationContextId) && scriptRole.containerGroupIds.length === 0) {
+      return enclosureNodeIdByContextId.get(scriptRole.associationContextId) || null
+    }
+    if (scriptRole.associationContextId && fractionNodeIdByExpressionContextId.has(scriptRole.associationContextId)) {
+      return fractionNodeIdByExpressionContextId.get(scriptRole.associationContextId) || null
+    }
+    const parentGroupId = fallbackParentGroupId || scriptRole.parentGroupId
+    if (!parentGroupId) return null
+    return getOrCreateGroupNode(parentGroupId)
+  }
 
   const getMostLocalContextId = (groupIds: string[], fallbackContextId: string) => {
     const candidateIds = uniqueIds(groupIds)
@@ -127,30 +206,35 @@ export const buildExpressionParseForest = (
 
   const scriptRoles = roles.filter((role) => role.role === 'superscript' || role.role === 'subscript')
   for (const scriptRole of scriptRoles) {
-    let operandNodeId: string | null = null
-    if (scriptRole.associationContextId && enclosureNodeIdByContextId.has(scriptRole.associationContextId) && scriptRole.containerGroupIds.length === 0) {
-      operandNodeId = enclosureNodeIdByContextId.get(scriptRole.associationContextId) || null
-    }
-    if (!operandNodeId && scriptRole.associationContextId && fractionNodeIdByExpressionContextId.has(scriptRole.associationContextId)) {
-      operandNodeId = fractionNodeIdByExpressionContextId.get(scriptRole.associationContextId) || null
-    }
-    if (!operandNodeId && scriptRole.parentGroupId) {
-      operandNodeId = getOrCreateGroupNode(scriptRole.parentGroupId)
-    }
-    if (!operandNodeId) continue
+    getScriptNodeId(scriptRole)
+  }
 
-    const fallbackContextId = scriptRole.containerGroupIds.length ? getContainerContextId(contexts, scriptRole.containerGroupIds) : 'context:root'
-    const contextId = getMostLocalContextId(uniqueIds([scriptRole.groupId, ...(scriptRole.parentGroupId ? [scriptRole.parentGroupId] : [])]), fallbackContextId)
+  const ambiguityNodes = ambiguities.filter((ambiguity) => ambiguity.reason === 'fraction-wide-script-vs-baseline' || ambiguity.reason === 'enclosure-wide-script-vs-baseline')
+  for (const ambiguity of ambiguityNodes) {
+    const chosenRole = roleMap.get(ambiguity.groupId)
+    if (!chosenRole) continue
+    const candidates = [...ambiguity.candidates]
+      .sort((left, right) => right.score - left.score || left.role.localeCompare(right.role))
+    const alternatives = candidates
+      .map((candidate, index) => buildCandidateParseAlternative(ambiguity, chosenRole, candidate, index + 1))
+      .filter((candidate): candidate is ExpressionParseAlternative => Boolean(candidate))
+    const chosenAlternative = alternatives.find((candidate) => candidate.relation === 'chosen') || null
+    const preferredChildNodeId = chosenAlternative?.nodeId || null
+    const contextId = chosenRole.associationContextId || getMostLocalContextId([ambiguity.groupId], 'context:root')
+
+    if (!alternatives.length) continue
 
     addNode({
-      id: `parse:script:${scriptRole.groupId}`,
-      kind: 'scriptApplication',
+      id: `parse:ambiguity:${ambiguity.groupId}`,
+      kind: 'ambiguityExpression',
       contextId,
-      groupIds: uniqueIds([scriptRole.groupId, ...(scriptRole.parentGroupId ? [scriptRole.parentGroupId] : [])]),
-      childNodeIds: [operandNodeId],
-      operatorGroupId: scriptRole.groupId,
-      role: scriptRole.role,
-      label: `${scriptRole.role}:${scriptRole.groupId}`,
+      groupIds: uniqueIds([ambiguity.groupId]),
+      childNodeIds: uniqueIds(alternatives.map((candidate) => candidate.nodeId)),
+      role: chosenRole.role,
+      ambiguityReason: ambiguity.reason,
+      preferredChildNodeId,
+      alternatives,
+      label: `ambiguity:${ambiguity.groupId}`,
     })
   }
 

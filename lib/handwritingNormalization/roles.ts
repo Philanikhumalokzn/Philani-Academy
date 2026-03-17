@@ -117,6 +117,80 @@ const getScriptLocalityScoreByKind = (role: 'superscript' | 'subscript', parent:
   return horizontalCloseness * 0.58 + verticalCloseness * 0.42
 }
 
+const demoteMissingOperandScripts = (roles: StructuralRole[]) => {
+  const nextRoleMap = new Map(roles.map((role) => [role.groupId, role]))
+  const flags: StructuralFlag[] = []
+
+  for (const role of roles) {
+    if ((role.role !== 'superscript' && role.role !== 'subscript') || role.parentGroupId) continue
+    nextRoleMap.set(role.groupId, makeUnsupportedRole(role, [
+      'missing required operand reference for unary operator',
+      `required-parent=${String(roleRequiresOperandReference(role.role))}`,
+    ]))
+    flags.push({
+      kind: 'missingOperandReference',
+      severity: 'warning',
+      groupIds: [role.groupId],
+      operatorRole: role.role,
+      message: `A ${role.role} candidate was preserved as ink but demoted because unary operators must reference a parent operand.`,
+    })
+  }
+
+  return {
+    roles: Array.from(nextRoleMap.values()),
+    flags,
+  }
+}
+
+const appendFractionWideScriptAmbiguities = (roles: StructuralRole[], groups: StrokeGroup[], ambiguities: StructuralAmbiguity[]) => {
+  const groupMap = new Map(groups.map((group) => [group.id, group]))
+  const roleMap = new Map(roles.map((role) => [role.groupId, role]))
+  const nextAmbiguities = [...ambiguities]
+
+  for (const role of roles) {
+    if ((role.role !== 'superscript' && role.role !== 'subscript') || !role.parentGroupId) continue
+    if (!role.associationContextId?.startsWith('context:fraction:')) continue
+    const parentRole = roleMap.get(role.parentGroupId) || null
+    if (!isFractionWideOutsideMember(role.groupId, parentRole, groupMap)) continue
+    if (nextAmbiguities.some((ambiguity) => ambiguity.groupId === role.groupId && ambiguity.reason === 'fraction-wide-script-vs-baseline')) continue
+
+    nextAmbiguities.push({
+      groupId: role.groupId,
+      reason: 'fraction-wide-script-vs-baseline',
+      chosenRole: role.role,
+      candidates: [
+        makeCandidate(role.role, role.score, role.parentGroupId, ['resolved as fraction-wide script promotion']),
+        makeCandidate('baseline', Math.max(0.28, role.score - 0.2), null, ['detached baseline alternative']),
+      ],
+    })
+  }
+
+  return nextAmbiguities
+}
+
+const appendEnclosureWideScriptAmbiguities = (roles: StructuralRole[], ambiguities: StructuralAmbiguity[]) => {
+  const nextAmbiguities = [...ambiguities]
+
+  for (const role of roles) {
+    if ((role.role !== 'superscript' && role.role !== 'subscript') || !role.parentGroupId) continue
+    if (!role.associationContextId?.startsWith('context:enclosure:')) continue
+    if (role.containerGroupIds.length > 0) continue
+    if (nextAmbiguities.some((ambiguity) => ambiguity.groupId === role.groupId && ambiguity.reason === 'enclosure-wide-script-vs-baseline')) continue
+
+    nextAmbiguities.push({
+      groupId: role.groupId,
+      reason: 'enclosure-wide-script-vs-baseline',
+      chosenRole: role.role,
+      candidates: [
+        makeCandidate(role.role, role.score, role.parentGroupId, ['resolved as enclosure-wide script promotion']),
+        makeCandidate('baseline', Math.max(0.28, role.score - 0.2), null, ['detached baseline alternative']),
+      ],
+    })
+  }
+
+  return nextAmbiguities
+}
+
 const isFractionWideOutsideMember = (groupId: string, parentRole: StructuralRole | null, groupMap: Map<string, StrokeGroup>) => {
   if (!parentRole?.parentGroupId) return false
   if (parentRole.role !== 'numerator' && parentRole.role !== 'denominator') return false
@@ -954,23 +1028,28 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
       candidates.push(makeCandidate('baseline', Math.max(0.24, bestSequence.score * 0.88), null, ['inline sequence fallback']))
     }
 
-    const fractionWideFallbackCandidate = Array.from(roles.values())
+    const fractionWideFallbackCandidates = Array.from(roles.values())
       .filter((role) => role.role === 'numerator' || role.role === 'denominator')
-      .map((role) => {
+      .flatMap((role) => {
         const parentGroup = groupMap.get(role.groupId)
-        if (!parentGroup || !isFractionWideOutsideMember(group.id, role, groupMap)) return null
-        const localityScore = getScriptLocalityScoreByKind('superscript', parentGroup, group)
-        if (localityScore < 0.48) return null
-        return makeCandidate('superscript', 0.34 + localityScore * 0.24, role.groupId, [
-          'fraction-wide geometry fallback',
-          `locality=${localityScore.toFixed(2)}`,
-        ])
+        if (!parentGroup || !isFractionWideOutsideMember(group.id, role, groupMap)) return []
+        return (['superscript', 'subscript'] as const)
+          .map((scriptRole) => {
+            const localityScore = getScriptLocalityScoreByKind(scriptRole, parentGroup, group)
+            if (localityScore < 0.42) return null
+            return makeCandidate(scriptRole, 0.34 + localityScore * 0.24, role.groupId, [
+              'fraction-wide geometry fallback',
+              `locality=${localityScore.toFixed(2)}`,
+              `fallback-role=${scriptRole}`,
+            ])
+          })
+          .filter(Boolean) as StructuralRoleCandidate[]
       })
       .filter(Boolean)
       .sort((left, right) => (right?.score || 0) - (left?.score || 0))[0] || null
 
-    if (fractionWideFallbackCandidate) {
-      candidates.push(fractionWideFallbackCandidate)
+    if (fractionWideFallbackCandidates) {
+      candidates.push(fractionWideFallbackCandidates)
     }
 
     const best = chooseBestCandidate(candidates)
@@ -1038,6 +1117,17 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
         `ancestry=${getRoleDescriptor(selectedScriptCandidate.candidate.role).ancestry.join('>')}`,
       ], containerIdsByGroupId.get(group.id) || [])
       roles.set(group.id, nextRole)
+      if (selectedScriptCandidate.fractionWidePromotion || isFractionWideOutsideMember(group.id, selectedScriptCandidate.parentRole || null, groupMap)) {
+        const baselineAlternative = sortedCandidates.find((candidate) => candidate.role === 'baseline') || null
+        if (baselineAlternative) {
+          ambiguities.push({
+            groupId: group.id,
+            reason: 'fraction-wide-script-vs-baseline',
+            chosenRole: selectedScriptCandidate.candidate.role,
+            candidates: [selectedScriptCandidate.candidate, baselineAlternative],
+          })
+        }
+      }
       if ((bestSequence && bestSequence.score >= 0.16 && Math.abs(selectedScriptCandidate.candidate.score - bestSequence.score) <= 0.3) || (runnerUp && Math.abs(selectedScriptCandidate.candidate.score - runnerUp.score) <= 0.14)) {
         ambiguities.push({
           groupId: group.id,
@@ -1086,7 +1176,8 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
       return makeRole(group.id, 'baseline', 0.5, 0, null, ['fallback default'], containerIdsByGroupId.get(group.id) || [])
     })
     .sort((left, right) => left.depth - right.depth)
-  const { roles: admissibleRoles, flags } = resolveStructuralAdmissibility(groups, resolvedRoles, edges)
+  const { roles: operandSafeRoles, flags: operandFlags } = demoteMissingOperandScripts(resolvedRoles)
+  const { roles: admissibleRoles, flags } = resolveStructuralAdmissibility(groups, operandSafeRoles, edges)
   const contexts = buildExpressionContexts(groups, admissibleRoles, subexpressions, enclosures)
   const annotatedRoles = annotateRolesWithContexts(admissibleRoles, contexts, groups)
   const annotatedRoleMap = new Map(annotatedRoles.map((role) => [role.groupId, role]))
@@ -1094,13 +1185,15 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     ...role,
     depth: role.parentGroupId ? roleDepth(annotatedRoleMap, role.groupId) : 0,
   }))
+  const fractionAwareAmbiguities = appendFractionWideScriptAmbiguities(contextualizedRoles, groups, ambiguities)
+  const contextualizedAmbiguities = appendEnclosureWideScriptAmbiguities(contextualizedRoles, fractionAwareAmbiguities)
 
   return {
     roles: contextualizedRoles,
-    flags,
+    flags: [...operandFlags, ...flags],
     subexpressions,
     enclosures,
     contexts,
-    ambiguities,
+    ambiguities: contextualizedAmbiguities,
   }
 }

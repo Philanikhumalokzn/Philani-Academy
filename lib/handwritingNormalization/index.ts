@@ -15,7 +15,7 @@ export const analyzeHandwrittenExpression = (strokes: InkStroke[]): HandwritingA
   const groups = groupInkStrokes(strokes)
   const edges = buildLayoutGraph(groups)
   const { roles, ambiguities, flags, subexpressions, enclosures, contexts } = inferStructuralRoles(groups, edges)
-  const { parseNodes, parseRoots } = buildExpressionParseForest(groups, roles, contexts, enclosures)
+  const { parseNodes, parseRoots } = buildExpressionParseForest(groups, roles, contexts, enclosures, ambiguities)
   const normalization = normalizeInkLayout(groups, roles)
   return { groups, edges, roles, ambiguities, flags, subexpressions, enclosures, contexts, parseNodes, parseRoots, normalization }
 }

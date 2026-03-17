@@ -153,6 +153,15 @@ test.describe('handwriting normalization fixtures', () => {
     expect(outerSuperscript?.normalizationAnchorGroupIds).toEqual(expect.arrayContaining([fractionBar?.groupId || '', numerator?.groupId || '', denominator?.groupId || '']))
     expect(analysis.contexts.find((context) => context.id === `context:numerator:${numerator?.groupId}`)?.memberGroupIds).not.toContain(outerSuperscript?.groupId || '')
     expect(outerScriptParseNode?.childNodeIds).toEqual([fractionParseNode?.id || ''])
+    expect(analysis.ambiguities.some((ambiguity) => ambiguity.groupId === outerSuperscript?.groupId && ambiguity.reason === 'fraction-wide-script-vs-baseline')).toBe(true)
+    const ambiguityParseNode = analysis.parseNodes.find((node) => node.kind === 'ambiguityExpression' && node.groupIds.includes(outerSuperscript?.groupId || ''))
+    expect(ambiguityParseNode).toBeTruthy()
+    expect(ambiguityParseNode?.ambiguityReason).toBe('fraction-wide-script-vs-baseline')
+    expect(ambiguityParseNode?.preferredChildNodeId).toBe(outerScriptParseNode?.id)
+    expect(ambiguityParseNode?.alternatives?.map((alternative) => `${alternative.rank}:${alternative.role}:${alternative.relation}`)).toEqual([
+      '1:superscript:chosen',
+      '2:baseline:alternative',
+    ])
   })
 
   test('denominator-side outer superscript is also promoted to the whole fraction', async () => {
@@ -175,6 +184,52 @@ test.describe('handwriting normalization fixtures', () => {
     expect(outerSuperscript?.associationContextId).toBe(fractionContext?.id)
     expect(outerSuperscript?.normalizationAnchorGroupIds).toEqual(expect.arrayContaining([fractionBar?.groupId || '', numerator?.groupId || '', denominator?.groupId || '']))
     expect(analysis.contexts.find((context) => context.id === `context:denominator:${denominator?.groupId}`)?.memberGroupIds).not.toContain(outerSuperscript?.groupId || '')
+    expect(outerScriptParseNode?.childNodeIds).toEqual([fractionParseNode?.id || ''])
+  })
+
+  test('bare fraction can act as a broader base for an outer subscript', async () => {
+    const fixture = getHandwritingFixture('fractionOuterSubscript')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const fractionBar = analysis.roles.find((role) => role.role === 'fractionBar')
+    const numerator = analysis.roles.find((role) => role.role === 'numerator')
+    const denominator = analysis.roles.find((role) => role.role === 'denominator')
+    const outerSubscript = analysis.roles.find((role) => role.role === 'subscript')
+    const fractionContext = analysis.contexts.find((context) => context.kind === 'fraction' && context.semanticRootGroupId === fractionBar?.groupId)
+    const fractionParseNode = analysis.parseNodes.find((node) => node.kind === 'fractionExpression' && node.operatorGroupId === fractionBar?.groupId)
+    const outerScriptParseNode = analysis.parseNodes.find((node) => node.kind === 'scriptApplication' && node.operatorGroupId === outerSubscript?.groupId)
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(fractionBar).toBeTruthy()
+    expect(numerator).toBeTruthy()
+    expect(denominator).toBeTruthy()
+    expect(outerSubscript).toBeTruthy()
+    expect(fractionContext).toBeTruthy()
+    expect(outerSubscript?.associationContextId).toBe(fractionContext?.id)
+    expect(outerSubscript?.normalizationAnchorGroupIds).toEqual(expect.arrayContaining([fractionBar?.groupId || '', numerator?.groupId || '', denominator?.groupId || '']))
+    expect(analysis.contexts.find((context) => context.id === `context:denominator:${denominator?.groupId}`)?.memberGroupIds).not.toContain(outerSubscript?.groupId || '')
+    expect(outerScriptParseNode?.childNodeIds).toEqual([fractionParseNode?.id || ''])
+  })
+
+  test('denominator-side outer subscript is also promoted to the whole fraction', async () => {
+    const fixture = getHandwritingFixture('fractionDenominatorOuterSubscript')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const fractionBar = analysis.roles.find((role) => role.role === 'fractionBar')
+    const numerator = analysis.roles.find((role) => role.role === 'numerator')
+    const denominator = analysis.roles.find((role) => role.role === 'denominator')
+    const outerSubscript = analysis.roles.find((role) => role.role === 'subscript')
+    const fractionContext = analysis.contexts.find((context) => context.kind === 'fraction' && context.semanticRootGroupId === fractionBar?.groupId)
+    const fractionParseNode = analysis.parseNodes.find((node) => node.kind === 'fractionExpression' && node.operatorGroupId === fractionBar?.groupId)
+    const outerScriptParseNode = analysis.parseNodes.find((node) => node.kind === 'scriptApplication' && node.operatorGroupId === outerSubscript?.groupId)
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(fractionBar).toBeTruthy()
+    expect(numerator).toBeTruthy()
+    expect(denominator).toBeTruthy()
+    expect(outerSubscript).toBeTruthy()
+    expect(fractionContext).toBeTruthy()
+    expect(outerSubscript?.associationContextId).toBe(fractionContext?.id)
+    expect(outerSubscript?.normalizationAnchorGroupIds).toEqual(expect.arrayContaining([fractionBar?.groupId || '', numerator?.groupId || '', denominator?.groupId || '']))
+    expect(analysis.contexts.find((context) => context.id === `context:denominator:${denominator?.groupId}`)?.memberGroupIds).not.toContain(outerSubscript?.groupId || '')
     expect(outerScriptParseNode?.childNodeIds).toEqual([fractionParseNode?.id || ''])
   })
 
@@ -234,9 +289,19 @@ test.describe('handwriting normalization fixtures', () => {
     expect(outerSuperscript?.associationContextId?.startsWith('context:enclosure:')).toBe(true)
     expect(outerSuperscript?.normalizationAnchorGroupIds).toEqual(expect.arrayContaining([baseline?.groupId || '', closeBoundary?.groupId || '']))
     expect(analysis.contexts.some((context) => context.kind === 'enclosure' && context.semanticRootGroupId === baseline?.groupId)).toBe(true)
+    expect(analysis.ambiguities.some((ambiguity) => ambiguity.groupId === outerSuperscript?.groupId && ambiguity.reason === 'enclosure-wide-script-vs-baseline')).toBe(true)
     expect(analysis.parseNodes.some((node) => node.kind === 'enclosureExpression')).toBe(true)
     expect(analysis.parseNodes.find((node) => node.kind === 'enclosureExpression')?.childNodeIds).toContain(enclosureParseRoot?.rootNodeId || '')
     expect(analysis.parseNodes.some((node) => node.kind === 'scriptApplication' && node.childNodeIds.some((childId) => childId.startsWith('parse:enclosure:')))).toBe(true)
+    const ambiguityParseNode = analysis.parseNodes.find((node) => node.kind === 'ambiguityExpression' && node.groupIds.includes(outerSuperscript?.groupId || ''))
+    const outerScriptParseNode = analysis.parseNodes.find((node) => node.kind === 'scriptApplication' && node.operatorGroupId === outerSuperscript?.groupId)
+    expect(ambiguityParseNode).toBeTruthy()
+    expect(ambiguityParseNode?.ambiguityReason).toBe('enclosure-wide-script-vs-baseline')
+    expect(ambiguityParseNode?.preferredChildNodeId).toBe(outerScriptParseNode?.id)
+    expect(ambiguityParseNode?.alternatives?.map((alternative) => `${alternative.rank}:${alternative.role}:${alternative.relation}`)).toEqual([
+      '1:superscript:chosen',
+      '2:baseline:alternative',
+    ])
     expect(analysis.parseNodes.some((node) => node.kind === 'sequenceExpression' && node.contextId === 'context:root')).toBe(true)
     expect(analysis.parseRoots.find((root) => root.contextId === 'context:root')?.rootNodeId?.startsWith('parse:sequence:')).toBe(true)
   })
@@ -313,6 +378,27 @@ test.describe('handwriting normalization fixtures', () => {
     expect(enclosureOpen.structuralBarrier).toBe(true)
     expect(numerator.peerRoles).toContain('denominator')
     expect(baseline.allowedChildRoles).toEqual(expect.arrayContaining(['superscript', 'subscript']))
+  })
+
+  test('all unary script roles keep a required parent operand reference', async () => {
+    const analyses = [
+      'superscript',
+      'fractionWithExponent',
+      'fractionOuterExponent',
+      'fractionDenominatorOuterExponent',
+      'fractionOuterSubscript',
+      'fractionDenominatorOuterSubscript',
+      'offsetLineSubscript',
+      'parenthesizedSuperscript',
+      'parenthesizedExponent',
+      'parenthesizedFractionNumerator',
+      'parenthesizedFractionExponent',
+    ].map((name) => analyzeHandwrittenExpression(getHandwritingFixture(name as any).strokes))
+
+    expect(analyses.every((analysis) => analysis.roles
+      .filter((role) => role.role === 'superscript' || role.role === 'subscript')
+      .every((role) => Boolean(role.parentGroupId)))).toBe(true)
+    expect(analyses.every((analysis) => analysis.flags.every((flag) => flag.kind !== 'missingOperandReference'))).toBe(true)
   })
 
   test('stacked plain baselines are preserved as separate groups and flagged', async () => {

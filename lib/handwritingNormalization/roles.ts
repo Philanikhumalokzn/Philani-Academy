@@ -1,5 +1,5 @@
 import { clamp } from './geometry'
-import { getRoleDescriptor, roleCanOwnScripts } from './roleTaxonomy'
+import { getRoleDescriptor, getRoleLocalityBias, roleAllowsChildRole, roleCanOwnScripts } from './roleTaxonomy'
 import type { LayoutEdge, LocalSubexpression, StrokeGroup, StructuralAmbiguity, StructuralRole, StructuralRoleCandidate, StructuralRoleKind } from './types'
 
 const FRACTION_BAR_MAX_HEIGHT = 18
@@ -238,6 +238,7 @@ const scoreFractionMemberAlignment = (bar: StrokeGroup, memberBounds: ReturnType
 
 const scoreFractionContext = (bar: StrokeGroup, subexpressions: LocalSubexpression[], groupMap: Map<string, StrokeGroup>) => {
   const shapeScore = getFractionBarShapeScore(bar)
+  const barLocality = getRoleLocalityBias('fractionBar')
   const numeratorCandidates = subexpressions
     .map((subexpression) => ({ subexpression, bounds: getSubexpressionBounds(subexpression, groupMap) }))
     .filter(({ bounds }) => bounds.bottom <= bar.bounds.top + 24)
@@ -261,10 +262,10 @@ const scoreFractionContext = (bar: StrokeGroup, subexpressions: LocalSubexpressi
   const numeratorAggregate = numeratorBounds ? scoreFractionMemberAlignment(bar, numeratorBounds) : null
   const denominatorAggregate = denominatorBounds ? scoreFractionMemberAlignment(bar, denominatorBounds) : null
   const barRecognitionScore = numeratorAggregate
-    ? shapeScore * 0.36 + numeratorAggregate.centeredScore * 0.34 + numeratorAggregate.widthScore * 0.18 + numeratorAggregate.overlapScore * 0.12
+    ? shapeScore * 0.32 + numeratorAggregate.centeredScore * 0.36 + numeratorAggregate.widthScore * 0.2 + numeratorAggregate.overlapScore * 0.12
     : 0
   const memberClaimScore = numeratorAggregate && denominatorAggregate
-    ? shapeScore * 0.22 + numeratorAggregate.centeredScore * 0.28 + denominatorAggregate.centeredScore * 0.28 + numeratorAggregate.widthScore * 0.12 + denominatorAggregate.overlapScore * 0.1
+    ? shapeScore * 0.18 + numeratorAggregate.centeredScore * 0.32 * barLocality.local + denominatorAggregate.centeredScore * 0.22 * barLocality.adjacent + numeratorAggregate.widthScore * 0.18 + denominatorAggregate.overlapScore * 0.1
     : 0
 
   return {
@@ -294,6 +295,8 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
   for (const { bar, context } of confirmedFractionBars) {
     roles.set(bar.id, makeRole(bar.id, 'fractionBar', context.barRecognitionScore, 0, null, [
       `family=${getRoleDescriptor('fractionBar').family}`,
+      `allowed-children=${getRoleDescriptor('fractionBar').allowedChildRoles.join(',')}`,
+      `forbidden-children=${getRoleDescriptor('fractionBar').forbiddenChildRoles.join(',')}`,
       `shape=${context.shapeScore.toFixed(2)}`,
       `centered-above=${context.numeratorAggregate?.centeredScore.toFixed(2) || '0.00'}`,
       `centered-below=${context.denominatorAggregate?.centeredScore.toFixed(2) || '0.00'}`,
@@ -306,6 +309,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     const denominatorRoots = context.memberClaimScore >= 0.46 && context.denominatorRoots.length > 0 ? context.denominatorRoots : []
 
     for (const numerator of numeratorRoots) {
+      if (!roleAllowsChildRole('fractionBar', 'numerator')) continue
       rootClaims.set(numerator.rootGroupId, { rootGroupId: numerator.rootGroupId, role: 'numerator' })
       const candidates: StructuralRoleCandidate[] = [
         makeCandidate('numerator', 0.82, bar.id, ['centered above confirmed fraction bar', 'inherits fraction-member ancestry']),
@@ -324,6 +328,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     }
 
     for (const denominator of denominatorRoots) {
+      if (!roleAllowsChildRole('fractionBar', 'denominator')) continue
       rootClaims.set(denominator.rootGroupId, { rootGroupId: denominator.rootGroupId, role: 'denominator' })
       const candidates: StructuralRoleCandidate[] = [
         makeCandidate('denominator', 0.82, bar.id, ['centered below confirmed fraction bar', 'inherits fraction-member ancestry']),
@@ -356,6 +361,8 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
         [
           'root of local subexpression',
           `family=${getRoleDescriptor(subexpression.rootRole).family}`,
+          `allowed-children=${getRoleDescriptor(subexpression.rootRole).allowedChildRoles.join(',') || 'none'}`,
+          `forbidden-children=${getRoleDescriptor(subexpression.rootRole).forbiddenChildRoles.join(',') || 'none'}`,
         ],
       ))
     }
@@ -363,6 +370,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
       roles.set(attachment.childGroupId, makeRole(attachment.childGroupId, attachment.role, attachment.score, 1, attachment.parentGroupId, [
         'owned by local subexpression',
         `family=${getRoleDescriptor(attachment.role).family}`,
+        `peers=${getRoleDescriptor(attachment.role).peerRoles.join(',') || 'none'}`,
       ]))
     }
   }
@@ -399,12 +407,15 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     const runnerUp = sortedCandidates[1]
 
     const parentRole = best.parentGroupId ? roles.get(best.parentGroupId) : null
-    const parentSupportsAttachment = Boolean(best.parentGroupId) && !fractionBarIds.has(best.parentGroupId) && (!parentRole || roleCanOwnScripts(parentRole.role))
+    const parentSupportsAttachment = Boolean(best.parentGroupId)
+      && !fractionBarIds.has(best.parentGroupId)
+      && (!parentRole || (roleCanOwnScripts(parentRole.role) && roleAllowsChildRole(parentRole.role, best.role)))
 
     if ((best.role === 'superscript' || best.role === 'subscript') && best.score >= 0.45 && best.parentGroupId && parentSupportsAttachment) {
       const nextRole = makeRole(group.id, best.role, best.score, 1, best.parentGroupId, [
         ...(best.evidence || []),
         `parent-family=${parentRole ? parentRole.descriptor.family : 'expressionRoot'}`,
+        `parent-allows=${parentRole ? String(roleAllowsChildRole(parentRole.role, best.role)) : 'true'}`,
         `ancestry=${getRoleDescriptor(best.role).ancestry.join('>')}`,
       ])
       roles.set(group.id, nextRole)

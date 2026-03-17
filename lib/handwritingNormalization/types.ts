@@ -78,6 +78,14 @@ export type StructuralRoleAnchor = 'inline' | 'right' | 'centered'
 
 export type StructuralRoleShape = 'freeform' | 'horizontalLine'
 
+export type StructuralAssociationWeight = 'blocked' | 'weak' | 'medium' | 'strong'
+
+export type StructuralLocalityProfile = {
+  local: number
+  adjacent: number
+  distant: number
+}
+
 export type StructuralRoleDescriptor = {
   kind: StructuralRoleKind
   family: StructuralRoleFamily
@@ -85,6 +93,11 @@ export type StructuralRoleDescriptor = {
   anchor: StructuralRoleAnchor
   shape: StructuralRoleShape
   canOwnScripts: boolean
+  allowedChildRoles: StructuralRoleKind[]
+  forbiddenChildRoles: StructuralRoleKind[]
+  peerRoles: StructuralRoleKind[]
+  locality: StructuralLocalityProfile
+  structuralBarrier: boolean
   ancestry: string[]
   discriminators: string[]
 }

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { analyzeHandwrittenExpression, getHandwritingFixture } from '../lib/handwritingNormalization'
+import { analyzeHandwrittenExpression, getHandwritingFixture, getRoleDescriptor, roleAllowsChildRole } from '../lib/handwritingNormalization'
 
 test.describe('handwriting normalization fixtures', () => {
   test('superscript fixture groups the base and exponent separately', async () => {
@@ -100,5 +100,20 @@ test.describe('handwriting normalization fixtures', () => {
     expect(subscript?.descriptor.family).toBe('script')
     expect(analysis.roles.some((role) => role.role === 'fractionBar')).toBe(false)
     expect(subscript?.evidence.some((entry) => entry.includes('below-right='))).toBe(true)
+  })
+
+  test('role taxonomy encodes child constraints and sibling ranks', async () => {
+    const baseline = getRoleDescriptor('baseline')
+    const fractionBar = getRoleDescriptor('fractionBar')
+    const numerator = getRoleDescriptor('numerator')
+
+    expect(roleAllowsChildRole('baseline', 'superscript')).toBe(true)
+    expect(roleAllowsChildRole('baseline', 'subscript')).toBe(true)
+    expect(roleAllowsChildRole('fractionBar', 'superscript')).toBe(false)
+    expect(roleAllowsChildRole('fractionBar', 'subscript')).toBe(false)
+    expect(roleAllowsChildRole('fractionBar', 'numerator')).toBe(true)
+    expect(fractionBar.structuralBarrier).toBe(true)
+    expect(numerator.peerRoles).toContain('denominator')
+    expect(baseline.allowedChildRoles).toEqual(expect.arrayContaining(['superscript', 'subscript']))
   })
 })

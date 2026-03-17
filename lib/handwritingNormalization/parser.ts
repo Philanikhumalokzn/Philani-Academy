@@ -16,6 +16,7 @@ export const buildExpressionParseForest = (
   const nodes: ExpressionParseNode[] = []
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
   const contextMap = new Map(contexts.map((context) => [context.id, context]))
+  const groupMap = new Map(groups.map((group) => [group.id, group]))
   const nodeIdByGroupId = new Map<string, string>()
   const nodeIdsByContextId = new Map<string, string[]>()
 
@@ -24,6 +25,15 @@ export const buildExpressionParseForest = (
     const existing = nodeIdsByContextId.get(node.contextId) || []
     nodeIdsByContextId.set(node.contextId, [...existing, node.id])
     return node
+  }
+
+  const getNodeLeft = (nodeId: string) => {
+    const node = nodes.find((entry) => entry.id === nodeId)
+    if (!node) return Number.POSITIVE_INFINITY
+    const lefts = node.groupIds
+      .map((groupId) => groupMap.get(groupId)?.bounds.left)
+      .filter((value): value is number => typeof value === 'number')
+    return lefts.length ? Math.min(...lefts) : Number.POSITIVE_INFINITY
   }
 
   const getOrCreateGroupNode = (groupId: string) => {
@@ -109,10 +119,40 @@ export const buildExpressionParseForest = (
     getOrCreateGroupNode(role.groupId)
   }
 
-  const parseRoots: ContextParseRoot[] = contexts.map((context) => ({
-    contextId: context.id,
-    nodeIds: uniqueIds(nodeIdsByContextId.get(context.id) || []),
-  }))
+  const parseRoots: ContextParseRoot[] = contexts.map((context) => {
+    const contextNodeIds = uniqueIds(nodeIdsByContextId.get(context.id) || [])
+    const referencedChildIds = new Set(
+      nodes
+        .filter((node) => node.contextId === context.id)
+        .flatMap((node) => node.childNodeIds)
+    )
+    const topLevelNodeIds = contextNodeIds
+      .filter((nodeId) => !referencedChildIds.has(nodeId))
+      .sort((left, right) => getNodeLeft(left) - getNodeLeft(right))
+
+    if (!topLevelNodeIds.length) {
+      return {
+        contextId: context.id,
+        nodeIds: contextNodeIds,
+        rootNodeId: null,
+      }
+    }
+
+    const rootNode = addNode({
+      id: `parse:sequence:${context.id}`,
+      kind: 'sequenceExpression',
+      contextId: context.id,
+      groupIds: uniqueIds(topLevelNodeIds.flatMap((nodeId) => nodes.find((entry) => entry.id === nodeId)?.groupIds || [])),
+      childNodeIds: topLevelNodeIds,
+      label: `sequence:${context.id}`,
+    })
+
+    return {
+      contextId: context.id,
+      nodeIds: [rootNode.id],
+      rootNodeId: rootNode.id,
+    }
+  })
 
   return { parseNodes: nodes, parseRoots }
 }

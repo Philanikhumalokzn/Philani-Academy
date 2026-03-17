@@ -54,6 +54,8 @@ The lab currently provides:
 - structural warning inspection for unsupported same-context layouts
 - local subexpression ownership inspection
 - enclosure structure inspection
+- expression context inspection
+- parse-forest node and rooted context inspection
 - normalized ink preview
 
 ### Engine modules
@@ -62,8 +64,12 @@ The lab currently provides:
 - `lib/handwritingNormalization/geometry.ts`
 - `lib/handwritingNormalization/grouping.ts`
 - `lib/handwritingNormalization/graph.ts`
+- `lib/handwritingNormalization/roleTaxonomy.ts`
 - `lib/handwritingNormalization/roles.ts`
 - `lib/handwritingNormalization/normalize.ts`
+- `lib/handwritingNormalization/parser.ts`
+- `lib/handwritingNormalization/fixtures.ts`
+- `lib/handwritingNormalization/index.ts`
 
 ### First-pass heuristics
 
@@ -210,6 +216,18 @@ The engine now also exposes first-class expression contexts instead of leaving b
 - this means a script outside an enclosure can attach to the enclosed expression span as a broader-scope base instead of collapsing onto the inner glyph alone
 - the normalization layer now consumes those explicit anchors rather than reconstructing broader scope heuristically
 
+The engine now also emits a lightweight parse forest on top of those contexts instead of exposing each context as only an unordered bag of groups:
+
+- every stroke group can appear as a `group` parse node
+- trusted local operator families can create higher-order parse nodes such as `scriptApplication`, `enclosureExpression`, and `fractionExpression`
+- each expression context now gets an ordered `sequenceExpression` root that collects the top-level parse nodes in left-to-right order
+- each parse root explicitly points at that rooted sequence node, which makes the default algebraic flow of a context visible in the lab and available to later parser work
+
+This is still intentionally modest:
+
+- the parse forest is currently built from already-inferred roles and contexts rather than replacing them
+- it provides an explicit structural bridge from graph roles into expression parsing without pretending that the engine already has a full GLR or chart parser
+
 #### Normalization
 
 The first pass normalizes by applying role-aware transforms to original strokes:
@@ -231,7 +249,7 @@ Known limitations:
 - ambiguity is reported, but final role assignment is still heuristic
 - fraction detection is now more explicit than before, but still only covers a narrow family of handwritten fraction layouts
 - local ownership now covers script nesting, enclosure boundaries, and first-pass mixed barrier redirection, but not full multi-operator local parsing yet
-- same-context stacked baseline and same-parent stacked script admissibility exist, and the engine now exposes first-pass expression contexts and explicit normalization anchors, but a full recursive context-tree with general operator precedence is not implemented yet
+- same-context stacked baseline and same-parent stacked script admissibility exist, and the engine now exposes first-pass expression contexts, rooted sequence parse nodes, and explicit normalization anchors, but a full recursive context-tree with general operator precedence and ambiguity-preserving parsing is not implemented yet
 - no radical handling yet
 - no explicit baseline-line estimation across full expressions yet
 - fixture coverage is still small even though it now includes chained superscripts, numerator-with-exponent cases, horizontal-line subscript disambiguation, parenthesized local structures, and mixed parenthesized layouts
@@ -251,5 +269,6 @@ Before adding more complexity, review the engine in this order:
 1. Extend operator-bound local parsing beyond parentheses into radicals and other enclosure families.
 2. Improve full-expression baseline estimation so local roots can be placed relative to broader context more reliably.
 3. Add deterministic fixtures for deeper mixed nested structures such as `(a/b)^2`, nested parenthesized fractions, and radical-like layouts.
-4. Generalize structural barriers so BODMAS-style local precedence can be expressed across more operator families.
-5. Add visual toggles for confidence thresholds to make failure cases easier to inspect.
+4. Let the parse forest start driving more structure resolution so rooted context sequences are not only a debug reflection of role inference.
+5. Generalize structural barriers so BODMAS-style local precedence can be expressed across more operator families.
+6. Add visual toggles for confidence thresholds to make failure cases easier to inspect.

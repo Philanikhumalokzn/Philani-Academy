@@ -190,7 +190,7 @@ export type ExpressionContext = {
   memberGroupIds: string[]
 }
 
-export type ExpressionParseNodeKind = 'group' | 'scriptApplication' | 'enclosureExpression' | 'fractionExpression'
+export type ExpressionParseNodeKind = 'group' | 'scriptApplication' | 'enclosureExpression' | 'fractionExpression' | 'sequenceExpression'
 
 export type ExpressionParseNode = {
   id: string
@@ -206,6 +206,7 @@ export type ExpressionParseNode = {
 export type ContextParseRoot = {
   contextId: string
   nodeIds: string[]
+  rootNodeId?: string | null
 }
 
 export type NormalizedGroup = {

@@ -100,7 +100,7 @@ export default function HandwritingNormalizationTestCanvas() {
     const enclosures = analysis.enclosures.map((enclosure) => `${enclosure.kind}: ${enclosure.openGroupId} ... ${enclosure.closeGroupId} members=[${enclosure.memberRootIds.join(', ')}] score=${enclosure.score.toFixed(2)}`)
     const contexts = analysis.contexts.map((context) => `${context.id}: ${context.kind}${context.parentContextId ? ` parent=${context.parentContextId}` : ''}${context.semanticRootGroupId ? ` root=${context.semanticRootGroupId}` : ''} anchors=[${context.anchorGroupIds.join(', ')}] members=[${context.memberGroupIds.join(', ')}]`)
     const parseNodes = analysis.parseNodes.map((node) => `${node.id}: ${node.kind} ctx=${node.contextId}${node.role ? ` role=${node.role}` : ''}${node.operatorGroupId ? ` op=${node.operatorGroupId}` : ''} groups=[${node.groupIds.join(', ')}] children=[${node.childNodeIds.join(', ')}]`)
-    const parseRoots = analysis.parseRoots.map((root) => `${root.contextId}: [${root.nodeIds.join(', ')}]`)
+    const parseRoots = analysis.parseRoots.map((root) => `${root.contextId}: root=${root.rootNodeId || 'none'} nodes=[${root.nodeIds.join(', ')}]`)
 
     return [
       {

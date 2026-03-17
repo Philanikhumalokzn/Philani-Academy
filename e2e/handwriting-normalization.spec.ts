@@ -181,6 +181,8 @@ test.describe('handwriting normalization fixtures', () => {
     expect(analysis.contexts.some((context) => context.kind === 'enclosure' && context.semanticRootGroupId === baseline?.groupId)).toBe(true)
     expect(analysis.parseNodes.some((node) => node.kind === 'enclosureExpression')).toBe(true)
     expect(analysis.parseNodes.some((node) => node.kind === 'scriptApplication' && node.childNodeIds.some((childId) => childId.startsWith('parse:enclosure:')))).toBe(true)
+    expect(analysis.parseNodes.some((node) => node.kind === 'sequenceExpression' && node.contextId === 'context:root')).toBe(true)
+    expect(analysis.parseRoots.find((root) => root.contextId === 'context:root')?.rootNodeId?.startsWith('parse:sequence:')).toBe(true)
   })
 
   test('enclosed local expression can serve as a fraction numerator while preserving its internal ownership', async () => {
@@ -197,6 +199,7 @@ test.describe('handwriting normalization fixtures', () => {
     expect(superscript?.parentGroupId).toBe(numerator?.groupId)
     expect(numerator?.containerGroupIds).toHaveLength(2)
     expect(analysis.parseNodes.some((node) => node.kind === 'fractionExpression')).toBe(true)
+    expect(analysis.parseNodes.some((node) => node.kind === 'sequenceExpression' && node.contextId.startsWith('context:enclosure:'))).toBe(true)
   })
 
   test('role taxonomy encodes child constraints and sibling ranks', async () => {

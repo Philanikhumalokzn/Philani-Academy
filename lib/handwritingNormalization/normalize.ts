@@ -11,6 +11,30 @@ const isBaselineLikeRole = (roleName: StructuralRole['role']) => {
   return roleName === 'baseline' || roleName === 'enclosureOpen' || roleName === 'enclosureClose'
 }
 
+const getScriptAnchorBounds = (
+  role: StructuralRole,
+  roleMap: Map<string, StructuralRole>,
+  groupMap: Map<string, StrokeGroup>,
+  transformedBounds: Map<string, ReturnType<typeof mergeBounds>>,
+) => {
+  if (!role.parentGroupId) return null
+  const parentRole = roleMap.get(role.parentGroupId)
+  const parentBounds = transformedBounds.get(role.parentGroupId) || groupMap.get(role.parentGroupId)?.bounds
+  if (!parentBounds) return null
+  if (!parentRole) return parentBounds
+
+  const childContainerIds = new Set(role.containerGroupIds)
+  const parentOnlyContainerIds = parentRole.containerGroupIds.filter((containerId) => !childContainerIds.has(containerId))
+  if (!parentOnlyContainerIds.length) return parentBounds
+
+  const broaderContextBounds = parentOnlyContainerIds
+    .map((containerId) => transformedBounds.get(containerId) || groupMap.get(containerId)?.bounds)
+    .filter(Boolean) as Array<ReturnType<typeof mergeBounds>>
+  if (!broaderContextBounds.length) return parentBounds
+
+  return mergeBounds([parentBounds, ...broaderContextBounds])
+}
+
 export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[]): NormalizationResult => {
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
   const groupMap = new Map(groups.map((group) => [group.id, group]))
@@ -51,7 +75,7 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     }
 
     if ((role.role === 'superscript' || role.role === 'subscript') && role.parentGroupId) {
-      const parentBounds = transformedBounds.get(role.parentGroupId) || groupMap.get(role.parentGroupId)?.bounds
+      const parentBounds = getScriptAnchorBounds(role, roleMap, groupMap, transformedBounds)
       if (parentBounds) {
         dx = parentBounds.right + Math.max(8, parentBounds.width * 0.05) - scaledBounds.left
         dy = role.role === 'superscript'

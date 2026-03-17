@@ -164,6 +164,18 @@ test.describe('handwriting normalization fixtures', () => {
     expect(superscripts).toHaveLength(2)
     expect(outerSuperscript).toBeTruthy()
     expect(outerSuperscript?.evidence.some((entry) => entry.includes('redirected-parent='))).toBe(true)
+
+    const innerSuperscript = superscripts.find((role) => role.containerGroupIds.length === 2)
+    const closeBoundary = analysis.roles.find((role) => role.role === 'enclosureClose')
+    const normalizedOuter = analysis.normalization.groups.find((group) => group.id === outerSuperscript?.groupId)
+    const normalizedInner = analysis.normalization.groups.find((group) => group.id === innerSuperscript?.groupId)
+    const normalizedClose = analysis.normalization.groups.find((group) => group.id === closeBoundary?.groupId)
+
+    expect(normalizedOuter).toBeTruthy()
+    expect(normalizedInner).toBeTruthy()
+    expect(normalizedClose).toBeTruthy()
+    expect((normalizedOuter?.bounds.left || 0)).toBeGreaterThan((normalizedInner?.bounds.right || 0) + 12)
+    expect((normalizedOuter?.bounds.left || 0)).toBeGreaterThan((normalizedClose?.bounds.right || 0) - 4)
   })
 
   test('enclosed local expression can serve as a fraction numerator while preserving its internal ownership', async () => {

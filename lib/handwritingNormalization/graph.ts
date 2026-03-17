@@ -32,8 +32,9 @@ export const buildLayoutGraph = (groups: StrokeGroup[]) => {
       const sizeRatio = Math.max(0.35, Math.min(1.85, Math.max(to.bounds.height, 1) / Math.max(from.bounds.height, 1)))
       const smallerRightGroupBias = to.bounds.height <= from.bounds.height * 1.05 ? 1 : 0.72
       const rightwardScore = dx > 0 ? clamp(1 - horizontalGap / (scale * 1.75), 0, 1) : 0
-      const verticalAlignmentScore = clamp(1 - Math.abs(dy) / Math.max(24, scale * 0.58), 0, 1)
-      const sequenceScore = (rightwardScore * 0.68 + verticalAlignmentScore * 0.32) * (dy < -from.bounds.height * 0.22 ? 0.86 : 1) * smallerRightGroupBias
+      const verticalAlignmentScore = clamp(1 - Math.abs(dy) / Math.max(24, scale * 0.72), 0, 1)
+      const horizontalSequenceAffinity = clamp(1 - Math.abs(dy) / Math.max(34, scale * 1.15), 0, 1)
+      const sequenceScore = (rightwardScore * 0.42 + horizontalSequenceAffinity * 0.18 + overlapY * 0.1) * 0.46 * (dy < -from.bounds.height * 0.18 ? 0.72 : 1) * smallerRightGroupBias
 
       pushEdge(edges, from.id, to.id, 'sequence', sequenceScore, {
         dx,
@@ -49,8 +50,11 @@ export const buildLayoutGraph = (groups: StrokeGroup[]) => {
         ? clamp(1 - Math.abs(dy + Math.max(from.bounds.height * 1.15, to.bounds.height * 1.35)) / Math.max(36, from.bounds.height * 1.5), 0, 1)
         : 0
       const superscriptSizeScore = clamp(1 - Math.abs(sizeRatio - 0.9) / 1.1, 0, 1)
+      const superscriptSpatialCloseness = dx > 0
+        ? clamp(1 - horizontalGap / Math.max(18, scale * 1.18), 0, 1)
+        : 0
       const superScore = dx > 0
-        ? superscriptZoneScore * 0.64 + clamp(1 - horizontalGap / Math.max(22, scale * 1.35), 0, 1) * 0.2 + superscriptSizeScore * 0.16
+        ? superscriptZoneScore * 0.6 + superscriptSpatialCloseness * 0.26 + superscriptSizeScore * 0.14
         : 0
       pushEdge(edges, from.id, to.id, 'superscriptCandidate', superScore, {
         dx,
@@ -64,8 +68,11 @@ export const buildLayoutGraph = (groups: StrokeGroup[]) => {
         ? clamp(1 - Math.abs(dy - Math.max(from.bounds.height * 0.78, to.bounds.height * 0.9)) / Math.max(34, from.bounds.height * 1.4), 0, 1)
         : 0
       const subscriptSizeScore = clamp(1 - Math.abs(sizeRatio - 0.9) / 1.1, 0, 1)
+      const subscriptSpatialCloseness = dx > 0
+        ? clamp(1 - horizontalGap / Math.max(18, scale * 1.18), 0, 1)
+        : 0
       const subScore = dx > 0
-        ? subscriptZoneScore * 0.64 + clamp(1 - horizontalGap / Math.max(22, scale * 1.35), 0, 1) * 0.2 + subscriptSizeScore * 0.16
+        ? subscriptZoneScore * 0.6 + subscriptSpatialCloseness * 0.26 + subscriptSizeScore * 0.14
         : 0
       pushEdge(edges, from.id, to.id, 'subscriptCandidate', subScore, {
         dx,
@@ -76,7 +83,7 @@ export const buildLayoutGraph = (groups: StrokeGroup[]) => {
       })
 
       const stackedAboveScore = dy < 0
-        ? clamp(1 - Math.abs(dx) / Math.max(24, from.bounds.width * 0.75), 0, 1) * clamp(1 - verticalGap / Math.max(30, from.bounds.height * 1.2), 0, 1)
+        ? (clamp(1 - Math.abs(dx) / Math.max(24, from.bounds.width * 0.75), 0, 1) * 0.58 + clamp(1 - verticalGap / Math.max(30, from.bounds.height * 1.2), 0, 1) * 0.42)
         : 0
       pushEdge(edges, from.id, to.id, 'stackedAbove', stackedAboveScore, {
         dx,
@@ -86,7 +93,7 @@ export const buildLayoutGraph = (groups: StrokeGroup[]) => {
       })
 
       const stackedBelowScore = dy > 0
-        ? clamp(1 - Math.abs(dx) / Math.max(24, from.bounds.width * 0.75), 0, 1) * clamp(1 - verticalGap / Math.max(30, from.bounds.height * 1.2), 0, 1)
+        ? (clamp(1 - Math.abs(dx) / Math.max(24, from.bounds.width * 0.75), 0, 1) * 0.58 + clamp(1 - verticalGap / Math.max(30, from.bounds.height * 1.2), 0, 1) * 0.42)
         : 0
       pushEdge(edges, from.id, to.id, 'stackedBelow', stackedBelowScore, {
         dx,

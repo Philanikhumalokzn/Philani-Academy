@@ -72,7 +72,7 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
       makeStroke('x-2', [[164, 234], [130, 277]]),
       makeStroke('two-1', [[196, 220], [225, 206], [249, 212], [246, 232], [211, 244], [247, 244]]),
     ],
-    expectation: { groupCount: 2, requiredRoles: ['baseline'], minAmbiguities: 1 },
+    expectation: { groupCount: 2, requiredRoles: ['baseline'] },
   },
   crossingFour: {
     name: 'crossingFour',

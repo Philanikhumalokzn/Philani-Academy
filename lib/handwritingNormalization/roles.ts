@@ -120,7 +120,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     }
 
     if (bestSequence) {
-      candidates.push({ role: 'baseline', score: Math.max(0.36, bestSequence.score * 0.98), parentGroupId: null })
+      candidates.push({ role: 'baseline', score: Math.max(0.24, bestSequence.score * 0.88), parentGroupId: null })
     }
 
     const best = chooseBestCandidate(candidates)
@@ -149,10 +149,10 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
         })
       }
 
-      if ((bestSequence && bestSequence.score >= 0.3 && Math.abs(best.score - bestSequence.score) <= 0.36) || (runnerUp && Math.abs(best.score - runnerUp.score) <= 0.14)) {
+      if ((bestSequence && bestSequence.score >= 0.16 && Math.abs(best.score - bestSequence.score) <= 0.3) || (runnerUp && Math.abs(best.score - runnerUp.score) <= 0.14)) {
         ambiguities.push({
           groupId: group.id,
-          reason: bestSequence && bestSequence.score >= 0.3 && Math.abs(best.score - bestSequence.score) <= 0.36 ? 'sequence-vs-script' : 'competing-relations',
+          reason: bestSequence && bestSequence.score >= 0.16 && Math.abs(best.score - bestSequence.score) <= 0.3 ? 'sequence-vs-script' : 'competing-relations',
           chosenRole: best.role,
           candidates: sortedCandidates.slice(0, 3),
         })
@@ -170,12 +170,12 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
 
     const closeScriptCandidate = [...superCandidates, ...subCandidates][0] || null
     if (
-      (bestSequence && closeScriptCandidate && bestSequence.score >= 0.3 && closeScriptCandidate.score >= 0.45 && Math.abs(bestSequence.score - closeScriptCandidate.score) <= 0.4) ||
+      (bestSequence && closeScriptCandidate && bestSequence.score >= 0.16 && closeScriptCandidate.score >= 0.45 && Math.abs(bestSequence.score - closeScriptCandidate.score) <= 0.34) ||
       (runnerUp && runnerUp.score >= 0.5 && Math.abs(sortedCandidates[0].score - runnerUp.score) <= 0.12)
     ) {
       ambiguities.push({
         groupId: group.id,
-        reason: bestSequence && closeScriptCandidate && bestSequence.score >= 0.3 && Math.abs(bestSequence.score - closeScriptCandidate.score) <= 0.4 ? 'sequence-vs-script' : 'competing-relations',
+        reason: bestSequence && closeScriptCandidate && bestSequence.score >= 0.16 && Math.abs(bestSequence.score - closeScriptCandidate.score) <= 0.34 ? 'sequence-vs-script' : 'competing-relations',
         chosenRole: 'baseline',
         candidates: sortedCandidates.slice(0, 3),
       })

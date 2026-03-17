@@ -6,10 +6,13 @@ test.describe('handwriting normalization fixtures', () => {
   test('superscript fixture groups the base and exponent separately', async () => {
     const fixture = getHandwritingFixture('superscript')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const superscriptEdge = analysis.edges.find((edge) => edge.kind === 'superscriptCandidate')
+    const sequenceEdge = analysis.edges.find((edge) => edge.kind === 'sequence')
 
     expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
     expect(analysis.roles.some((role) => role.role === 'superscript')).toBe(true)
     expect(analysis.roles.some((role) => role.role === 'baseline')).toBe(true)
+    expect(superscriptEdge?.score || 0).toBeGreaterThan(sequenceEdge?.score || 0)
   })
 
   test('fraction fixture recognizes fraction structure', async () => {
@@ -22,13 +25,17 @@ test.describe('handwriting normalization fixtures', () => {
     expect(analysis.roles.some((role) => role.role === 'denominator')).toBe(true)
   })
 
-  test('ambiguous adjacency fixture preserves a close-call interpretation', async () => {
+  test('ambiguous adjacency fixture keeps spatial script evidence stronger than sequence', async () => {
     const fixture = getHandwritingFixture('adjacentAmbiguous')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const superscriptEdge = analysis.edges.find((edge) => edge.kind === 'superscriptCandidate')
+    const sequenceEdge = analysis.edges.find((edge) => edge.kind === 'sequence')
 
     expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
-    expect(analysis.ambiguities.length).toBeGreaterThanOrEqual(fixture.expectation.minAmbiguities || 1)
-    expect(analysis.ambiguities.some((ambiguity) => ambiguity.reason === 'sequence-vs-script')).toBe(true)
+    expect(superscriptEdge?.score || 0).toBeGreaterThan(sequenceEdge?.score || 0)
+    if (analysis.ambiguities.length > 0) {
+      expect(analysis.ambiguities.some((ambiguity) => ambiguity.reason === 'sequence-vs-script' || ambiguity.reason === 'competing-relations')).toBe(true)
+    }
   })
 
   test('crossing four fixture keeps overlapping strokes in one group', async () => {

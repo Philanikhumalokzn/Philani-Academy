@@ -1,6 +1,6 @@
 import type { InkStroke, StructuralRoleKind } from './types'
 
-export type HandwritingFixtureName = 'superscript' | 'fraction' | 'nested' | 'adjacentAmbiguous' | 'crossingFour' | 'superscriptThenBar' | 'fractionWithExponent' | 'offsetLineSubscript' | 'parenthesizedSuperscript' | 'parenthesizedExponent' | 'parenthesizedFractionNumerator' | 'stackedBaselinesUnsupported'
+export type HandwritingFixtureName = 'superscript' | 'fraction' | 'nested' | 'adjacentAmbiguous' | 'crossingFour' | 'superscriptThenBar' | 'fractionWithExponent' | 'offsetLineSubscript' | 'parenthesizedSuperscript' | 'parenthesizedExponent' | 'parenthesizedFractionNumerator' | 'parenthesizedFractionExponent' | 'stackedBaselinesUnsupported'
 
 export type HandwritingFixtureExpectation = {
   groupCount: number
@@ -162,6 +162,20 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
     ],
     expectation: { groupCount: 6, requiredRoles: ['enclosureOpen', 'enclosureClose', 'fractionBar', 'numerator', 'denominator', 'superscript'] },
   },
+  parenthesizedFractionExponent: {
+    name: 'parenthesizedFractionExponent',
+    label: '(x / y)^2 sample',
+    description: 'A local fraction enclosed in parentheses with an outer superscript attached to the enclosure as a whole.',
+    strokes: [
+      makeStroke('open-1', [[102, 114], [84, 164], [80, 226], [86, 286], [104, 338]]),
+      makeStroke('num-1', [[150, 178], [176, 216], [202, 178]]),
+      makeStroke('bar-1', [[126, 246], [246, 246]], 6),
+      makeStroke('den-1', [[166, 292], [184, 332], [194, 300], [206, 344]]),
+      makeStroke('close-1', [[264, 114], [282, 164], [286, 226], [280, 286], [262, 338]]),
+      makeStroke('two-1', [[314, 120], [338, 104], [358, 108], [354, 128], [327, 143], [360, 144]]),
+    ],
+    expectation: { groupCount: 6, requiredRoles: ['enclosureOpen', 'enclosureClose', 'fractionBar', 'numerator', 'denominator', 'superscript'] },
+  },
   stackedBaselinesUnsupported: {
     name: 'stackedBaselinesUnsupported',
     label: 'Stacked baselines warning',
@@ -175,7 +189,7 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
   },
 }
 
-export const HANDWRITING_FIXTURE_ORDER: HandwritingFixtureName[] = ['superscript', 'fraction', 'nested', 'adjacentAmbiguous', 'crossingFour', 'superscriptThenBar', 'fractionWithExponent', 'offsetLineSubscript', 'parenthesizedSuperscript', 'parenthesizedExponent', 'parenthesizedFractionNumerator', 'stackedBaselinesUnsupported']
+export const HANDWRITING_FIXTURE_ORDER: HandwritingFixtureName[] = ['superscript', 'fraction', 'nested', 'adjacentAmbiguous', 'crossingFour', 'superscriptThenBar', 'fractionWithExponent', 'offsetLineSubscript', 'parenthesizedSuperscript', 'parenthesizedExponent', 'parenthesizedFractionNumerator', 'parenthesizedFractionExponent', 'stackedBaselinesUnsupported']
 
 export const getHandwritingFixture = (name: HandwritingFixtureName) => {
   const fixture = fixtures[name]

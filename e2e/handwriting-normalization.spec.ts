@@ -116,6 +116,10 @@ test.describe('handwriting normalization fixtures', () => {
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
     const numeratorRoot = analysis.roles.find((role) => role.role === 'numerator')
     const nestedSuperscript = analysis.roles.find((role) => role.role === 'superscript')
+    const numeratorContextId = numeratorRoot ? `context:numerator:${numeratorRoot.groupId}` : null
+    const numeratorParseRoot = analysis.parseRoots.find((root) => root.contextId === numeratorContextId)
+    const fractionParseNode = analysis.parseNodes.find((node) => node.kind === 'fractionExpression')
+    const numeratorScriptNode = analysis.parseNodes.find((node) => node.kind === 'scriptApplication' && node.contextId === numeratorContextId)
 
     expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
     expect(analysis.roles.some((role) => role.role === 'fractionBar')).toBe(true)
@@ -123,6 +127,9 @@ test.describe('handwriting normalization fixtures', () => {
     expect(analysis.roles.some((role) => role.role === 'denominator')).toBe(true)
     expect(nestedSuperscript?.parentGroupId).toBe(numeratorRoot?.groupId)
     expect(analysis.subexpressions.some((subexpression) => subexpression.rootGroupId === numeratorRoot?.groupId && subexpression.memberGroupIds.length === 2 && subexpression.rootRole === 'numerator')).toBe(true)
+    expect(numeratorParseRoot?.rootNodeId?.startsWith('parse:sequence:context:numerator:')).toBe(true)
+    expect(fractionParseNode?.childNodeIds).toContain(numeratorParseRoot?.rootNodeId || '')
+    expect(numeratorScriptNode).toBeTruthy()
   })
 
   test('horizontal line below-right is treated as subscript rather than fraction structure', async () => {
@@ -158,6 +165,8 @@ test.describe('handwriting normalization fixtures', () => {
     const baseline = analysis.roles.find((role) => role.role === 'baseline')
     const superscripts = analysis.roles.filter((role) => role.role === 'superscript')
     const outerSuperscript = superscripts.find((role) => role.parentGroupId === baseline?.groupId && role.containerGroupIds.length === 0)
+    const enclosureContext = analysis.contexts.find((context) => context.kind === 'enclosure' && context.semanticRootGroupId === baseline?.groupId)
+    const enclosureParseRoot = analysis.parseRoots.find((root) => root.contextId === enclosureContext?.id)
 
     expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
     expect(analysis.enclosures).toHaveLength(1)
@@ -180,6 +189,7 @@ test.describe('handwriting normalization fixtures', () => {
     expect(outerSuperscript?.normalizationAnchorGroupIds).toEqual(expect.arrayContaining([baseline?.groupId || '', closeBoundary?.groupId || '']))
     expect(analysis.contexts.some((context) => context.kind === 'enclosure' && context.semanticRootGroupId === baseline?.groupId)).toBe(true)
     expect(analysis.parseNodes.some((node) => node.kind === 'enclosureExpression')).toBe(true)
+    expect(analysis.parseNodes.find((node) => node.kind === 'enclosureExpression')?.childNodeIds).toContain(enclosureParseRoot?.rootNodeId || '')
     expect(analysis.parseNodes.some((node) => node.kind === 'scriptApplication' && node.childNodeIds.some((childId) => childId.startsWith('parse:enclosure:')))).toBe(true)
     expect(analysis.parseNodes.some((node) => node.kind === 'sequenceExpression' && node.contextId === 'context:root')).toBe(true)
     expect(analysis.parseRoots.find((root) => root.contextId === 'context:root')?.rootNodeId?.startsWith('parse:sequence:')).toBe(true)
@@ -200,6 +210,36 @@ test.describe('handwriting normalization fixtures', () => {
     expect(numerator?.containerGroupIds).toHaveLength(2)
     expect(analysis.parseNodes.some((node) => node.kind === 'fractionExpression')).toBe(true)
     expect(analysis.parseNodes.some((node) => node.kind === 'sequenceExpression' && node.contextId.startsWith('context:enclosure:'))).toBe(true)
+  })
+
+  test('parenthesized fraction can act as a local expression root for an outer superscript', async () => {
+    const fixture = getHandwritingFixture('parenthesizedFractionExponent')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const fractionBar = analysis.roles.find((role) => role.role === 'fractionBar')
+    const numerator = analysis.roles.find((role) => role.role === 'numerator')
+    const denominator = analysis.roles.find((role) => role.role === 'denominator')
+    const outerSuperscript = analysis.roles.find((role) => role.role === 'superscript' && role.containerGroupIds.length === 0)
+    const enclosureContext = analysis.contexts.find((context) => context.kind === 'enclosure')
+    const enclosureParseRoot = analysis.parseRoots.find((root) => root.contextId === enclosureContext?.id)
+    const numeratorParseRoot = analysis.parseRoots.find((root) => root.contextId === `context:numerator:${numerator?.groupId}`)
+    const denominatorParseRoot = analysis.parseRoots.find((root) => root.contextId === `context:denominator:${denominator?.groupId}`)
+    const fractionParseNode = analysis.parseNodes.find((node) => node.kind === 'fractionExpression')
+    const enclosureParseNode = analysis.parseNodes.find((node) => node.kind === 'enclosureExpression')
+    const outerScriptParseNode = analysis.parseNodes.find((node) => node.kind === 'scriptApplication' && node.role === 'superscript' && node.operatorGroupId === outerSuperscript?.groupId)
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(fractionBar).toBeTruthy()
+    expect(numerator).toBeTruthy()
+    expect(denominator).toBeTruthy()
+    expect(analysis.enclosures).toHaveLength(1)
+    expect(outerSuperscript?.associationContextId).toBe(enclosureContext?.id)
+    expect(enclosureParseRoot?.rootNodeId?.startsWith('parse:sequence:context:enclosure:')).toBe(true)
+    expect(fractionParseNode?.childNodeIds).toEqual(expect.arrayContaining([
+      numeratorParseRoot?.rootNodeId || '',
+      denominatorParseRoot?.rootNodeId || '',
+    ]))
+    expect(enclosureParseNode?.childNodeIds).toEqual([enclosureParseRoot?.rootNodeId || ''])
+    expect(outerScriptParseNode?.childNodeIds).toEqual([enclosureParseNode?.id || ''])
   })
 
   test('role taxonomy encodes child constraints and sibling ranks', async () => {

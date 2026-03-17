@@ -44,7 +44,7 @@ An admin-only footer action opens the normalization lab from the dashboard.
 The lab currently provides:
 
 - freehand stroke capture
-- sample loading for superscript, nested exponent chains, fractions, fraction-with-exponent cases, horizontal-line subscript cases, parenthesized local structures, and mixed parenthesized operator-bound layouts
+- sample loading for superscript, nested exponent chains, fractions, fraction-with-exponent cases, horizontal-line subscript cases, parenthesized local structures, and mixed parenthesized operator-bound layouts including a parenthesized fraction with an outer exponent
 - deterministic ambiguous adjacency fixture for `x2` vs `x²` style cases
 - raw stroke view
 - grouped stroke boxes
@@ -226,6 +226,7 @@ The engine now also emits a lightweight parse forest on top of those contexts in
 This is still intentionally modest:
 
 - the parse forest is currently built from already-inferred roles and contexts rather than replacing them
+- it now composes trusted local operators across layers, so an enclosure context can root a fraction expression that then serves as the local base for an outer script
 - it provides an explicit structural bridge from graph roles into expression parsing without pretending that the engine already has a full GLR or chart parser
 
 #### Normalization

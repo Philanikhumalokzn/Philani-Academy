@@ -456,6 +456,9 @@ const buildExpressionContexts = (
 
   for (const enclosure of enclosures) {
     const memberRoles = enclosure.memberRootIds.map((groupId) => roleMap.get(groupId)).filter(Boolean) as StructuralRole[]
+    const enclosedGroupIds = roles
+      .filter((role) => role.containerGroupIds.includes(enclosure.openGroupId) && role.containerGroupIds.includes(enclosure.closeGroupId))
+      .map((role) => role.groupId)
     const semanticRoot = memberRoles.sort((left, right) => {
       const leftIsBaseline = left.role === 'baseline' ? 0 : 1
       const rightIsBaseline = right.role === 'baseline' ? 0 : 1
@@ -469,7 +472,7 @@ const buildExpressionContexts = (
       parentContextId,
       semanticRootGroupId: semanticRoot?.groupId || enclosure.memberRootIds[0] || null,
       anchorGroupIds: uniqueIds([enclosure.openGroupId, enclosure.closeGroupId, ...(semanticRoot ? [semanticRoot.groupId] : [])]),
-      memberGroupIds: uniqueIds([enclosure.openGroupId, enclosure.closeGroupId, ...enclosure.memberRootIds]),
+      memberGroupIds: uniqueIds([enclosure.openGroupId, enclosure.closeGroupId, ...enclosure.memberRootIds, ...enclosedGroupIds]),
     })
   }
 

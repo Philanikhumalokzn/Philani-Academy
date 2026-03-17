@@ -58,6 +58,7 @@ const boundsRect = (bounds: InkBounds, globalBounds?: InkBounds | null) => {
 }
 
 const roleColor = (role: string) => {
+  if (role === 'unsupportedSymbol') return '#ff8f8f'
   if (role === 'superscript') return '#8bd0ff'
   if (role === 'subscript') return '#7ef0b0'
   if (role === 'fractionBar') return '#ffda6b'

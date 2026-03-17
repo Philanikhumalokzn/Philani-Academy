@@ -74,6 +74,15 @@ type RootClaim = {
   role: 'baseline' | 'numerator' | 'denominator'
 }
 
+const isSameContextStackedPair = (upper: StrokeGroup, lower: StrokeGroup) => {
+  const overlapWidth = Math.max(0, Math.min(upper.bounds.right, lower.bounds.right) - Math.max(upper.bounds.left, lower.bounds.left))
+  const minWidth = Math.max(1, Math.min(upper.bounds.width, lower.bounds.width))
+  const horizontalAlignment = Math.abs(upper.bounds.centerX - lower.bounds.centerX) <= Math.max(26, (upper.bounds.width + lower.bounds.width) * 0.22)
+  const verticallyStacked = lower.bounds.top > upper.bounds.bottom + 10 && lower.bounds.top - upper.bounds.bottom <= Math.max(140, (upper.bounds.height + lower.bounds.height) * 2.4)
+  const sameColumn = overlapWidth / minWidth >= 0.18 || horizontalAlignment
+  return verticallyStacked && sameColumn
+}
+
 const collectStableAttachments = (groups: StrokeGroup[], edges: LayoutEdge[], blockedGroupIds: Set<string>) => {
   const attachments: StableAttachment[] = []
   const groupIds = new Set(groups.map((group) => group.id))
@@ -372,8 +381,23 @@ const getRoleContextKey = (role: StructuralRole) => {
   return `parent:${role.parentGroupId || 'none'}|containers:${containers}`
 }
 
-const detectStructuralFlags = (groups: StrokeGroup[], roles: StructuralRole[]) => {
+const makeUnsupportedRole = (role: StructuralRole, evidence: string[]) => makeRole(
+  role.groupId,
+  'unsupportedSymbol',
+  Math.max(role.score, 0.62),
+  role.depth,
+  null,
+  [
+    ...role.evidence,
+    ...evidence,
+    `family=${getRoleDescriptor('unsupportedSymbol').family}`,
+  ],
+  role.containerGroupIds,
+)
+
+const resolveBaselineAdmissibility = (groups: StrokeGroup[], roles: StructuralRole[]) => {
   const groupMap = new Map(groups.map((group) => [group.id, group]))
+  const roleMap = new Map(roles.map((role) => [role.groupId, role]))
   const baselineRoles = roles.filter((role) => role.role === 'baseline')
   const byContext = new Map<string, StructuralRole[]>()
 
@@ -386,33 +410,51 @@ const detectStructuralFlags = (groups: StrokeGroup[], roles: StructuralRole[]) =
 
   const flags: StructuralFlag[] = []
   for (const [contextKey, bucket] of byContext.entries()) {
-    const ordered = bucket.sort((left, right) => (groupMap.get(left.groupId)?.bounds.top || 0) - (groupMap.get(right.groupId)?.bounds.top || 0))
-    for (let index = 0; index < ordered.length - 1; index += 1) {
-      const upperRole = ordered[index]
-      const lowerRole = ordered[index + 1]
-      const upper = groupMap.get(upperRole.groupId)
-      const lower = groupMap.get(lowerRole.groupId)
-      if (!upper || !lower) continue
+    const ordered = [...bucket].sort((left, right) => {
+      const topDelta = (groupMap.get(left.groupId)?.bounds.top || 0) - (groupMap.get(right.groupId)?.bounds.top || 0)
+      if (topDelta !== 0) return topDelta
+      return (groupMap.get(left.groupId)?.bounds.left || 0) - (groupMap.get(right.groupId)?.bounds.left || 0)
+    })
+    const keptBaselineIds: string[] = []
 
-      const overlapWidth = Math.max(0, Math.min(upper.bounds.right, lower.bounds.right) - Math.max(upper.bounds.left, lower.bounds.left))
-      const minWidth = Math.max(1, Math.min(upper.bounds.width, lower.bounds.width))
-      const horizontalAlignment = Math.abs(upper.bounds.centerX - lower.bounds.centerX) <= Math.max(26, (upper.bounds.width + lower.bounds.width) * 0.22)
-      const verticallyStacked = lower.bounds.top > upper.bounds.bottom + 10 && lower.bounds.top - upper.bounds.bottom <= Math.max(140, (upper.bounds.height + lower.bounds.height) * 2.4)
-      const sameColumn = overlapWidth / minWidth >= 0.18 || horizontalAlignment
+    for (const candidate of ordered) {
+      const candidateGroup = groupMap.get(candidate.groupId)
+      if (!candidateGroup) continue
 
-      if (!verticallyStacked || !sameColumn) continue
+      const conflictingKeptRole = keptBaselineIds
+        .map((groupId) => roleMap.get(groupId))
+        .find((keptRole) => {
+          if (!keptRole) return false
+          const keptGroup = groupMap.get(keptRole.groupId)
+          if (!keptGroup) return false
+          return keptGroup.bounds.top <= candidateGroup.bounds.top
+            ? isSameContextStackedPair(keptGroup, candidateGroup)
+            : isSameContextStackedPair(candidateGroup, keptGroup)
+        })
 
+      if (!conflictingKeptRole) {
+        keptBaselineIds.push(candidate.groupId)
+        continue
+      }
+
+      roleMap.set(candidate.groupId, makeUnsupportedRole(candidate, [
+        'unsupported same-context stacked baseline',
+        `conflicts-with=${conflictingKeptRole.groupId}`,
+      ]))
       flags.push({
         kind: 'sameContextStackedBaselines',
         severity: 'warning',
-        groupIds: [upperRole.groupId, lowerRole.groupId],
+        groupIds: [conflictingKeptRole.groupId, candidate.groupId],
         contextKey,
-        message: 'Two plain baselines are vertically stacked in the same local context. They were preserved as separate non-overlapping groups and flagged as an unsupported same-row configuration.',
+        message: 'Multiple baseline candidates occupy vertically stacked positions in the same local context. The lower conflicting group was preserved as ink but demoted from baseline to unsupportedSymbol.',
       })
     }
   }
 
-  return flags
+  return {
+    roles: Array.from(roleMap.values()).sort((left, right) => left.depth - right.depth),
+    flags,
+  }
 }
 
 export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[]) => {
@@ -626,12 +668,23 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
   }
 
   const resolvedRoles = groups
-    .map((group) => roles.get(group.id) || makeRole(group.id, 'baseline', 0.5, 0, null, ['fallback default'], containerIdsByGroupId.get(group.id) || []))
+    .map((group) => {
+      const existing = roles.get(group.id)
+      if (existing) return existing
+      if (fractionBarIds.has(group.id)) {
+        return makeRole(group.id, 'unsupportedSymbol', 0.58, 0, null, [
+          'line-like group did not satisfy supported fraction structure requirements',
+          'preserved instead of defaulting to baseline',
+          `family=${getRoleDescriptor('unsupportedSymbol').family}`,
+        ], containerIdsByGroupId.get(group.id) || [])
+      }
+      return makeRole(group.id, 'baseline', 0.5, 0, null, ['fallback default'], containerIdsByGroupId.get(group.id) || [])
+    })
     .sort((left, right) => left.depth - right.depth)
-  const flags = detectStructuralFlags(groups, resolvedRoles)
+  const { roles: admissibleRoles, flags } = resolveBaselineAdmissibility(groups, resolvedRoles)
 
   return {
-    roles: resolvedRoles,
+    roles: admissibleRoles,
     flags,
     subexpressions,
     enclosures,

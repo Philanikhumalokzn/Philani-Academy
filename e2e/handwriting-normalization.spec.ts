@@ -169,7 +169,8 @@ test.describe('handwriting normalization fixtures', () => {
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
 
     expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
-    expect(analysis.roles.filter((role) => role.role === 'baseline')).toHaveLength(2)
+    expect(analysis.roles.filter((role) => role.role === 'baseline')).toHaveLength(1)
+    expect(analysis.roles.filter((role) => role.role === 'unsupportedSymbol')).toHaveLength(1)
     expect(analysis.flags.some((flag) => flag.kind === 'sameContextStackedBaselines')).toBe(true)
     expect(analysis.groups.every((group) => group.strokeIds.length >= 1)).toBe(true)
   })

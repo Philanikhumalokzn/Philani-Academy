@@ -64,6 +64,7 @@ export type LayoutEdge = {
 
 export type StructuralRoleKind =
   | 'baseline'
+  | 'unsupportedSymbol'
   | 'superscript'
   | 'subscript'
   | 'numerator'
@@ -72,7 +73,7 @@ export type StructuralRoleKind =
   | 'enclosureOpen'
   | 'enclosureClose'
 
-export type StructuralRoleFamily = 'expressionRoot' | 'script' | 'fractionStructure' | 'fractionMember' | 'enclosureStructure'
+export type StructuralRoleFamily = 'expressionRoot' | 'specialSymbol' | 'script' | 'fractionStructure' | 'fractionMember' | 'enclosureStructure'
 
 export type StructuralRoleZone = 'center' | 'upper' | 'lower'
 

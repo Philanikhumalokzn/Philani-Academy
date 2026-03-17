@@ -99,6 +99,7 @@ The current lab now also surfaces close role decisions explicitly so ambiguous l
 The first pass currently infers:
 
 - baseline
+- unsupported symbol
 - superscript
 - subscript
 - numerator
@@ -182,8 +183,10 @@ The engine now also treats baseline more carefully at the local-context level:
 
 - `baseline` is intended to mean membership in the primary horizontal row of a local expression context
 - two plain baseline-like groups stacked vertically in the same local context are not silently treated as a legal row
-- when that unsupported situation appears, the groups are preserved as separate non-overlapping symbol groups and surfaced as structural warnings instead of being deleted or force-merged
+- when that unsupported situation appears, the conflicting group is preserved as ink but demoted to an `unsupported symbol` role and surfaced as a structural warning instead of being deleted or force-merged
 - this keeps the raw ink intact while making the violation visible for later context-tree work
+
+Line-like groups that look structurally like fraction bars but do not satisfy the supported fraction constraints are also preserved instead of defaulting to baseline automatically.
 
 #### Normalization
 

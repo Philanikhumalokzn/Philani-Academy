@@ -37,6 +37,10 @@ const PUBLIC_SOLVE_MAX_GUIDE_SPACING = 96
 const PUBLIC_SOLVE_MIN_PROMPT_ZOOM = 1
 const PUBLIC_SOLVE_MAX_PROMPT_ZOOM = 2.4
 const PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT = 64
+const PUBLIC_SOLVE_VIEWER_HEIGHT_PX = 420
+const PUBLIC_SOLVE_VIEWER_VERTICAL_PADDING_MIN = 24
+const PUBLIC_SOLVE_VIEWER_VERTICAL_PADDING_MAX = 96
+const PUBLIC_SOLVE_VIEWER_AUTO_FIT_MAX_ZOOM = 2.6
 
 type PublicSolvePromptMode = 'passive' | 'active'
 
@@ -74,6 +78,13 @@ const normalizeZoomValue = (value: unknown) => {
   const num = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(num) || num <= 0) return null
   return num
+}
+
+const clampNumber = (value: number, min: number, max: number) => {
+  if (!Number.isFinite(value)) return min
+  if (value < min) return min
+  if (value > max) return max
+  return value
 }
 
 const getAppStateZoomValue = (appState: any) => {
@@ -368,6 +379,55 @@ const buildInitialData = (scene: PublicSolveScene | null | undefined) => {
   }
 }
 
+const clampSceneViewportToVisibleContent = (
+  scene: PublicSolveScene | null | undefined,
+  viewportHeightPx: number,
+): PublicSolveScene | null => {
+  const normalized = normalizePublicSolveScene(scene)
+  if (!normalized) return null
+
+  const bounds = getElementsBoundingBox(normalized.elements)
+  if (!bounds) return normalized
+
+  const safeViewportHeight = Number.isFinite(viewportHeightPx) && viewportHeightPx > 0
+    ? viewportHeightPx
+    : PUBLIC_SOLVE_VIEWER_HEIGHT_PX
+  const verticalPadding = clampNumber(
+    bounds.height * 0.08,
+    PUBLIC_SOLVE_VIEWER_VERTICAL_PADDING_MIN,
+    PUBLIC_SOLVE_VIEWER_VERTICAL_PADDING_MAX,
+  )
+  const contentTop = bounds.minY - verticalPadding
+  const contentBottom = bounds.maxY + verticalPadding
+  const contentHeight = Math.max(1, contentBottom - contentTop)
+
+  const currentAppState = normalized.appState || {}
+  const savedZoom = getAppStateZoomValue(currentAppState) || 1
+  const savedScrollY = Number(currentAppState.scrollY || 0)
+
+  const autoFitZoom = Math.min(PUBLIC_SOLVE_VIEWER_AUTO_FIT_MAX_ZOOM, safeViewportHeight / contentHeight)
+  const nextZoom = Math.max(savedZoom, autoFitZoom)
+  const currentVisibleHeight = safeViewportHeight / savedZoom
+  const nextVisibleHeight = safeViewportHeight / nextZoom
+  const currentTop = -savedScrollY / savedZoom
+  const currentCenter = currentTop + (currentVisibleHeight / 2)
+  const minTop = contentTop
+  const maxTop = Math.max(contentTop, contentBottom - nextVisibleHeight)
+  const nextTop = clampNumber(currentCenter - (nextVisibleHeight / 2), minTop, maxTop)
+  const nextScrollY = -nextTop * nextZoom
+
+  const nextAppState = {
+    ...currentAppState,
+    scrollY: nextScrollY,
+    zoom: nextZoom,
+  }
+
+  return {
+    ...normalized,
+    appState: nextAppState,
+  }
+}
+
 const mergeViewportAppStateIntoScene = (
   scene: PublicSolveScene | null | undefined,
   appState: any,
@@ -420,21 +480,38 @@ export function PublicSolveCanvasViewer({
   onViewportChange?: (scene: PublicSolveScene) => void
 }) {
   const normalizedScene = useMemo(() => normalizePublicSolveScene(scene), [scene])
+  const viewerScene = useMemo(
+    () => clampSceneViewportToVisibleContent(normalizedScene, PUBLIC_SOLVE_VIEWER_HEIGHT_PX),
+    [normalizedScene]
+  )
+  const excalidrawApiRef = useRef<any>(null)
   const lastViewportSignatureRef = useRef<string | null>(null)
 
   useEffect(() => {
-    lastViewportSignatureRef.current = serializePublicSolveViewportSnapshot(normalizedScene?.appState)
-  }, [normalizedScene])
+    lastViewportSignatureRef.current = serializePublicSolveViewportSnapshot(viewerScene?.appState)
+  }, [viewerScene])
 
   const handleViewerChange = useCallback((_elements: any[], appState: any) => {
     if (!onViewportChange) return
-    const nextSignature = serializePublicSolveViewportSnapshot(appState)
+    const rawScene = mergeViewportAppStateIntoScene(viewerScene, appState)
+    const clampedScene = clampSceneViewportToVisibleContent(rawScene, PUBLIC_SOLVE_VIEWER_HEIGHT_PX) || rawScene
+    const rawSignature = serializePublicSolveViewportSnapshot(appState)
+    const nextSignature = serializePublicSolveViewportSnapshot(clampedScene.appState)
     if (lastViewportSignatureRef.current === nextSignature) return
     lastViewportSignatureRef.current = nextSignature
-    onViewportChange(mergeViewportAppStateIntoScene(normalizedScene, appState))
-  }, [normalizedScene, onViewportChange])
+    if (rawSignature !== nextSignature) {
+      excalidrawApiRef.current?.updateScene?.({
+        appState: {
+          scrollX: Number(clampedScene.appState?.scrollX || 0),
+          scrollY: Number(clampedScene.appState?.scrollY || 0),
+          zoom: Number(clampedScene.appState?.zoom || 1),
+        },
+      })
+    }
+    onViewportChange(clampedScene)
+  }, [onViewportChange, viewerScene])
 
-  if (!publicSolveSceneHasContent(normalizedScene)) {
+  if (!publicSolveSceneHasContent(viewerScene)) {
     return (
       <div className={`rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500 ${className}`.trim()}>
         {emptyLabel}
@@ -446,10 +523,13 @@ export function PublicSolveCanvasViewer({
     <div className={`philani-solution-viewer ${className}`.trim()}>
       <div className="h-[420px] bg-white">
         <LessonStyledExcalidraw
-          key={normalizedScene?.updatedAt || 'viewer'}
+          key={viewerScene?.updatedAt || 'viewer'}
           className="h-full"
-          initialData={buildInitialData(normalizedScene)}
+          initialData={buildInitialData(viewerScene)}
           onChange={onViewportChange ? handleViewerChange : undefined}
+          excalidrawAPI={(api: any) => {
+            excalidrawApiRef.current = api
+          }}
           viewModeEnabled
           zenModeEnabled
           gridModeEnabled={false}

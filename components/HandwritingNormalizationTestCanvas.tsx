@@ -34,19 +34,21 @@ const fitPoint = (point: InkPoint, bounds: InkBounds) => {
   return { x: point.x * scale + offsetX, y: point.y * scale + offsetY }
 }
 
-const strokePath = (stroke: InkStroke, bounds: InkBounds) => {
+const rawPoint = (point: InkPoint) => ({ x: point.x, y: point.y })
+
+const strokePath = (stroke: InkStroke, bounds?: InkBounds | null) => {
   if (!stroke.points.length) return ''
   return stroke.points
     .map((point, index) => {
-      const fitted = fitPoint(point, bounds)
+      const fitted = bounds ? fitPoint(point, bounds) : rawPoint(point)
       return `${index === 0 ? 'M' : 'L'} ${fitted.x.toFixed(2)} ${fitted.y.toFixed(2)}`
     })
     .join(' ')
 }
 
-const boundsRect = (bounds: InkBounds, globalBounds: InkBounds) => {
-  const topLeft = fitPoint({ x: bounds.left, y: bounds.top }, globalBounds)
-  const bottomRight = fitPoint({ x: bounds.right, y: bounds.bottom }, globalBounds)
+const boundsRect = (bounds: InkBounds, globalBounds?: InkBounds | null) => {
+  const topLeft = globalBounds ? fitPoint({ x: bounds.left, y: bounds.top }, globalBounds) : { x: bounds.left, y: bounds.top }
+  const bottomRight = globalBounds ? fitPoint({ x: bounds.right, y: bounds.bottom }, globalBounds) : { x: bounds.right, y: bounds.bottom }
   return {
     x: topLeft.x,
     y: topLeft.y,
@@ -76,7 +78,6 @@ export default function HandwritingNormalizationTestCanvas() {
   const nextStrokeIdRef = useRef(1)
 
   const analysis = useMemo(() => analyzeHandwrittenExpression(strokes), [strokes])
-  const inputBounds = useMemo(() => getGlobalBounds(strokes), [strokes])
   const outputStrokes = normalizationEnabled ? analysis.normalization.strokes : strokes
   const outputBounds = useMemo(() => getGlobalBounds(outputStrokes), [outputStrokes])
 
@@ -123,6 +124,10 @@ export default function HandwritingNormalizationTestCanvas() {
     const rect = target.getBoundingClientRect()
     const x = ((clientX - rect.left) / rect.width) * VIEWPORT.width
     const y = ((clientY - rect.top) / rect.height) * VIEWPORT.height
+    const lastPoint = current.points[current.points.length - 1]
+    if (lastPoint && Math.abs(lastPoint.x - x) < 0.5 && Math.abs(lastPoint.y - y) < 0.5) {
+      return
+    }
     current.points.push({ x, y, t: Date.now() })
     setStrokes((prev) => {
       const withoutLast = prev.slice(0, -1)
@@ -172,19 +177,39 @@ export default function HandwritingNormalizationTestCanvas() {
     setStrokes(fixture.strokes)
   }
 
-  const renderStrokeLayer = (items: InkStroke[], bounds: InkBounds, emphasizeRoles = false) => {
-    return items.map((stroke) => (
-      <path
-        key={stroke.id}
-        d={strokePath(stroke, bounds)}
-        fill="none"
-        stroke={stroke.color || '#eef4ff'}
-        strokeWidth={Math.max(1.8, (stroke.width || 4) * 0.9)}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        opacity={emphasizeRoles ? 0.95 : 0.9}
-      />
-    ))
+  const renderStrokeLayer = (items: InkStroke[], bounds?: InkBounds | null, emphasizeRoles = false) => {
+    return items.map((stroke) => {
+      const strokeBounds = getGlobalBounds([stroke])
+      const shouldRenderDot = stroke.points.length <= 1 || (strokeBounds.width < 3 && strokeBounds.height < 3)
+      if (shouldRenderDot) {
+        const point = stroke.points[0]
+        if (!point) return null
+        const mapped = bounds ? fitPoint(point, bounds) : rawPoint(point)
+        return (
+          <circle
+            key={stroke.id}
+            cx={mapped.x}
+            cy={mapped.y}
+            r={Math.max(2.2, ((stroke.width || 4) * 0.9) / 2)}
+            fill={stroke.color || '#eef4ff'}
+            opacity={emphasizeRoles ? 0.95 : 0.9}
+          />
+        )
+      }
+
+      return (
+        <path
+          key={stroke.id}
+          d={strokePath(stroke, bounds)}
+          fill="none"
+          stroke={stroke.color || '#eef4ff'}
+          strokeWidth={Math.max(1.8, (stroke.width || 4) * 0.9)}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity={emphasizeRoles ? 0.95 : 0.9}
+        />
+      )
+    })
   }
 
   return (
@@ -243,9 +268,9 @@ export default function HandwritingNormalizationTestCanvas() {
               onPointerCancel={finishStroke}
             >
               <rect x="0" y="0" width={VIEWPORT.width} height={VIEWPORT.height} fill="transparent" />
-              {renderStrokeLayer(strokes, inputBounds)}
+              {renderStrokeLayer(strokes, null)}
               {showBoxes && analysis.groups.map((group) => {
-                const rect = boundsRect(group.bounds, inputBounds)
+                const rect = boundsRect(group.bounds, null)
                 const role = analysis.roles.find((entry) => entry.groupId === group.id)
                 return (
                   <g key={group.id}>
@@ -260,8 +285,8 @@ export default function HandwritingNormalizationTestCanvas() {
                 const from = analysis.groups.find((group) => group.id === edge.fromId)
                 const to = analysis.groups.find((group) => group.id === edge.toId)
                 if (!from || !to) return null
-                const start = fitPoint({ x: from.bounds.centerX, y: from.bounds.centerY }, inputBounds)
-                const end = fitPoint({ x: to.bounds.centerX, y: to.bounds.centerY }, inputBounds)
+                const start = rawPoint({ x: from.bounds.centerX, y: from.bounds.centerY })
+                const end = rawPoint({ x: to.bounds.centerX, y: to.bounds.centerY })
                 return (
                   <g key={edge.id} opacity={Math.max(0.28, edge.score)}>
                     <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke="#67b9ff" strokeWidth="1.4" />

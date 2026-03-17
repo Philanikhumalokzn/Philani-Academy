@@ -1,5 +1,5 @@
 import { getStrokeBounds, mergeBounds, transformStroke } from './geometry'
-import type { InkStroke, NormalizationResult, StrokeGroup, StructuralRole } from './types'
+import type { ExpressionContext, InkStroke, NormalizationResult, StrokeGroup, StructuralRole } from './types'
 
 const getRoleScale = (role: StructuralRole) => {
   if (role.role === 'superscript' || role.role === 'subscript') return Math.max(0.42, 0.68 - role.depth * 0.1)
@@ -24,14 +24,33 @@ const getScriptAnchorBounds = (
   return transformedBounds.get(role.parentGroupId) || groupMap.get(role.parentGroupId)?.bounds || null
 }
 
-export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[]): NormalizationResult => {
+export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[], contexts: ExpressionContext[] = []): NormalizationResult => {
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
   const groupMap = new Map(groups.map((group) => [group.id, group]))
+  const contextMap = new Map(contexts.map((context) => [context.id, context]))
   const transformedStrokes: InkStroke[] = []
   const transformedGroups: NormalizationResult['groups'] = []
   const transformedBounds = new Map<string, ReturnType<typeof mergeBounds>>()
+  const scalesByGroupId = new Map<string, number>()
+  const scaledStrokesByGroupId = new Map<string, InkStroke[]>()
+  const scaledBoundsByGroupId = new Map<string, ReturnType<typeof mergeBounds>>()
+  const localTranslationsByGroupId = new Map<string, { dx: number, dy: number }>()
+  const contextTranslationsByContextId = new Map<string, { dx: number, dy: number }>()
 
-  const baselineGroups = groups.filter((group) => isBaselineLikeRole(roleMap.get(group.id)?.role || 'baseline'))
+  const fractionMemberContexts = contexts.filter((context) => context.kind === 'numerator' || context.kind === 'denominator')
+  const fractionMemberContextIdByGroupId = new Map<string, string>()
+  for (const context of [...fractionMemberContexts].sort((left, right) => left.memberGroupIds.length - right.memberGroupIds.length)) {
+    for (const groupId of context.memberGroupIds) {
+      if (!fractionMemberContextIdByGroupId.has(groupId)) {
+        fractionMemberContextIdByGroupId.set(groupId, context.id)
+      }
+    }
+  }
+
+  const baselineGroups = groups.filter((group) => {
+    if (!isBaselineLikeRole(roleMap.get(group.id)?.role || 'baseline')) return false
+    return !fractionMemberContextIdByGroupId.has(group.id)
+  })
   const baselineHeight = baselineGroups.length
     ? baselineGroups.reduce((sum, group) => sum + Math.max(group.bounds.height, 24), 0) / baselineGroups.length
     : 44
@@ -50,20 +69,25 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     const role = roleMap.get(group.id)
     if (!role) continue
     const scale = getRoleScale(role)
+    scalesByGroupId.set(group.id, scale)
     const anchor = { x: group.bounds.centerX, y: group.bounds.centerY }
     const scaledStrokes = group.strokes.map((stroke) => transformStroke(stroke, scale, anchor, 0, 0))
     const scaledBounds = mergeBounds(scaledStrokes.map(getStrokeBounds))
+    scaledStrokesByGroupId.set(group.id, scaledStrokes)
+    scaledBoundsByGroupId.set(group.id, scaledBounds)
     let dx = 0
     let dy = 0
+    const fractionMemberContextId = fractionMemberContextIdByGroupId.get(group.id) || null
+    const inFractionMemberContext = Boolean(fractionMemberContextId)
 
-    if (isBaselineLikeRole(role.role)) {
+    if (isBaselineLikeRole(role.role) && !inFractionMemberContext) {
       dy = baselineY - scaledBounds.bottom
       const targetHeight = baselineHeight
       const heightAdjust = targetHeight - scaledBounds.height
       dy -= heightAdjust * 0.18
     }
 
-    if ((role.role === 'superscript' || role.role === 'subscript') && role.parentGroupId) {
+    if ((role.role === 'superscript' || role.role === 'subscript') && role.parentGroupId && !inFractionMemberContext) {
       const parentBounds = getScriptAnchorBounds(role, groupMap, transformedBounds)
       if (parentBounds) {
         dx = parentBounds.right + Math.max(8, parentBounds.width * 0.05) - scaledBounds.left
@@ -73,19 +97,70 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
       }
     }
 
-    if ((role.role === 'numerator' || role.role === 'denominator') && role.parentGroupId) {
-      const parentBounds = transformedBounds.get(role.parentGroupId) || groupMap.get(role.parentGroupId)?.bounds
-      if (parentBounds) {
-        dx = parentBounds.centerX - scaledBounds.centerX
-        dy = role.role === 'numerator'
-          ? parentBounds.top - Math.max(18, scaledBounds.height * 0.85) - scaledBounds.bottom
-          : parentBounds.bottom + Math.max(18, scaledBounds.height * 0.25) - scaledBounds.top
-      }
-    }
-
     if (role.role === 'fractionBar') {
       dy = baselineY - scaledBounds.centerY
     }
+
+    localTranslationsByGroupId.set(group.id, { dx, dy })
+
+    const locallyTranslatedBounds = mergeBounds(scaledStrokes.map(getStrokeBounds).map((bounds) => ({
+      ...bounds,
+      left: bounds.left + dx,
+      right: bounds.right + dx,
+      top: bounds.top + dy,
+      bottom: bounds.bottom + dy,
+      centerX: bounds.centerX + dx,
+      centerY: bounds.centerY + dy,
+    })))
+
+    transformedBounds.set(group.id, locallyTranslatedBounds)
+  }
+
+  for (const context of fractionMemberContexts) {
+    const semanticRootRole = context.semanticRootGroupId ? roleMap.get(context.semanticRootGroupId) || null : null
+    if (!semanticRootRole?.parentGroupId) continue
+    const parentBounds = transformedBounds.get(semanticRootRole.parentGroupId) || groupMap.get(semanticRootRole.parentGroupId)?.bounds
+    if (!parentBounds) continue
+
+    const memberBounds = context.memberGroupIds
+      .map((groupId) => transformedBounds.get(groupId))
+      .filter(Boolean) as Array<ReturnType<typeof mergeBounds>>
+    if (!memberBounds.length) continue
+
+    const aggregateBounds = mergeBounds(memberBounds)
+    const dx = parentBounds.centerX - aggregateBounds.centerX
+    const dy = context.kind === 'numerator'
+      ? parentBounds.top - Math.max(18, aggregateBounds.height * 0.85) - aggregateBounds.bottom
+      : parentBounds.bottom + Math.max(18, aggregateBounds.height * 0.25) - aggregateBounds.top
+
+    contextTranslationsByContextId.set(context.id, { dx, dy })
+
+    for (const groupId of context.memberGroupIds) {
+      const memberBounds = transformedBounds.get(groupId)
+      if (!memberBounds) continue
+      transformedBounds.set(groupId, {
+        ...memberBounds,
+        left: memberBounds.left + dx,
+        right: memberBounds.right + dx,
+        top: memberBounds.top + dy,
+        bottom: memberBounds.bottom + dy,
+        centerX: memberBounds.centerX + dx,
+        centerY: memberBounds.centerY + dy,
+      })
+    }
+  }
+
+  for (const group of ordered) {
+    const role = roleMap.get(group.id)
+    const scaledStrokes = scaledStrokesByGroupId.get(group.id)
+    const scaledBounds = scaledBoundsByGroupId.get(group.id)
+    const scale = scalesByGroupId.get(group.id)
+    const localTranslation = localTranslationsByGroupId.get(group.id)
+    if (!role || !scaledStrokes || !scaledBounds || !localTranslation || typeof scale !== 'number') continue
+    const fractionMemberContextId = fractionMemberContextIdByGroupId.get(group.id) || null
+    const contextTranslation = fractionMemberContextId ? contextTranslationsByContextId.get(fractionMemberContextId) || { dx: 0, dy: 0 } : { dx: 0, dy: 0 }
+    const dx = localTranslation.dx + contextTranslation.dx
+    const dy = localTranslation.dy + contextTranslation.dy
 
     const finalStrokes = scaledStrokes.map((stroke) => ({
       ...stroke,
@@ -93,7 +168,6 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     }))
     const finalBounds = mergeBounds(finalStrokes.map(getStrokeBounds))
 
-    transformedBounds.set(group.id, finalBounds)
     transformedStrokes.push(...finalStrokes)
     transformedGroups.push({
       id: group.id,

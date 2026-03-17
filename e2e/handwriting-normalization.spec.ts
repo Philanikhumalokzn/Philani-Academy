@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import { analyzeHandwrittenExpression, getHandwritingFixture, getRoleDescriptor, roleAllowsChildRole } from '../lib/handwritingNormalization'
+import { normalizeInkLayout } from '../lib/handwritingNormalization/normalize'
 import { buildExpressionParseForest } from '../lib/handwritingNormalization/parser'
 import { inferStructuralRoles } from '../lib/handwritingNormalization/roles'
 import type { InkStroke, LayoutEdge, StrokeGroup } from '../lib/handwritingNormalization'
@@ -17,7 +18,13 @@ const makeStroke = (id: string): InkStroke => ({
 const makeGroup = (id: string, bounds: StrokeGroup['bounds'], strokeId = `${id}-stroke`): StrokeGroup => ({
   id,
   strokeIds: [strokeId],
-  strokes: [makeStroke(strokeId)],
+  strokes: [{
+    ...makeStroke(strokeId),
+    points: [
+      { x: bounds.left, y: bounds.top, t: 0 },
+      { x: bounds.right, y: bounds.bottom, t: 16 },
+    ],
+  }],
   bounds,
   centroid: { x: bounds.centerX, y: bounds.centerY },
   baselineY: bounds.bottom,
@@ -68,6 +75,46 @@ test.describe('handwriting normalization fixtures', () => {
       `numerator:group:context:numerator:${numerator?.groupId || 'none'}`,
       'baseline:group:context:root',
     ])
+  })
+
+  test('multiple numerator-labeled groups keep their local spacing during fraction normalization', async () => {
+    const groups = [
+      makeGroup('num-left', { left: 120, top: 150, right: 150, bottom: 188, width: 30, height: 38, centerX: 135, centerY: 169 }),
+      makeGroup('num-plus', { left: 176, top: 148, right: 206, bottom: 190, width: 30, height: 42, centerX: 191, centerY: 169 }),
+      makeGroup('num-right', { left: 232, top: 150, right: 262, bottom: 188, width: 30, height: 38, centerX: 247, centerY: 169 }),
+      makeGroup('bar', { left: 112, top: 232, right: 270, bottom: 238, width: 158, height: 6, centerX: 191, centerY: 235 }),
+      makeGroup('den', { left: 174, top: 276, right: 208, bottom: 318, width: 34, height: 42, centerX: 191, centerY: 297 }),
+    ]
+    const roles = [
+      {
+        groupId: 'num-left', role: 'numerator', descriptor: getRoleDescriptor('numerator'), score: 0.82, depth: 1, parentGroupId: 'bar', associationContextId: 'context:numerator:num-left', normalizationAnchorGroupIds: ['bar', 'num-left'], containerGroupIds: [], evidence: [],
+      },
+      {
+        groupId: 'num-plus', role: 'numerator', descriptor: getRoleDescriptor('numerator'), score: 0.79, depth: 1, parentGroupId: 'bar', associationContextId: 'context:numerator:num-left', normalizationAnchorGroupIds: ['bar', 'num-left'], containerGroupIds: [], evidence: [],
+      },
+      {
+        groupId: 'num-right', role: 'numerator', descriptor: getRoleDescriptor('numerator'), score: 0.8, depth: 1, parentGroupId: 'bar', associationContextId: 'context:numerator:num-left', normalizationAnchorGroupIds: ['bar', 'num-left'], containerGroupIds: [], evidence: [],
+      },
+      {
+        groupId: 'bar', role: 'fractionBar', descriptor: getRoleDescriptor('fractionBar'), score: 0.9, depth: 0, parentGroupId: null, associationContextId: 'context:root', normalizationAnchorGroupIds: ['bar'], containerGroupIds: [], evidence: [],
+      },
+      {
+        groupId: 'den', role: 'denominator', descriptor: getRoleDescriptor('denominator'), score: 0.82, depth: 1, parentGroupId: 'bar', associationContextId: 'context:denominator:den', normalizationAnchorGroupIds: ['bar', 'den'], containerGroupIds: [], evidence: [],
+      },
+    ] as const
+    const contexts = [
+      { id: 'context:root', kind: 'root', parentContextId: null, semanticRootGroupId: null, anchorGroupIds: ['bar'], memberGroupIds: groups.map((group) => group.id) },
+      { id: 'context:fraction:bar', kind: 'fraction', parentContextId: 'context:root', semanticRootGroupId: 'bar', anchorGroupIds: ['bar', 'num-left', 'den'], memberGroupIds: groups.map((group) => group.id) },
+      { id: 'context:numerator:num-left', kind: 'numerator', parentContextId: 'context:root', semanticRootGroupId: 'num-left', anchorGroupIds: ['bar', 'num-left'], memberGroupIds: ['num-left', 'num-plus', 'num-right'] },
+      { id: 'context:denominator:den', kind: 'denominator', parentContextId: 'context:root', semanticRootGroupId: 'den', anchorGroupIds: ['bar', 'den'], memberGroupIds: ['den'] },
+    ] as const
+    const normalization = normalizeInkLayout(groups, [...roles], [...contexts])
+    const normalizedById = new Map(normalization.groups.map((group) => [group.id, group]))
+
+    expect((normalizedById.get('num-plus')?.bounds.centerX || 0)).toBeGreaterThan((normalizedById.get('num-left')?.bounds.centerX || 0) + 24)
+    expect((normalizedById.get('num-right')?.bounds.centerX || 0)).toBeGreaterThan((normalizedById.get('num-plus')?.bounds.centerX || 0) + 24)
+    expect((normalizedById.get('num-left')?.bounds.bottom || 0)).toBeLessThan((normalizedById.get('bar')?.bounds.top || 0) - 12)
+    expect((normalizedById.get('num-right')?.bounds.bottom || 0)).toBeLessThan((normalizedById.get('bar')?.bounds.top || 0) - 12)
   })
 
   test('nested fixture preserves chained local ownership', async () => {

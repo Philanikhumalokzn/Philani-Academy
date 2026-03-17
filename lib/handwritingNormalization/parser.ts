@@ -41,11 +41,13 @@ export const buildExpressionParseForest = (
   const fractionNodeIdByExpressionContextId = new Map<string, string>()
   const enclosureNodeMetaById = new Map<string, { expressionContextId: string }>()
   const fractionNodeMetaById = new Map<string, { expressionContextId?: string | null, numeratorGroupId?: string | null, denominatorGroupId?: string | null }>()
+  const ambiguityNodeIdByPreferredChildNodeId = new Map<string, string>()
   const parseScopedAmbiguities = ambiguities.filter((ambiguity) => (
     ambiguity.reason === 'fraction-wide-script-vs-baseline'
     || ambiguity.reason === 'enclosure-wide-script-vs-baseline'
     || ambiguity.reason === 'sequence-vs-script'
     || ambiguity.reason === 'fraction-membership'
+    || ambiguity.reason === 'competing-relations'
   ))
   const parseScopedAmbiguityGroupIds = new Set(parseScopedAmbiguities.map((ambiguity) => ambiguity.groupId))
 
@@ -69,7 +71,7 @@ export const buildExpressionParseForest = (
     return getMostLocalContextId([groupId], 'context:root')
   }
 
-  const resolveCandidateRole = (ambiguity: StructuralAmbiguity, candidate: StructuralRoleCandidate) => {
+  const resolveCandidateRole = (ambiguity: StructuralAmbiguity, candidate: StructuralRoleCandidate): StructuralRole | null => {
     const resolvedRole = roleMap.get(ambiguity.groupId)
     if (!resolvedRole) return null
 
@@ -338,6 +340,10 @@ export const buildExpressionParseForest = (
     return getOrCreateGroupNode(context.semanticRootGroupId)
   }
 
+  const replacePreferredChildNodeIds = (childNodeIds: string[]) => {
+    return uniqueIds(childNodeIds.map((childNodeId) => ambiguityNodeIdByPreferredChildNodeId.get(childNodeId) || childNodeId))
+  }
+
   for (const enclosure of enclosures) {
     const contextId = `context:enclosure:${enclosure.openGroupId}:${enclosure.closeGroupId}`
     const context = contextMap.get(contextId)
@@ -405,7 +411,7 @@ export const buildExpressionParseForest = (
 
     if (!alternatives.length) continue
 
-    addNode({
+    const ambiguityNode = addNode({
       id: `parse:ambiguity:${ambiguity.groupId}`,
       kind: 'ambiguityExpression',
       contextId,
@@ -417,6 +423,14 @@ export const buildExpressionParseForest = (
       alternatives,
       label: `ambiguity:${ambiguity.groupId}`,
     })
+    if (preferredChildNodeId) {
+      ambiguityNodeIdByPreferredChildNodeId.set(preferredChildNodeId, ambiguityNode.id)
+    }
+  }
+
+  for (const node of nodes) {
+    if (node.kind === 'ambiguityExpression' || !node.childNodeIds.length) continue
+    node.childNodeIds = replacePreferredChildNodeIds(node.childNodeIds)
   }
 
   for (const role of roles) {
@@ -452,7 +466,7 @@ export const buildExpressionParseForest = (
           rootNodeId: null,
         }
       }
-      topLevelNodeIds.push(semanticRootNodeId)
+      topLevelNodeIds.push(ambiguityNodeIdByPreferredChildNodeId.get(semanticRootNodeId) || semanticRootNodeId)
     }
 
     const rootNode = addNode({
@@ -460,7 +474,7 @@ export const buildExpressionParseForest = (
       kind: 'sequenceExpression',
       contextId: context.id,
       groupIds: uniqueIds(topLevelNodeIds.flatMap((nodeId) => nodes.find((entry) => entry.id === nodeId)?.groupIds || [])),
-      childNodeIds: topLevelNodeIds,
+      childNodeIds: replacePreferredChildNodeIds(topLevelNodeIds),
       label: `sequence:${context.id}`,
     })
     sequenceRootNodeIdByContextId.set(context.id, rootNode.id)
@@ -478,7 +492,7 @@ export const buildExpressionParseForest = (
     const node = nodeMap.get(nodeId)
     const contextRootNode = nodeMap.get(contextRootNodeId)
     if (!node || !contextRootNode) continue
-    node.childNodeIds = [contextRootNodeId]
+    node.childNodeIds = replacePreferredChildNodeIds([contextRootNodeId])
     node.groupIds = uniqueIds([...node.groupIds, ...contextRootNode.groupIds])
     refreshSequenceRootNode(node.contextId)
   }
@@ -492,7 +506,7 @@ export const buildExpressionParseForest = (
       numeratorRootNodeId || (meta.numeratorGroupId ? getOrCreateGroupNode(meta.numeratorGroupId) : null),
       denominatorRootNodeId || (meta.denominatorGroupId ? getOrCreateGroupNode(meta.denominatorGroupId) : null),
     ].filter(Boolean) as string[]
-    node.childNodeIds = childNodeIds
+    node.childNodeIds = replacePreferredChildNodeIds(childNodeIds)
     node.groupIds = uniqueIds([node.operatorGroupId || '', ...childNodeIds.flatMap((childNodeId) => nodeMap.get(childNodeId)?.groupIds || [])])
     refreshSequenceRootNode(node.contextId)
   }

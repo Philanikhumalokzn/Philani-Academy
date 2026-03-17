@@ -83,6 +83,36 @@ const isSameContextStackedPair = (upper: StrokeGroup, lower: StrokeGroup) => {
   return verticallyStacked && sameColumn
 }
 
+const getSizeComparabilityScore = (reference: StrokeGroup, candidate: StrokeGroup) => {
+  const heightRatio = Math.max(candidate.bounds.height, 1) / Math.max(reference.bounds.height, 1)
+  const widthRatio = Math.max(candidate.bounds.width, 1) / Math.max(reference.bounds.width, 1)
+  const heightScore = clamp(1 - Math.abs(heightRatio - 0.9) / 1.1, 0, 1)
+  const widthScore = clamp(1 - Math.abs(widthRatio - 0.9) / 1.25, 0, 1)
+  return heightScore * 0.62 + widthScore * 0.38
+}
+
+const getScriptLocalityScore = (role: StructuralRole, parent: StrokeGroup, candidate: StrokeGroup) => {
+  const horizontalGap = Math.max(0, candidate.bounds.left - parent.bounds.right)
+  const horizontalCloseness = clamp(1 - horizontalGap / Math.max(22, parent.bounds.width * 1.18), 0, 1)
+  const targetY = role.role === 'superscript'
+    ? parent.bounds.top + parent.bounds.height * 0.08
+    : parent.bounds.bottom - parent.bounds.height * 0.08
+  const verticalCloseness = role.role === 'superscript'
+    ? clamp(1 - Math.abs(candidate.bounds.bottom - targetY) / Math.max(28, parent.bounds.height * 1.2), 0, 1)
+    : clamp(1 - Math.abs(candidate.bounds.top - targetY) / Math.max(28, parent.bounds.height * 1.2), 0, 1)
+  return horizontalCloseness * 0.58 + verticalCloseness * 0.42
+}
+
+const isSameParentStackedScriptPair = (first: StrokeGroup, second: StrokeGroup) => {
+  const upper = first.bounds.centerY <= second.bounds.centerY ? first : second
+  const lower = upper.id === first.id ? second : first
+  const overlapWidth = Math.max(0, Math.min(first.bounds.right, second.bounds.right) - Math.max(first.bounds.left, second.bounds.left))
+  const minWidth = Math.max(1, Math.min(first.bounds.width, second.bounds.width))
+  const sameColumn = overlapWidth / minWidth >= 0.14 || Math.abs(first.bounds.centerX - second.bounds.centerX) <= Math.max(22, (first.bounds.width + second.bounds.width) * 0.42)
+  const clearlySeparatedRows = lower.bounds.centerY - upper.bounds.centerY >= Math.max(16, (first.bounds.height + second.bounds.height) * 0.38)
+  return sameColumn && clearlySeparatedRows
+}
+
 const collectStableAttachments = (groups: StrokeGroup[], edges: LayoutEdge[], blockedGroupIds: Set<string>) => {
   const attachments: StableAttachment[] = []
   const groupIds = new Set(groups.map((group) => group.id))
@@ -381,11 +411,16 @@ const getRoleContextKey = (role: StructuralRole) => {
   return `parent:${role.parentGroupId || 'none'}|containers:${containers}`
 }
 
+const getScriptContextKey = (role: StructuralRole) => {
+  const containers = [...role.containerGroupIds].sort().join(',') || 'root'
+  return `role:${role.role}|parent:${role.parentGroupId || 'none'}|containers:${containers}`
+}
+
 const makeUnsupportedRole = (role: StructuralRole, evidence: string[]) => makeRole(
   role.groupId,
   'unsupportedSymbol',
   Math.max(role.score, 0.62),
-  role.depth,
+  0,
   null,
   [
     ...role.evidence,
@@ -395,7 +430,7 @@ const makeUnsupportedRole = (role: StructuralRole, evidence: string[]) => makeRo
   role.containerGroupIds,
 )
 
-const resolveBaselineAdmissibility = (groups: StrokeGroup[], roles: StructuralRole[]) => {
+const resolveStructuralAdmissibility = (groups: StrokeGroup[], roles: StructuralRole[], edges: LayoutEdge[]) => {
   const groupMap = new Map(groups.map((group) => [group.id, group]))
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
   const baselineRoles = roles.filter((role) => role.role === 'baseline')
@@ -451,8 +486,121 @@ const resolveBaselineAdmissibility = (groups: StrokeGroup[], roles: StructuralRo
     }
   }
 
+  const scriptBuckets = new Map<string, StructuralRole[]>()
+  for (const role of roleMap.values()) {
+    if (role.role !== 'superscript' && role.role !== 'subscript') continue
+    if (!role.parentGroupId) continue
+    const contextKey = getScriptContextKey(role)
+    const bucket = scriptBuckets.get(contextKey) || []
+    bucket.push(role)
+    scriptBuckets.set(contextKey, bucket)
+  }
+
+  for (const [contextKey, bucket] of scriptBuckets.entries()) {
+    if (bucket.length < 2) continue
+    const parentGroupId = bucket[0]?.parentGroupId || null
+    if (!parentGroupId) continue
+    const parentGroup = groupMap.get(parentGroupId)
+    if (!parentGroup) continue
+
+    const ordered = [...bucket].sort((left, right) => {
+      const leftGroup = groupMap.get(left.groupId)
+      const rightGroup = groupMap.get(right.groupId)
+      if (!leftGroup || !rightGroup) return 0
+      const leftScore = getScriptLocalityScore(left, parentGroup, leftGroup) * 0.78 + getSizeComparabilityScore(parentGroup, leftGroup) * 0.22
+      const rightScore = getScriptLocalityScore(right, parentGroup, rightGroup) * 0.78 + getSizeComparabilityScore(parentGroup, rightGroup) * 0.22
+      return rightScore - leftScore
+    })
+
+    const keptScriptIds: string[] = []
+    for (const candidate of ordered) {
+      const candidateGroup = groupMap.get(candidate.groupId)
+      if (!candidateGroup) continue
+      const conflictingKeptRole = keptScriptIds
+        .map((groupId) => roleMap.get(groupId))
+        .find((keptRole) => {
+          if (!keptRole) return false
+          const keptGroup = groupMap.get(keptRole.groupId)
+          if (!keptGroup) return false
+          return isSameParentStackedScriptPair(keptGroup, candidateGroup)
+        })
+
+      if (!conflictingKeptRole) {
+        keptScriptIds.push(candidate.groupId)
+        continue
+      }
+
+      roleMap.set(candidate.groupId, makeUnsupportedRole(candidate, [
+        `unsupported same-parent stacked ${candidate.role}`,
+        `conflicts-with=${conflictingKeptRole.groupId}`,
+        'spatial closeness dominates size comparability when resolving local script siblings',
+      ]))
+      const scriptRole = candidate.role === 'superscript' ? 'superscript' : 'subscript'
+      flags.push({
+        kind: 'sameParentStackedScripts',
+        severity: 'warning',
+        groupIds: [conflictingKeptRole.groupId, candidate.groupId],
+        contextKey,
+        parentGroupId,
+        scriptRole,
+        message: `Multiple ${scriptRole} candidates stack in the same local context around one parent. The weaker sibling was preserved as ink but demoted to unsupportedSymbol.`,
+      })
+    }
+  }
+
+  const baselineFallbacks = Array.from(roleMap.values()).filter((role) => role.role === 'baseline')
+  for (const role of baselineFallbacks) {
+    const candidateGroup = groupMap.get(role.groupId)
+    if (!candidateGroup) continue
+
+    const scriptEvidence = [
+      {
+        role: 'superscript' as const,
+        edge: incomingByKind(edges, role.groupId, 'superscriptCandidate')[0] || null,
+      },
+      {
+        role: 'subscript' as const,
+        edge: incomingByKind(edges, role.groupId, 'subscriptCandidate')[0] || null,
+      },
+    ]
+      .filter((entry) => entry.edge && entry.edge.score >= 0.3)
+      .sort((left, right) => (right.edge?.score || 0) - (left.edge?.score || 0))[0] || null
+
+    if (!scriptEvidence?.edge) continue
+
+    const siblingScript = Array.from(roleMap.values()).find((candidateRole) => {
+      if (candidateRole.role !== scriptEvidence.role) return false
+      if (candidateRole.parentGroupId !== scriptEvidence.edge?.fromId) return false
+      const sameContainers = [...candidateRole.containerGroupIds].sort().join(',') === [...role.containerGroupIds].sort().join(',')
+      if (!sameContainers) return false
+      const siblingGroup = groupMap.get(candidateRole.groupId)
+      if (!siblingGroup) return false
+      return isSameParentStackedScriptPair(siblingGroup, candidateGroup)
+    })
+
+    if (!siblingScript || !scriptEvidence.edge.fromId) continue
+
+    roleMap.set(role.groupId, makeUnsupportedRole(role, [
+      `unsupported same-parent stacked ${scriptEvidence.role}`,
+      `conflicts-with=${siblingScript.groupId}`,
+      `candidate-parent=${scriptEvidence.edge.fromId}`,
+      'baseline fallback was rejected because local script spatiality remained stronger',
+    ]))
+    flags.push({
+      kind: 'sameParentStackedScripts',
+      severity: 'warning',
+      groupIds: [siblingScript.groupId, role.groupId],
+      contextKey: `role:${scriptEvidence.role}|parent:${scriptEvidence.edge.fromId}|containers:${[...role.containerGroupIds].sort().join(',') || 'root'}`,
+      parentGroupId: scriptEvidence.edge.fromId,
+      scriptRole: scriptEvidence.role,
+      message: `A baseline fallback still carried strong ${scriptEvidence.role} evidence in the same local context as an existing sibling script. It was preserved as ink but demoted to unsupportedSymbol.`,
+    })
+  }
+
   return {
-    roles: Array.from(roleMap.values()).sort((left, right) => left.depth - right.depth),
+    roles: Array.from(roleMap.values())
+      .map((role) => ({ ...role, depth: role.parentGroupId ? roleDepth(roleMap, role.groupId) : 0 }))
+      .sort((left, right) => left.depth - right.depth),
     flags,
   }
 }
@@ -681,7 +829,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
       return makeRole(group.id, 'baseline', 0.5, 0, null, ['fallback default'], containerIdsByGroupId.get(group.id) || [])
     })
     .sort((left, right) => left.depth - right.depth)
-  const { roles: admissibleRoles, flags } = resolveBaselineAdmissibility(groups, resolvedRoles)
+  const { roles: admissibleRoles, flags } = resolveStructuralAdmissibility(groups, resolvedRoles, edges)
 
   return {
     roles: admissibleRoles,

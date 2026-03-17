@@ -188,6 +188,14 @@ The engine now also treats baseline more carefully at the local-context level:
 
 Line-like groups that look structurally like fraction bars but do not satisfy the supported fraction constraints are also preserved instead of defaulting to baseline automatically.
 
+The same admissibility idea now applies to local scripts as well:
+
+- two superscript siblings stacked in the same local context around the same parent are not both allowed to remain `superscript`
+- two subscript siblings stacked in the same local context around the same parent are not both allowed to remain `subscript`
+- true nesting is still allowed when the upper or lower script becomes the parent of another script locally
+- when sibling script rows conflict, spatial closeness to the shared parent is treated as the strongest locality signal and size comparability is used only as a secondary tie-breaker
+- a demoted conflicting script is preserved as ink and surfaced as an `unsupported symbol` warning rather than deleted
+
 #### Normalization
 
 The first pass normalizes by applying role-aware transforms to original strokes:
@@ -209,7 +217,7 @@ Known limitations:
 - ambiguity is reported, but final role assignment is still heuristic
 - fraction detection is now more explicit than before, but still only covers a narrow family of handwritten fraction layouts
 - local ownership now covers script nesting, enclosure boundaries, and first-pass mixed barrier redirection, but not full multi-operator local parsing yet
-- same-context stacked baseline warnings exist, but full context-tree row admissibility is not implemented yet
+- same-context stacked baseline and same-parent stacked script admissibility exist, but full context-tree row admissibility is not implemented yet
 - no radical handling yet
 - no explicit baseline-line estimation across full expressions yet
 - fixture coverage is still small even though it now includes chained superscripts, numerator-with-exponent cases, horizontal-line subscript disambiguation, parenthesized local structures, and mixed parenthesized layouts

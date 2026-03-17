@@ -1,6 +1,41 @@
 import { expect, test } from '@playwright/test'
 
 import { analyzeHandwrittenExpression, getHandwritingFixture, getRoleDescriptor, roleAllowsChildRole } from '../lib/handwritingNormalization'
+import { inferStructuralRoles } from '../lib/handwritingNormalization/roles'
+import type { InkStroke, LayoutEdge, StrokeGroup } from '../lib/handwritingNormalization'
+
+const makeStroke = (id: string): InkStroke => ({
+  id,
+  width: 4,
+  color: '#e6eefc',
+  startedAt: 0,
+  endedAt: 0,
+  points: [{ x: 0, y: 0, t: 0 }],
+})
+
+const makeGroup = (id: string, bounds: StrokeGroup['bounds'], strokeId = `${id}-stroke`): StrokeGroup => ({
+  id,
+  strokeIds: [strokeId],
+  strokes: [makeStroke(strokeId)],
+  bounds,
+  centroid: { x: bounds.centerX, y: bounds.centerY },
+  baselineY: bounds.bottom,
+  aspectRatio: bounds.width / Math.max(bounds.height, 1),
+  flatness: Math.max(bounds.width, bounds.height) / Math.max(1, Math.min(bounds.width, bounds.height)),
+  density: 0.003,
+  strokeCount: 1,
+  startedAt: 0,
+  endedAt: 0,
+})
+
+const makeEdge = (fromId: string, toId: string, kind: LayoutEdge['kind'], score: number, metrics: Record<string, number> = {}): LayoutEdge => ({
+  id: `${fromId}:${kind}:${toId}`,
+  fromId,
+  toId,
+  kind,
+  score,
+  metrics,
+})
 
 test.describe('handwriting normalization fixtures', () => {
   test('superscript fixture groups the base and exponent separately', async () => {
@@ -173,5 +208,45 @@ test.describe('handwriting normalization fixtures', () => {
     expect(analysis.roles.filter((role) => role.role === 'unsupportedSymbol')).toHaveLength(1)
     expect(analysis.flags.some((flag) => flag.kind === 'sameContextStackedBaselines')).toBe(true)
     expect(analysis.groups.every((group) => group.strokeIds.length >= 1)).toBe(true)
+  })
+
+  test('stacked same-parent superscripts are reduced to one local script row', async () => {
+    const groups = [
+      makeGroup('base', { left: 132, top: 232, right: 168, bottom: 278, width: 36, height: 46, centerX: 150, centerY: 255 }),
+      makeGroup('super-1', { left: 208, top: 154, right: 252, bottom: 194, width: 44, height: 40, centerX: 230, centerY: 174 }),
+      makeGroup('super-2', { left: 208, top: 112, right: 252, bottom: 152, width: 44, height: 40, centerX: 230, centerY: 132 }),
+    ]
+    const edges = [
+      makeEdge('base', 'super-1', 'superscriptCandidate', 0.82, { dx: 80, dy: -81, sizeRatio: 0.87 }),
+      makeEdge('base', 'super-2', 'superscriptCandidate', 0.37, { dx: 80, dy: -123, sizeRatio: 0.87 }),
+      makeEdge('base', 'super-1', 'sequence', 0.18, { dx: 80, dy: -81 }),
+      makeEdge('base', 'super-2', 'sequence', 0.1, { dx: 80, dy: -123 }),
+    ]
+    const analysis = inferStructuralRoles(groups, edges)
+
+    expect(groups).toHaveLength(3)
+    expect(analysis.roles.filter((role) => role.role === 'superscript')).toHaveLength(1)
+    expect(analysis.roles.filter((role) => role.role === 'unsupportedSymbol')).toHaveLength(1)
+    expect(analysis.flags.some((flag) => flag.kind === 'sameParentStackedScripts' && flag.scriptRole === 'superscript')).toBe(true)
+  })
+
+  test('stacked same-parent subscripts are reduced to one local script row', async () => {
+    const groups = [
+      makeGroup('base', { left: 126, top: 198, right: 164, bottom: 246, width: 38, height: 48, centerX: 145, centerY: 222 }),
+      makeGroup('sub-1', { left: 208, top: 272, right: 250, bottom: 311, width: 42, height: 39, centerX: 229, centerY: 291.5 }),
+      makeGroup('sub-2', { left: 208, top: 322, right: 250, bottom: 361, width: 42, height: 39, centerX: 229, centerY: 341.5 }),
+    ]
+    const edges = [
+      makeEdge('base', 'sub-1', 'subscriptCandidate', 0.78, { dx: 84, dy: 69.5, sizeRatio: 0.81, belowRightScore: 0.62 }),
+      makeEdge('base', 'sub-2', 'subscriptCandidate', 0.36, { dx: 84, dy: 119.5, sizeRatio: 0.81, belowRightScore: 0.44 }),
+      makeEdge('base', 'sub-1', 'sequence', 0.16, { dx: 84, dy: 69.5 }),
+      makeEdge('base', 'sub-2', 'sequence', 0.08, { dx: 84, dy: 119.5 }),
+    ]
+    const analysis = inferStructuralRoles(groups, edges)
+
+    expect(groups).toHaveLength(3)
+    expect(analysis.roles.filter((role) => role.role === 'subscript')).toHaveLength(1)
+    expect(analysis.roles.filter((role) => role.role === 'unsupportedSymbol')).toHaveLength(1)
+    expect(analysis.flags.some((flag) => flag.kind === 'sameParentStackedScripts' && flag.scriptRole === 'subscript')).toBe(true)
   })
 })

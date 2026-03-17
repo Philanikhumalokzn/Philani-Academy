@@ -130,13 +130,23 @@ export type StructuralAmbiguity = {
   candidates: StructuralRoleCandidate[]
 }
 
-export type StructuralFlag = {
-  kind: 'sameContextStackedBaselines'
-  severity: 'warning'
-  groupIds: string[]
-  message: string
-  contextKey: string
-}
+export type StructuralFlag =
+  | {
+    kind: 'sameContextStackedBaselines'
+    severity: 'warning'
+    groupIds: string[]
+    message: string
+    contextKey: string
+  }
+  | {
+    kind: 'sameParentStackedScripts'
+    severity: 'warning'
+    groupIds: string[]
+    message: string
+    contextKey: string
+    parentGroupId: string
+    scriptRole: 'superscript' | 'subscript'
+  }
 
 export type LocalSubexpressionAttachment = {
   parentGroupId: string

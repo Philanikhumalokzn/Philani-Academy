@@ -84,6 +84,21 @@ const getAppStateZoomValue = (appState: any) => {
   return null
 }
 
+const getPublicSolveViewportSnapshot = (appState: any) => ({
+  scrollX: Number(appState?.scrollX || 0),
+  scrollY: Number(appState?.scrollY || 0),
+  zoom: getAppStateZoomValue(appState) || 1,
+})
+
+const serializePublicSolveViewportSnapshot = (appState: any) => {
+  const snapshot = getPublicSolveViewportSnapshot(appState)
+  return JSON.stringify([
+    Number(snapshot.scrollX.toFixed(3)),
+    Number(snapshot.scrollY.toFixed(3)),
+    Number(snapshot.zoom.toFixed(4)),
+  ])
+}
+
 const createEmptyPublicSolveSceneMeta = (): PublicSolveSceneMeta => ({
   version: PUBLIC_SOLVE_SCENE_META_VERSION,
   baselineSegmentId: null,
@@ -353,18 +368,21 @@ const buildInitialData = (scene: PublicSolveScene | null | undefined) => {
   }
 }
 
-const mergePersistedAppStateIntoScene = (
+const mergeViewportAppStateIntoScene = (
   scene: PublicSolveScene | null | undefined,
   appState: any,
 ): PublicSolveScene => {
   const normalized = normalizePublicSolveScene(scene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
+  const nextViewport = getPublicSolveViewportSnapshot(appState)
   const nextAppState = {
     ...(normalized.appState || {}),
-    ...(pickPersistedPublicSolveAppState(appState) || {}),
+    scrollX: nextViewport.scrollX,
+    scrollY: nextViewport.scrollY,
+    zoom: nextViewport.zoom,
   }
   return {
     ...normalized,
-    appState: Object.keys(nextAppState).length ? nextAppState : undefined,
+    appState: nextAppState,
   }
 }
 
@@ -402,6 +420,19 @@ export function PublicSolveCanvasViewer({
   onViewportChange?: (scene: PublicSolveScene) => void
 }) {
   const normalizedScene = useMemo(() => normalizePublicSolveScene(scene), [scene])
+  const lastViewportSignatureRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    lastViewportSignatureRef.current = serializePublicSolveViewportSnapshot(normalizedScene?.appState)
+  }, [normalizedScene])
+
+  const handleViewerChange = useCallback((_elements: any[], appState: any) => {
+    if (!onViewportChange) return
+    const nextSignature = serializePublicSolveViewportSnapshot(appState)
+    if (lastViewportSignatureRef.current === nextSignature) return
+    lastViewportSignatureRef.current = nextSignature
+    onViewportChange(mergeViewportAppStateIntoScene(normalizedScene, appState))
+  }, [normalizedScene, onViewportChange])
 
   if (!publicSolveSceneHasContent(normalizedScene)) {
     return (
@@ -418,9 +449,7 @@ export function PublicSolveCanvasViewer({
           key={normalizedScene?.updatedAt || 'viewer'}
           className="h-full"
           initialData={buildInitialData(normalizedScene)}
-          onChange={onViewportChange ? (_elements: any[], appState: any) => {
-            onViewportChange(mergePersistedAppStateIntoScene(normalizedScene, appState))
-          } : undefined}
+          onChange={onViewportChange ? handleViewerChange : undefined}
           viewModeEnabled
           zenModeEnabled
           gridModeEnabled={false}

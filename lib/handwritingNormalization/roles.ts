@@ -44,10 +44,19 @@ const chooseBestCandidate = (candidates: StructuralRoleCandidate[]) => {
   return [...candidates].sort((left, right) => right.score - left.score)[0]
 }
 
-const makeCandidate = (role: StructuralRoleKind, score: number, parentGroupId?: string | null, evidence: string[] = []): StructuralRoleCandidate => ({
+const makeCandidate = (
+  role: StructuralRoleKind,
+  score: number,
+  parentGroupId?: string | null,
+  evidence: string[] = [],
+  options: Pick<StructuralRoleCandidate, 'associationContextId' | 'containerGroupIds' | 'normalizationAnchorGroupIds'> = {},
+): StructuralRoleCandidate => ({
   role,
   score,
   parentGroupId: parentGroupId ?? null,
+  associationContextId: options.associationContextId ?? null,
+  containerGroupIds: options.containerGroupIds || [],
+  normalizationAnchorGroupIds: options.normalizationAnchorGroupIds || [],
   evidence,
 })
 
@@ -142,9 +151,10 @@ const demoteMissingOperandScripts = (roles: StructuralRole[]) => {
   }
 }
 
-const appendFractionWideScriptAmbiguities = (roles: StructuralRole[], groups: StrokeGroup[], ambiguities: StructuralAmbiguity[]) => {
+const appendFractionWideScriptAmbiguities = (roles: StructuralRole[], groups: StrokeGroup[], contexts: ExpressionContext[], ambiguities: StructuralAmbiguity[]) => {
   const groupMap = new Map(groups.map((group) => [group.id, group]))
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
+  const contextMap = new Map(contexts.map((context) => [context.id, context]))
   const nextAmbiguities = [...ambiguities]
 
   for (const role of roles) {
@@ -154,13 +164,21 @@ const appendFractionWideScriptAmbiguities = (roles: StructuralRole[], groups: St
     if (!isFractionWideOutsideMember(role.groupId, parentRole, groupMap)) continue
     if (nextAmbiguities.some((ambiguity) => ambiguity.groupId === role.groupId && ambiguity.reason === 'fraction-wide-script-vs-baseline')) continue
 
+    const detachedContextId = role.associationContextId ? contextMap.get(role.associationContextId)?.parentContextId || 'context:root' : 'context:root'
+
     nextAmbiguities.push({
       groupId: role.groupId,
       reason: 'fraction-wide-script-vs-baseline',
       chosenRole: role.role,
       candidates: [
-        makeCandidate(role.role, role.score, role.parentGroupId, ['resolved as fraction-wide script promotion']),
-        makeCandidate('baseline', Math.max(0.28, role.score - 0.2), null, ['detached baseline alternative']),
+        makeCandidate(role.role, role.score, role.parentGroupId, ['resolved as fraction-wide script promotion'], {
+          associationContextId: role.associationContextId,
+          containerGroupIds: role.containerGroupIds,
+          normalizationAnchorGroupIds: role.normalizationAnchorGroupIds,
+        }),
+        makeCandidate('baseline', Math.max(0.28, role.score - 0.2), null, ['detached baseline alternative'], {
+          associationContextId: detachedContextId,
+        }),
       ],
     })
   }
@@ -168,7 +186,8 @@ const appendFractionWideScriptAmbiguities = (roles: StructuralRole[], groups: St
   return nextAmbiguities
 }
 
-const appendEnclosureWideScriptAmbiguities = (roles: StructuralRole[], ambiguities: StructuralAmbiguity[]) => {
+const appendEnclosureWideScriptAmbiguities = (roles: StructuralRole[], contexts: ExpressionContext[], ambiguities: StructuralAmbiguity[]) => {
+  const contextMap = new Map(contexts.map((context) => [context.id, context]))
   const nextAmbiguities = [...ambiguities]
 
   for (const role of roles) {
@@ -177,13 +196,21 @@ const appendEnclosureWideScriptAmbiguities = (roles: StructuralRole[], ambiguiti
     if (role.containerGroupIds.length > 0) continue
     if (nextAmbiguities.some((ambiguity) => ambiguity.groupId === role.groupId && ambiguity.reason === 'enclosure-wide-script-vs-baseline')) continue
 
+    const detachedContextId = contextMap.get(role.associationContextId)?.parentContextId || 'context:root'
+
     nextAmbiguities.push({
       groupId: role.groupId,
       reason: 'enclosure-wide-script-vs-baseline',
       chosenRole: role.role,
       candidates: [
-        makeCandidate(role.role, role.score, role.parentGroupId, ['resolved as enclosure-wide script promotion']),
-        makeCandidate('baseline', Math.max(0.28, role.score - 0.2), null, ['detached baseline alternative']),
+        makeCandidate(role.role, role.score, role.parentGroupId, ['resolved as enclosure-wide script promotion'], {
+          associationContextId: role.associationContextId,
+          containerGroupIds: role.containerGroupIds,
+          normalizationAnchorGroupIds: role.normalizationAnchorGroupIds,
+        }),
+        makeCandidate('baseline', Math.max(0.28, role.score - 0.2), null, ['detached baseline alternative'], {
+          associationContextId: detachedContextId,
+        }),
       ],
     })
   }
@@ -561,7 +588,9 @@ const buildExpressionContexts = (
       if (leftIsBaseline !== rightIsBaseline) return leftIsBaseline - rightIsBaseline
       return left.groupId.localeCompare(right.groupId)
     })[0] || null
-    const parentContextId = semanticRoot?.containerGroupIds.length ? `context:enclosure:${semanticRoot.containerGroupIds.join(':')}` : 'context:root'
+    const outerContainerGroupIds = (semanticRoot?.containerGroupIds || [])
+      .filter((groupId) => groupId !== enclosure.openGroupId && groupId !== enclosure.closeGroupId)
+    const parentContextId = outerContainerGroupIds.length ? `context:enclosure:${outerContainerGroupIds.join(':')}` : 'context:root'
     contexts.push({
       id: `context:enclosure:${enclosure.openGroupId}:${enclosure.closeGroupId}`,
       kind: 'enclosure',
@@ -1185,8 +1214,8 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     ...role,
     depth: role.parentGroupId ? roleDepth(annotatedRoleMap, role.groupId) : 0,
   }))
-  const fractionAwareAmbiguities = appendFractionWideScriptAmbiguities(contextualizedRoles, groups, ambiguities)
-  const contextualizedAmbiguities = appendEnclosureWideScriptAmbiguities(contextualizedRoles, fractionAwareAmbiguities)
+  const fractionAwareAmbiguities = appendFractionWideScriptAmbiguities(contextualizedRoles, groups, contexts, ambiguities)
+  const contextualizedAmbiguities = appendEnclosureWideScriptAmbiguities(contextualizedRoles, contexts, fractionAwareAmbiguities)
 
   return {
     roles: contextualizedRoles,

@@ -1,6 +1,21 @@
-import type { ContextParseRoot, EnclosureStructure, ExpressionContext, ExpressionParseAlternative, ExpressionParseNode, StrokeGroup, StructuralAmbiguity, StructuralRole, StructuralRoleKind } from './types'
+import type { ContextParseRoot, EnclosureStructure, ExpressionContext, ExpressionParseAlternative, ExpressionParseNode, StrokeGroup, StructuralAmbiguity, StructuralRole, StructuralRoleCandidate } from './types'
 
 const uniqueIds = (values: string[]) => Array.from(new Set(values.filter(Boolean)))
+
+const getContextPriority = (context: ExpressionContext) => {
+  switch (context.kind) {
+    case 'enclosure':
+      return 0
+    case 'numerator':
+    case 'denominator':
+      return 1
+    case 'fraction':
+      return 2
+    case 'root':
+    default:
+      return 3
+  }
+}
 
 const getContainerContextId = (contexts: ExpressionContext[], containerGroupIds: string[]) => {
   if (!containerGroupIds.length) return 'context:root'
@@ -26,14 +41,15 @@ export const buildExpressionParseForest = (
   const fractionNodeIdByExpressionContextId = new Map<string, string>()
   const enclosureNodeMetaById = new Map<string, { expressionContextId: string }>()
   const fractionNodeMetaById = new Map<string, { expressionContextId?: string | null, numeratorGroupId?: string | null, denominatorGroupId?: string | null }>()
+  const parseScopedAmbiguities = ambiguities.filter((ambiguity) => ambiguity.reason === 'fraction-wide-script-vs-baseline' || ambiguity.reason === 'enclosure-wide-script-vs-baseline')
+  const parseScopedAmbiguityGroupIds = new Set(parseScopedAmbiguities.map((ambiguity) => ambiguity.groupId))
 
   const getFallbackContextIdForRole = (role: Pick<StructuralRole, 'associationContextId' | 'containerGroupIds'>) => {
     if (role.associationContextId) return role.associationContextId
     return getContainerContextId(contexts, role.containerGroupIds)
   }
 
-  const getScriptNodeId = (scriptRole: StructuralRole, fallbackParentGroupId?: string | null) => {
-    const nodeId = `parse:script:${scriptRole.groupId}`
+  const getScriptNodeId = (scriptRole: StructuralRole, fallbackParentGroupId?: string | null, nodeId = `parse:script:${scriptRole.groupId}`) => {
     if (nodeMap.has(nodeId)) return nodeId
 
     const operandNodeId = buildScriptOperandNodeId(scriptRole, fallbackParentGroupId)
@@ -59,36 +75,67 @@ export const buildExpressionParseForest = (
     return nodeId
   }
 
+  const getCandidateGroupNodeId = (groupId: string, candidate: StructuralRoleCandidate, branchKey: string) => {
+    const contextId = candidate.associationContextId || getMostLocalContextId([groupId], 'context:root')
+    const nodeId = `parse:group:${groupId}:${branchKey}`
+    if (nodeMap.has(nodeId)) return nodeId
+
+    addNode({
+      id: nodeId,
+      kind: 'group',
+      contextId,
+      groupIds: [groupId],
+      childNodeIds: [],
+      role: candidate.role,
+      label: `${candidate.role}:${groupId}:${branchKey}`,
+    })
+
+    return nodeId
+  }
+
   const buildCandidateParseAlternative = (
     ambiguity: StructuralAmbiguity,
-    chosenRole: StructuralRole,
     candidate: StructuralAmbiguity['candidates'][number],
     rank: number,
   ): ExpressionParseAlternative | null => {
+    const resolvedRole = roleMap.get(ambiguity.groupId)
+    if (!resolvedRole) return null
     const candidateRole: StructuralRole = {
-      ...chosenRole,
+      ...resolvedRole,
       role: candidate.role,
       score: candidate.score,
-      parentGroupId: candidate.parentGroupId ?? chosenRole.parentGroupId,
-      evidence: candidate.evidence || chosenRole.evidence,
+      parentGroupId: candidate.parentGroupId ?? null,
+      associationContextId: candidate.associationContextId ?? null,
+      containerGroupIds: candidate.containerGroupIds || [],
+      normalizationAnchorGroupIds: candidate.normalizationAnchorGroupIds || [],
+      evidence: candidate.evidence || resolvedRole.evidence,
     }
 
+    const isChosenCandidate = candidate.role === ambiguity.chosenRole
+      && (candidate.parentGroupId ?? null) === (resolvedRole.parentGroupId ?? null)
+      && (candidate.associationContextId ?? resolvedRole.associationContextId ?? null) === (resolvedRole.associationContextId ?? null)
+
+    const branchKey = `ambiguity:${ambiguity.reason}:${rank}:${candidate.role}:${candidate.parentGroupId || 'root'}:${candidate.associationContextId || 'context:root'}`
+
     let nodeId: string | null = null
+    let nodeKind: ExpressionParseAlternative['nodeKind'] = 'group'
     if (candidate.role === 'superscript' || candidate.role === 'subscript') {
-      nodeId = getScriptNodeId(candidateRole, candidate.parentGroupId)
+      nodeKind = 'scriptApplication'
+      nodeId = getScriptNodeId(candidateRole, candidate.parentGroupId, `parse:script:${ambiguity.groupId}:${branchKey}`)
     } else {
-      nodeId = getOrCreateGroupNode(ambiguity.groupId)
+      nodeId = getCandidateGroupNodeId(ambiguity.groupId, candidate, branchKey)
     }
     if (!nodeId) return null
 
     return {
       nodeId,
+      nodeKind,
       role: candidate.role,
       rank,
       score: candidate.score,
       parentGroupId: candidate.parentGroupId ?? null,
       contextId: candidateRole.associationContextId || null,
-      relation: candidate.role === ambiguity.chosenRole ? 'chosen' : 'alternative',
+      relation: isChosenCandidate ? 'chosen' : 'alternative',
       label: `${candidate.role}:${ambiguity.groupId}`,
     }
   }
@@ -102,6 +149,13 @@ export const buildExpressionParseForest = (
     }
     const parentGroupId = fallbackParentGroupId || scriptRole.parentGroupId
     if (!parentGroupId) return null
+    const parentEnclosure = enclosures.find((enclosure) => enclosure.openGroupId === parentGroupId || enclosure.closeGroupId === parentGroupId) || null
+    if (parentEnclosure) {
+      const parentEnclosureContextId = `context:enclosure:${parentEnclosure.openGroupId}:${parentEnclosure.closeGroupId}`
+      if (enclosureNodeIdByContextId.has(parentEnclosureContextId)) {
+        return enclosureNodeIdByContextId.get(parentEnclosureContextId) || null
+      }
+    }
     return getOrCreateGroupNode(parentGroupId)
   }
 
@@ -110,9 +164,8 @@ export const buildExpressionParseForest = (
     const matchingContexts = contexts
       .filter((context) => candidateIds.every((groupId) => context.memberGroupIds.includes(groupId)))
       .sort((left, right) => {
-        const leftRootBias = left.kind === 'root' ? 1 : 0
-        const rightRootBias = right.kind === 'root' ? 1 : 0
-        if (leftRootBias !== rightRootBias) return leftRootBias - rightRootBias
+        const priorityDelta = getContextPriority(left) - getContextPriority(right)
+        if (priorityDelta !== 0) return priorityDelta
         const sizeDelta = left.memberGroupIds.length - right.memberGroupIds.length
         if (sizeDelta !== 0) return sizeDelta
         const anchorDelta = left.anchorGroupIds.length - right.anchorGroupIds.length
@@ -156,6 +209,24 @@ export const buildExpressionParseForest = (
     })
     nodeIdByGroupId.set(groupId, node.id)
     return node.id
+  }
+
+  const getContextSemanticRootNodeId = (context: ExpressionContext) => {
+    if (!context.semanticRootGroupId) return null
+
+    if (context.kind === 'fraction' && fractionNodeIdByExpressionContextId.has(context.id)) {
+      return fractionNodeIdByExpressionContextId.get(context.id) || null
+    }
+
+    const semanticRole = roleMap.get(context.semanticRootGroupId) || null
+    const semanticEnclosureContextId = semanticRole?.containerGroupIds.length
+      ? `context:enclosure:${semanticRole.containerGroupIds.join(':')}`
+      : null
+    if (semanticEnclosureContextId && enclosureNodeIdByContextId.has(semanticEnclosureContextId)) {
+      return enclosureNodeIdByContextId.get(semanticEnclosureContextId) || null
+    }
+
+    return getOrCreateGroupNode(context.semanticRootGroupId)
   }
 
   for (const enclosure of enclosures) {
@@ -206,21 +277,22 @@ export const buildExpressionParseForest = (
 
   const scriptRoles = roles.filter((role) => role.role === 'superscript' || role.role === 'subscript')
   for (const scriptRole of scriptRoles) {
+    if (parseScopedAmbiguityGroupIds.has(scriptRole.groupId)) continue
     getScriptNodeId(scriptRole)
   }
 
-  const ambiguityNodes = ambiguities.filter((ambiguity) => ambiguity.reason === 'fraction-wide-script-vs-baseline' || ambiguity.reason === 'enclosure-wide-script-vs-baseline')
+  const ambiguityNodes = parseScopedAmbiguities
   for (const ambiguity of ambiguityNodes) {
     const chosenRole = roleMap.get(ambiguity.groupId)
     if (!chosenRole) continue
     const candidates = [...ambiguity.candidates]
       .sort((left, right) => right.score - left.score || left.role.localeCompare(right.role))
     const alternatives = candidates
-      .map((candidate, index) => buildCandidateParseAlternative(ambiguity, chosenRole, candidate, index + 1))
+      .map((candidate, index) => buildCandidateParseAlternative(ambiguity, candidate, index + 1))
       .filter((candidate): candidate is ExpressionParseAlternative => Boolean(candidate))
     const chosenAlternative = alternatives.find((candidate) => candidate.relation === 'chosen') || null
     const preferredChildNodeId = chosenAlternative?.nodeId || null
-    const contextId = chosenRole.associationContextId || getMostLocalContextId([ambiguity.groupId], 'context:root')
+    const contextId = chosenAlternative?.contextId || chosenRole.associationContextId || getMostLocalContextId([ambiguity.groupId], 'context:root')
 
     if (!alternatives.length) continue
 
@@ -263,11 +335,15 @@ export const buildExpressionParseForest = (
       .sort((left, right) => getNodeLeft(left) - getNodeLeft(right))
 
     if (!topLevelNodeIds.length) {
-      return {
-        contextId: context.id,
-        nodeIds: contextNodeIds,
-        rootNodeId: null,
+      const semanticRootNodeId = getContextSemanticRootNodeId(context)
+      if (!semanticRootNodeId) {
+        return {
+          contextId: context.id,
+          nodeIds: contextNodeIds,
+          rootNodeId: null,
+        }
       }
+      topLevelNodeIds.push(semanticRootNodeId)
     }
 
     const rootNode = addNode({

@@ -158,6 +158,10 @@ test.describe('handwriting normalization fixtures', () => {
     expect(ambiguityParseNode).toBeTruthy()
     expect(ambiguityParseNode?.ambiguityReason).toBe('fraction-wide-script-vs-baseline')
     expect(ambiguityParseNode?.preferredChildNodeId).toBe(outerScriptParseNode?.id)
+    expect(ambiguityParseNode?.alternatives?.map((alternative) => `${alternative.role}:${alternative.nodeKind}:${alternative.contextId || 'none'}`)).toEqual([
+      `superscript:scriptApplication:${fractionContext?.id || 'none'}`,
+      'baseline:group:context:root',
+    ])
     expect(ambiguityParseNode?.alternatives?.map((alternative) => `${alternative.rank}:${alternative.role}:${alternative.relation}`)).toEqual([
       '1:superscript:chosen',
       '2:baseline:alternative',
@@ -298,6 +302,10 @@ test.describe('handwriting normalization fixtures', () => {
     expect(ambiguityParseNode).toBeTruthy()
     expect(ambiguityParseNode?.ambiguityReason).toBe('enclosure-wide-script-vs-baseline')
     expect(ambiguityParseNode?.preferredChildNodeId).toBe(outerScriptParseNode?.id)
+    expect(ambiguityParseNode?.alternatives?.map((alternative) => `${alternative.role}:${alternative.nodeKind}:${alternative.contextId || 'none'}`)).toEqual([
+      `${outerSuperscript?.role || 'superscript'}:scriptApplication:${outerSuperscript?.associationContextId || 'none'}`,
+      'baseline:group:context:root',
+    ])
     expect(ambiguityParseNode?.alternatives?.map((alternative) => `${alternative.rank}:${alternative.role}:${alternative.relation}`)).toEqual([
       '1:superscript:chosen',
       '2:baseline:alternative',

@@ -186,6 +186,7 @@ Mixed operator-bound layouts are now handled one step further:
 - when that broader fraction-wide promotion is close to a detached-baseline reading, the engine now records that uncertainty explicitly instead of hiding it completely inside the chosen role
 - the same explicit uncertainty recording now applies to enclosure-wide outer scripts, so `( ... )^x` style promotions can retain a detached-baseline alternative instead of only a single committed attachment
 - the parse forest now carries that uncertainty with ranked ambiguity-node alternatives, including the preferred branch, alternative branch, and their relative scores
+- those alternatives are now branch-local parse nodes, so a detached baseline branch can live in the parent expression context while the promoted script branch still targets the fraction or enclosure semantic root
 - this allows locality to survive across barriers instead of losing the inner structure when a larger construct is added
 
 This pushes the engine closer to locality-first parsing:

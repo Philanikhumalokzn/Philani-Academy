@@ -130,6 +130,9 @@ export type StructuralRoleCandidate = {
   role: StructuralRoleKind
   score: number
   parentGroupId?: string | null
+  associationContextId?: string | null
+  containerGroupIds?: string[]
+  normalizationAnchorGroupIds?: string[]
   evidence?: string[]
 }
 
@@ -201,6 +204,7 @@ export type ExpressionParseNodeKind = 'group' | 'scriptApplication' | 'enclosure
 
 export type ExpressionParseAlternative = {
   nodeId: string
+  nodeKind: ExpressionParseNodeKind
   role: StructuralRoleKind
   rank: number
   score: number

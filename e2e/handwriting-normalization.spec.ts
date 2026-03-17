@@ -117,6 +117,35 @@ test.describe('handwriting normalization fixtures', () => {
     expect(superscript?.containerGroupIds).toHaveLength(2)
   })
 
+  test('outer superscript attaches to the enclosed semantic root rather than an enclosure boundary', async () => {
+    const fixture = getHandwritingFixture('parenthesizedExponent')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const baseline = analysis.roles.find((role) => role.role === 'baseline')
+    const superscripts = analysis.roles.filter((role) => role.role === 'superscript')
+    const outerSuperscript = superscripts.find((role) => role.parentGroupId === baseline?.groupId && role.containerGroupIds.length === 0)
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(analysis.enclosures).toHaveLength(1)
+    expect(superscripts).toHaveLength(2)
+    expect(outerSuperscript).toBeTruthy()
+    expect(outerSuperscript?.evidence.some((entry) => entry.includes('redirected-parent='))).toBe(true)
+  })
+
+  test('enclosed local expression can serve as a fraction numerator while preserving its internal ownership', async () => {
+    const fixture = getHandwritingFixture('parenthesizedFractionNumerator')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const numerator = analysis.roles.find((role) => role.role === 'numerator')
+    const superscript = analysis.roles.find((role) => role.role === 'superscript')
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(analysis.enclosures).toHaveLength(1)
+    expect(analysis.roles.some((role) => role.role === 'fractionBar')).toBe(true)
+    expect(numerator).toBeTruthy()
+    expect(analysis.roles.some((role) => role.role === 'denominator')).toBe(true)
+    expect(superscript?.parentGroupId).toBe(numerator?.groupId)
+    expect(numerator?.containerGroupIds).toHaveLength(2)
+  })
+
   test('role taxonomy encodes child constraints and sibling ranks', async () => {
     const baseline = getRoleDescriptor('baseline')
     const fractionBar = getRoleDescriptor('fractionBar')

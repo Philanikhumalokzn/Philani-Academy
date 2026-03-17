@@ -286,6 +286,21 @@ const isEnclosureBoundaryCandidate = (group: StrokeGroup) => {
   return tallEnough && narrowEnough && group.aspectRatio <= 0.75 && group.bounds.width > 6
 }
 
+const getEnclosureSemanticRootId = (
+  enclosure: EnclosureStructure & { memberGroupIds: string[] },
+  boundaryGroupId: string,
+  groupMap: Map<string, StrokeGroup>,
+) => {
+  const roots = enclosure.memberRootIds
+    .map((groupId) => groupMap.get(groupId))
+    .filter(Boolean) as StrokeGroup[]
+  if (!roots.length) return null
+  if (boundaryGroupId === enclosure.closeGroupId) {
+    return roots.sort((left, right) => right.bounds.right - left.bounds.right)[0]?.id || null
+  }
+  return roots.sort((left, right) => left.bounds.left - right.bounds.left)[0]?.id || null
+}
+
 const detectEnclosures = (groups: StrokeGroup[], subexpressions: LocalSubexpression[], groupMap: Map<string, StrokeGroup>, blockedGroupIds: Set<string>) => {
   const candidates = groups
     .filter((group) => !blockedGroupIds.has(group.id))
@@ -357,14 +372,19 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
   const ambiguities: StructuralAmbiguity[] = []
   const fractionBarLikeGroups = groups.filter(isFractionBarLikeGroup)
   const fractionBarIds = new Set(fractionBarLikeGroups.map((group) => group.id))
-  const stableAttachments = collectStableAttachments(groups, edges, fractionBarIds)
+  const enclosureBoundaryIds = new Set(groups.filter(isEnclosureBoundaryCandidate).map((group) => group.id))
+  const blockedAttachmentIds = new Set<string>([...fractionBarIds, ...enclosureBoundaryIds])
+  const stableAttachments = collectStableAttachments(groups, edges, blockedAttachmentIds)
   const groupMap = new Map(groups.map((group) => [group.id, group]))
   const { subexpressions, rootClaims } = buildLocalSubexpressions(groups, stableAttachments, fractionBarIds)
   const childIds = new Set(stableAttachments.map((attachment) => attachment.childId))
   const enclosures = detectEnclosures(groups, subexpressions, groupMap, fractionBarIds)
   const containerIdsByGroupId = new Map<string, string[]>()
+  const enclosureByBoundaryId = new Map<string, EnclosureStructure & { memberGroupIds: string[] }>()
 
   for (const enclosure of enclosures) {
+    enclosureByBoundaryId.set(enclosure.openGroupId, enclosure)
+    enclosureByBoundaryId.set(enclosure.closeGroupId, enclosure)
     roles.set(enclosure.openGroupId, makeRole(enclosure.openGroupId, 'enclosureOpen', enclosure.score, 0, null, [
       'left enclosure boundary',
       `members=${enclosure.memberRootIds.join(',')}`,
@@ -500,15 +520,25 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     const sortedCandidates = [...candidates].sort((left, right) => right.score - left.score)
     const runnerUp = sortedCandidates[1]
 
-    const parentRole = best.parentGroupId ? roles.get(best.parentGroupId) : null
-    const parentSupportsAttachment = Boolean(best.parentGroupId)
-      && !fractionBarIds.has(best.parentGroupId)
+    let resolvedParentGroupId = best.parentGroupId || null
+    const parentEnclosure = resolvedParentGroupId ? enclosureByBoundaryId.get(resolvedParentGroupId) || null : null
+    if ((best.role === 'superscript' || best.role === 'subscript') && resolvedParentGroupId && parentEnclosure) {
+      const redirectedParentId = getEnclosureSemanticRootId(parentEnclosure, resolvedParentGroupId, groupMap)
+      if (redirectedParentId) {
+        resolvedParentGroupId = redirectedParentId
+      }
+    }
+
+    const parentRole = resolvedParentGroupId ? roles.get(resolvedParentGroupId) : null
+    const parentSupportsAttachment = Boolean(resolvedParentGroupId)
+      && !fractionBarIds.has(resolvedParentGroupId)
       && (!parentRole || (roleCanOwnScripts(parentRole.role) && roleAllowsChildRole(parentRole.role, best.role)))
 
-    if ((best.role === 'superscript' || best.role === 'subscript') && best.score >= 0.45 && best.parentGroupId && parentSupportsAttachment) {
-      const nextRole = makeRole(group.id, best.role, best.score, 1, best.parentGroupId, [
+    if ((best.role === 'superscript' || best.role === 'subscript') && best.score >= 0.45 && resolvedParentGroupId && parentSupportsAttachment) {
+      const nextRole = makeRole(group.id, best.role, best.score, 1, resolvedParentGroupId, [
         ...(best.evidence || []),
         `parent-family=${parentRole ? parentRole.descriptor.family : 'expressionRoot'}`,
+        `redirected-parent=${best.parentGroupId && best.parentGroupId !== resolvedParentGroupId ? `${best.parentGroupId}->${resolvedParentGroupId}` : 'none'}`,
         `parent-allows=${parentRole ? String(roleAllowsChildRole(parentRole.role, best.role)) : 'true'}`,
         `ancestry=${getRoleDescriptor(best.role).ancestry.join('>')}`,
       ], containerIdsByGroupId.get(group.id) || [])

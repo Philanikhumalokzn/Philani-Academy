@@ -44,7 +44,7 @@ An admin-only footer action opens the normalization lab from the dashboard.
 The lab currently provides:
 
 - freehand stroke capture
-- sample loading for superscript, nested exponent chains, fractions, fraction-with-exponent cases, horizontal-line subscript cases, and parenthesized local structures
+- sample loading for superscript, nested exponent chains, fractions, fraction-with-exponent cases, horizontal-line subscript cases, parenthesized local structures, and mixed parenthesized operator-bound layouts
 - deterministic ambiguous adjacency fixture for `x2` vs `x²` style cases
 - raw stroke view
 - grouped stroke boxes
@@ -164,11 +164,18 @@ The same taxonomy idea now extends into enclosure-style local structures:
 - enclosure boundaries are treated as structural barriers rather than expression roots
 - enclosed roles keep container ids so the engine can preserve both local role identity and enclosing context at the same time
 
+Mixed operator-bound layouts are now handled one step further:
+
+- an outer script next to an enclosure boundary can be redirected to the enclosed semantic root instead of attaching to the boundary itself
+- an enclosed local expression can serve as a fraction numerator while preserving its own internal script ownership
+- this allows locality to survive across barriers instead of losing the inner structure when a larger construct is added
+
 This pushes the engine closer to locality-first parsing:
 
 - local attachments inside a structure should be stronger than distant associations across that structure
 - a fraction bar creates a strong divide, so local associations above it are evaluated as a coherent span before broader associations
 - enclosure boundaries similarly create a local region that should be resolved internally before external interpretation is allowed to dominate
+- when a structural barrier is encountered, ownership can be redirected to the local semantic root behind that barrier instead of treating the barrier glyph as the parent
 
 #### Normalization
 
@@ -190,10 +197,10 @@ Known limitations:
 - grouping is still the highest-risk stage
 - ambiguity is reported, but final role assignment is still heuristic
 - fraction detection is now more explicit than before, but still only covers a narrow family of handwritten fraction layouts
-- local ownership now covers script nesting and a first enclosure-style boundary pass, but not full multi-operator local parsing yet
+- local ownership now covers script nesting, enclosure boundaries, and first-pass mixed barrier redirection, but not full multi-operator local parsing yet
 - no radical handling yet
 - no explicit baseline-line estimation across full expressions yet
-- fixture coverage is still small even though it now includes chained superscripts, numerator-with-exponent cases, horizontal-line subscript disambiguation, and parenthesized local structures
+- fixture coverage is still small even though it now includes chained superscripts, numerator-with-exponent cases, horizontal-line subscript disambiguation, parenthesized local structures, and mixed parenthesized layouts
 - no persistent save/load format yet for lab sessions
 
 ## Review gates
@@ -209,6 +216,6 @@ Before adding more complexity, review the engine in this order:
 
 1. Extend operator-bound local parsing beyond parentheses into radicals and other enclosure families.
 2. Improve full-expression baseline estimation so local roots can be placed relative to broader context more reliably.
-3. Add deterministic fixtures for mixed nested structures such as `(x^2)/y`, `(a/b)^2`, and radical-like layouts.
+3. Add deterministic fixtures for deeper mixed nested structures such as `(a/b)^2`, nested parenthesized fractions, and radical-like layouts.
 4. Generalize structural barriers so BODMAS-style local precedence can be expressed across more operator families.
 5. Add visual toggles for confidence thresholds to make failure cases easier to inspect.

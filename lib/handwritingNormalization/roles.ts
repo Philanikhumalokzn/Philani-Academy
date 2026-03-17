@@ -444,6 +444,7 @@ const buildExpressionContexts = (
 ) => {
   const contexts: ExpressionContext[] = []
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
+  const groupMap = new Map(groups.map((group) => [group.id, group]))
 
   contexts.push({
     id: 'context:root',
@@ -476,26 +477,78 @@ const buildExpressionContexts = (
     })
   }
 
+  for (const fractionBarRole of roles.filter((role) => role.role === 'fractionBar')) {
+    const numeratorRole = roles.find((role) => role.parentGroupId === fractionBarRole.groupId && role.role === 'numerator') || null
+    const denominatorRole = roles.find((role) => role.parentGroupId === fractionBarRole.groupId && role.role === 'denominator') || null
+    const numeratorMembers = numeratorRole ? subexpressions.find((subexpression) => subexpression.rootGroupId === numeratorRole.groupId)?.memberGroupIds || [numeratorRole.groupId] : []
+    const denominatorMembers = denominatorRole ? subexpressions.find((subexpression) => subexpression.rootGroupId === denominatorRole.groupId)?.memberGroupIds || [denominatorRole.groupId] : []
+    const parentContextId = fractionBarRole.containerGroupIds.length
+      ? `context:enclosure:${fractionBarRole.containerGroupIds.join(':')}`
+      : 'context:root'
+
+    contexts.push({
+      id: `context:fraction:${fractionBarRole.groupId}`,
+      kind: 'fraction',
+      parentContextId,
+      semanticRootGroupId: fractionBarRole.groupId,
+      anchorGroupIds: uniqueIds([fractionBarRole.groupId, ...(numeratorRole ? [numeratorRole.groupId] : []), ...(denominatorRole ? [denominatorRole.groupId] : [])]),
+      memberGroupIds: uniqueIds([fractionBarRole.groupId, ...numeratorMembers, ...denominatorMembers]),
+    })
+  }
+
   for (const subexpression of subexpressions) {
     if (subexpression.rootRole !== 'numerator' && subexpression.rootRole !== 'denominator') continue
     const rootRole = roleMap.get(subexpression.rootGroupId)
     if (!rootRole?.parentGroupId) continue
+    const fractionBarGroup = groupMap.get(rootRole.parentGroupId) || null
+    const excludedGroupIds = new Set<string>()
+
+    if (fractionBarGroup) {
+      const excludedRoots = subexpression.memberGroupIds.filter((groupId) => {
+        if (groupId === subexpression.rootGroupId) return false
+        const memberRole = roleMap.get(groupId)
+        const memberGroup = groupMap.get(groupId)
+        if (!memberRole || !memberGroup) return false
+        if ((memberRole.role !== 'superscript' && memberRole.role !== 'subscript') || memberRole.parentGroupId !== subexpression.rootGroupId) return false
+        return memberGroup.bounds.left >= fractionBarGroup.bounds.right + Math.max(10, fractionBarGroup.bounds.width * 0.08)
+      })
+
+      const attachmentChildrenByParentId = new Map<string, string[]>()
+      for (const attachment of subexpression.attachments) {
+        const existing = attachmentChildrenByParentId.get(attachment.parentGroupId) || []
+        attachmentChildrenByParentId.set(attachment.parentGroupId, [...existing, attachment.childGroupId])
+      }
+
+      const stack = [...excludedRoots]
+      while (stack.length) {
+        const currentId = stack.pop() as string
+        if (excludedGroupIds.has(currentId)) continue
+        excludedGroupIds.add(currentId)
+        for (const childId of attachmentChildrenByParentId.get(currentId) || []) {
+          stack.push(childId)
+        }
+      }
+    }
+
     contexts.push({
       id: `context:${subexpression.rootRole}:${subexpression.rootGroupId}`,
       kind: subexpression.rootRole,
       parentContextId: 'context:root',
       semanticRootGroupId: subexpression.rootGroupId,
       anchorGroupIds: uniqueIds([rootRole.parentGroupId, subexpression.rootGroupId]),
-      memberGroupIds: uniqueIds(subexpression.memberGroupIds),
+      memberGroupIds: uniqueIds(subexpression.memberGroupIds.filter((groupId) => !excludedGroupIds.has(groupId))),
     })
   }
 
   return contexts
 }
 
-const annotateRolesWithContexts = (roles: StructuralRole[], contexts: ExpressionContext[]) => {
+const annotateRolesWithContexts = (roles: StructuralRole[], contexts: ExpressionContext[], groups: StrokeGroup[]) => {
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
+  const groupMap = new Map(groups.map((group) => [group.id, group]))
   const enclosureContexts = contexts.filter((context) => context.kind === 'enclosure')
+  const fractionContexts = contexts.filter((context) => context.kind === 'fraction')
+  const fractionMemberContexts = contexts.filter((context) => context.kind === 'numerator' || context.kind === 'denominator')
 
   return roles.map((role) => {
     if ((role.role !== 'superscript' && role.role !== 'subscript') || !role.parentGroupId) {
@@ -515,11 +568,29 @@ const annotateRolesWithContexts = (roles: StructuralRole[], contexts: Expression
     const enclosureContext = parentOnlyContainers.length
       ? enclosureContexts.find((context) => parentOnlyContainers.every((groupId) => context.anchorGroupIds.includes(groupId))) || null
       : null
+    const sharedFractionMemberContext = fractionMemberContexts.find((context) => context.memberGroupIds.includes(role.groupId) && context.memberGroupIds.includes(role.parentGroupId || '')) || null
+    const fractionContext = parentRole?.parentGroupId
+      ? fractionContexts.find((context) => context.semanticRootGroupId === parentRole.parentGroupId && context.memberGroupIds.includes(parentRole.groupId)) || null
+      : null
+    const fractionBarGroup = parentRole?.parentGroupId ? groupMap.get(parentRole.parentGroupId) || null : null
+    const scriptGroup = groupMap.get(role.groupId) || null
+    const fractionWideOutsideMember = Boolean(sharedFractionMemberContext && fractionBarGroup && scriptGroup)
+      && scriptGroup.bounds.left >= fractionBarGroup.bounds.right + Math.max(10, fractionBarGroup.bounds.width * 0.08)
+
+    if (!enclosureContext && fractionContext && (!sharedFractionMemberContext || fractionWideOutsideMember)) {
+      const anchorGroupIds = uniqueIds(fractionContext.anchorGroupIds)
+      return {
+        ...role,
+        associationContextId: fractionContext.id,
+        normalizationAnchorGroupIds: anchorGroupIds,
+        evidence: [...role.evidence, `association-context=${fractionContext.id}`, `normalization-anchors=${anchorGroupIds.join(',')}`],
+      }
+    }
 
     if (!enclosureContext) {
       return {
         ...role,
-        associationContextId: role.associationContextId || (role.containerGroupIds.length ? `context:enclosure:${role.containerGroupIds.join(':')}` : 'context:root'),
+        associationContextId: role.associationContextId || sharedFractionMemberContext?.id || (role.containerGroupIds.length ? `context:enclosure:${role.containerGroupIds.join(':')}` : 'context:root'),
         normalizationAnchorGroupIds: role.normalizationAnchorGroupIds.length ? role.normalizationAnchorGroupIds : [role.parentGroupId],
       }
     }
@@ -948,7 +1019,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     .sort((left, right) => left.depth - right.depth)
   const { roles: admissibleRoles, flags } = resolveStructuralAdmissibility(groups, resolvedRoles, edges)
   const contexts = buildExpressionContexts(groups, admissibleRoles, subexpressions, enclosures)
-  const annotatedRoles = annotateRolesWithContexts(admissibleRoles, contexts)
+  const annotatedRoles = annotateRolesWithContexts(admissibleRoles, contexts, groups)
   const annotatedRoleMap = new Map(annotatedRoles.map((role) => [role.groupId, role]))
   const contextualizedRoles = annotatedRoles.map((role) => ({
     ...role,

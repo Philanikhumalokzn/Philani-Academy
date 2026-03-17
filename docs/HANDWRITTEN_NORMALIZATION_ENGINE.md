@@ -44,7 +44,7 @@ An admin-only footer action opens the normalization lab from the dashboard.
 The lab currently provides:
 
 - freehand stroke capture
-- sample loading for superscript, nested exponent chains, fractions, fraction-with-exponent cases, horizontal-line subscript cases, parenthesized local structures, and mixed parenthesized operator-bound layouts including a parenthesized fraction with an outer exponent
+- sample loading for superscript, nested exponent chains, fractions, fraction-with-exponent cases, bare-fraction outer-exponent cases, horizontal-line subscript cases, parenthesized local structures, and mixed parenthesized operator-bound layouts including a parenthesized fraction with an outer exponent
 - deterministic ambiguous adjacency fixture for `x2` vs `x²` style cases
 - raw stroke view
 - grouped stroke boxes
@@ -181,6 +181,7 @@ Mixed operator-bound layouts are now handled one step further:
 
 - an outer script next to an enclosure boundary can be redirected to the enclosed semantic root instead of attaching to the boundary itself
 - an enclosed local expression can serve as a fraction numerator while preserving its own internal script ownership
+- a script that sits clearly beyond the right span of a fraction can be promoted from a numerator-local attachment into a broader fraction-wide base attachment
 - this allows locality to survive across barriers instead of losing the inner structure when a larger construct is added
 
 This pushes the engine closer to locality-first parsing:
@@ -211,9 +212,10 @@ The engine now also exposes first-class expression contexts instead of leaving b
 
 - a root context represents the current top-level algebraic row
 - an enclosure context represents a local expression span such as `(x^2)` with its own semantic root and anchor groups
+- a fraction context represents the broader fraction expression rooted at a confirmed fraction bar
 - fraction-member contexts represent numerator and denominator spans as local expression regions
 - roles can now carry an association context id and explicit normalization anchor group ids
-- this means a script outside an enclosure can attach to the enclosed expression span as a broader-scope base instead of collapsing onto the inner glyph alone
+- this means a script outside an enclosure can attach to the enclosed expression span as a broader-scope base instead of collapsing onto the inner glyph alone, and a script outside a numerator or denominator can attach to the whole fraction span when the geometry supports that broader claim
 - the normalization layer now consumes those explicit anchors rather than reconstructing broader scope heuristically
 
 The engine now also emits a lightweight parse forest on top of those contexts instead of exposing each context as only an unordered bag of groups:

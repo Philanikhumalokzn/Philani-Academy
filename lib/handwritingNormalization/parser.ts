@@ -22,8 +22,9 @@ export const buildExpressionParseForest = (
   const nodeIdsByContextId = new Map<string, string[]>()
   const sequenceRootNodeIdByContextId = new Map<string, string>()
   const enclosureNodeIdByContextId = new Map<string, string>()
+  const fractionNodeIdByExpressionContextId = new Map<string, string>()
   const enclosureNodeMetaById = new Map<string, { expressionContextId: string }>()
-  const fractionNodeMetaById = new Map<string, { numeratorGroupId?: string | null, denominatorGroupId?: string | null }>()
+  const fractionNodeMetaById = new Map<string, { expressionContextId?: string | null, numeratorGroupId?: string | null, denominatorGroupId?: string | null }>()
 
   const getMostLocalContextId = (groupIds: string[], fallbackContextId: string) => {
     const candidateIds = uniqueIds(groupIds)
@@ -100,10 +101,11 @@ export const buildExpressionParseForest = (
   for (const barRole of fractionBarRoles) {
     const numeratorRole = roles.find((role) => role.parentGroupId === barRole.groupId && role.role === 'numerator') || null
     const denominatorRole = roles.find((role) => role.parentGroupId === barRole.groupId && role.role === 'denominator') || null
+    const expressionContextId = contextMap.has(`context:fraction:${barRole.groupId}`) ? `context:fraction:${barRole.groupId}` : null
     const childNodeIds = [numeratorRole?.groupId, denominatorRole?.groupId]
       .filter(Boolean)
       .map((groupId) => getOrCreateGroupNode(groupId as string))
-    addNode({
+    const node = addNode({
       id: `parse:fraction:${barRole.groupId}`,
       kind: 'fractionExpression',
       contextId: barRole.associationContextId || 'context:root',
@@ -113,7 +115,11 @@ export const buildExpressionParseForest = (
       role: 'fractionBar',
       label: `fraction:${barRole.groupId}`,
     })
-    fractionNodeMetaById.set(`parse:fraction:${barRole.groupId}`, {
+    if (expressionContextId) {
+      fractionNodeIdByExpressionContextId.set(expressionContextId, node.id)
+    }
+    fractionNodeMetaById.set(node.id, {
+      expressionContextId,
       numeratorGroupId: numeratorRole?.groupId || null,
       denominatorGroupId: denominatorRole?.groupId || null,
     })
@@ -124,6 +130,9 @@ export const buildExpressionParseForest = (
     let operandNodeId: string | null = null
     if (scriptRole.associationContextId && enclosureNodeIdByContextId.has(scriptRole.associationContextId) && scriptRole.containerGroupIds.length === 0) {
       operandNodeId = enclosureNodeIdByContextId.get(scriptRole.associationContextId) || null
+    }
+    if (!operandNodeId && scriptRole.associationContextId && fractionNodeIdByExpressionContextId.has(scriptRole.associationContextId)) {
+      operandNodeId = fractionNodeIdByExpressionContextId.get(scriptRole.associationContextId) || null
     }
     if (!operandNodeId && scriptRole.parentGroupId) {
       operandNodeId = getOrCreateGroupNode(scriptRole.parentGroupId)

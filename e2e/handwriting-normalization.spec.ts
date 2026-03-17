@@ -132,6 +132,29 @@ test.describe('handwriting normalization fixtures', () => {
     expect(numeratorScriptNode).toBeTruthy()
   })
 
+  test('bare fraction can act as a broader base for an outer superscript', async () => {
+    const fixture = getHandwritingFixture('fractionOuterExponent')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const fractionBar = analysis.roles.find((role) => role.role === 'fractionBar')
+    const numerator = analysis.roles.find((role) => role.role === 'numerator')
+    const denominator = analysis.roles.find((role) => role.role === 'denominator')
+    const outerSuperscript = analysis.roles.find((role) => role.role === 'superscript')
+    const fractionContext = analysis.contexts.find((context) => context.kind === 'fraction' && context.semanticRootGroupId === fractionBar?.groupId)
+    const fractionParseNode = analysis.parseNodes.find((node) => node.kind === 'fractionExpression' && node.operatorGroupId === fractionBar?.groupId)
+    const outerScriptParseNode = analysis.parseNodes.find((node) => node.kind === 'scriptApplication' && node.operatorGroupId === outerSuperscript?.groupId)
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(fractionBar).toBeTruthy()
+    expect(numerator).toBeTruthy()
+    expect(denominator).toBeTruthy()
+    expect(outerSuperscript).toBeTruthy()
+    expect(fractionContext).toBeTruthy()
+    expect(outerSuperscript?.associationContextId).toBe(fractionContext?.id)
+    expect(outerSuperscript?.normalizationAnchorGroupIds).toEqual(expect.arrayContaining([fractionBar?.groupId || '', numerator?.groupId || '', denominator?.groupId || '']))
+    expect(analysis.contexts.find((context) => context.id === `context:numerator:${numerator?.groupId}`)?.memberGroupIds).not.toContain(outerSuperscript?.groupId || '')
+    expect(outerScriptParseNode?.childNodeIds).toEqual([fractionParseNode?.id || ''])
+  })
+
   test('horizontal line below-right is treated as subscript rather than fraction structure', async () => {
     const fixture = getHandwritingFixture('offsetLineSubscript')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)

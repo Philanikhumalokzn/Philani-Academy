@@ -183,7 +183,7 @@ export type EnclosureStructure = {
 
 export type ExpressionContext = {
   id: string
-  kind: 'root' | 'enclosure' | 'numerator' | 'denominator'
+  kind: 'root' | 'enclosure' | 'fraction' | 'numerator' | 'denominator'
   parentContextId?: string | null
   semanticRootGroupId?: string | null
   anchorGroupIds: string[]

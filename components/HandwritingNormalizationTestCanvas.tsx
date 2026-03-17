@@ -99,6 +99,8 @@ export default function HandwritingNormalizationTestCanvas() {
     })
     const enclosures = analysis.enclosures.map((enclosure) => `${enclosure.kind}: ${enclosure.openGroupId} ... ${enclosure.closeGroupId} members=[${enclosure.memberRootIds.join(', ')}] score=${enclosure.score.toFixed(2)}`)
     const contexts = analysis.contexts.map((context) => `${context.id}: ${context.kind}${context.parentContextId ? ` parent=${context.parentContextId}` : ''}${context.semanticRootGroupId ? ` root=${context.semanticRootGroupId}` : ''} anchors=[${context.anchorGroupIds.join(', ')}] members=[${context.memberGroupIds.join(', ')}]`)
+    const parseNodes = analysis.parseNodes.map((node) => `${node.id}: ${node.kind} ctx=${node.contextId}${node.role ? ` role=${node.role}` : ''}${node.operatorGroupId ? ` op=${node.operatorGroupId}` : ''} groups=[${node.groupIds.join(', ')}] children=[${node.childNodeIds.join(', ')}]`)
+    const parseRoots = analysis.parseRoots.map((root) => `${root.contextId}: [${root.nodeIds.join(', ')}]`)
 
     return [
       {
@@ -141,8 +143,16 @@ export default function HandwritingNormalizationTestCanvas() {
         title: 'Contexts',
         fields: contexts.length ? contexts.map((value, index) => ({ label: `C${index + 1}`, value })) : [{ label: 'Contexts', value: 'No explicit expression contexts detected' }],
       },
+      {
+        title: 'Parse Nodes',
+        fields: parseNodes.length ? parseNodes.map((value, index) => ({ label: `P${index + 1}`, value })) : [{ label: 'Parse Nodes', value: 'No explicit parse nodes detected' }],
+      },
+      {
+        title: 'Parse Roots',
+        fields: parseRoots.length ? parseRoots.map((value, index) => ({ label: `PR${index + 1}`, value })) : [{ label: 'Parse Roots', value: 'No context parse roots detected' }],
+      },
     ]
-  }, [analysis.ambiguities, analysis.contexts, analysis.edges, analysis.enclosures, analysis.flags, analysis.groups, analysis.roles, analysis.subexpressions, normalizationEnabled, strokes.length])
+  }, [analysis.ambiguities, analysis.contexts, analysis.edges, analysis.enclosures, analysis.flags, analysis.groups, analysis.parseNodes, analysis.parseRoots, analysis.roles, analysis.subexpressions, normalizationEnabled, strokes.length])
 
   const updateActiveStroke = (clientX: number, clientY: number, target: SVGSVGElement) => {
     const current = activeStrokeRef.current

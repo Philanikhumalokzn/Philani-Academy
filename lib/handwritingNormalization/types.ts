@@ -190,6 +190,24 @@ export type ExpressionContext = {
   memberGroupIds: string[]
 }
 
+export type ExpressionParseNodeKind = 'group' | 'scriptApplication' | 'enclosureExpression' | 'fractionExpression'
+
+export type ExpressionParseNode = {
+  id: string
+  kind: ExpressionParseNodeKind
+  contextId: string
+  groupIds: string[]
+  childNodeIds: string[]
+  operatorGroupId?: string | null
+  role?: StructuralRoleKind
+  label: string
+}
+
+export type ContextParseRoot = {
+  contextId: string
+  nodeIds: string[]
+}
+
 export type NormalizedGroup = {
   id: string
   bounds: InkBounds
@@ -212,5 +230,7 @@ export type HandwritingAnalysis = {
   subexpressions: LocalSubexpression[]
   enclosures: EnclosureStructure[]
   contexts: ExpressionContext[]
+  parseNodes: ExpressionParseNode[]
+  parseRoots: ContextParseRoot[]
   normalization: NormalizationResult
 }

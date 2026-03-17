@@ -47,4 +47,16 @@ test.describe('handwriting normalization fixtures', () => {
     expect(analysis.roles).toHaveLength(1)
     expect(analysis.roles[0]?.role).toBe('baseline')
   })
+
+  test('later fraction bar does not steal a strong superscript pair', async () => {
+    const fixture = getHandwritingFixture('superscriptThenBar')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(analysis.roles.some((role) => role.role === 'fractionBar')).toBe(true)
+    expect(analysis.roles.some((role) => role.role === 'baseline')).toBe(true)
+    expect(analysis.roles.some((role) => role.role === 'superscript')).toBe(true)
+    expect(analysis.roles.some((role) => role.role === 'numerator')).toBe(false)
+    expect(analysis.roles.some((role) => role.role === 'denominator')).toBe(false)
+  })
 })

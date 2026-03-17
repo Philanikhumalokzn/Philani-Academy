@@ -35,10 +35,85 @@ const chooseBestCandidate = (candidates: StructuralRoleCandidate[]) => {
   return [...candidates].sort((left, right) => right.score - left.score)[0]
 }
 
+type StableAttachment = {
+  parentId: string
+  childId: string
+  role: 'superscript' | 'subscript'
+  score: number
+}
+
+const collectStableAttachments = (groups: StrokeGroup[], edges: LayoutEdge[], blockedGroupIds: Set<string>) => {
+  const attachments: StableAttachment[] = []
+  const groupIds = new Set(groups.map((group) => group.id))
+
+  for (const group of groups) {
+    if (blockedGroupIds.has(group.id)) continue
+    const bestSuper = incomingByKind(edges, group.id, 'superscriptCandidate')[0] || null
+    const bestSub = incomingByKind(edges, group.id, 'subscriptCandidate')[0] || null
+    const bestSequence = incomingByKind(edges, group.id, 'sequence')[0] || null
+
+    const candidates = [
+      bestSuper ? { edge: bestSuper, role: 'superscript' as const } : null,
+      bestSub ? { edge: bestSub, role: 'subscript' as const } : null,
+    ]
+      .filter(Boolean)
+      .sort((left, right) => (right?.edge.score || 0) - (left?.edge.score || 0))
+
+    const best = candidates[0]
+    if (!best) continue
+    if (!groupIds.has(best.edge.fromId) || !groupIds.has(best.edge.toId)) continue
+    if (blockedGroupIds.has(best.edge.fromId) || blockedGroupIds.has(best.edge.toId)) continue
+    const sequenceScore = bestSequence?.score || 0
+    if (best.edge.score < 0.54) continue
+    if (sequenceScore > 0 && best.edge.score - sequenceScore < 0.12) continue
+
+    attachments.push({
+      parentId: best.edge.fromId,
+      childId: best.edge.toId,
+      role: best.role,
+      score: best.edge.score,
+    })
+  }
+
+  const childOwners = new Set<string>()
+  const resolved: StableAttachment[] = []
+  for (const attachment of attachments.sort((left, right) => right.score - left.score)) {
+    if (childOwners.has(attachment.childId)) continue
+    childOwners.add(attachment.childId)
+    resolved.push(attachment)
+  }
+
+  return resolved
+}
+
 export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[]) => {
   const roles = new Map<string, StructuralRole>()
   const ambiguities: StructuralAmbiguity[] = []
   const fractionBars = groups.filter(isFractionBarGroup)
+  const fractionBarIds = new Set(fractionBars.map((group) => group.id))
+  const stableAttachments = collectStableAttachments(groups, edges, fractionBarIds)
+  const protectedGroupIds = new Set<string>()
+
+  for (const attachment of stableAttachments) {
+    protectedGroupIds.add(attachment.parentId)
+    protectedGroupIds.add(attachment.childId)
+    if (!roles.has(attachment.parentId)) {
+      roles.set(attachment.parentId, {
+        groupId: attachment.parentId,
+        role: 'baseline',
+        score: Math.max(0.72, attachment.score * 0.88),
+        depth: 0,
+        parentGroupId: null,
+      })
+    }
+    roles.set(attachment.childId, {
+      groupId: attachment.childId,
+      role: attachment.role,
+      score: attachment.score,
+      depth: 1,
+      parentGroupId: attachment.parentId,
+    })
+  }
 
   for (const bar of fractionBars) {
     roles.set(bar.id, {
@@ -52,7 +127,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
 
   for (const bar of fractionBars) {
     const numerators = groups
-      .filter((group) => group.id !== bar.id && group.bounds.bottom <= bar.bounds.top + 16)
+      .filter((group) => group.id !== bar.id && !protectedGroupIds.has(group.id) && group.bounds.bottom <= bar.bounds.top + 16)
       .filter((group) => !(group.bounds.right < bar.bounds.left || group.bounds.left > bar.bounds.right))
       .sort((left, right) => left.bounds.left - right.bounds.left)
 
@@ -77,7 +152,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     }
 
     const denominators = groups
-      .filter((group) => group.id !== bar.id && group.bounds.top >= bar.bounds.bottom - 12)
+      .filter((group) => group.id !== bar.id && !protectedGroupIds.has(group.id) && group.bounds.top >= bar.bounds.bottom - 12)
       .filter((group) => !(group.bounds.right < bar.bounds.left || group.bounds.left > bar.bounds.right))
       .sort((left, right) => left.bounds.left - right.bounds.left)
 

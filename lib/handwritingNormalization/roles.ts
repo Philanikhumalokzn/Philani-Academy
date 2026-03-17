@@ -105,6 +105,27 @@ const getScriptLocalityScore = (role: StructuralRole, parent: StrokeGroup, candi
   return horizontalCloseness * 0.58 + verticalCloseness * 0.42
 }
 
+const getScriptLocalityScoreByKind = (role: 'superscript' | 'subscript', parent: StrokeGroup, candidate: StrokeGroup) => {
+  const horizontalGap = Math.max(0, candidate.bounds.left - parent.bounds.right)
+  const horizontalCloseness = clamp(1 - horizontalGap / Math.max(22, parent.bounds.width * 1.18), 0, 1)
+  const targetY = role === 'superscript'
+    ? parent.bounds.top + parent.bounds.height * 0.08
+    : parent.bounds.bottom - parent.bounds.height * 0.08
+  const verticalCloseness = role === 'superscript'
+    ? clamp(1 - Math.abs(candidate.bounds.bottom - targetY) / Math.max(28, parent.bounds.height * 1.2), 0, 1)
+    : clamp(1 - Math.abs(candidate.bounds.top - targetY) / Math.max(28, parent.bounds.height * 1.2), 0, 1)
+  return horizontalCloseness * 0.58 + verticalCloseness * 0.42
+}
+
+const isFractionWideOutsideMember = (groupId: string, parentRole: StructuralRole | null, groupMap: Map<string, StrokeGroup>) => {
+  if (!parentRole?.parentGroupId) return false
+  if (parentRole.role !== 'numerator' && parentRole.role !== 'denominator') return false
+  const fractionBarGroup = groupMap.get(parentRole.parentGroupId)
+  const scriptGroup = groupMap.get(groupId)
+  if (!fractionBarGroup || !scriptGroup) return false
+  return scriptGroup.bounds.left >= fractionBarGroup.bounds.right + Math.max(10, fractionBarGroup.bounds.width * 0.08)
+}
+
 const isSameParentStackedScriptPair = (first: StrokeGroup, second: StrokeGroup) => {
   const upper = first.bounds.centerY <= second.bounds.centerY ? first : second
   const lower = upper.id === first.id ? second : first
@@ -572,10 +593,7 @@ const annotateRolesWithContexts = (roles: StructuralRole[], contexts: Expression
     const fractionContext = parentRole?.parentGroupId
       ? fractionContexts.find((context) => context.semanticRootGroupId === parentRole.parentGroupId && context.memberGroupIds.includes(parentRole.groupId)) || null
       : null
-    const fractionBarGroup = parentRole?.parentGroupId ? groupMap.get(parentRole.parentGroupId) || null : null
-    const scriptGroup = groupMap.get(role.groupId) || null
-    const fractionWideOutsideMember = Boolean(sharedFractionMemberContext && fractionBarGroup && scriptGroup)
-      && scriptGroup.bounds.left >= fractionBarGroup.bounds.right + Math.max(10, fractionBarGroup.bounds.width * 0.08)
+    const fractionWideOutsideMember = Boolean(sharedFractionMemberContext) && isFractionWideOutsideMember(role.groupId, parentRole || null, groupMap)
 
     if (!enclosureContext && fractionContext && (!sharedFractionMemberContext || fractionWideOutsideMember)) {
       const anchorGroupIds = uniqueIds(fractionContext.anchorGroupIds)
@@ -936,6 +954,25 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
       candidates.push(makeCandidate('baseline', Math.max(0.24, bestSequence.score * 0.88), null, ['inline sequence fallback']))
     }
 
+    const fractionWideFallbackCandidate = Array.from(roles.values())
+      .filter((role) => role.role === 'numerator' || role.role === 'denominator')
+      .map((role) => {
+        const parentGroup = groupMap.get(role.groupId)
+        if (!parentGroup || !isFractionWideOutsideMember(group.id, role, groupMap)) return null
+        const localityScore = getScriptLocalityScoreByKind('superscript', parentGroup, group)
+        if (localityScore < 0.48) return null
+        return makeCandidate('superscript', 0.34 + localityScore * 0.24, role.groupId, [
+          'fraction-wide geometry fallback',
+          `locality=${localityScore.toFixed(2)}`,
+        ])
+      })
+      .filter(Boolean)
+      .sort((left, right) => (right?.score || 0) - (left?.score || 0))[0] || null
+
+    if (fractionWideFallbackCandidate) {
+      candidates.push(fractionWideFallbackCandidate)
+    }
+
     const best = chooseBestCandidate(candidates)
     const sortedCandidates = [...candidates].sort((left, right) => right.score - left.score)
     const runnerUp = sortedCandidates[1]
@@ -957,23 +994,55 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
       && roleAllowsOperandRole(best.role, assumedOperandRole)
       && (!parentRole || (roleCanOwnScripts(parentRole.role) && roleAllowsChildRole(parentRole.role, best.role)))
 
-    if ((best.role === 'superscript' || best.role === 'subscript') && best.score >= 0.45 && resolvedParentGroupId && parentSupportsAttachment) {
-      const nextRole = makeRole(group.id, best.role, best.score, 1, resolvedParentGroupId, [
-        ...(best.evidence || []),
-        `parent-family=${parentRole ? parentRole.descriptor.family : 'expressionRoot'}`,
-        `operator-kind=${getRoleDescriptor(best.role).operatorKind}`,
-        `operand-mode=${getRoleDescriptor(best.role).operandReferenceMode}`,
-        `operand-allows=${String(roleAllowsOperandRole(best.role, assumedOperandRole))}`,
-        `redirected-parent=${best.parentGroupId && best.parentGroupId !== resolvedParentGroupId ? `${best.parentGroupId}->${resolvedParentGroupId}` : 'none'}`,
-        `parent-allows=${parentRole ? String(roleAllowsChildRole(parentRole.role, best.role)) : 'true'}`,
-        `ancestry=${getRoleDescriptor(best.role).ancestry.join('>')}`,
+    const promotableFractionWideCandidate = sortedCandidates.find((candidate) => {
+      if ((candidate.role !== 'superscript' && candidate.role !== 'subscript') || !candidate.parentGroupId) return false
+      const candidateParentRole = roles.get(candidate.parentGroupId) || null
+      return isFractionWideOutsideMember(group.id, candidateParentRole, groupMap)
+    }) || null
+
+    const selectedScriptCandidate = (() => {
+      if ((best.role === 'superscript' || best.role === 'subscript') && resolvedParentGroupId && parentSupportsAttachment) {
+        const minimumScore = isFractionWideOutsideMember(group.id, parentRole || null, groupMap) ? 0.32 : 0.45
+        if (best.score >= minimumScore) {
+          return { candidate: best, parentGroupId: resolvedParentGroupId, parentRole, fractionWidePromotion: minimumScore < 0.45 }
+        }
+      }
+
+      if (!promotableFractionWideCandidate?.parentGroupId) return null
+      const promotedParentRole = roles.get(promotableFractionWideCandidate.parentGroupId) || null
+      const promotedParentSupportsAttachment = (!roleRequiresOperandReference(promotableFractionWideCandidate.role) || roleUsesParentOperand(promotableFractionWideCandidate.role))
+        && roleAllowsOperandRole(promotableFractionWideCandidate.role, promotedParentRole?.role || 'baseline')
+        && (!promotedParentRole || (roleCanOwnScripts(promotedParentRole.role) && roleAllowsChildRole(promotedParentRole.role, promotableFractionWideCandidate.role)))
+      if (!promotedParentSupportsAttachment) return null
+      if (promotableFractionWideCandidate.score < 0.32) return null
+      if ((sortedCandidates[0]?.score || 0) - promotableFractionWideCandidate.score > 0.18) return null
+
+      return {
+        candidate: promotableFractionWideCandidate,
+        parentGroupId: promotableFractionWideCandidate.parentGroupId,
+        parentRole: promotedParentRole,
+        fractionWidePromotion: true,
+      }
+    })()
+
+    if (selectedScriptCandidate) {
+      const nextRole = makeRole(group.id, selectedScriptCandidate.candidate.role, selectedScriptCandidate.candidate.score, 1, selectedScriptCandidate.parentGroupId, [
+        ...(selectedScriptCandidate.candidate.evidence || []),
+        `parent-family=${selectedScriptCandidate.parentRole ? selectedScriptCandidate.parentRole.descriptor.family : 'expressionRoot'}`,
+        `operator-kind=${getRoleDescriptor(selectedScriptCandidate.candidate.role).operatorKind}`,
+        `operand-mode=${getRoleDescriptor(selectedScriptCandidate.candidate.role).operandReferenceMode}`,
+        `operand-allows=${String(roleAllowsOperandRole(selectedScriptCandidate.candidate.role, selectedScriptCandidate.parentRole?.role || 'baseline'))}`,
+        `redirected-parent=${selectedScriptCandidate.candidate.parentGroupId && selectedScriptCandidate.candidate.parentGroupId !== selectedScriptCandidate.parentGroupId ? `${selectedScriptCandidate.candidate.parentGroupId}->${selectedScriptCandidate.parentGroupId}` : 'none'}`,
+        `parent-allows=${selectedScriptCandidate.parentRole ? String(roleAllowsChildRole(selectedScriptCandidate.parentRole.role, selectedScriptCandidate.candidate.role)) : 'true'}`,
+        `fraction-wide-promotion=${selectedScriptCandidate.fractionWidePromotion ? 'true' : 'false'}`,
+        `ancestry=${getRoleDescriptor(selectedScriptCandidate.candidate.role).ancestry.join('>')}`,
       ], containerIdsByGroupId.get(group.id) || [])
       roles.set(group.id, nextRole)
-      if ((bestSequence && bestSequence.score >= 0.16 && Math.abs(best.score - bestSequence.score) <= 0.3) || (runnerUp && Math.abs(best.score - runnerUp.score) <= 0.14)) {
+      if ((bestSequence && bestSequence.score >= 0.16 && Math.abs(selectedScriptCandidate.candidate.score - bestSequence.score) <= 0.3) || (runnerUp && Math.abs(selectedScriptCandidate.candidate.score - runnerUp.score) <= 0.14)) {
         ambiguities.push({
           groupId: group.id,
-          reason: bestSequence && bestSequence.score >= 0.16 && Math.abs(best.score - bestSequence.score) <= 0.3 ? 'sequence-vs-script' : 'competing-relations',
-          chosenRole: best.role,
+          reason: bestSequence && bestSequence.score >= 0.16 && Math.abs(selectedScriptCandidate.candidate.score - bestSequence.score) <= 0.3 ? 'sequence-vs-script' : 'competing-relations',
+          chosenRole: selectedScriptCandidate.candidate.role,
           candidates: sortedCandidates.slice(0, 3),
         })
       }

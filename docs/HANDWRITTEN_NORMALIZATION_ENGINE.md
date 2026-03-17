@@ -44,7 +44,7 @@ An admin-only footer action opens the normalization lab from the dashboard.
 The lab currently provides:
 
 - freehand stroke capture
-- sample loading for superscript, nested exponent chains, fractions, fraction-with-exponent cases, bare-fraction outer-exponent cases, horizontal-line subscript cases, parenthesized local structures, and mixed parenthesized operator-bound layouts including a parenthesized fraction with an outer exponent
+- sample loading for superscript, nested exponent chains, fractions, fraction-with-exponent cases, bare-fraction outer-exponent cases from both numerator-side and denominator-side temptations, horizontal-line subscript cases, parenthesized local structures, and mixed parenthesized operator-bound layouts including a parenthesized fraction with an outer exponent
 - deterministic ambiguous adjacency fixture for `x2` vs `x²` style cases
 - raw stroke view
 - grouped stroke boxes
@@ -181,7 +181,7 @@ Mixed operator-bound layouts are now handled one step further:
 
 - an outer script next to an enclosure boundary can be redirected to the enclosed semantic root instead of attaching to the boundary itself
 - an enclosed local expression can serve as a fraction numerator while preserving its own internal script ownership
-- a script that sits clearly beyond the right span of a fraction can be promoted from a numerator-local attachment into a broader fraction-wide base attachment
+- a script that sits clearly beyond the right span of a fraction can be promoted from a numerator-local or denominator-local attachment into a broader fraction-wide base attachment
 - this allows locality to survive across barriers instead of losing the inner structure when a larger construct is added
 
 This pushes the engine closer to locality-first parsing:

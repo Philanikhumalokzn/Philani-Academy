@@ -257,6 +257,86 @@ const appendEnclosureWideScriptAmbiguities = (roles: StructuralRole[], contexts:
   return nextAmbiguities
 }
 
+const promoteSequenceWideScripts = (roles: StructuralRole[], contexts: ExpressionContext[], groups: StrokeGroup[], edges: LayoutEdge[]) => {
+  const groupMap = new Map(groups.map((group) => [group.id, group]))
+  const roleMap = new Map(roles.map((role) => [role.groupId, role]))
+  const sequenceContexts = contexts.filter((context) => context.kind === 'sequence')
+
+  return roles.map((role) => {
+    if (role.role !== 'baseline' || role.parentGroupId) return role
+
+    const scriptCandidates = (['superscript', 'subscript'] as const)
+      .map((scriptRole) => {
+        const bestEdge = incomingByKind(edges, role.groupId, scriptRole === 'superscript' ? 'superscriptCandidate' : 'subscriptCandidate')[0] || null
+        if (!bestEdge) return null
+
+        const parentRole = roleMap.get(bestEdge.fromId) || null
+        if (!parentRole || parentRole.role !== 'baseline') return null
+
+        const sequenceContext = sequenceContexts.find((context) => context.memberGroupIds.includes(parentRole.groupId)) || null
+        if (!sequenceContext) return null
+
+        const scriptGroup = groupMap.get(role.groupId)
+        const effectiveAnchorGroupIds = sequenceContext.anchorGroupIds.filter((groupId) => groupId !== role.groupId)
+        const effectiveMemberGroupIds = sequenceContext.memberGroupIds.filter((groupId) => groupId !== role.groupId)
+        if (effectiveMemberGroupIds.length < 2 || !effectiveMemberGroupIds.includes(parentRole.groupId)) return null
+        const effectiveSequenceContext = {
+          ...sequenceContext,
+          anchorGroupIds: effectiveAnchorGroupIds,
+          memberGroupIds: effectiveMemberGroupIds,
+        }
+        const sequenceBounds = getSequenceContextBounds(effectiveSequenceContext, groupMap)
+        const rightmostAnchorGroupId = getRightmostAnchorGroupId(effectiveSequenceContext, groupMap)
+        const rightmostAnchorGroup = rightmostAnchorGroupId ? groupMap.get(rightmostAnchorGroupId) || null : null
+        if (!sequenceBounds || !scriptGroup || !rightmostAnchorGroup) return null
+        if (scriptGroup.bounds.left < sequenceBounds.right + Math.max(12, (sequenceBounds.right - sequenceBounds.left) * 0.06)) return null
+
+        const localityScore = getScriptLocalityScoreByKind(scriptRole, rightmostAnchorGroup, scriptGroup)
+        if (localityScore < 0.4) return null
+
+        const promotedScore = Math.max(bestEdge.score, 0.3 + localityScore * 0.22)
+        if (promotedScore < 0.38) return null
+        if (promotedScore + 0.08 < role.score) return null
+
+        return {
+          scriptRole,
+          parentGroupId: bestEdge.fromId,
+          score: promotedScore,
+          evidence: [
+            `${scriptRole === 'superscript' ? 'above-right' : 'below-right'}-sequence-fallback=1`,
+            `sequence-context=${sequenceContext.id}`,
+            `sequence-locality=${localityScore.toFixed(2)}`,
+          ],
+        }
+      })
+      .filter(Boolean)
+      .sort((left, right) => (right?.score || 0) - (left?.score || 0))
+
+    const bestCandidate = scriptCandidates[0]
+    if (!bestCandidate) return role
+
+    return makeRole(
+      role.groupId,
+      bestCandidate.scriptRole,
+      bestCandidate.score,
+      1,
+      bestCandidate.parentGroupId,
+      [
+        ...role.evidence,
+        'sequence-wide script fallback',
+        ...bestCandidate.evidence,
+        `parent-family=${roleMap.get(bestCandidate.parentGroupId)?.descriptor.family || 'expressionRoot'}`,
+        `operator-kind=${getRoleDescriptor(bestCandidate.scriptRole).operatorKind}`,
+        `operand-mode=${getRoleDescriptor(bestCandidate.scriptRole).operandReferenceMode}`,
+        `operand-allows=${String(roleAllowsOperandRole(bestCandidate.scriptRole, roleMap.get(bestCandidate.parentGroupId)?.role || 'baseline'))}`,
+        `parent-allows=${String(roleAllowsChildRole(roleMap.get(bestCandidate.parentGroupId)?.role || 'baseline', bestCandidate.scriptRole))}`,
+        `ancestry=${getRoleDescriptor(bestCandidate.scriptRole).ancestry.join('>')}`,
+      ],
+      role.containerGroupIds,
+    )
+  })
+}
+
 const isFractionWideOutsideMember = (groupId: string, parentRole: StructuralRole | null, groupMap: Map<string, StrokeGroup>) => {
   if (!parentRole?.parentGroupId) return false
   if (parentRole.role !== 'numerator' && parentRole.role !== 'denominator') return false
@@ -1566,22 +1646,24 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
   const { roles: operandSafeRoles, flags: operandFlags } = demoteMissingOperandScripts(resolvedRoles)
   const { roles: admissibleRoles, flags } = resolveStructuralAdmissibility(groups, operandSafeRoles, edges)
   const contexts = buildExpressionContexts(groups, admissibleRoles, subexpressions, enclosures, fractionBindings)
-  const annotatedRoles = annotateRolesWithContexts(admissibleRoles, contexts, groups)
+  const sequencePromotedRoles = promoteSequenceWideScripts(admissibleRoles, contexts, groups, edges)
+  const promotedContexts = buildExpressionContexts(groups, sequencePromotedRoles, subexpressions, enclosures, fractionBindings)
+  const annotatedRoles = annotateRolesWithContexts(sequencePromotedRoles, promotedContexts, groups)
   const annotatedRoleMap = new Map(annotatedRoles.map((role) => [role.groupId, role]))
   const contextualizedRoles = annotatedRoles.map((role) => ({
     ...role,
     depth: role.parentGroupId ? roleDepth(annotatedRoleMap, role.groupId) : 0,
   }))
   const identityAwareRoles = annotateRolesWithRecognizedSymbols(contextualizedRoles, groups)
-  const fractionAwareAmbiguities = appendFractionWideScriptAmbiguities(identityAwareRoles, groups, contexts, ambiguities)
-  const contextualizedAmbiguities = appendEnclosureWideScriptAmbiguities(identityAwareRoles, contexts, fractionAwareAmbiguities)
+  const fractionAwareAmbiguities = appendFractionWideScriptAmbiguities(identityAwareRoles, groups, promotedContexts, ambiguities)
+  const contextualizedAmbiguities = appendEnclosureWideScriptAmbiguities(identityAwareRoles, promotedContexts, fractionAwareAmbiguities)
 
   return {
     roles: identityAwareRoles,
     flags: [...operandFlags, ...flags],
     subexpressions,
     enclosures,
-    contexts,
+    contexts: promotedContexts,
     ambiguities: contextualizedAmbiguities,
   }
 }

@@ -254,6 +254,25 @@ test.describe('handwriting normalization fixtures', () => {
     expect(outerScriptParseNode?.childNodeIds).toEqual([sequenceParseRoot?.rootNodeId || ''])
   })
 
+  test('plain inline sequence can act as a broader base for an outer subscript', async () => {
+    const fixture = getHandwritingFixture('sequenceOuterSubscript')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const outerSubscript = analysis.roles.find((role) => role.role === 'subscript')
+    const sequenceContext = analysis.contexts.find((context) => context.id === outerSubscript?.associationContextId)
+    const sequenceParseRoot = analysis.parseRoots.find((root) => root.contextId === sequenceContext?.id)
+    const outerScriptParseNode = analysis.parseNodes.find((node) => node.kind === 'scriptApplication' && node.operatorGroupId === outerSubscript?.groupId)
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(outerSubscript).toBeTruthy()
+    expect(sequenceContext).toBeTruthy()
+    expect(sequenceContext?.kind).toBe('sequence')
+    expect(sequenceContext?.anchorGroupIds.length || 0).toBeGreaterThanOrEqual(2)
+    expect(outerSubscript?.associationContextId).toBe(sequenceContext?.id)
+    expect(outerSubscript?.normalizationAnchorGroupIds).toEqual(expect.arrayContaining(sequenceContext?.anchorGroupIds || []))
+    expect(sequenceParseRoot?.rootNodeId?.startsWith('parse:sequence:context:sequence:')).toBe(true)
+    expect(outerScriptParseNode?.childNodeIds).toEqual([sequenceParseRoot?.rootNodeId || ''])
+  })
+
   test('nested fixture preserves chained local ownership', async () => {
     const fixture = getHandwritingFixture('nested')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)

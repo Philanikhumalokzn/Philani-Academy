@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { analyzeHandwrittenExpression, getHandwritingFixture, getRoleDescriptor, roleAllowsChildRole } from '../lib/handwritingNormalization'
+import { analyzeHandwrittenExpression, getHandwritingFixture, getRoleDescriptor, recognizeSymbolForRole, roleAllowsChildRole } from '../lib/handwritingNormalization'
 import { normalizeInkLayout } from '../lib/handwritingNormalization/normalize'
 import { buildExpressionParseForest } from '../lib/handwritingNormalization/parser'
 import { inferStructuralRoles } from '../lib/handwritingNormalization/roles'
@@ -51,11 +51,15 @@ test.describe('handwriting normalization fixtures', () => {
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
     const superscriptEdge = analysis.edges.find((edge) => edge.kind === 'superscriptCandidate')
     const sequenceEdge = analysis.edges.find((edge) => edge.kind === 'sequence')
+    const baselineRole = analysis.roles.find((role) => role.role === 'baseline')
+    const superscriptRole = analysis.roles.find((role) => role.role === 'superscript')
 
     expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
     expect(analysis.roles.some((role) => role.role === 'superscript')).toBe(true)
     expect(analysis.roles.some((role) => role.role === 'baseline')).toBe(true)
     expect(superscriptEdge?.score || 0).toBeGreaterThan(sequenceEdge?.score || 0)
+    expect(baselineRole?.qualifiedRoleLabel).toBe('baseline-x')
+    expect(superscriptRole?.qualifiedRoleLabel).toBe('superscript-2')
   })
 
   test('fraction fixture recognizes fraction structure', async () => {
@@ -309,6 +313,8 @@ test.describe('handwriting normalization fixtures', () => {
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
     const baseline = analysis.roles.find((role) => role.role === 'baseline')
     const superscript = analysis.roles.find((role) => role.role === 'superscript')
+    const openBoundary = analysis.roles.find((role) => role.role === 'enclosureOpen')
+    const closeBoundary = analysis.roles.find((role) => role.role === 'enclosureClose')
 
     expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
     expect(analysis.roles.some((role) => role.role === 'enclosureOpen')).toBe(true)
@@ -317,6 +323,8 @@ test.describe('handwriting normalization fixtures', () => {
     expect(baseline?.containerGroupIds).toHaveLength(2)
     expect(superscript?.parentGroupId).toBe(baseline?.groupId)
     expect(superscript?.containerGroupIds).toHaveLength(2)
+    expect(openBoundary?.qualifiedRoleLabel).toBe('enclosureOpen-(')
+    expect(closeBoundary?.qualifiedRoleLabel).toBe('enclosureClose-)')
   })
 
   test('outer superscript attaches to the enclosed semantic root rather than an enclosure boundary', async () => {
@@ -532,5 +540,35 @@ test.describe('handwriting normalization fixtures', () => {
     expect(analysis.roles.filter((role) => role.role === 'subscript')).toHaveLength(1)
     expect(analysis.roles.filter((role) => role.role === 'unsupportedSymbol')).toHaveLength(1)
     expect(analysis.flags.some((flag) => flag.kind === 'sameParentStackedScripts' && flag.scriptRole === 'subscript')).toBe(true)
+  })
+
+  test('seeded symbol recognizer covers radical, greek pi, and baseline four prototypes', async () => {
+    const radicalGroup = makeGroup('radical', { left: 120, top: 160, right: 244, bottom: 252, width: 124, height: 92, centerX: 182, centerY: 206 })
+    radicalGroup.strokes = [{
+      ...makeStroke('radical-stroke'),
+      points: [
+        { x: 120, y: 206, t: 0 },
+        { x: 140, y: 230, t: 16 },
+        { x: 168, y: 176, t: 32 },
+        { x: 204, y: 164, t: 48 },
+        { x: 244, y: 164, t: 64 },
+      ],
+    }]
+    const piGroup = makeGroup('pi', { left: 120, top: 150, right: 234, bottom: 246, width: 114, height: 96, centerX: 177, centerY: 198 })
+    piGroup.strokes = [
+      { ...makeStroke('pi-top'), points: [{ x: 120, y: 158, t: 0 }, { x: 234, y: 158, t: 16 }] },
+      { ...makeStroke('pi-left'), points: [{ x: 144, y: 158, t: 0 }, { x: 144, y: 246, t: 16 }] },
+      { ...makeStroke('pi-right'), points: [{ x: 210, y: 158, t: 0 }, { x: 210, y: 246, t: 16 }] },
+    ]
+    const fourFixture = analyzeHandwrittenExpression(getHandwritingFixture('crossingFour').strokes)
+    const fourRole = fourFixture.roles[0]
+
+    expect(recognizeSymbolForRole(radicalGroup, {
+      groupId: 'radical', role: 'baseline', descriptor: getRoleDescriptor('baseline'), score: 0.6, depth: 0, parentGroupId: null, associationContextId: 'context:root', normalizationAnchorGroupIds: ['radical'], containerGroupIds: [], evidence: [],
+    }).value).toBe('√')
+    expect(recognizeSymbolForRole(piGroup, {
+      groupId: 'pi', role: 'baseline', descriptor: getRoleDescriptor('baseline'), score: 0.6, depth: 0, parentGroupId: null, associationContextId: 'context:root', normalizationAnchorGroupIds: ['pi'], containerGroupIds: [], evidence: [],
+    }).value).toBe('π')
+    expect(fourRole?.qualifiedRoleLabel).toBe('baseline-4')
   })
 })

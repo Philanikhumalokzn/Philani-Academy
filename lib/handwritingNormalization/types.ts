@@ -113,6 +113,15 @@ export type StructuralRoleDescriptor = {
   discriminators: string[]
 }
 
+export type RecognizedSymbolCategory = 'digit' | 'latin' | 'greek' | 'operator' | 'encloser' | 'structure' | 'unknown'
+
+export type RecognizedSymbol = {
+  category: RecognizedSymbolCategory
+  value: string
+  confidence: number
+  evidence: string[]
+}
+
 export type StructuralRole = {
   groupId: string
   role: StructuralRoleKind
@@ -123,6 +132,8 @@ export type StructuralRole = {
   associationContextId?: string | null
   normalizationAnchorGroupIds: string[]
   containerGroupIds: string[]
+  recognizedSymbol?: RecognizedSymbol | null
+  qualifiedRoleLabel?: string | null
   evidence: string[]
 }
 

@@ -1,5 +1,6 @@
 import { clamp } from './geometry'
 import { getRoleDescriptor, getRoleLocalityBias, roleAllowsChildRole, roleAllowsOperandRole, roleCanOwnScripts, roleRequiresOperandReference, roleUsesChildOperands, roleUsesParentOperand } from './roleTaxonomy'
+import { annotateRolesWithRecognizedSymbols } from './symbolRecognition'
 import type { EnclosureStructure, ExpressionContext, LayoutEdge, LocalSubexpression, StrokeGroup, StructuralAmbiguity, StructuralFlag, StructuralRole, StructuralRoleCandidate, StructuralRoleKind } from './types'
 
 const FRACTION_BAR_MAX_HEIGHT = 18
@@ -1214,11 +1215,12 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     ...role,
     depth: role.parentGroupId ? roleDepth(annotatedRoleMap, role.groupId) : 0,
   }))
-  const fractionAwareAmbiguities = appendFractionWideScriptAmbiguities(contextualizedRoles, groups, contexts, ambiguities)
-  const contextualizedAmbiguities = appendEnclosureWideScriptAmbiguities(contextualizedRoles, contexts, fractionAwareAmbiguities)
+  const identityAwareRoles = annotateRolesWithRecognizedSymbols(contextualizedRoles, groups)
+  const fractionAwareAmbiguities = appendFractionWideScriptAmbiguities(identityAwareRoles, groups, contexts, ambiguities)
+  const contextualizedAmbiguities = appendEnclosureWideScriptAmbiguities(identityAwareRoles, contexts, fractionAwareAmbiguities)
 
   return {
-    roles: contextualizedRoles,
+    roles: identityAwareRoles,
     flags: [...operandFlags, ...flags],
     subexpressions,
     enclosures,

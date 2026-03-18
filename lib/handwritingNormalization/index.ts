@@ -8,6 +8,7 @@ import type { HandwritingAnalysis, InkStroke } from './types'
 
 export * from './types'
 export * from './roleTaxonomy'
+export * from './symbolRecognition'
 export type { HandwritingFixture, HandwritingFixtureExpectation, HandwritingFixtureName } from './fixtures'
 export { getHandwritingFixture, HANDWRITING_FIXTURE_ORDER, listHandwritingFixtures }
 

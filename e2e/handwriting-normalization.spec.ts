@@ -227,6 +227,18 @@ test.describe('handwriting normalization fixtures', () => {
     expect(weakBarBrick?.family).toBe('fractionBarBrick')
   })
 
+  test('lego-aware sequence contexts only materialize for inline-compatible pairs', async () => {
+    const strongAnalysis = analyzeHandwrittenExpression(getHandwritingFixture('sequenceOuterExponent').strokes)
+    const weakAnalysis = analyzeHandwrittenExpression(getHandwritingFixture('inlineFractionBarTemptation').strokes)
+
+    const strongSequenceContext = strongAnalysis.contexts.find((context) => context.kind === 'sequence') || null
+    const weakSequenceContext = weakAnalysis.contexts.find((context) => context.kind === 'sequence') || null
+
+    expect(strongSequenceContext).toBeTruthy()
+    expect(strongSequenceContext?.memberGroupIds.length || 0).toBeGreaterThanOrEqual(3)
+    expect(weakSequenceContext).toBeFalsy()
+  })
+
   test('a lone horizontal line is preserved as a provisional fraction bar candidate', async () => {
     const strokes: InkStroke[] = [{
       ...makeStroke('line-only'),

@@ -7,6 +7,7 @@ import type { EnclosureStructure, ExpressionContext, LayoutEdge, LegoBrickHypoth
 const FRACTION_BAR_MAX_HEIGHT = 18
 const FRACTION_BAR_MIN_WIDTH = 70
 const LEGO_SCRIPT_HOST_MIN_WEIGHT = 0.44
+const LEGO_SEQUENCE_CONTEXT_MIN_INLINE_SCORE = 0.42
 
 const getFractionBarShapeScore = (group: StrokeGroup) => {
   const heightScore = clamp(1 - Math.max(group.bounds.height - FRACTION_BAR_MAX_HEIGHT, 0) / FRACTION_BAR_MAX_HEIGHT, 0, 1)
@@ -63,6 +64,56 @@ const hostSupportsScriptField = (
     supported: fieldWeight >= minimumWeight,
     fieldWeight,
   }
+}
+
+const getInlineFieldKind = (direction: 'left' | 'right') => {
+  return direction === 'left' ? 'leftInline' : 'rightInline'
+}
+
+const getInlineFieldWeight = (
+  topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
+  groupId: string | null | undefined,
+  direction: 'left' | 'right',
+) => {
+  if (!groupId) return null
+  const topHypothesis = topBrickHypothesisByGroupId.get(groupId)
+  if (!topHypothesis) return null
+  return topHypothesis.fields.find((field) => field.kind === getInlineFieldKind(direction))?.weight ?? 0
+}
+
+const getInlineAffordanceScore = (
+  topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
+  leftGroupId: string | null | undefined,
+  rightGroupId: string | null | undefined,
+) => {
+  const leftWeight = getInlineFieldWeight(topBrickHypothesisByGroupId, leftGroupId, 'right')
+  const rightWeight = getInlineFieldWeight(topBrickHypothesisByGroupId, rightGroupId, 'left')
+  if (leftWeight === null || rightWeight === null) {
+    return {
+      supported: true,
+      inlineAffordanceScore: 1,
+      leftWeight,
+      rightWeight,
+    }
+  }
+
+  const inlineAffordanceScore = clamp(Math.sqrt(Math.max(leftWeight, 0) * Math.max(rightWeight, 0)), 0, 1)
+  return {
+    supported: inlineAffordanceScore >= LEGO_SEQUENCE_CONTEXT_MIN_INLINE_SCORE,
+    inlineAffordanceScore,
+    leftWeight,
+    rightWeight,
+  }
+}
+
+const sequenceContextAllowsRoot = (
+  topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
+  groupId: string | null | undefined,
+) => {
+  if (!groupId) return false
+  const topHypothesis = topBrickHypothesisByGroupId.get(groupId)
+  if (!topHypothesis) return true
+  return topHypothesis.family !== 'fractionBarBrick' && topHypothesis.family !== 'enclosureBoundaryBrick'
 }
 
 const roleDepth = (roleMap: Map<string, StructuralRole>, groupId: string) => {
@@ -852,6 +903,8 @@ const buildSequenceContexts = (
   groupMap: Map<string, StrokeGroup>,
   parentContextId: string,
   containerGroupIds: string[],
+  edges: LayoutEdge[],
+  topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
 ) => {
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
   const candidates = subexpressions
@@ -879,8 +932,11 @@ const buildSequenceContexts = (
     const verticalOffset = Math.abs(candidate.bounds.centerY - previous.bounds.centerY)
     const compatibleGap = horizontalGap <= Math.max(44, Math.max(previous.bounds.right - previous.bounds.left, candidate.bounds.right - candidate.bounds.left) * 0.9)
     const compatibleBaseline = verticalOffset <= Math.max(28, Math.max(previous.bounds.bottom - previous.bounds.top, candidate.bounds.bottom - candidate.bounds.top) * 0.55)
+    const inlineSupport = getInlineAffordanceScore(topBrickHypothesisByGroupId, previous.subexpression.rootGroupId, candidate.subexpression.rootGroupId)
+    const previousAllowsSequence = sequenceContextAllowsRoot(topBrickHypothesisByGroupId, previous.subexpression.rootGroupId)
+    const candidateAllowsSequence = sequenceContextAllowsRoot(topBrickHypothesisByGroupId, candidate.subexpression.rootGroupId)
 
-    if (compatibleGap && compatibleBaseline) {
+    if (compatibleGap && compatibleBaseline && previousAllowsSequence && candidateAllowsSequence && inlineSupport.supported) {
       currentCluster.push(candidate)
       continue
     }
@@ -1005,6 +1061,8 @@ const buildExpressionContexts = (
   subexpressions: LocalSubexpression[],
   enclosures: EnclosureStructure[],
   fractionBindings: FractionStructureBinding[],
+  edges: LayoutEdge[],
+  topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
 ) => {
   const contexts: ExpressionContext[] = []
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
@@ -1043,11 +1101,11 @@ const buildExpressionContexts = (
     })
   }
 
-  contexts.push(...buildSequenceContexts(roles, subexpressions, groupMap, 'context:root', []))
+  contexts.push(...buildSequenceContexts(roles, subexpressions, groupMap, 'context:root', [], edges, topBrickHypothesisByGroupId))
 
   for (const enclosureContext of contexts.filter((context) => context.kind === 'enclosure')) {
     const containerGroupIds = enclosureContext.anchorGroupIds.filter((groupId) => groupId !== enclosureContext.semanticRootGroupId)
-    contexts.push(...buildSequenceContexts(roles, subexpressions, groupMap, enclosureContext.id, containerGroupIds))
+    contexts.push(...buildSequenceContexts(roles, subexpressions, groupMap, enclosureContext.id, containerGroupIds, edges, topBrickHypothesisByGroupId))
   }
 
   const enclosureContexts = contexts.filter((context) => context.kind === 'enclosure')
@@ -1815,9 +1873,9 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
   const { roles: operandSafeRoles, flags: operandFlags } = demoteMissingOperandScripts(resolvedRoles)
   const { roles: admissibleRoles, flags } = resolveStructuralAdmissibility(groups, operandSafeRoles, edges)
   const fractionSemanticRootSafeRoles = ensureFractionSemanticRootsRemainBaseline(admissibleRoles, fractionBindings, groups)
-  const contexts = buildExpressionContexts(groups, fractionSemanticRootSafeRoles, subexpressions, enclosures, fractionBindings)
+  const contexts = buildExpressionContexts(groups, fractionSemanticRootSafeRoles, subexpressions, enclosures, fractionBindings, edges, topBrickHypothesisByGroupId)
   const sequencePromotedRoles = promoteSequenceWideScripts(fractionSemanticRootSafeRoles, contexts, groups, edges, topBrickHypothesisByGroupId)
-  const promotedContexts = buildExpressionContexts(groups, sequencePromotedRoles, subexpressions, enclosures, fractionBindings)
+  const promotedContexts = buildExpressionContexts(groups, sequencePromotedRoles, subexpressions, enclosures, fractionBindings, edges, topBrickHypothesisByGroupId)
   const annotatedRoles = annotateRolesWithContexts(sequencePromotedRoles, promotedContexts, groups)
   const annotatedRoleMap = new Map(annotatedRoles.map((role) => [role.groupId, role]))
   const contextualizedRoles = annotatedRoles.map((role) => ({

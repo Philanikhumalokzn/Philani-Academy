@@ -1,6 +1,6 @@
 import type { InkStroke, StructuralRoleKind } from './types'
 
-export type HandwritingFixtureName = 'superscript' | 'fraction' | 'nested' | 'adjacentAmbiguous' | 'crossingFour' | 'superscriptThenBar' | 'fractionWithExponent' | 'fractionOuterExponent' | 'fractionDenominatorOuterExponent' | 'fractionOuterSubscript' | 'fractionDenominatorOuterSubscript' | 'offsetLineSubscript' | 'barSeparatedPotentialScript' | 'operatorSeparatedLowerV' | 'parenthesizedSuperscript' | 'parenthesizedExponent' | 'parenthesizedFractionNumerator' | 'parenthesizedFractionExponent' | 'fractionCompositeNumerator' | 'sequenceOuterExponent' | 'sequenceOuterSubscript' | 'inlineOrdinaryPair' | 'inlineFractionBarTemptation' | 'radicalWithIndex' | 'stackedBaselinesUnsupported' | 'digitTwoSuperscriptSeven' | 'digitFiveRadicalTemptation' | 'digitTwoRadicalTemptation' | 'shortBarSuperscript' | 'shortBarSubscript' | 'compactTBaseline' | 'compactTSuperscript' | 'radicalLooseRoof' | 'tightFractionBar'
+export type HandwritingFixtureName = 'superscript' | 'fraction' | 'nested' | 'adjacentAmbiguous' | 'crossingFour' | 'superscriptThenBar' | 'fractionWithExponent' | 'fractionOuterExponent' | 'fractionDenominatorOuterExponent' | 'fractionOuterSubscript' | 'fractionDenominatorOuterSubscript' | 'offsetLineSubscript' | 'barSeparatedPotentialScript' | 'operatorSeparatedLowerV' | 'operatorSeparatedUpperTwo' | 'parenthesizedSuperscript' | 'parenthesizedExponent' | 'parenthesizedFractionNumerator' | 'parenthesizedFractionExponent' | 'parenthesizedFractionSubscript' | 'fractionCompositeNumerator' | 'sequenceOuterExponent' | 'sequenceOuterSubscript' | 'inlineOrdinaryPair' | 'inlineFractionBarTemptation' | 'radicalWithIndex' | 'stackedBaselinesUnsupported' | 'digitTwoSuperscriptSeven' | 'digitFiveRadicalTemptation' | 'digitTwoRadicalTemptation' | 'shortBarSuperscript' | 'shortBarSubscript' | 'compactTBaseline' | 'compactTSuperscript' | 'radicalLooseRoof' | 'tightFractionBar'
 
 export type HandwritingFixtureExpectation = {
   groupCount: number
@@ -10,6 +10,7 @@ export type HandwritingFixtureExpectation = {
 
 export type HandwritingFixtureDiagnostics = {
   recordTopBrickFamilies?: boolean
+  recordStructuralRoles?: boolean
 }
 
 export type HandwritingFixture = {
@@ -202,6 +203,19 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
     ],
     expectation: { groupCount: 3, requiredRoles: ['baseline'] },
   },
+  operatorSeparatedUpperTwo: {
+    name: 'operatorSeparatedUpperTwo',
+    label: 'V + 2 superscript temptation',
+    description: 'A capital-V-like symbol, a plus operator, and a slightly elevated 2-like symbol that should remain inline rather than becoming a cross-operator superscript.',
+    strokes: [
+      makeStroke('cap-v-1', [[120, 210], [144, 258], [168, 210]]),
+      makeStroke('plus-1', [[214, 204], [214, 250]]),
+      makeStroke('plus-2', [[192, 227], [236, 227]]),
+      makeStroke('two-1', [[270, 198], [292, 184], [311, 189], [307, 208], [281, 220], [312, 221]]),
+    ],
+    expectation: { groupCount: 3, requiredRoles: ['baseline'] },
+    diagnostics: { recordTopBrickFamilies: true, recordStructuralRoles: true },
+  },
   parenthesizedSuperscript: {
     name: 'parenthesizedSuperscript',
     label: '(x^2) sample',
@@ -257,6 +271,21 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
       makeStroke('two-1', [[314, 120], [338, 104], [358, 108], [354, 128], [327, 143], [360, 144]]),
     ],
     expectation: { groupCount: 6, requiredRoles: ['enclosureOpen', 'enclosureClose', 'fractionBar', 'numerator', 'denominator', 'superscript'] },
+  },
+  parenthesizedFractionSubscript: {
+    name: 'parenthesizedFractionSubscript',
+    label: '(x / y)_2 sample',
+    description: 'A local fraction enclosed in parentheses with an outer subscript attached to the enclosure as a whole.',
+    strokes: [
+      makeStroke('open-1', [[102, 114], [84, 164], [80, 226], [86, 286], [104, 338]]),
+      makeStroke('num-1', [[150, 178], [176, 216], [202, 178]]),
+      makeStroke('bar-1', [[126, 246], [246, 246]], 6),
+      makeStroke('den-1', [[166, 292], [184, 332], [194, 300], [206, 344]]),
+      makeStroke('close-1', [[264, 114], [282, 164], [286, 226], [280, 286], [262, 338]]),
+      makeStroke('two-1', [[314, 334], [338, 318], [358, 324], [354, 344], [327, 359], [360, 360]]),
+    ],
+    expectation: { groupCount: 6, requiredRoles: ['enclosureOpen', 'enclosureClose', 'fractionBar', 'numerator', 'denominator', 'subscript'] },
+    diagnostics: { recordStructuralRoles: true },
   },
   fractionCompositeNumerator: {
     name: 'fractionCompositeNumerator',
@@ -449,7 +478,7 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
   },
 }
 
-export const HANDWRITING_FIXTURE_ORDER: HandwritingFixtureName[] = ['superscript', 'fraction', 'nested', 'adjacentAmbiguous', 'crossingFour', 'superscriptThenBar', 'fractionWithExponent', 'fractionOuterExponent', 'fractionDenominatorOuterExponent', 'fractionOuterSubscript', 'fractionDenominatorOuterSubscript', 'offsetLineSubscript', 'barSeparatedPotentialScript', 'operatorSeparatedLowerV', 'parenthesizedSuperscript', 'parenthesizedExponent', 'parenthesizedFractionNumerator', 'parenthesizedFractionExponent', 'fractionCompositeNumerator', 'sequenceOuterExponent', 'sequenceOuterSubscript', 'inlineOrdinaryPair', 'inlineFractionBarTemptation', 'radicalWithIndex', 'stackedBaselinesUnsupported', 'digitTwoSuperscriptSeven', 'digitFiveRadicalTemptation', 'digitTwoRadicalTemptation', 'shortBarSuperscript', 'shortBarSubscript', 'compactTBaseline', 'compactTSuperscript', 'radicalLooseRoof', 'tightFractionBar']
+export const HANDWRITING_FIXTURE_ORDER: HandwritingFixtureName[] = ['superscript', 'fraction', 'nested', 'adjacentAmbiguous', 'crossingFour', 'superscriptThenBar', 'fractionWithExponent', 'fractionOuterExponent', 'fractionDenominatorOuterExponent', 'fractionOuterSubscript', 'fractionDenominatorOuterSubscript', 'offsetLineSubscript', 'barSeparatedPotentialScript', 'operatorSeparatedLowerV', 'operatorSeparatedUpperTwo', 'parenthesizedSuperscript', 'parenthesizedExponent', 'parenthesizedFractionNumerator', 'parenthesizedFractionExponent', 'parenthesizedFractionSubscript', 'fractionCompositeNumerator', 'sequenceOuterExponent', 'sequenceOuterSubscript', 'inlineOrdinaryPair', 'inlineFractionBarTemptation', 'radicalWithIndex', 'stackedBaselinesUnsupported', 'digitTwoSuperscriptSeven', 'digitFiveRadicalTemptation', 'digitTwoRadicalTemptation', 'shortBarSuperscript', 'shortBarSubscript', 'compactTBaseline', 'compactTSuperscript', 'radicalLooseRoof', 'tightFractionBar']
 
 export const getHandwritingFixture = (name: HandwritingFixtureName) => {
   const fixture = fixtures[name]

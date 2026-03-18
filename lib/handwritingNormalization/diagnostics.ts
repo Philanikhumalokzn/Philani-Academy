@@ -21,8 +21,24 @@ export type BrickFamilyDiagnosticsOptions = {
   borderlineGap?: number
 }
 
+export type StructuralRoleDiagnosticsEntry = {
+  groupId: string
+  role: string
+  parentGroupId: string | null
+  associationContextId: string | null
+  hostedContextId: string | null
+  hostedContextKind: string | null
+  normalizationAnchorGroupIds: string[]
+  evidence: string[]
+}
+
+export type StructuralRoleDiagnosticsOptions = {
+  maxEvidence?: number
+}
+
 const DEFAULT_TOP_K = 3
 const DEFAULT_BORDERLINE_GAP = 0.18
+const DEFAULT_MAX_ROLE_EVIDENCE = 8
 
 export const collectBrickFamilyScoreDiagnostics = (
   analysis: HandwritingAnalysis,
@@ -79,6 +95,50 @@ export const formatBrickFamilyScoreDiagnostics = (
       })
 
       return [header, ...families].join('\n')
+    })
+    .join('\n\n')
+}
+
+export const collectStructuralRoleDiagnostics = (
+  analysis: HandwritingAnalysis,
+  options: StructuralRoleDiagnosticsOptions = {},
+): StructuralRoleDiagnosticsEntry[] => {
+  const maxEvidence = options.maxEvidence ?? DEFAULT_MAX_ROLE_EVIDENCE
+
+  return analysis.roles
+    .slice()
+    .sort((left, right) => left.depth - right.depth || left.groupId.localeCompare(right.groupId))
+    .map((role) => ({
+      groupId: role.groupId,
+      role: role.role,
+      parentGroupId: role.parentGroupId || null,
+      associationContextId: role.associationContextId || null,
+      hostedContextId: role.hostedContextId || null,
+      hostedContextKind: role.hostedContextKind || null,
+      normalizationAnchorGroupIds: role.normalizationAnchorGroupIds.slice(),
+      evidence: role.evidence.slice(0, maxEvidence),
+    }))
+}
+
+export const formatStructuralRoleDiagnostics = (
+  analysis: HandwritingAnalysis,
+  options: StructuralRoleDiagnosticsOptions = {},
+) => {
+  const diagnostics = collectStructuralRoleDiagnostics(analysis, options)
+
+  return diagnostics
+    .map((entry) => {
+      const header = [
+        `group=${entry.groupId}`,
+        `role=${entry.role}`,
+        `parent=${entry.parentGroupId || 'none'}`,
+        `associationContext=${entry.associationContextId || 'none'}`,
+        `hostedContext=${entry.hostedContextId || 'none'}`,
+        `hostedKind=${entry.hostedContextKind || 'none'}`,
+        `normalizationAnchors=${entry.normalizationAnchorGroupIds.join(',') || 'none'}`,
+      ].join(' | ')
+
+      return [header, ...entry.evidence.map((evidence, index) => `${index + 1}. ${evidence}`)].join('\n')
     })
     .join('\n\n')
 }

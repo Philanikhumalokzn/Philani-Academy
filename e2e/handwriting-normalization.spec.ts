@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { analyzeHandwrittenExpression, createHandwritingIncrementalState, formatBrickFamilyScoreDiagnostics, getHandwritingFixture, getRoleDescriptor, HANDWRITING_FIXTURE_ORDER, LEGO_BRICK_FAMILIES, recognizeSymbolForRole, roleAllowsChildRole } from '../lib/handwritingNormalization'
+import { analyzeHandwrittenExpression, createHandwritingIncrementalState, formatBrickFamilyScoreDiagnostics, formatStructuralRoleDiagnostics, getHandwritingFixture, getRoleDescriptor, HANDWRITING_FIXTURE_ORDER, LEGO_BRICK_FAMILIES, recognizeSymbolForRole, roleAllowsChildRole } from '../lib/handwritingNormalization'
 import { buildLayoutGraph } from '../lib/handwritingNormalization/graph'
 import { normalizeInkLayout } from '../lib/handwritingNormalization/normalize'
 import { buildExpressionParseForest } from '../lib/handwritingNormalization/parser'
@@ -106,12 +106,21 @@ const attachFixtureBrickFamilyDiagnostics = async (fixture: HandwritingFixture, 
   })
 }
 
+const attachFixtureStructuralRoleDiagnostics = async (fixture: HandwritingFixture, analysis: HandwritingAnalysis) => {
+  if (!fixture.diagnostics?.recordStructuralRoles) return
+  await test.info().attach(`${fixture.name}-structural-roles.txt`, {
+    body: formatStructuralRoleDiagnostics(analysis),
+    contentType: 'text/plain',
+  })
+}
+
 test.describe('handwriting normalization fixtures', () => {
   test('all fixture examples satisfy their declared role and group expectations', async () => {
     for (const fixtureName of HANDWRITING_FIXTURE_ORDER) {
       const fixture = getHandwritingFixture(fixtureName)
       const analysis = analyzeHandwrittenExpression(fixture.strokes)
       await attachFixtureBrickFamilyDiagnostics(fixture, analysis)
+      await attachFixtureStructuralRoleDiagnostics(fixture, analysis)
 
       expect(analysis.groups, `${fixture.name} group count`).toHaveLength(fixture.expectation.groupCount)
       for (const requiredRole of fixture.expectation.requiredRoles) {
@@ -142,6 +151,7 @@ test.describe('handwriting normalization fixtures', () => {
       const fixture = getHandwritingFixture(fixtureName)
       const analysis = analyzeHandwrittenExpression(fixture.strokes)
       await attachFixtureBrickFamilyDiagnostics(fixture, analysis)
+      await attachFixtureStructuralRoleDiagnostics(fixture, analysis)
 
       expect(analysis.refinement?.converged, `${fixture.name} should converge under global refinement`).toBe(true)
       expect((analysis.refinement?.passes.length || 0), `${fixture.name} should record refinement passes`).toBeGreaterThanOrEqual(2)
@@ -987,6 +997,21 @@ test.describe('handwriting normalization fixtures', () => {
     expect(sequenceContext?.memberGroupIds).toHaveLength(3)
   })
 
+  test('operator-separated elevated 2 stays inline instead of becoming a long-range superscript', async () => {
+    const fixture = getHandwritingFixture('operatorSeparatedUpperTwo')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    await attachFixtureBrickFamilyDiagnostics(fixture, analysis)
+    await attachFixtureStructuralRoleDiagnostics(fixture, analysis)
+    const plusRole = analysis.roles.find((role) => role.recognizedSymbol?.value === '+')
+    const sequenceContext = analysis.contexts.find((context) => context.kind === 'sequence')
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(analysis.roles.some((role) => role.role === 'superscript' || role.role === 'subscript')).toBe(false)
+    expect(analysis.roles.filter((role) => role.role === 'baseline')).toHaveLength(3)
+    expect(plusRole?.recognizedSymbol?.category).toBe('operator')
+    expect(sequenceContext?.memberGroupIds).toHaveLength(3)
+  })
+
   test('parenthesized superscript creates an enclosure structure without breaking local script ownership', async () => {
     const fixture = getHandwritingFixture('parenthesizedSuperscript')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
@@ -1122,6 +1147,40 @@ test.describe('handwriting normalization fixtures', () => {
     expect(denominator).toBeTruthy()
     expect(analysis.enclosures).toHaveLength(1)
     expect(outerSuperscript?.associationContextId).toBe(enclosureContext?.id)
+    expect(enclosureParseRoot?.rootNodeId?.startsWith('parse:sequence:context:enclosure:')).toBe(true)
+    expect(fractionParseNode?.childNodeIds).toEqual(expect.arrayContaining([
+      numeratorParseRoot?.rootNodeId || '',
+      denominatorParseRoot?.rootNodeId || '',
+    ]))
+    expect(enclosureParseNode?.childNodeIds).toEqual([enclosureParseRoot?.rootNodeId || ''])
+    expect(outerScriptParseNode?.childNodeIds).toEqual([enclosureParseNode?.id || ''])
+  })
+
+  test('parenthesized fraction can act as a local expression root for an outer subscript', async () => {
+    const fixture = getHandwritingFixture('parenthesizedFractionSubscript')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    await attachFixtureStructuralRoleDiagnostics(fixture, analysis)
+    const fractionBar = analysis.roles.find((role) => role.role === 'fractionBar')
+    const numeratorContext = getContextByKind(analysis, 'numerator')
+    const denominatorContext = getContextByKind(analysis, 'denominator')
+    const numerator = getSemanticRootRole(analysis, numeratorContext)
+    const denominator = getSemanticRootRole(analysis, denominatorContext)
+    const outerSubscript = analysis.roles.find((role) => role.role === 'subscript' && role.containerGroupIds.length === 0)
+    const enclosureContext = analysis.contexts.find((context) => context.kind === 'enclosure')
+    const enclosureParseRoot = analysis.parseRoots.find((root) => root.contextId === enclosureContext?.id)
+    const numeratorParseRoot = analysis.parseRoots.find((root) => root.contextId === numeratorContext?.id)
+    const denominatorParseRoot = analysis.parseRoots.find((root) => root.contextId === denominatorContext?.id)
+    const fractionParseNode = analysis.parseNodes.find((node) => node.kind === 'fractionExpression')
+    const enclosureParseNode = analysis.parseNodes.find((node) => node.kind === 'enclosureExpression')
+    const outerScriptParseNode = analysis.parseNodes.find((node) => node.kind === 'scriptApplication' && node.role === 'subscript' && node.operatorGroupId === outerSubscript?.groupId)
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(fractionBar).toBeTruthy()
+    expect(numerator).toBeTruthy()
+    expect(denominator).toBeTruthy()
+    expect(analysis.enclosures).toHaveLength(1)
+    expect(outerSubscript?.associationContextId).toBe(enclosureContext?.id)
+    expect(analysis.ambiguities.some((ambiguity) => ambiguity.groupId === outerSubscript?.groupId && ambiguity.reason === 'enclosure-wide-script-vs-baseline')).toBe(true)
     expect(enclosureParseRoot?.rootNodeId?.startsWith('parse:sequence:context:enclosure:')).toBe(true)
     expect(fractionParseNode?.childNodeIds).toEqual(expect.arrayContaining([
       numeratorParseRoot?.rootNodeId || '',

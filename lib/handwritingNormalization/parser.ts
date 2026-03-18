@@ -664,14 +664,24 @@ export const buildExpressionParseForest = (
   }
 
   for (const scriptRole of scriptRoles) {
-    if (!scriptRole.associationContextId) continue
-    if (contextMap.get(scriptRole.associationContextId)?.kind !== 'sequence') continue
-    const scriptNode = nodeMap.get(`parse:script:${scriptRole.groupId}`)
-    const sequenceRootNodeId = sequenceRootNodeIdByContextId.get(scriptRole.associationContextId)
-    if (!scriptNode || !sequenceRootNodeId) continue
-    scriptNode.childNodeIds = [sequenceRootNodeId]
-    scriptNode.groupIds = uniqueIds([scriptRole.groupId, ...(nodeMap.get(sequenceRootNodeId)?.groupIds || [])])
-    refreshSequenceRootNode(scriptNode.contextId)
+    const associationContext = scriptRole.associationContextId ? contextMap.get(scriptRole.associationContextId) || null : null
+    if (!associationContext) continue
+    if (
+      associationContext.kind !== 'sequence'
+      && associationContext.kind !== 'enclosure'
+      && associationContext.kind !== 'fraction'
+      && associationContext.kind !== 'radical'
+    ) {
+      continue
+    }
+    const operandNodeId = buildScriptOperandNodeId(scriptRole)
+    if (!operandNodeId) continue
+    const matchingScriptNodes = nodes.filter((node) => node.kind === 'scriptApplication' && node.operatorGroupId === scriptRole.groupId)
+    for (const scriptNode of matchingScriptNodes) {
+      scriptNode.childNodeIds = [operandNodeId]
+      scriptNode.groupIds = uniqueIds([scriptRole.groupId, ...(nodeMap.get(operandNodeId)?.groupIds || [])])
+      refreshSequenceRootNode(scriptNode.contextId)
+    }
   }
 
   return { parseNodes: nodes, parseRoots }

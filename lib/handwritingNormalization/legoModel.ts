@@ -113,6 +113,43 @@ const getCrossOperatorScore = (group: StrokeGroup) => {
 	return strokeCountBias * 0.58 + compactness * 0.42
 }
 
+const getStrokeBounds = (group: StrokeGroup, strokeIndex: number) => {
+	const stroke = group.strokes?.[strokeIndex]
+	if (!stroke?.points?.length) return null
+	const xs = stroke.points.map((point) => point.x)
+	const ys = stroke.points.map((point) => point.y)
+	const left = Math.min(...xs)
+	const right = Math.max(...xs)
+	const top = Math.min(...ys)
+	const bottom = Math.max(...ys)
+	return {
+		left,
+		right,
+		top,
+		bottom,
+		width: right - left,
+		height: bottom - top,
+		centerX: (left + right) / 2,
+		centerY: (top + bottom) / 2,
+	}
+}
+
+const getExplicitOperatorCrossBoost = (group: StrokeGroup) => {
+	if ((group.strokes?.length || 0) !== 2) return 0
+	const first = getStrokeBounds(group, 0)
+	const second = getStrokeBounds(group, 1)
+	if (!first || !second) return 0
+	const firstHorizontal = first.width >= Math.max(18, first.height * 1.8)
+	const firstVertical = first.height >= Math.max(18, first.width * 1.8)
+	const secondHorizontal = second.width >= Math.max(18, second.height * 1.8)
+	const secondVertical = second.height >= Math.max(18, second.width * 1.8)
+	const orthogonalPair = (firstHorizontal && secondVertical) || (firstVertical && secondHorizontal)
+	if (!orthogonalPair) return 0
+	const centerDistance = Math.abs(first.centerX - second.centerX) + Math.abs(first.centerY - second.centerY)
+	const centeredCross = clamp(1 - centerDistance / Math.max(18, (group.bounds.width + group.bounds.height) * 0.18), 0, 1)
+	return centeredCross * 0.24
+}
+
 const getRadicalGlyphScore = (group: StrokeGroup) => {
 	const singleStrokeBias = group.strokeCount === 1 ? 1 : 0.28
 	const widthBias = clamp((group.bounds.width - 34) / 54, 0, 1)
@@ -149,9 +186,14 @@ const inferFamilyCandidatesForGroup = (group: StrokeGroup) => {
 	const horizontalLineScore = getHorizontalLineScore(group)
 	const boundaryScore = getBoundaryStrokeScore(group)
 	const operatorScore = getCrossOperatorScore(group)
+	const explicitOperatorCrossBoost = getExplicitOperatorCrossBoost(group)
+	const boostedOperatorScore = clamp(Math.max(operatorScore, horizontalLineScore * 0.72) + explicitOperatorCrossBoost, 0, 1)
 	const radicalScore = getRadicalGlyphScore(group)
 	const compactGlyphScore = getCompactGlyphScore(group)
 	const ordinaryBaselinePenalty = radicalScore >= 0.72 ? clamp((radicalScore - 0.7) / 0.24, 0, 0.34) : 0
+	const operatorDominancePenalty = explicitOperatorCrossBoost > 0 && boostedOperatorScore >= 0.9
+		? clamp((boostedOperatorScore - 0.88) / 0.12, 0, 0.32)
+		: 0
 
 	const candidates: Array<{ family: LegoBrickFamilyKind, prototype: LegoBrickPrototypeKind, score: number, evidence: string[] }> = [
 		{
@@ -169,8 +211,8 @@ const inferFamilyCandidatesForGroup = (group: StrokeGroup) => {
 		{
 			family: 'operatorBrick',
 			prototype: horizontalLineScore >= operatorScore ? 'horizontalLine' : 'operatorCross',
-			score: Math.max(operatorScore, horizontalLineScore * 0.72),
-			evidence: [`operator-score=${Math.max(operatorScore, horizontalLineScore * 0.72).toFixed(2)}`, 'inline operator affordances are plausible'],
+			score: boostedOperatorScore,
+			evidence: [`operator-score=${boostedOperatorScore.toFixed(2)}`, `explicit-cross-boost=${explicitOperatorCrossBoost.toFixed(2)}`, 'inline operator affordances are plausible'],
 		},
 		{
 			family: 'radicalBrick',
@@ -181,7 +223,7 @@ const inferFamilyCandidatesForGroup = (group: StrokeGroup) => {
 		{
 			family: 'ordinaryBaselineSymbolBrick',
 			prototype: compactGlyphScore >= operatorScore ? 'compactGlyph' : 'operatorCross',
-			score: Math.max(0.34, compactGlyphScore - ordinaryBaselinePenalty),
+			score: Math.max(0.34, compactGlyphScore - ordinaryBaselinePenalty - operatorDominancePenalty),
 			evidence: [`compact-glyph-score=${compactGlyphScore.toFixed(2)}`, 'ordinary baseline symbol brick is the default local body family'],
 		},
 		{

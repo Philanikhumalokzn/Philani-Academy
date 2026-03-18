@@ -670,6 +670,33 @@ test.describe('handwriting normalization fixtures', () => {
     expect(subscript?.evidence.some((entry) => entry.includes('below-right='))).toBe(true)
   })
 
+  test('fraction bar blocks cross-bar script attachment even when the bar itself is recognized strongly', async () => {
+    const fixture = getHandwritingFixture('barSeparatedPotentialScript')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const fractionBar = analysis.roles.find((role) => role.role === 'fractionBar')
+    const incompleteFractionFlag = analysis.flags.find((flag) => flag.kind === 'incompleteFractionStructure')
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(fractionBar).toBeTruthy()
+    expect(analysis.roles.some((role) => role.role === 'superscript' || role.role === 'subscript')).toBe(false)
+    expect(analysis.roles.filter((role) => role.role === 'baseline')).toHaveLength(2)
+    expect(incompleteFractionFlag).toBeTruthy()
+    expect(analysis.ambiguities.some((ambiguity) => ambiguity.reason === 'sequence-vs-script')).toBe(false)
+  })
+
+  test('operator-separated lowercase v stays inline instead of becoming a long-range subscript', async () => {
+    const fixture = getHandwritingFixture('operatorSeparatedLowerV')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const plusRole = analysis.roles.find((role) => role.recognizedSymbol?.value === '+')
+    const sequenceContext = analysis.contexts.find((context) => context.kind === 'sequence')
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(analysis.roles.some((role) => role.role === 'subscript' || role.role === 'superscript')).toBe(false)
+    expect(analysis.roles.filter((role) => role.role === 'baseline')).toHaveLength(3)
+    expect(plusRole?.recognizedSymbol?.category).toBe('operator')
+    expect(sequenceContext?.memberGroupIds).toHaveLength(3)
+  })
+
   test('parenthesized superscript creates an enclosure structure without breaking local script ownership', async () => {
     const fixture = getHandwritingFixture('parenthesizedSuperscript')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)

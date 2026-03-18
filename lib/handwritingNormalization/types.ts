@@ -246,6 +246,14 @@ export type StructuralFlag =
     message: string
     operatorRole: 'superscript' | 'subscript'
   }
+  | {
+    kind: 'incompleteFractionStructure'
+    severity: 'warning'
+    groupIds: string[]
+    message: string
+    barGroupId: string
+    missingSide: 'numerator' | 'denominator' | 'both'
+  }
 
 export type LocalSubexpressionAttachment = {
   parentGroupId: string

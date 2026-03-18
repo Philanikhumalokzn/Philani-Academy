@@ -97,7 +97,7 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
       }
     }
 
-    if (role.role === 'fractionBar') {
+    if (role.role === 'fractionBar' || role.role === 'provisionalFractionBar') {
       dy = baselineY - scaledBounds.centerY
     }
 

@@ -121,6 +121,9 @@ type ScoredFractionContext = {
   preferredDenominatorRootId: string | null
 }
 
+const PROVISIONAL_FRACTION_BAR_MIN_SCORE = 0.42
+const PROVISIONAL_FRACTION_SIDE_MIN_SCORE = 0.36
+
 const isSameContextStackedPair = (upper: StrokeGroup, lower: StrokeGroup) => {
   const overlapWidth = Math.max(0, Math.min(upper.bounds.right, lower.bounds.right) - Math.max(upper.bounds.left, lower.bounds.left))
   const minWidth = Math.max(1, Math.min(upper.bounds.width, lower.bounds.width))
@@ -772,7 +775,7 @@ const buildExpressionContexts = (
 
   const enclosureContexts = contexts.filter((context) => context.kind === 'enclosure')
 
-  for (const fractionBarRole of roles.filter((role) => role.role === 'fractionBar')) {
+  for (const fractionBarRole of roles.filter((role) => role.role === 'fractionBar' || role.role === 'provisionalFractionBar')) {
     const binding = fractionBindings.find((candidate) => candidate.barGroupId === fractionBarRole.groupId) || null
     const numeratorRole = roles.find((role) => role.parentGroupId === fractionBarRole.groupId && role.role === 'numerator') || null
     const denominatorRole = roles.find((role) => role.parentGroupId === fractionBarRole.groupId && role.role === 'denominator') || null
@@ -1095,7 +1098,29 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
 
   const confirmedFractionBars = fractionBarLikeGroups
     .map((bar) => ({ bar, context: scoreFractionContext(bar, subexpressions, groupMap) }))
-    .filter(({ context }) => context.barRecognitionScore >= 0.5 && context.numeratorRoots.length > 0)
+    .filter(({ context }) => {
+      const completeFractionSupport = context.barRecognitionScore >= 0.5
+        && context.memberClaimScore >= 0.46
+        && context.numeratorRoots.length > 0
+        && context.denominatorRoots.length > 0
+      const strongStandaloneBarInExpression = context.shapeScore >= 0.78
+        && context.provisionalNumeratorScore < PROVISIONAL_FRACTION_SIDE_MIN_SCORE
+        && context.provisionalDenominatorScore < PROVISIONAL_FRACTION_SIDE_MIN_SCORE
+        && subexpressions.length > 0
+      return completeFractionSupport || strongStandaloneBarInExpression
+    })
+
+  const confirmedFractionBarIdSet = new Set(confirmedFractionBars.map(({ bar }) => bar.id))
+
+  const provisionalFractionBars = fractionBarLikeGroups
+    .map((bar) => ({ bar, context: scoreFractionContext(bar, subexpressions, groupMap) }))
+    .filter(({ bar }) => !confirmedFractionBarIdSet.has(bar.id))
+    .filter(({ context }) => (
+      context.barRecognitionScore >= PROVISIONAL_FRACTION_BAR_MIN_SCORE
+      || context.provisionalNumeratorScore >= PROVISIONAL_FRACTION_SIDE_MIN_SCORE
+      || context.provisionalDenominatorScore >= PROVISIONAL_FRACTION_SIDE_MIN_SCORE
+      || context.shapeScore >= 0.74
+    ))
 
   for (const { bar, context } of confirmedFractionBars) {
     roles.set(bar.id, makeRole(bar.id, 'fractionBar', context.barRecognitionScore, 0, null, [
@@ -1115,6 +1140,61 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
       `provisional-above=${context.provisionalNumeratorScore.toFixed(2)}`,
       `provisional-below=${context.provisionalDenominatorScore.toFixed(2)}`,
     ]))
+  }
+
+  for (const { bar, context } of provisionalFractionBars) {
+    roles.set(bar.id, makeRole(bar.id, 'provisionalFractionBar', Math.max(0.42, context.barRecognitionScore), 0, null, [
+      `family=${getRoleDescriptor('provisionalFractionBar').family}`,
+      `operator-kind=${getRoleDescriptor('provisionalFractionBar').operatorKind}`,
+      `operand-mode=${getRoleDescriptor('provisionalFractionBar').operandReferenceMode}`,
+      `shape=${context.shapeScore.toFixed(2)}`,
+      `joint-score=${context.bestHypothesis?.score.toFixed(2) || '0.00'}`,
+      `provisional-above=${context.provisionalNumeratorScore.toFixed(2)}`,
+      `provisional-below=${context.provisionalDenominatorScore.toFixed(2)}`,
+      'line-like group is being preserved as a provisional fraction operator while operand evidence remains incomplete',
+    ], containerIdsByGroupId.get(bar.id) || []))
+
+    const provisionalNumeratorRoots = context.provisionalNumeratorScore >= PROVISIONAL_FRACTION_SIDE_MIN_SCORE
+      ? prioritizeRootId(context.numeratorRoots.map((candidate) => candidate.rootGroupId), context.preferredNumeratorRootId, groupMap)
+      : []
+    const provisionalDenominatorRoots = context.provisionalDenominatorScore >= PROVISIONAL_FRACTION_SIDE_MIN_SCORE
+      ? prioritizeRootId(context.denominatorRoots.map((candidate) => candidate.rootGroupId), context.preferredDenominatorRootId, groupMap)
+      : []
+
+    fractionBindings.push({
+      barGroupId: bar.id,
+      numeratorRootIds: provisionalNumeratorRoots,
+      denominatorRootIds: provisionalDenominatorRoots,
+    })
+
+    const provisionalNumeratorRootId = provisionalNumeratorRoots[0] || null
+    const provisionalDenominatorRootId = provisionalDenominatorRoots[0] || null
+
+    if (provisionalNumeratorRootId && !roles.has(provisionalNumeratorRootId)) {
+      rootClaims.set(provisionalNumeratorRootId, { rootGroupId: provisionalNumeratorRootId, role: 'numerator' })
+      ambiguities.push({
+        groupId: provisionalNumeratorRootId,
+        reason: 'fraction-membership',
+        chosenRole: 'numerator',
+        candidates: [
+          makeCandidate('numerator', Math.max(0.58, context.provisionalNumeratorScore), bar.id, ['centered above provisional fraction bar', 'one-sided fraction-member reinforcement']),
+          makeCandidate('baseline', 0.34, null, ['fallback root role']),
+        ],
+      })
+    }
+
+    if (provisionalDenominatorRootId && !roles.has(provisionalDenominatorRootId)) {
+      rootClaims.set(provisionalDenominatorRootId, { rootGroupId: provisionalDenominatorRootId, role: 'denominator' })
+      ambiguities.push({
+        groupId: provisionalDenominatorRootId,
+        reason: 'fraction-membership',
+        chosenRole: 'denominator',
+        candidates: [
+          makeCandidate('denominator', Math.max(0.58, context.provisionalDenominatorScore), bar.id, ['centered below provisional fraction bar', 'one-sided fraction-member reinforcement']),
+          makeCandidate('baseline', 0.34, null, ['fallback root role']),
+        ],
+      })
+    }
   }
 
   for (const { bar, context } of confirmedFractionBars) {

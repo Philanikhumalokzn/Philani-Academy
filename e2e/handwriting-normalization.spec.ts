@@ -81,6 +81,85 @@ test.describe('handwriting normalization fixtures', () => {
     ])
   })
 
+  test('a lone horizontal line is preserved as a provisional fraction bar candidate', async () => {
+    const strokes: InkStroke[] = [{
+      ...makeStroke('line-only'),
+      width: 6,
+      points: [
+        { x: 112, y: 236, t: 0 },
+        { x: 286, y: 236, t: 16 },
+      ],
+    }]
+    const analysis = analyzeHandwrittenExpression(strokes)
+    const provisionalBar = analysis.roles.find((role) => role.role === 'provisionalFractionBar')
+
+    expect(analysis.groups).toHaveLength(1)
+    expect(provisionalBar).toBeTruthy()
+    expect(provisionalBar?.recognizedSymbol?.value).toBe('fraction-bar')
+    expect(provisionalBar?.evidence.some((entry) => entry.includes('operand evidence remains incomplete'))).toBe(true)
+    expect(analysis.roles.some((role) => role.role === 'unsupportedSymbol')).toBe(false)
+  })
+
+  test('a numerator plus bar forms a provisional numerator-bar pair before the denominator appears', async () => {
+    const strokes: InkStroke[] = [
+      {
+        ...makeStroke('num-v'),
+        points: [
+          { x: 148, y: 170, t: 0 },
+          { x: 168, y: 202, t: 16 },
+          { x: 188, y: 170, t: 32 },
+        ],
+      },
+      {
+        ...makeStroke('bar-only'),
+        width: 6,
+        points: [
+          { x: 116, y: 244, t: 0 },
+          { x: 272, y: 244, t: 16 },
+        ],
+      },
+    ]
+    const analysis = analyzeHandwrittenExpression(strokes)
+    const provisionalBar = analysis.roles.find((role) => role.role === 'provisionalFractionBar')
+
+    expect(analysis.groups).toHaveLength(2)
+    expect(provisionalBar).toBeTruthy()
+    expect(analysis.roles.some((role) => role.role === 'fractionBar')).toBe(false)
+    expect(analysis.roles.some((role) => role.role === 'numerator')).toBe(true)
+    expect(analysis.roles.some((role) => role.role === 'denominator')).toBe(false)
+    expect(provisionalBar?.evidence.some((entry) => entry.startsWith('provisional-above='))).toBe(true)
+  })
+
+  test('a denominator plus bar forms a provisional denominator-bar pair before the numerator appears', async () => {
+    const strokes: InkStroke[] = [
+      {
+        ...makeStroke('bar-only'),
+        width: 6,
+        points: [
+          { x: 116, y: 244, t: 0 },
+          { x: 272, y: 244, t: 16 },
+        ],
+      },
+      {
+        ...makeStroke('den-v'),
+        points: [
+          { x: 162, y: 288, t: 0 },
+          { x: 182, y: 320, t: 16 },
+          { x: 202, y: 288, t: 32 },
+        ],
+      },
+    ]
+    const analysis = analyzeHandwrittenExpression(strokes)
+    const provisionalBar = analysis.roles.find((role) => role.role === 'provisionalFractionBar')
+
+    expect(analysis.groups).toHaveLength(2)
+    expect(provisionalBar).toBeTruthy()
+    expect(analysis.roles.some((role) => role.role === 'fractionBar')).toBe(false)
+    expect(analysis.roles.some((role) => role.role === 'numerator')).toBe(false)
+    expect(analysis.roles.some((role) => role.role === 'denominator')).toBe(true)
+    expect(provisionalBar?.evidence.some((entry) => entry.startsWith('provisional-below='))).toBe(true)
+  })
+
   test('multiple numerator-labeled groups keep their local spacing during fraction normalization', async () => {
     const groups = [
       makeGroup('num-left', { left: 120, top: 150, right: 150, bottom: 188, width: 30, height: 38, centerX: 135, centerY: 169 }),
@@ -195,16 +274,18 @@ test.describe('handwriting normalization fixtures', () => {
     expect(analysis.roles[0]?.role).toBe('baseline')
   })
 
-  test('later fraction bar does not steal a strong superscript pair', async () => {
+  test('later line-like bar stays provisional, keeps the strong superscript pair, and can still seed a numerator interpretation', async () => {
     const fixture = getHandwritingFixture('superscriptThenBar')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const numerator = analysis.roles.find((role) => role.role === 'numerator')
+    const superscript = analysis.roles.find((role) => role.role === 'superscript')
 
     expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
-    expect(analysis.roles.some((role) => role.role === 'fractionBar')).toBe(true)
-    expect(analysis.roles.some((role) => role.role === 'baseline')).toBe(true)
+    expect(analysis.roles.some((role) => role.role === 'provisionalFractionBar')).toBe(true)
     expect(analysis.roles.some((role) => role.role === 'superscript')).toBe(true)
-    expect(analysis.roles.some((role) => role.role === 'numerator')).toBe(false)
+    expect(analysis.roles.some((role) => role.role === 'numerator')).toBe(true)
     expect(analysis.roles.some((role) => role.role === 'denominator')).toBe(false)
+    expect(superscript?.parentGroupId).toBe(numerator?.groupId)
   })
 
   test('fraction can claim a local root while preserving its nested exponent', async () => {

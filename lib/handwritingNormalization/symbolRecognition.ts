@@ -60,6 +60,9 @@ const recognizeStructuralSymbol = (role: StructuralRole) => {
   if (role.role === 'fractionBar') {
     return makeSymbol('structure', 'fraction-bar', 0.99, ['structural fraction bar role'])
   }
+  if (role.role === 'provisionalFractionBar') {
+    return makeSymbol('structure', 'fraction-bar', 0.72, ['provisional structural fraction bar role'])
+  }
   if (role.role === 'enclosureOpen') {
     return makeSymbol('encloser', '(', 0.99, ['structural enclosure-open role'])
   }

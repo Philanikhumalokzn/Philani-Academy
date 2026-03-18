@@ -65,6 +65,7 @@ export type LayoutEdge = {
 export type StructuralRoleKind =
   | 'baseline'
   | 'unsupportedSymbol'
+  | 'provisionalFractionBar'
   | 'superscript'
   | 'subscript'
   | 'numerator'

@@ -362,7 +362,7 @@ export const buildExpressionParseForest = (
     enclosureNodeMetaById.set(node.id, { expressionContextId: contextId })
   }
 
-  const fractionBarRoles = roles.filter((role) => role.role === 'fractionBar')
+  const fractionBarRoles = roles.filter((role) => role.role === 'fractionBar' || role.role === 'provisionalFractionBar')
   for (const barRole of fractionBarRoles) {
     const numeratorRole = roles.find((role) => role.parentGroupId === barRole.groupId && role.role === 'numerator') || null
     const denominatorRole = roles.find((role) => role.parentGroupId === barRole.groupId && role.role === 'denominator') || null
@@ -377,7 +377,7 @@ export const buildExpressionParseForest = (
       groupIds: uniqueIds([barRole.groupId, ...(numeratorRole ? [numeratorRole.groupId] : []), ...(denominatorRole ? [denominatorRole.groupId] : [])]),
       childNodeIds,
       operatorGroupId: barRole.groupId,
-      role: 'fractionBar',
+      role: barRole.role,
       label: `fraction:${barRole.groupId}`,
     })
     if (expressionContextId) {

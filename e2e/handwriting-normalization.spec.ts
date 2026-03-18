@@ -91,6 +91,24 @@ test.describe('handwriting normalization fixtures', () => {
     expect(superscriptRole?.qualifiedRoleLabel).toBe('superscript-2')
   })
 
+  test('digit-like baseline keeps ordinary brick family and accepts a superscript 7', async () => {
+    const fixture = getHandwritingFixture('digitTwoSuperscriptSeven')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const baselineRole = analysis.roles.find((role) => role.role === 'baseline') || null
+    const superscriptRole = analysis.roles.find((role) => role.role === 'superscript') || null
+    const baselineBrick = baselineRole ? getTopBrickHypothesis(analysis, baselineRole.groupId) : null
+    const superscriptEdge = analysis.edges
+      .filter((edge) => edge.kind === 'superscriptCandidate')
+      .sort((left, right) => right.score - left.score)[0] || null
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(baselineRole).toBeTruthy()
+    expect(superscriptRole).toBeTruthy()
+    expect(superscriptRole?.parentGroupId).toBe(baselineRole?.groupId)
+    expect(baselineBrick?.family).toBe('ordinaryBaselineSymbolBrick')
+      expect(superscriptEdge?.score || 0).toBeGreaterThan(0.5)
+  })
+
   test('fraction fixture recognizes fraction structure', async () => {
     const fixture = getHandwritingFixture('fraction')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)

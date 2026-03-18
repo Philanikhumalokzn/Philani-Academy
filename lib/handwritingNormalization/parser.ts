@@ -350,20 +350,21 @@ export const buildExpressionParseForest = (
     return getOrCreateGroupNode(context.semanticRootGroupId)
   }
 
-  const getSequenceOrderedNodeIdsFromOccupancies = (context: ExpressionContext) => {
-    if (context.kind !== 'sequence') return []
+  const getOccupancyOrderedNodeIdsForContext = (context: ExpressionContext, candidateNodeIds: string[]) => {
+    if (context.kind === 'fraction') return []
 
-    const anchorGroupIds = uniqueIds(context.anchorGroupIds)
-    if (!anchorGroupIds.length) return []
+    const memberGroupIds = new Set(context.memberGroupIds)
+    const candidateGroupIds = uniqueIds(candidateNodeIds.flatMap((nodeId) => (nodeMap.get(nodeId)?.groupIds || []).filter((groupId) => memberGroupIds.has(groupId))))
+    if (!candidateGroupIds.length) return []
 
     const childIdsByHostGroupId = new Map<string, string[]>()
     const rootIds: string[] = []
 
-    for (const groupId of anchorGroupIds) {
+    for (const groupId of candidateGroupIds) {
       const occupancy = occupancyByGroupId.get(groupId) || null
       const hostGroupId = occupancy?.hostGroupId || null
       const field = occupancy?.field || 'center'
-      if (field === 'rightInline' && hostGroupId && anchorGroupIds.includes(hostGroupId)) {
+      if (field === 'rightInline' && hostGroupId && candidateGroupIds.includes(hostGroupId)) {
         const existing = childIdsByHostGroupId.get(hostGroupId) || []
         childIdsByHostGroupId.set(hostGroupId, [...existing, groupId])
         continue
@@ -390,7 +391,7 @@ export const buildExpressionParseForest = (
       visit(rootId)
     }
 
-    for (const groupId of anchorGroupIds) {
+    for (const groupId of candidateGroupIds) {
       visit(groupId)
     }
 
@@ -520,11 +521,9 @@ export const buildExpressionParseForest = (
       .filter((nodeId) => !referencedChildIds.has(nodeId))
       .sort((left, right) => getNodeLeft(left) - getNodeLeft(right))
 
-    if (context.kind === 'sequence') {
-      const occupancyOrderedNodeIds = getSequenceOrderedNodeIdsFromOccupancies(context)
-      if (occupancyOrderedNodeIds.length) {
-        topLevelNodeIds.splice(0, topLevelNodeIds.length, ...occupancyOrderedNodeIds)
-      }
+    const occupancyOrderedNodeIds = getOccupancyOrderedNodeIdsForContext(context, topLevelNodeIds)
+    if (occupancyOrderedNodeIds.length) {
+      topLevelNodeIds.splice(0, topLevelNodeIds.length, ...occupancyOrderedNodeIds)
     }
 
     if (!topLevelNodeIds.length) {

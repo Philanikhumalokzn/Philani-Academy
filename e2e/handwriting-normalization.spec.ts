@@ -934,6 +934,135 @@ test.describe('handwriting normalization fixtures', () => {
     expect(sequenceNode?.childNodeIds).toEqual(['parse:group:a', 'parse:group:c', 'parse:group:b'])
   })
 
+  test('fraction numerator parse roots follow LEGO occupancy chain order', async () => {
+    const groups = [
+      makeGroup('a', { left: 100, top: 150, right: 132, bottom: 194, width: 32, height: 44, centerX: 116, centerY: 172 }),
+      makeGroup('b', { left: 146, top: 150, right: 178, bottom: 194, width: 32, height: 44, centerX: 162, centerY: 172 }),
+      makeGroup('c', { left: 192, top: 150, right: 224, bottom: 194, width: 32, height: 44, centerX: 208, centerY: 172 }),
+      makeGroup('bar', { left: 92, top: 214, right: 232, bottom: 224, width: 140, height: 10, centerX: 162, centerY: 219 }),
+      makeGroup('d', { left: 150, top: 246, right: 182, bottom: 290, width: 32, height: 44, centerX: 166, centerY: 268 }),
+    ]
+    const roles: StructuralRole[] = [
+      {
+        groupId: 'a',
+        role: 'baseline',
+        descriptor: getRoleDescriptor('baseline'),
+        score: 0.7,
+        depth: 0,
+        parentGroupId: null,
+        associationContextId: 'context:numerator:test',
+        hostedContextKind: 'numerator',
+        hostedContextId: 'context:numerator:test',
+        normalizationAnchorGroupIds: ['a'],
+        containerGroupIds: [],
+        evidence: [],
+      },
+      {
+        groupId: 'b',
+        role: 'baseline',
+        descriptor: getRoleDescriptor('baseline'),
+        score: 0.7,
+        depth: 0,
+        parentGroupId: null,
+        associationContextId: 'context:numerator:test',
+        hostedContextKind: 'numerator',
+        hostedContextId: 'context:numerator:test',
+        normalizationAnchorGroupIds: ['b'],
+        containerGroupIds: [],
+        evidence: [],
+      },
+      {
+        groupId: 'c',
+        role: 'baseline',
+        descriptor: getRoleDescriptor('baseline'),
+        score: 0.7,
+        depth: 0,
+        parentGroupId: null,
+        associationContextId: 'context:numerator:test',
+        hostedContextKind: 'numerator',
+        hostedContextId: 'context:numerator:test',
+        normalizationAnchorGroupIds: ['c'],
+        containerGroupIds: [],
+        evidence: [],
+      },
+      {
+        groupId: 'bar',
+        role: 'fractionBar',
+        descriptor: getRoleDescriptor('fractionBar'),
+        score: 0.92,
+        depth: 0,
+        parentGroupId: null,
+        associationContextId: 'context:root',
+        normalizationAnchorGroupIds: ['bar'],
+        containerGroupIds: [],
+        evidence: [],
+      },
+      {
+        groupId: 'd',
+        role: 'baseline',
+        descriptor: getRoleDescriptor('baseline'),
+        score: 0.7,
+        depth: 0,
+        parentGroupId: null,
+        associationContextId: 'context:denominator:test',
+        hostedContextKind: 'denominator',
+        hostedContextId: 'context:denominator:test',
+        normalizationAnchorGroupIds: ['d'],
+        containerGroupIds: [],
+        evidence: [],
+      },
+    ]
+    const contexts: ExpressionContext[] = [
+      {
+        id: 'context:root',
+        kind: 'root',
+        parentContextId: null,
+        semanticRootGroupId: 'bar',
+        anchorGroupIds: ['bar'],
+        memberGroupIds: ['bar'],
+      },
+      {
+        id: 'context:fraction:bar',
+        kind: 'fraction',
+        parentContextId: 'context:root',
+        semanticRootGroupId: 'bar',
+        anchorGroupIds: ['bar'],
+        memberGroupIds: ['bar', 'a', 'b', 'c', 'd'],
+      },
+      {
+        id: 'context:numerator:test',
+        kind: 'numerator',
+        parentContextId: 'context:fraction:bar',
+        semanticRootGroupId: 'a',
+        anchorGroupIds: ['a', 'b', 'c'],
+        memberGroupIds: ['a', 'b', 'c'],
+      },
+      {
+        id: 'context:denominator:test',
+        kind: 'denominator',
+        parentContextId: 'context:fraction:bar',
+        semanticRootGroupId: 'd',
+        anchorGroupIds: ['d'],
+        memberGroupIds: ['d'],
+      },
+    ]
+    const occupancies: LegoBrickOccupancy[] = [
+      { groupId: 'a', family: 'ordinaryBaselineSymbolBrick', field: 'over', score: 0.8, hostGroupId: 'bar', hostContextId: 'context:numerator:test', evidence: [] },
+      { groupId: 'c', family: 'ordinaryBaselineSymbolBrick', field: 'rightInline', score: 0.8, hostGroupId: 'a', hostContextId: 'context:numerator:test', evidence: [] },
+      { groupId: 'b', family: 'ordinaryBaselineSymbolBrick', field: 'rightInline', score: 0.8, hostGroupId: 'c', hostContextId: 'context:numerator:test', evidence: [] },
+      { groupId: 'bar', family: 'fractionBarBrick', field: 'center', score: 0.92, hostGroupId: null, hostContextId: 'context:root', evidence: [] },
+      { groupId: 'd', family: 'ordinaryBaselineSymbolBrick', field: 'under', score: 0.8, hostGroupId: 'bar', hostContextId: 'context:denominator:test', evidence: [] },
+    ]
+
+    const { parseNodes, parseRoots } = buildExpressionParseForest(groups, roles, contexts, [], [], occupancies)
+    const numeratorParseRoot = parseRoots.find((root) => root.contextId === 'context:numerator:test')
+    const numeratorSequenceNode = parseNodes.find((node) => node.id === numeratorParseRoot?.rootNodeId)
+    const fractionNode = parseNodes.find((node) => node.id === 'parse:fraction:bar')
+
+    expect(numeratorSequenceNode?.childNodeIds).toEqual(['parse:group:a', 'parse:group:c', 'parse:group:b'])
+    expect(fractionNode?.childNodeIds[0]).toBe(numeratorSequenceNode?.id)
+  })
+
   test('stacked same-parent subscripts are reduced to one local script row', async () => {
     const groups = [
       makeGroup('base', { left: 126, top: 198, right: 164, bottom: 246, width: 38, height: 48, centerX: 145, centerY: 222 }),

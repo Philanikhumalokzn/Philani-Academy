@@ -279,6 +279,18 @@ export const inferLegoBrickOccupancies = (
 		if (role.hostedContextKind === 'numerator' || role.hostedContextKind === 'denominator') {
 			const memberContext = role.hostedContextId ? contextMap.get(role.hostedContextId) || null : null
 			const fractionContext = memberContext?.parentContextId ? contextMap.get(memberContext.parentContextId) || null : null
+			const hostedSequenceParentId = bestSequenceParentByGroupId.get(role.groupId) || null
+			if (hostedSequenceParentId && memberContext?.memberGroupIds.includes(hostedSequenceParentId)) {
+				return {
+					groupId: role.groupId,
+					family: topFamily,
+					field: 'rightInline',
+					score: role.score,
+					hostGroupId: hostedSequenceParentId,
+					hostContextId: role.hostedContextId || null,
+					evidence: [`occupies the right-inline field within the ${role.hostedContextKind} hosted region`],
+				}
+			}
 			return {
 				groupId: role.groupId,
 				family: topFamily,
@@ -291,6 +303,19 @@ export const inferLegoBrickOccupancies = (
 		}
 
 		if (role.hostedContextKind === 'enclosure') {
+			const memberContext = role.hostedContextId ? contextMap.get(role.hostedContextId) || null : null
+			const hostedSequenceParentId = bestSequenceParentByGroupId.get(role.groupId) || null
+			if (hostedSequenceParentId && memberContext?.memberGroupIds.includes(hostedSequenceParentId)) {
+				return {
+					groupId: role.groupId,
+					family: topFamily,
+					field: 'rightInline',
+					score: role.score,
+					hostGroupId: hostedSequenceParentId,
+					hostContextId: role.hostedContextId || null,
+					evidence: ['occupies the right-inline field within the enclosure interior'],
+				}
+			}
 			return {
 				groupId: role.groupId,
 				family: topFamily,

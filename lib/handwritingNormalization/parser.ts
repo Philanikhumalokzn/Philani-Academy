@@ -42,7 +42,7 @@ export const buildExpressionParseForest = (
   const enclosureNodeIdByContextId = new Map<string, string>()
   const fractionNodeIdByExpressionContextId = new Map<string, string>()
   const enclosureNodeMetaById = new Map<string, { expressionContextId: string }>()
-  const fractionNodeMetaById = new Map<string, { expressionContextId?: string | null, numeratorGroupId?: string | null, denominatorGroupId?: string | null }>()
+  const fractionNodeMetaById = new Map<string, { expressionContextId?: string | null, numeratorContextId?: string | null, denominatorContextId?: string | null, numeratorGroupId?: string | null, denominatorGroupId?: string | null }>()
   const ambiguityNodeIdByPreferredChildNodeId = new Map<string, string>()
   const parseScopedAmbiguities = ambiguities.filter((ambiguity) => (
     ambiguity.reason === 'fraction-wide-script-vs-baseline'
@@ -372,17 +372,21 @@ export const buildExpressionParseForest = (
 
   const fractionBarRoles = roles.filter((role) => role.role === 'fractionBar' || role.role === 'provisionalFractionBar')
   for (const barRole of fractionBarRoles) {
-    const numeratorRole = roles.find((role) => role.parentGroupId === barRole.groupId && role.role === 'numerator') || null
-    const denominatorRole = roles.find((role) => role.parentGroupId === barRole.groupId && role.role === 'denominator') || null
     const expressionContextId = contextMap.has(`context:fraction:${barRole.groupId}`) ? `context:fraction:${barRole.groupId}` : null
-    const childNodeIds = [numeratorRole?.groupId, denominatorRole?.groupId]
+    const numeratorContext = expressionContextId
+      ? contexts.find((context) => context.kind === 'numerator' && context.parentContextId === expressionContextId) || null
+      : null
+    const denominatorContext = expressionContextId
+      ? contexts.find((context) => context.kind === 'denominator' && context.parentContextId === expressionContextId) || null
+      : null
+    const childNodeIds = [numeratorContext?.semanticRootGroupId, denominatorContext?.semanticRootGroupId]
       .filter(Boolean)
       .map((groupId) => getOrCreateGroupNode(groupId as string))
     const node = addNode({
       id: `parse:fraction:${barRole.groupId}`,
       kind: 'fractionExpression',
       contextId: barRole.associationContextId || 'context:root',
-      groupIds: uniqueIds([barRole.groupId, ...(numeratorRole ? [numeratorRole.groupId] : []), ...(denominatorRole ? [denominatorRole.groupId] : [])]),
+      groupIds: uniqueIds([barRole.groupId, ...(numeratorContext?.semanticRootGroupId ? [numeratorContext.semanticRootGroupId] : []), ...(denominatorContext?.semanticRootGroupId ? [denominatorContext.semanticRootGroupId] : [])]),
       childNodeIds,
       operatorGroupId: barRole.groupId,
       role: barRole.role,
@@ -393,8 +397,10 @@ export const buildExpressionParseForest = (
     }
     fractionNodeMetaById.set(node.id, {
       expressionContextId,
-      numeratorGroupId: numeratorRole?.groupId || null,
-      denominatorGroupId: denominatorRole?.groupId || null,
+      numeratorContextId: numeratorContext?.id || null,
+      denominatorContextId: denominatorContext?.id || null,
+      numeratorGroupId: numeratorContext?.semanticRootGroupId || null,
+      denominatorGroupId: denominatorContext?.semanticRootGroupId || null,
     })
   }
 
@@ -508,8 +514,8 @@ export const buildExpressionParseForest = (
   for (const [nodeId, meta] of fractionNodeMetaById.entries()) {
     const node = nodeMap.get(nodeId)
     if (!node) continue
-    const numeratorRootNodeId = meta.numeratorGroupId ? sequenceRootNodeIdByContextId.get(`context:numerator:${meta.numeratorGroupId}`) : null
-    const denominatorRootNodeId = meta.denominatorGroupId ? sequenceRootNodeIdByContextId.get(`context:denominator:${meta.denominatorGroupId}`) : null
+    const numeratorRootNodeId = meta.numeratorContextId ? sequenceRootNodeIdByContextId.get(meta.numeratorContextId) || null : null
+    const denominatorRootNodeId = meta.denominatorContextId ? sequenceRootNodeIdByContextId.get(meta.denominatorContextId) || null : null
     const childNodeIds = [
       numeratorRootNodeId || (meta.numeratorGroupId ? getOrCreateGroupNode(meta.numeratorGroupId) : null),
       denominatorRootNodeId || (meta.denominatorGroupId ? getOrCreateGroupNode(meta.denominatorGroupId) : null),

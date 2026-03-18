@@ -4,7 +4,7 @@ import { analyzeHandwrittenExpression, getHandwritingFixture, getRoleDescriptor,
 import { normalizeInkLayout } from '../lib/handwritingNormalization/normalize'
 import { buildExpressionParseForest } from '../lib/handwritingNormalization/parser'
 import { inferStructuralRoles } from '../lib/handwritingNormalization/roles'
-import type { InkStroke, LayoutEdge, StrokeGroup } from '../lib/handwritingNormalization'
+import type { ExpressionContext, HandwritingAnalysis, InkStroke, LayoutEdge, StrokeGroup, StructuralRole } from '../lib/handwritingNormalization'
 
 const makeStroke = (id: string): InkStroke => ({
   id,
@@ -45,6 +45,14 @@ const makeEdge = (fromId: string, toId: string, kind: LayoutEdge['kind'], score:
   metrics,
 })
 
+const getContextByKind = (analysis: HandwritingAnalysis, kind: ExpressionContext['kind']) => {
+  return analysis.contexts.find((context) => context.kind === kind) || null
+}
+
+const getSemanticRootRole = (analysis: HandwritingAnalysis, context: ExpressionContext | null | undefined): StructuralRole | null => {
+  return context?.semanticRootGroupId ? analysis.roles.find((role) => role.groupId === context.semanticRootGroupId) || null : null
+}
+
 test.describe('handwriting normalization fixtures', () => {
   test('superscript fixture groups the base and exponent separately', async () => {
     const fixture = getHandwritingFixture('superscript')
@@ -66,19 +74,21 @@ test.describe('handwriting normalization fixtures', () => {
     const fixture = getHandwritingFixture('fraction')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
     const barRole = analysis.roles.find((role) => role.role === 'fractionBar')
-    const numerator = analysis.roles.find((role) => role.role === 'numerator')
-    const numeratorAmbiguityParseNode = analysis.parseNodes.find((node) => node.kind === 'ambiguityExpression' && node.groupIds.includes(numerator?.groupId || '') && node.ambiguityReason === 'fraction-membership')
+    const numeratorContext = getContextByKind(analysis, 'numerator')
+    const denominatorContext = getContextByKind(analysis, 'denominator')
+    const numeratorRoot = getSemanticRootRole(analysis, numeratorContext)
+    const denominatorRoot = getSemanticRootRole(analysis, denominatorContext)
 
     expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
     expect(barRole).toBeTruthy()
     expect(barRole?.descriptor.family).toBe('fractionStructure')
-    expect(analysis.roles.some((role) => role.role === 'numerator')).toBe(true)
-    expect(analysis.roles.some((role) => role.role === 'denominator')).toBe(true)
-    expect(numeratorAmbiguityParseNode).toBeTruthy()
-    expect(numeratorAmbiguityParseNode?.alternatives?.map((alternative) => `${alternative.role}:${alternative.nodeKind}:${alternative.contextId || 'none'}`)).toEqual([
-      `numerator:group:context:numerator:${numerator?.groupId || 'none'}`,
-      'baseline:group:context:root',
-    ])
+    expect(numeratorContext).toBeTruthy()
+    expect(denominatorContext).toBeTruthy()
+    expect(numeratorRoot?.role).toBe('baseline')
+    expect(denominatorRoot?.role).toBe('baseline')
+    expect(numeratorRoot?.associationContextId).toBe(numeratorContext?.id)
+    expect(denominatorRoot?.associationContextId).toBe(denominatorContext?.id)
+    expect(analysis.parseNodes.some((node) => node.kind === 'fractionExpression')).toBe(true)
   })
 
   test('a lone horizontal line is preserved as a provisional fraction bar candidate', async () => {
@@ -121,12 +131,16 @@ test.describe('handwriting normalization fixtures', () => {
     ]
     const analysis = analyzeHandwrittenExpression(strokes)
     const provisionalBar = analysis.roles.find((role) => role.role === 'provisionalFractionBar')
+    const numeratorContext = getContextByKind(analysis, 'numerator')
+    const denominatorContext = getContextByKind(analysis, 'denominator')
+    const numeratorRoot = getSemanticRootRole(analysis, numeratorContext)
 
     expect(analysis.groups).toHaveLength(2)
     expect(provisionalBar).toBeTruthy()
     expect(analysis.roles.some((role) => role.role === 'fractionBar')).toBe(false)
-    expect(analysis.roles.some((role) => role.role === 'numerator')).toBe(true)
-    expect(analysis.roles.some((role) => role.role === 'denominator')).toBe(false)
+    expect(numeratorContext).toBeTruthy()
+    expect(denominatorContext).toBeFalsy()
+    expect(numeratorRoot?.role).toBe('baseline')
     expect(provisionalBar?.evidence.some((entry) => entry.startsWith('provisional-above='))).toBe(true)
   })
 
@@ -151,12 +165,16 @@ test.describe('handwriting normalization fixtures', () => {
     ]
     const analysis = analyzeHandwrittenExpression(strokes)
     const provisionalBar = analysis.roles.find((role) => role.role === 'provisionalFractionBar')
+    const numeratorContext = getContextByKind(analysis, 'numerator')
+    const denominatorContext = getContextByKind(analysis, 'denominator')
+    const denominatorRoot = getSemanticRootRole(analysis, denominatorContext)
 
     expect(analysis.groups).toHaveLength(2)
     expect(provisionalBar).toBeTruthy()
     expect(analysis.roles.some((role) => role.role === 'fractionBar')).toBe(false)
-    expect(analysis.roles.some((role) => role.role === 'numerator')).toBe(false)
-    expect(analysis.roles.some((role) => role.role === 'denominator')).toBe(true)
+    expect(numeratorContext).toBeFalsy()
+    expect(denominatorContext).toBeTruthy()
+    expect(denominatorRoot?.role).toBe('baseline')
     expect(provisionalBar?.evidence.some((entry) => entry.startsWith('provisional-below='))).toBe(true)
   })
 
@@ -203,10 +221,11 @@ test.describe('handwriting normalization fixtures', () => {
   test('composite v-plus-v numerator stays a shared block in real analysis and normalization', async () => {
     const fixture = getHandwritingFixture('fractionCompositeNumerator')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
-    const numeratorRoles = analysis.roles.filter((role) => role.role === 'numerator')
-    const denominatorRoles = analysis.roles.filter((role) => role.role === 'denominator')
     const fractionBar = analysis.roles.find((role) => role.role === 'fractionBar')
-    const numeratorContext = analysis.contexts.find((context) => context.kind === 'numerator')
+    const numeratorContext = getContextByKind(analysis, 'numerator')
+    const denominatorContext = getContextByKind(analysis, 'denominator')
+    const numeratorRoot = getSemanticRootRole(analysis, numeratorContext)
+    const denominatorRoot = getSemanticRootRole(analysis, denominatorContext)
     const normalizedById = new Map(analysis.normalization.groups.map((group) => [group.id, group]))
     const normalizedNumeratorMembers = (numeratorContext?.memberGroupIds || [])
       .map((groupId) => ({
@@ -223,8 +242,10 @@ test.describe('handwriting normalization fixtures', () => {
     const rightV = vEntries[1] || null
 
     expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
-    expect(numeratorRoles).toHaveLength(1)
-    expect(denominatorRoles).toHaveLength(1)
+  expect(numeratorContext).toBeTruthy()
+  expect(denominatorContext).toBeTruthy()
+  expect(numeratorRoot?.role).toBe('baseline')
+  expect(denominatorRoot?.role).toBe('baseline')
     expect(numeratorContext?.memberGroupIds).toHaveLength(3)
     expect(leftV?.normalized).toBeTruthy()
     expect(plusEntry?.normalized).toBeTruthy()
@@ -313,23 +334,26 @@ test.describe('handwriting normalization fixtures', () => {
   test('later line-like bar stays provisional, keeps the strong superscript pair, and can still seed a numerator interpretation', async () => {
     const fixture = getHandwritingFixture('superscriptThenBar')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
-    const numerator = analysis.roles.find((role) => role.role === 'numerator')
+    const numeratorContext = getContextByKind(analysis, 'numerator')
+    const numeratorRoot = getSemanticRootRole(analysis, numeratorContext)
     const superscript = analysis.roles.find((role) => role.role === 'superscript')
 
     expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
     expect(analysis.roles.some((role) => role.role === 'provisionalFractionBar')).toBe(true)
     expect(analysis.roles.some((role) => role.role === 'superscript')).toBe(true)
-    expect(analysis.roles.some((role) => role.role === 'numerator')).toBe(true)
-    expect(analysis.roles.some((role) => role.role === 'denominator')).toBe(false)
-    expect(superscript?.parentGroupId).toBe(numerator?.groupId)
+    expect(numeratorContext).toBeTruthy()
+    expect(getContextByKind(analysis, 'denominator')).toBeFalsy()
+    expect(superscript?.parentGroupId).toBe(numeratorRoot?.groupId)
   })
 
   test('fraction can claim a local root while preserving its nested exponent', async () => {
     const fixture = getHandwritingFixture('fractionWithExponent')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
-    const numeratorRoot = analysis.roles.find((role) => role.role === 'numerator')
+    const numeratorContext = getContextByKind(analysis, 'numerator')
+    const denominatorContext = getContextByKind(analysis, 'denominator')
+    const numeratorRoot = getSemanticRootRole(analysis, numeratorContext)
     const nestedSuperscript = analysis.roles.find((role) => role.role === 'superscript')
-    const numeratorContextId = numeratorRoot ? `context:numerator:${numeratorRoot.groupId}` : null
+    const numeratorContextId = numeratorContext?.id || null
     const numeratorParseRoot = analysis.parseRoots.find((root) => root.contextId === numeratorContextId)
     const fractionParseNode = analysis.parseNodes.find((node) => node.kind === 'fractionExpression')
     const numeratorScriptNode = analysis.parseNodes.find((node) => node.kind === 'scriptApplication' && node.contextId === numeratorContextId)
@@ -337,9 +361,10 @@ test.describe('handwriting normalization fixtures', () => {
     expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
     expect(analysis.roles.some((role) => role.role === 'fractionBar')).toBe(true)
     expect(numeratorRoot).toBeTruthy()
-    expect(analysis.roles.some((role) => role.role === 'denominator')).toBe(true)
+    expect(denominatorContext).toBeTruthy()
+    expect(numeratorRoot?.role).toBe('baseline')
     expect(nestedSuperscript?.parentGroupId).toBe(numeratorRoot?.groupId)
-    expect(analysis.subexpressions.some((subexpression) => subexpression.rootGroupId === numeratorRoot?.groupId && subexpression.memberGroupIds.length === 2 && subexpression.rootRole === 'numerator')).toBe(true)
+    expect(numeratorContext?.memberGroupIds).toHaveLength(2)
     expect(numeratorParseRoot?.rootNodeId?.startsWith('parse:sequence:context:numerator:')).toBe(true)
     expect(fractionParseNode?.childNodeIds).toContain(numeratorParseRoot?.rootNodeId || '')
     expect(numeratorScriptNode).toBeTruthy()
@@ -349,8 +374,10 @@ test.describe('handwriting normalization fixtures', () => {
     const fixture = getHandwritingFixture('fractionOuterExponent')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
     const fractionBar = analysis.roles.find((role) => role.role === 'fractionBar')
-    const numerator = analysis.roles.find((role) => role.role === 'numerator')
-    const denominator = analysis.roles.find((role) => role.role === 'denominator')
+    const numeratorContext = getContextByKind(analysis, 'numerator')
+    const denominatorContext = getContextByKind(analysis, 'denominator')
+    const numerator = getSemanticRootRole(analysis, numeratorContext)
+    const denominator = getSemanticRootRole(analysis, denominatorContext)
     const outerSuperscript = analysis.roles.find((role) => role.role === 'superscript')
     const fractionContext = analysis.contexts.find((context) => context.kind === 'fraction' && context.semanticRootGroupId === fractionBar?.groupId)
     const fractionParseNode = analysis.parseNodes.find((node) => node.kind === 'fractionExpression' && node.operatorGroupId === fractionBar?.groupId)
@@ -364,7 +391,7 @@ test.describe('handwriting normalization fixtures', () => {
     expect(fractionContext).toBeTruthy()
     expect(outerSuperscript?.associationContextId).toBe(fractionContext?.id)
     expect(outerSuperscript?.normalizationAnchorGroupIds).toEqual(expect.arrayContaining([fractionBar?.groupId || '', numerator?.groupId || '', denominator?.groupId || '']))
-    expect(analysis.contexts.find((context) => context.id === `context:numerator:${numerator?.groupId}`)?.memberGroupIds).not.toContain(outerSuperscript?.groupId || '')
+    expect(numeratorContext?.memberGroupIds).not.toContain(outerSuperscript?.groupId || '')
     expect(outerScriptParseNode?.childNodeIds).toEqual([fractionParseNode?.id || ''])
     expect(analysis.ambiguities.some((ambiguity) => ambiguity.groupId === outerSuperscript?.groupId && ambiguity.reason === 'fraction-wide-script-vs-baseline')).toBe(true)
     const ambiguityParseNode = analysis.parseNodes.find((node) => node.kind === 'ambiguityExpression' && node.groupIds.includes(outerSuperscript?.groupId || ''))
@@ -385,8 +412,10 @@ test.describe('handwriting normalization fixtures', () => {
     const fixture = getHandwritingFixture('fractionDenominatorOuterExponent')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
     const fractionBar = analysis.roles.find((role) => role.role === 'fractionBar')
-    const numerator = analysis.roles.find((role) => role.role === 'numerator')
-    const denominator = analysis.roles.find((role) => role.role === 'denominator')
+    const numeratorContext = getContextByKind(analysis, 'numerator')
+    const denominatorContext = getContextByKind(analysis, 'denominator')
+    const numerator = getSemanticRootRole(analysis, numeratorContext)
+    const denominator = getSemanticRootRole(analysis, denominatorContext)
     const outerSuperscript = analysis.roles.find((role) => role.role === 'superscript')
     const fractionContext = analysis.contexts.find((context) => context.kind === 'fraction' && context.semanticRootGroupId === fractionBar?.groupId)
     const fractionParseNode = analysis.parseNodes.find((node) => node.kind === 'fractionExpression' && node.operatorGroupId === fractionBar?.groupId)
@@ -400,7 +429,7 @@ test.describe('handwriting normalization fixtures', () => {
     expect(fractionContext).toBeTruthy()
     expect(outerSuperscript?.associationContextId).toBe(fractionContext?.id)
     expect(outerSuperscript?.normalizationAnchorGroupIds).toEqual(expect.arrayContaining([fractionBar?.groupId || '', numerator?.groupId || '', denominator?.groupId || '']))
-    expect(analysis.contexts.find((context) => context.id === `context:denominator:${denominator?.groupId}`)?.memberGroupIds).not.toContain(outerSuperscript?.groupId || '')
+    expect(denominatorContext?.memberGroupIds).not.toContain(outerSuperscript?.groupId || '')
     expect(outerScriptParseNode?.childNodeIds).toEqual([fractionParseNode?.id || ''])
   })
 
@@ -408,8 +437,10 @@ test.describe('handwriting normalization fixtures', () => {
     const fixture = getHandwritingFixture('fractionOuterSubscript')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
     const fractionBar = analysis.roles.find((role) => role.role === 'fractionBar')
-    const numerator = analysis.roles.find((role) => role.role === 'numerator')
-    const denominator = analysis.roles.find((role) => role.role === 'denominator')
+    const numeratorContext = getContextByKind(analysis, 'numerator')
+    const denominatorContext = getContextByKind(analysis, 'denominator')
+    const numerator = getSemanticRootRole(analysis, numeratorContext)
+    const denominator = getSemanticRootRole(analysis, denominatorContext)
     const outerSubscript = analysis.roles.find((role) => role.role === 'subscript')
     const fractionContext = analysis.contexts.find((context) => context.kind === 'fraction' && context.semanticRootGroupId === fractionBar?.groupId)
     const fractionParseNode = analysis.parseNodes.find((node) => node.kind === 'fractionExpression' && node.operatorGroupId === fractionBar?.groupId)
@@ -423,7 +454,7 @@ test.describe('handwriting normalization fixtures', () => {
     expect(fractionContext).toBeTruthy()
     expect(outerSubscript?.associationContextId).toBe(fractionContext?.id)
     expect(outerSubscript?.normalizationAnchorGroupIds).toEqual(expect.arrayContaining([fractionBar?.groupId || '', numerator?.groupId || '', denominator?.groupId || '']))
-    expect(analysis.contexts.find((context) => context.id === `context:denominator:${denominator?.groupId}`)?.memberGroupIds).not.toContain(outerSubscript?.groupId || '')
+    expect(denominatorContext?.memberGroupIds).not.toContain(outerSubscript?.groupId || '')
     expect(outerScriptParseNode?.childNodeIds).toEqual([fractionParseNode?.id || ''])
   })
 
@@ -431,8 +462,10 @@ test.describe('handwriting normalization fixtures', () => {
     const fixture = getHandwritingFixture('fractionDenominatorOuterSubscript')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
     const fractionBar = analysis.roles.find((role) => role.role === 'fractionBar')
-    const numerator = analysis.roles.find((role) => role.role === 'numerator')
-    const denominator = analysis.roles.find((role) => role.role === 'denominator')
+    const numeratorContext = getContextByKind(analysis, 'numerator')
+    const denominatorContext = getContextByKind(analysis, 'denominator')
+    const numerator = getSemanticRootRole(analysis, numeratorContext)
+    const denominator = getSemanticRootRole(analysis, denominatorContext)
     const outerSubscript = analysis.roles.find((role) => role.role === 'subscript')
     const fractionContext = analysis.contexts.find((context) => context.kind === 'fraction' && context.semanticRootGroupId === fractionBar?.groupId)
     const fractionParseNode = analysis.parseNodes.find((node) => node.kind === 'fractionExpression' && node.operatorGroupId === fractionBar?.groupId)
@@ -446,7 +479,7 @@ test.describe('handwriting normalization fixtures', () => {
     expect(fractionContext).toBeTruthy()
     expect(outerSubscript?.associationContextId).toBe(fractionContext?.id)
     expect(outerSubscript?.normalizationAnchorGroupIds).toEqual(expect.arrayContaining([fractionBar?.groupId || '', numerator?.groupId || '', denominator?.groupId || '']))
-    expect(analysis.contexts.find((context) => context.id === `context:denominator:${denominator?.groupId}`)?.memberGroupIds).not.toContain(outerSubscript?.groupId || '')
+    expect(denominatorContext?.memberGroupIds).not.toContain(outerSubscript?.groupId || '')
     expect(outerScriptParseNode?.childNodeIds).toEqual([fractionParseNode?.id || ''])
   })
 
@@ -534,14 +567,16 @@ test.describe('handwriting normalization fixtures', () => {
   test('enclosed local expression can serve as a fraction numerator while preserving its internal ownership', async () => {
     const fixture = getHandwritingFixture('parenthesizedFractionNumerator')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
-    const numerator = analysis.roles.find((role) => role.role === 'numerator')
+    const numeratorContext = getContextByKind(analysis, 'numerator')
+    const denominatorContext = getContextByKind(analysis, 'denominator')
+    const numerator = getSemanticRootRole(analysis, numeratorContext)
     const superscript = analysis.roles.find((role) => role.role === 'superscript')
 
     expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
     expect(analysis.enclosures).toHaveLength(1)
     expect(analysis.roles.some((role) => role.role === 'fractionBar')).toBe(true)
     expect(numerator).toBeTruthy()
-    expect(analysis.roles.some((role) => role.role === 'denominator')).toBe(true)
+    expect(denominatorContext).toBeTruthy()
     expect(superscript?.parentGroupId).toBe(numerator?.groupId)
     expect(numerator?.containerGroupIds).toHaveLength(2)
     expect(analysis.parseNodes.some((node) => node.kind === 'fractionExpression')).toBe(true)
@@ -552,13 +587,15 @@ test.describe('handwriting normalization fixtures', () => {
     const fixture = getHandwritingFixture('parenthesizedFractionExponent')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
     const fractionBar = analysis.roles.find((role) => role.role === 'fractionBar')
-    const numerator = analysis.roles.find((role) => role.role === 'numerator')
-    const denominator = analysis.roles.find((role) => role.role === 'denominator')
+    const numeratorContext = getContextByKind(analysis, 'numerator')
+    const denominatorContext = getContextByKind(analysis, 'denominator')
+    const numerator = getSemanticRootRole(analysis, numeratorContext)
+    const denominator = getSemanticRootRole(analysis, denominatorContext)
     const outerSuperscript = analysis.roles.find((role) => role.role === 'superscript' && role.containerGroupIds.length === 0)
     const enclosureContext = analysis.contexts.find((context) => context.kind === 'enclosure')
     const enclosureParseRoot = analysis.parseRoots.find((root) => root.contextId === enclosureContext?.id)
-    const numeratorParseRoot = analysis.parseRoots.find((root) => root.contextId === `context:numerator:${numerator?.groupId}`)
-    const denominatorParseRoot = analysis.parseRoots.find((root) => root.contextId === `context:denominator:${denominator?.groupId}`)
+    const numeratorParseRoot = analysis.parseRoots.find((root) => root.contextId === numeratorContext?.id)
+    const denominatorParseRoot = analysis.parseRoots.find((root) => root.contextId === denominatorContext?.id)
     const fractionParseNode = analysis.parseNodes.find((node) => node.kind === 'fractionExpression')
     const enclosureParseNode = analysis.parseNodes.find((node) => node.kind === 'enclosureExpression')
     const outerScriptParseNode = analysis.parseNodes.find((node) => node.kind === 'scriptApplication' && node.role === 'superscript' && node.operatorGroupId === outerSuperscript?.groupId)

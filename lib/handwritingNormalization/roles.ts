@@ -190,17 +190,35 @@ const demoteMissingOperandScripts = (roles: StructuralRole[]) => {
   }
 }
 
+const getHostedFractionMemberContext = (groupId: string, contexts: ExpressionContext[]) => {
+  return contexts
+    .filter((context) => (context.kind === 'numerator' || context.kind === 'denominator') && context.memberGroupIds.includes(groupId))
+    .sort((left, right) => left.memberGroupIds.length - right.memberGroupIds.length || left.id.localeCompare(right.id))[0] || null
+}
+
+const isFractionWideOutsideHostedMember = (groupId: string, parentGroupId: string | null | undefined, contexts: ExpressionContext[], groupMap: Map<string, StrokeGroup>) => {
+  if (!parentGroupId) return false
+  const memberContext = contexts.find((context) => (
+    (context.kind === 'numerator' || context.kind === 'denominator')
+    && context.semanticRootGroupId === parentGroupId
+  )) || null
+  if (!memberContext?.parentContextId) return false
+  const fractionContext = contexts.find((context) => context.id === memberContext.parentContextId && context.kind === 'fraction') || null
+  const fractionBarGroup = fractionContext?.semanticRootGroupId ? groupMap.get(fractionContext.semanticRootGroupId) || null : null
+  const scriptGroup = groupMap.get(groupId)
+  if (!fractionBarGroup || !scriptGroup) return false
+  return scriptGroup.bounds.left >= fractionBarGroup.bounds.right + Math.max(10, fractionBarGroup.bounds.width * 0.08)
+}
+
 const appendFractionWideScriptAmbiguities = (roles: StructuralRole[], groups: StrokeGroup[], contexts: ExpressionContext[], ambiguities: StructuralAmbiguity[]) => {
   const groupMap = new Map(groups.map((group) => [group.id, group]))
-  const roleMap = new Map(roles.map((role) => [role.groupId, role]))
   const contextMap = new Map(contexts.map((context) => [context.id, context]))
   const nextAmbiguities = [...ambiguities]
 
   for (const role of roles) {
     if ((role.role !== 'superscript' && role.role !== 'subscript') || !role.parentGroupId) continue
     if (!role.associationContextId?.startsWith('context:fraction:')) continue
-    const parentRole = roleMap.get(role.parentGroupId) || null
-    if (!isFractionWideOutsideMember(role.groupId, parentRole, groupMap)) continue
+    if (!isFractionWideOutsideHostedMember(role.groupId, role.parentGroupId, contexts, groupMap)) continue
     if (nextAmbiguities.some((ambiguity) => ambiguity.groupId === role.groupId && ambiguity.reason === 'fraction-wide-script-vs-baseline')) continue
 
     const detachedContextId = role.associationContextId ? contextMap.get(role.associationContextId)?.parentContextId || 'context:root' : 'context:root'
@@ -335,6 +353,46 @@ const promoteSequenceWideScripts = (roles: StructuralRole[], contexts: Expressio
       role.containerGroupIds,
     )
   })
+}
+
+const ensureFractionSemanticRootsRemainBaseline = (roles: StructuralRole[], fractionBindings: FractionStructureBinding[], groups: StrokeGroup[]) => {
+  const roleMap = new Map(roles.map((role) => [role.groupId, role]))
+  const nextRoles = [...roles]
+  const groupMap = new Map(groups.map((group) => [group.id, group]))
+
+  for (const binding of fractionBindings) {
+    for (const rootGroupId of [...binding.numeratorRootIds, ...binding.denominatorRootIds]) {
+      if (!rootGroupId || !groupMap.has(rootGroupId)) continue
+      const existing = roleMap.get(rootGroupId) || null
+      if (existing && existing.role !== 'unsupportedSymbol') continue
+
+      const replacement = makeRole(
+        rootGroupId,
+        'baseline',
+        Math.max(existing?.score || 0, 0.68),
+        0,
+        null,
+        [
+          ...(existing?.evidence || []),
+          'fraction-member semantic root remains a local baseline inside its hosted context',
+          `family=${getRoleDescriptor('baseline').family}`,
+        ],
+        existing?.containerGroupIds || [],
+        existing?.associationContextId || null,
+        existing?.normalizationAnchorGroupIds || [rootGroupId],
+      )
+
+      if (existing) {
+        const index = nextRoles.findIndex((role) => role.groupId === rootGroupId)
+        if (index >= 0) nextRoles[index] = replacement
+      } else {
+        nextRoles.push(replacement)
+      }
+      roleMap.set(rootGroupId, replacement)
+    }
+  }
+
+  return nextRoles
 }
 
 const isFractionWideOutsideMember = (groupId: string, parentRole: StructuralRole | null, groupMap: Map<string, StrokeGroup>) => {
@@ -946,10 +1004,10 @@ const buildExpressionContexts = (
 
   for (const fractionBarRole of roles.filter((role) => role.role === 'fractionBar' || role.role === 'provisionalFractionBar')) {
     const binding = fractionBindings.find((candidate) => candidate.barGroupId === fractionBarRole.groupId) || null
-    const numeratorRole = roles.find((role) => role.parentGroupId === fractionBarRole.groupId && role.role === 'numerator') || null
-    const denominatorRole = roles.find((role) => role.parentGroupId === fractionBarRole.groupId && role.role === 'denominator') || null
-    const numeratorRootIds = getOrderedRootIds(binding?.numeratorRootIds || (numeratorRole ? [numeratorRole.groupId] : []), groupMap)
-    const denominatorRootIds = getOrderedRootIds(binding?.denominatorRootIds || (denominatorRole ? [denominatorRole.groupId] : []), groupMap)
+    const numeratorRootIds = getOrderedRootIds(binding?.numeratorRootIds || [], groupMap)
+    const denominatorRootIds = getOrderedRootIds(binding?.denominatorRootIds || [], groupMap)
+    const numeratorSemanticRootId = numeratorRootIds[0] || null
+    const denominatorSemanticRootId = denominatorRootIds[0] || null
     const fractionBarGroup = groupMap.get(fractionBarRole.groupId) || null
     const numeratorMembers = expandCompositeMemberGroupIds(numeratorRootIds, subexpressions, roleMap, enclosureContexts, groupMap, fractionBarGroup)
     const denominatorMembers = expandCompositeMemberGroupIds(denominatorRootIds, subexpressions, roleMap, enclosureContexts, groupMap, fractionBarGroup)
@@ -962,28 +1020,28 @@ const buildExpressionContexts = (
       kind: 'fraction',
       parentContextId,
       semanticRootGroupId: fractionBarRole.groupId,
-      anchorGroupIds: uniqueIds([fractionBarRole.groupId, ...(numeratorRole ? [numeratorRole.groupId] : []), ...(denominatorRole ? [denominatorRole.groupId] : [])]),
+      anchorGroupIds: uniqueIds([fractionBarRole.groupId, ...(numeratorSemanticRootId ? [numeratorSemanticRootId] : []), ...(denominatorSemanticRootId ? [denominatorSemanticRootId] : [])]),
       memberGroupIds: uniqueIds([fractionBarRole.groupId, ...numeratorMembers, ...denominatorMembers]),
     })
 
-    if (numeratorRole && numeratorMembers.length) {
+    if (numeratorSemanticRootId && numeratorMembers.length) {
       contexts.push({
-        id: `context:numerator:${numeratorRole.groupId}`,
+        id: `context:numerator:${numeratorSemanticRootId}`,
         kind: 'numerator',
         parentContextId: `context:fraction:${fractionBarRole.groupId}`,
-        semanticRootGroupId: numeratorRole.groupId,
-        anchorGroupIds: uniqueIds([fractionBarRole.groupId, numeratorRole.groupId]),
+        semanticRootGroupId: numeratorSemanticRootId,
+        anchorGroupIds: uniqueIds([fractionBarRole.groupId, numeratorSemanticRootId]),
         memberGroupIds: numeratorMembers,
       })
     }
 
-    if (denominatorRole && denominatorMembers.length) {
+    if (denominatorSemanticRootId && denominatorMembers.length) {
       contexts.push({
-        id: `context:denominator:${denominatorRole.groupId}`,
+        id: `context:denominator:${denominatorSemanticRootId}`,
         kind: 'denominator',
         parentContextId: `context:fraction:${fractionBarRole.groupId}`,
-        semanticRootGroupId: denominatorRole.groupId,
-        anchorGroupIds: uniqueIds([fractionBarRole.groupId, denominatorRole.groupId]),
+        semanticRootGroupId: denominatorSemanticRootId,
+        anchorGroupIds: uniqueIds([fractionBarRole.groupId, denominatorSemanticRootId]),
         memberGroupIds: denominatorMembers,
       })
     }
@@ -1002,13 +1060,19 @@ const annotateRolesWithContexts = (roles: StructuralRole[], contexts: Expression
 
   return roles.map((role) => {
     if ((role.role !== 'superscript' && role.role !== 'subscript') || !role.parentGroupId) {
-      const defaultContextId = role.containerGroupIds.length
-        ? enclosureContexts.find((context) => role.containerGroupIds.every((groupId) => context.anchorGroupIds.includes(groupId)))?.id || 'context:root'
-        : 'context:root'
+      const hostedFractionMemberContext = getHostedFractionMemberContext(role.groupId, contexts)
+      const defaultContextId = hostedFractionMemberContext?.id || (
+        role.containerGroupIds.length
+          ? enclosureContexts.find((context) => role.containerGroupIds.every((groupId) => context.anchorGroupIds.includes(groupId)))?.id || 'context:root'
+          : 'context:root'
+      )
       return {
         ...role,
         associationContextId: role.associationContextId || defaultContextId,
-        normalizationAnchorGroupIds: role.normalizationAnchorGroupIds.length ? role.normalizationAnchorGroupIds : [role.groupId],
+        normalizationAnchorGroupIds: role.normalizationAnchorGroupIds.length ? role.normalizationAnchorGroupIds : (hostedFractionMemberContext?.anchorGroupIds || [role.groupId]),
+        evidence: hostedFractionMemberContext && !role.evidence.some((entry) => entry === `hosted-context=${hostedFractionMemberContext.id}`)
+          ? [...role.evidence, `hosted-context=${hostedFractionMemberContext.id}`]
+          : role.evidence,
       }
     }
 
@@ -1026,10 +1090,13 @@ const annotateRolesWithContexts = (roles: StructuralRole[], contexts: Expression
       return scriptGroup.bounds.left >= sequenceBounds.right + Math.max(12, (sequenceBounds.right - sequenceBounds.left) * 0.06)
     }) || null
     const sharedFractionMemberContext = fractionMemberContexts.find((context) => context.memberGroupIds.includes(role.groupId) && context.memberGroupIds.includes(role.parentGroupId || '')) || null
-    const fractionContext = parentRole?.parentGroupId
-      ? fractionContexts.find((context) => context.semanticRootGroupId === parentRole.parentGroupId && context.memberGroupIds.includes(parentRole.groupId)) || null
-      : null
-    const fractionWideOutsideMember = Boolean(sharedFractionMemberContext) && isFractionWideOutsideMember(role.groupId, parentRole || null, groupMap)
+    const parentHostedFractionMemberContext = getHostedFractionMemberContext(role.parentGroupId || '', contexts)
+    const fractionContext = parentHostedFractionMemberContext?.parentContextId
+      ? fractionContexts.find((context) => context.id === parentHostedFractionMemberContext.parentContextId) || null
+      : (parentRole?.parentGroupId
+        ? fractionContexts.find((context) => context.semanticRootGroupId === parentRole.parentGroupId && context.memberGroupIds.includes(parentRole.groupId)) || null
+        : null)
+    const fractionWideOutsideMember = Boolean(sharedFractionMemberContext) && isFractionWideOutsideHostedMember(role.groupId, role.parentGroupId, contexts, groupMap)
 
     if (!enclosureContext && fractionContext && (!sharedFractionMemberContext || fractionWideOutsideMember)) {
       const anchorGroupIds = uniqueIds(fractionContext.anchorGroupIds)
@@ -1358,7 +1425,6 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     const provisionalDenominatorRootId = provisionalDenominatorRoots[0] || null
 
     if (provisionalNumeratorRootId && !roles.has(provisionalNumeratorRootId)) {
-      rootClaims.set(provisionalNumeratorRootId, { rootGroupId: provisionalNumeratorRootId, role: 'numerator' })
       ambiguities.push({
         groupId: provisionalNumeratorRootId,
         reason: 'fraction-membership',
@@ -1371,7 +1437,6 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     }
 
     if (provisionalDenominatorRootId && !roles.has(provisionalDenominatorRootId)) {
-      rootClaims.set(provisionalDenominatorRootId, { rootGroupId: provisionalDenominatorRootId, role: 'denominator' })
       ambiguities.push({
         groupId: provisionalDenominatorRootId,
         reason: 'fraction-membership',
@@ -1402,15 +1467,10 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
 
     if (numeratorPrimaryRootId) {
       if (!roleUsesChildOperands('fractionBar') || !roleAllowsChildRole('fractionBar', 'numerator') || !roleAllowsOperandRole('fractionBar', 'numerator')) continue
-      rootClaims.set(numeratorPrimaryRootId, { rootGroupId: numeratorPrimaryRootId, role: 'numerator' })
       const candidates: StructuralRoleCandidate[] = [
         makeCandidate('numerator', 0.82, bar.id, ['centered above confirmed fraction bar', 'inherits fraction-member ancestry']),
         makeCandidate('baseline', 0.36, null, ['fallback root role']),
       ]
-      roles.set(numeratorPrimaryRootId, makeRole(numeratorPrimaryRootId, 'numerator', 0.82, 1, bar.id, [
-        'centered above fraction structure',
-        `ancestry=${getRoleDescriptor('numerator').ancestry.join('>')}`,
-      ], containerIdsByGroupId.get(numeratorPrimaryRootId) || []))
       ambiguities.push({
         groupId: numeratorPrimaryRootId,
         reason: 'fraction-membership',
@@ -1421,15 +1481,10 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
 
     if (denominatorPrimaryRootId) {
       if (!roleUsesChildOperands('fractionBar') || !roleAllowsChildRole('fractionBar', 'denominator') || !roleAllowsOperandRole('fractionBar', 'denominator')) continue
-      rootClaims.set(denominatorPrimaryRootId, { rootGroupId: denominatorPrimaryRootId, role: 'denominator' })
       const candidates: StructuralRoleCandidate[] = [
         makeCandidate('denominator', 0.82, bar.id, ['centered below confirmed fraction bar', 'inherits fraction-member ancestry']),
         makeCandidate('baseline', 0.35, null, ['fallback root role']),
       ]
-      roles.set(denominatorPrimaryRootId, makeRole(denominatorPrimaryRootId, 'denominator', 0.82, 1, bar.id, [
-        'centered below fraction structure',
-        `ancestry=${getRoleDescriptor('denominator').ancestry.join('>')}`,
-      ], containerIdsByGroupId.get(denominatorPrimaryRootId) || []))
       ambiguities.push({
         groupId: denominatorPrimaryRootId,
         reason: 'fraction-membership',
@@ -1645,8 +1700,9 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     .sort((left, right) => left.depth - right.depth)
   const { roles: operandSafeRoles, flags: operandFlags } = demoteMissingOperandScripts(resolvedRoles)
   const { roles: admissibleRoles, flags } = resolveStructuralAdmissibility(groups, operandSafeRoles, edges)
-  const contexts = buildExpressionContexts(groups, admissibleRoles, subexpressions, enclosures, fractionBindings)
-  const sequencePromotedRoles = promoteSequenceWideScripts(admissibleRoles, contexts, groups, edges)
+  const fractionSemanticRootSafeRoles = ensureFractionSemanticRootsRemainBaseline(admissibleRoles, fractionBindings, groups)
+  const contexts = buildExpressionContexts(groups, fractionSemanticRootSafeRoles, subexpressions, enclosures, fractionBindings)
+  const sequencePromotedRoles = promoteSequenceWideScripts(fractionSemanticRootSafeRoles, contexts, groups, edges)
   const promotedContexts = buildExpressionContexts(groups, sequencePromotedRoles, subexpressions, enclosures, fractionBindings)
   const annotatedRoles = annotateRolesWithContexts(sequencePromotedRoles, promotedContexts, groups)
   const annotatedRoleMap = new Map(annotatedRoles.map((role) => [role.groupId, role]))

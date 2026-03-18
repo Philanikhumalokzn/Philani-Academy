@@ -1,9 +1,12 @@
 import { getStrokeBounds, mergeBounds, transformStroke } from './geometry'
 import type { ExpressionContext, InkStroke, NormalizationResult, StrokeGroup, StructuralRole } from './types'
 
-const getRoleScale = (role: StructuralRole) => {
-  if (role.role === 'superscript' || role.role === 'subscript') return Math.max(0.42, 0.68 - role.depth * 0.1)
-  if (role.role === 'numerator' || role.role === 'denominator') return 0.82
+const getRoleScale = (role: StructuralRole, inFractionMemberContext: boolean) => {
+  if (role.role === 'superscript' || role.role === 'subscript') {
+    const baseScale = Math.max(0.42, 0.68 - role.depth * 0.1)
+    return inFractionMemberContext ? Math.max(0.34, baseScale * 0.82) : baseScale
+  }
+  if (inFractionMemberContext) return 0.82
   return 1
 }
 
@@ -68,7 +71,9 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
   for (const group of ordered) {
     const role = roleMap.get(group.id)
     if (!role) continue
-    const scale = getRoleScale(role)
+    const fractionMemberContextId = fractionMemberContextIdByGroupId.get(group.id) || null
+    const inFractionMemberContext = Boolean(fractionMemberContextId)
+    const scale = getRoleScale(role, inFractionMemberContext)
     scalesByGroupId.set(group.id, scale)
     const anchor = { x: group.bounds.centerX, y: group.bounds.centerY }
     const scaledStrokes = group.strokes.map((stroke) => transformStroke(stroke, scale, anchor, 0, 0))
@@ -77,8 +82,6 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     scaledBoundsByGroupId.set(group.id, scaledBounds)
     let dx = 0
     let dy = 0
-    const fractionMemberContextId = fractionMemberContextIdByGroupId.get(group.id) || null
-    const inFractionMemberContext = Boolean(fractionMemberContextId)
 
     if (isBaselineLikeRole(role.role) && !inFractionMemberContext) {
       dy = baselineY - scaledBounds.bottom
@@ -117,9 +120,10 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
   }
 
   for (const context of fractionMemberContexts) {
-    const semanticRootRole = context.semanticRootGroupId ? roleMap.get(context.semanticRootGroupId) || null : null
-    if (!semanticRootRole?.parentGroupId) continue
-    const parentBounds = transformedBounds.get(semanticRootRole.parentGroupId) || groupMap.get(semanticRootRole.parentGroupId)?.bounds
+    const fractionContext = context.parentContextId ? contextMap.get(context.parentContextId) || null : null
+    const fractionBarGroupId = fractionContext?.kind === 'fraction' ? fractionContext.semanticRootGroupId || null : null
+    if (!fractionBarGroupId) continue
+    const parentBounds = transformedBounds.get(fractionBarGroupId) || groupMap.get(fractionBarGroupId)?.bounds
     if (!parentBounds) continue
 
     const memberBounds = context.memberGroupIds

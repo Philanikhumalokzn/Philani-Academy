@@ -85,6 +85,8 @@ export default function HandwritingNormalizationTestCanvas() {
 
   const debugSections = useMemo<DebugSection[]>(() => {
     const grouped = analysis.groups.map((group) => `${group.id}: ${group.strokeIds.length} stroke(s), ${Math.round(group.bounds.width)}x${Math.round(group.bounds.height)}`)
+    const brickHypotheses = analysis.brickHypotheses.map((hypothesis) => `${hypothesis.groupId}: ${hypothesis.family} prototype=${hypothesis.prototype} score=${hypothesis.score.toFixed(2)} fields=[${hypothesis.fields.map((field) => `${field.kind}:${field.capacity}:${field.weight.toFixed(2)}`).join(', ')}]${hypothesis.evidence.length ? ` :: ${hypothesis.evidence.join(' | ')}` : ''}`)
+    const brickOccupancies = analysis.brickOccupancies.map((occupancy) => `${occupancy.groupId}: ${occupancy.family} field=${occupancy.field} score=${occupancy.score.toFixed(2)}${occupancy.hostGroupId ? ` host=${occupancy.hostGroupId}` : ''}${occupancy.hostContextId ? ` ctx=${occupancy.hostContextId}` : ''}${occupancy.evidence.length ? ` :: ${occupancy.evidence.join(' | ')}` : ''}`)
     const edges = analysis.edges.slice(0, 12).map((edge) => `${edge.kind} ${edge.fromId} -> ${edge.toId} (${edge.score.toFixed(2)})`)
     const roles = analysis.roles.map((role) => `${role.groupId}: ${role.role} label=${role.qualifiedRoleLabel || `${role.role}-unknown`} symbol=${role.recognizedSymbol?.value || 'unknown'} family=${role.descriptor.family} depth=${role.depth} score=${role.score.toFixed(2)}${role.parentGroupId ? ` parent=${role.parentGroupId}` : ''}${role.hostedContextKind ? ` hosted=${role.hostedContextKind}` : ''}${role.associationContextId ? ` assoc=${role.associationContextId}` : ''}${role.containerGroupIds.length ? ` containers=${role.containerGroupIds.join(',')}` : ''}${role.evidence.length ? ` :: ${role.evidence.join(' | ')}` : ''}`)
     const ambiguities = analysis.ambiguities.map((ambiguity) => {
@@ -119,6 +121,14 @@ export default function HandwritingNormalizationTestCanvas() {
       {
         title: 'Groups',
         fields: grouped.length ? grouped.map((value, index) => ({ label: `G${index + 1}`, value })) : [{ label: 'Groups', value: 'No grouped strokes yet' }],
+      },
+      {
+        title: 'LEGO Hypotheses',
+        fields: brickHypotheses.length ? brickHypotheses.map((value, index) => ({ label: `B${index + 1}`, value })) : [{ label: 'LEGO Hypotheses', value: 'No brick hypotheses yet' }],
+      },
+      {
+        title: 'LEGO Occupancies',
+        fields: brickOccupancies.length ? brickOccupancies.map((value, index) => ({ label: `O${index + 1}`, value })) : [{ label: 'LEGO Occupancies', value: 'No brick occupancies yet' }],
       },
       {
         title: 'Relations',
@@ -157,7 +167,7 @@ export default function HandwritingNormalizationTestCanvas() {
         fields: parseRoots.length ? parseRoots.map((value, index) => ({ label: `PR${index + 1}`, value })) : [{ label: 'Parse Roots', value: 'No context parse roots detected' }],
       },
     ]
-  }, [analysis.ambiguities, analysis.contexts, analysis.edges, analysis.enclosures, analysis.flags, analysis.groups, analysis.parseNodes, analysis.parseRoots, analysis.roles, analysis.subexpressions, normalizationEnabled, strokes.length])
+  }, [analysis.ambiguities, analysis.brickHypotheses, analysis.brickOccupancies, analysis.contexts, analysis.edges, analysis.enclosures, analysis.flags, analysis.groups, analysis.parseNodes, analysis.parseRoots, analysis.roles, analysis.subexpressions, normalizationEnabled, strokes.length])
 
   const updateActiveStroke = (clientX: number, clientY: number, target: SVGSVGElement) => {
     const current = activeStrokeRef.current

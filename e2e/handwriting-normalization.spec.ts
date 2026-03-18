@@ -53,6 +53,16 @@ const getSemanticRootRole = (analysis: HandwritingAnalysis, context: ExpressionC
   return context?.semanticRootGroupId ? analysis.roles.find((role) => role.groupId === context.semanticRootGroupId) || null : null
 }
 
+const getTopBrickHypothesis = (analysis: HandwritingAnalysis, groupId: string) => {
+  return analysis.brickHypotheses
+    .filter((hypothesis) => hypothesis.groupId === groupId)
+    .sort((left, right) => right.score - left.score)[0] || null
+}
+
+const getBrickOccupancy = (analysis: HandwritingAnalysis, groupId: string, field: string) => {
+  return analysis.brickOccupancies.find((occupancy) => occupancy.groupId === groupId && occupancy.field === field) || null
+}
+
 test.describe('handwriting normalization fixtures', () => {
   test('superscript fixture groups the base and exponent separately', async () => {
     const fixture = getHandwritingFixture('superscript')
@@ -91,6 +101,72 @@ test.describe('handwriting normalization fixtures', () => {
     expect(numeratorRoot?.qualifiedRoleLabel).toContain('@ numerator')
     expect(denominatorRoot?.qualifiedRoleLabel).toContain('@ denominator')
     expect(analysis.parseNodes.some((node) => node.kind === 'fractionExpression')).toBe(true)
+  })
+
+  test('lego brick hypotheses classify canonical structural families', async () => {
+    const fractionFixture = getHandwritingFixture('fraction')
+    const fractionAnalysis = analyzeHandwrittenExpression(fractionFixture.strokes)
+    const fractionBar = fractionAnalysis.roles.find((role) => role.role === 'fractionBar')
+    const fractionNumerator = getSemanticRootRole(fractionAnalysis, getContextByKind(fractionAnalysis, 'numerator'))
+    const barBrick = fractionBar ? getTopBrickHypothesis(fractionAnalysis, fractionBar.groupId) : null
+    const numeratorBrick = fractionNumerator ? getTopBrickHypothesis(fractionAnalysis, fractionNumerator.groupId) : null
+
+    expect(barBrick?.family).toBe('fractionBarBrick')
+    expect(barBrick?.prototype).toBe('horizontalLine')
+    expect(numeratorBrick?.family).toBe('ordinaryBaselineSymbolBrick')
+
+    const enclosureFixture = getHandwritingFixture('parenthesizedSuperscript')
+    const enclosureAnalysis = analyzeHandwrittenExpression(enclosureFixture.strokes)
+    const openBoundary = enclosureAnalysis.roles.find((role) => role.role === 'enclosureOpen')
+    const closeBoundary = enclosureAnalysis.roles.find((role) => role.role === 'enclosureClose')
+    const baseline = enclosureAnalysis.roles.find((role) => role.role === 'baseline' && role.containerGroupIds.length === 2)
+    const openBrick = openBoundary ? getTopBrickHypothesis(enclosureAnalysis, openBoundary.groupId) : null
+    const closeBrick = closeBoundary ? getTopBrickHypothesis(enclosureAnalysis, closeBoundary.groupId) : null
+    const baselineBrick = baseline ? getTopBrickHypothesis(enclosureAnalysis, baseline.groupId) : null
+
+    expect(openBrick?.family).toBe('enclosureBoundaryBrick')
+    expect(closeBrick?.family).toBe('enclosureBoundaryBrick')
+    expect(baselineBrick?.family).toBe('ordinaryBaselineSymbolBrick')
+  })
+
+  test('lego brick occupancies track hosted fraction members and script attachments', async () => {
+    const fractionFixture = getHandwritingFixture('fractionWithExponent')
+    const fractionAnalysis = analyzeHandwrittenExpression(fractionFixture.strokes)
+    const fractionBar = fractionAnalysis.roles.find((role) => role.role === 'fractionBar')
+    const numeratorRoot = getSemanticRootRole(fractionAnalysis, getContextByKind(fractionAnalysis, 'numerator'))
+    const denominatorRoot = getSemanticRootRole(fractionAnalysis, getContextByKind(fractionAnalysis, 'denominator'))
+    const nestedSuperscript = fractionAnalysis.roles.find((role) => role.role === 'superscript')
+    const numeratorOccupancy = numeratorRoot ? getBrickOccupancy(fractionAnalysis, numeratorRoot.groupId, 'over') : null
+    const denominatorOccupancy = denominatorRoot ? getBrickOccupancy(fractionAnalysis, denominatorRoot.groupId, 'under') : null
+    const scriptOccupancy = nestedSuperscript ? getBrickOccupancy(fractionAnalysis, nestedSuperscript.groupId, 'upperRightScript') : null
+
+    expect(numeratorOccupancy?.hostGroupId).toBe(fractionBar?.groupId)
+    expect(denominatorOccupancy?.hostGroupId).toBe(fractionBar?.groupId)
+    expect(scriptOccupancy?.hostGroupId).toBe(numeratorRoot?.groupId)
+
+    const superscriptFixture = getHandwritingFixture('superscript')
+    const superscriptAnalysis = analyzeHandwrittenExpression(superscriptFixture.strokes)
+    const baseline = superscriptAnalysis.roles.find((role) => role.role === 'baseline')
+    const superscript = superscriptAnalysis.roles.find((role) => role.role === 'superscript')
+    const simpleScriptOccupancy = superscript ? getBrickOccupancy(superscriptAnalysis, superscript.groupId, 'upperRightScript') : null
+
+    expect(simpleScriptOccupancy?.hostGroupId).toBe(baseline?.groupId)
+    expect(simpleScriptOccupancy?.family).toBe('ordinaryBaselineSymbolBrick')
+  })
+
+  test('lego script host fields are surfaced in local and sequence-wide script evidence', async () => {
+    const superscriptFixture = getHandwritingFixture('superscript')
+    const superscriptAnalysis = analyzeHandwrittenExpression(superscriptFixture.strokes)
+    const localSuperscript = superscriptAnalysis.roles.find((role) => role.role === 'superscript')
+
+    expect(localSuperscript?.evidence.some((entry) => entry.startsWith('host-field=upperRightScript:'))).toBe(true)
+
+    const sequenceFixture = getHandwritingFixture('sequenceOuterExponent')
+    const sequenceAnalysis = analyzeHandwrittenExpression(sequenceFixture.strokes)
+    const sequenceSuperscript = sequenceAnalysis.roles.find((role) => role.role === 'superscript')
+
+    expect(sequenceSuperscript?.associationContextId?.startsWith('context:sequence:')).toBe(true)
+    expect(sequenceSuperscript?.evidence.some((entry) => entry.startsWith('host-field=upperRightScript:'))).toBe(true)
   })
 
   test('a lone horizontal line is preserved as a provisional fraction bar candidate', async () => {

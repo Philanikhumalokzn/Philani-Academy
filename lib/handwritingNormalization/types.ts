@@ -62,6 +62,70 @@ export type LayoutEdge = {
   metrics: Record<string, number>
 }
 
+export type LegoBrickPrototypeKind =
+  | 'compactGlyph'
+  | 'horizontalLine'
+  | 'boundaryStroke'
+  | 'operatorCross'
+  | 'radicalGlyph'
+  | 'unknown'
+
+export type LegoFieldKind =
+  | 'center'
+  | 'leftInline'
+  | 'rightInline'
+  | 'upperLeftScript'
+  | 'upperRightScript'
+  | 'lowerLeftScript'
+  | 'lowerRightScript'
+  | 'over'
+  | 'under'
+  | 'interior'
+
+export type LegoFieldCapacity = 'single' | 'sequence' | 'hostedRegion' | 'stackable'
+
+export type LegoBrickFamilyKind =
+  | 'ordinaryBaselineSymbolBrick'
+  | 'operatorBrick'
+  | 'fractionBarBrick'
+  | 'enclosureBoundaryBrick'
+  | 'radicalBrick'
+  | 'unsupportedBrick'
+
+export type LegoFieldProfile = {
+  kind: LegoFieldKind
+  weight: number
+  capacity: LegoFieldCapacity
+  evidence: string[]
+}
+
+export type LegoBrickFamilyDescriptor = {
+  kind: LegoBrickFamilyKind
+  prototypeKinds: LegoBrickPrototypeKind[]
+  fields: LegoFieldProfile[]
+  evidence: string[]
+}
+
+export type LegoBrickHypothesis = {
+  id: string
+  groupId: string
+  prototype: LegoBrickPrototypeKind
+  family: LegoBrickFamilyKind
+  score: number
+  fields: LegoFieldProfile[]
+  evidence: string[]
+}
+
+export type LegoBrickOccupancy = {
+  groupId: string
+  family: LegoBrickFamilyKind
+  field: LegoFieldKind
+  score: number
+  hostGroupId?: string | null
+  hostContextId?: string | null
+  evidence: string[]
+}
+
 export type StructuralRoleKind =
   | 'baseline'
   | 'unsupportedSymbol'
@@ -264,6 +328,8 @@ export type NormalizationResult = {
 export type HandwritingAnalysis = {
   groups: StrokeGroup[]
   edges: LayoutEdge[]
+  brickHypotheses: LegoBrickHypothesis[]
+  brickOccupancies: LegoBrickOccupancy[]
   roles: StructuralRole[]
   ambiguities: StructuralAmbiguity[]
   flags: StructuralFlag[]

@@ -1,10 +1,12 @@
 import { clamp } from './geometry'
+import { getTopBrickHypothesisByGroupId } from './legoModel'
 import { getRoleDescriptor, getRoleLocalityBias, roleAllowsChildRole, roleAllowsOperandRole, roleCanOwnScripts, roleRequiresOperandReference, roleUsesChildOperands, roleUsesParentOperand } from './roleTaxonomy'
 import { annotateRolesWithRecognizedSymbols } from './symbolRecognition'
-import type { EnclosureStructure, ExpressionContext, LayoutEdge, LocalSubexpression, StrokeGroup, StructuralAmbiguity, StructuralFlag, StructuralRole, StructuralRoleCandidate, StructuralRoleKind } from './types'
+import type { EnclosureStructure, ExpressionContext, LayoutEdge, LegoBrickHypothesis, LocalSubexpression, StrokeGroup, StructuralAmbiguity, StructuralFlag, StructuralRole, StructuralRoleCandidate, StructuralRoleKind } from './types'
 
 const FRACTION_BAR_MAX_HEIGHT = 18
 const FRACTION_BAR_MIN_WIDTH = 70
+const LEGO_SCRIPT_HOST_MIN_WEIGHT = 0.44
 
 const getFractionBarShapeScore = (group: StrokeGroup) => {
   const heightScore = clamp(1 - Math.max(group.bounds.height - FRACTION_BAR_MAX_HEIGHT, 0) / FRACTION_BAR_MAX_HEIGHT, 0, 1)
@@ -27,6 +29,40 @@ const incomingByKind = (edges: LayoutEdge[], groupId: string, kind: LayoutEdge['
   return edges
     .filter((edge) => edge.toId === groupId && edge.kind === kind)
     .sort((left, right) => right.score - left.score)
+}
+
+const getScriptFieldKind = (role: 'superscript' | 'subscript') => {
+  return role === 'superscript' ? 'upperRightScript' : 'lowerRightScript'
+}
+
+const getBrickFieldWeight = (
+  topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
+  groupId: string | null | undefined,
+  fieldKind: 'upperRightScript' | 'lowerRightScript',
+) => {
+  if (!groupId) return null
+  const topHypothesis = topBrickHypothesisByGroupId.get(groupId)
+  if (!topHypothesis) return null
+  return topHypothesis.fields.find((field) => field.kind === fieldKind)?.weight ?? 0
+}
+
+const hostSupportsScriptField = (
+  topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
+  parentGroupId: string | null | undefined,
+  role: 'superscript' | 'subscript',
+) => {
+  const fieldWeight = getBrickFieldWeight(topBrickHypothesisByGroupId, parentGroupId, getScriptFieldKind(role))
+  if (fieldWeight === null) {
+    return { supported: true, fieldWeight: null }
+  }
+
+  const topHypothesis = parentGroupId ? topBrickHypothesisByGroupId.get(parentGroupId) || null : null
+  const minimumWeight = topHypothesis?.family === 'enclosureBoundaryBrick' ? 0.34 : LEGO_SCRIPT_HOST_MIN_WEIGHT
+
+  return {
+    supported: fieldWeight >= minimumWeight,
+    fieldWeight,
+  }
 }
 
 const roleDepth = (roleMap: Map<string, StructuralRole>, groupId: string) => {
@@ -285,7 +321,7 @@ const appendEnclosureWideScriptAmbiguities = (roles: StructuralRole[], contexts:
   return nextAmbiguities
 }
 
-const promoteSequenceWideScripts = (roles: StructuralRole[], contexts: ExpressionContext[], groups: StrokeGroup[], edges: LayoutEdge[]) => {
+const promoteSequenceWideScripts = (roles: StructuralRole[], contexts: ExpressionContext[], groups: StrokeGroup[], edges: LayoutEdge[], topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>) => {
   const groupMap = new Map(groups.map((group) => [group.id, group]))
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
   const sequenceContexts = contexts.filter((context) => context.kind === 'sequence')
@@ -319,6 +355,9 @@ const promoteSequenceWideScripts = (roles: StructuralRole[], contexts: Expressio
         if (!sequenceBounds || !scriptGroup || !rightmostAnchorGroup) return null
         if (scriptGroup.bounds.left < sequenceBounds.right + Math.max(12, (sequenceBounds.right - sequenceBounds.left) * 0.06)) return null
 
+        const hostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, rightmostAnchorGroupId, scriptRole)
+        if (!hostFieldSupport.supported) return null
+
         const localityScore = getScriptLocalityScoreByKind(scriptRole, rightmostAnchorGroup, scriptGroup)
         if (localityScore < 0.4) return null
 
@@ -333,6 +372,7 @@ const promoteSequenceWideScripts = (roles: StructuralRole[], contexts: Expressio
           evidence: [
             `${scriptRole === 'superscript' ? 'above-right' : 'below-right'}-sequence-fallback=1`,
             `sequence-context=${sequenceContext.id}`,
+            `host-field=${getScriptFieldKind(scriptRole)}:${hostFieldSupport.fieldWeight === null ? 'legacy' : hostFieldSupport.fieldWeight.toFixed(2)}`,
             `sequence-locality=${localityScore.toFixed(2)}`,
           ],
         }
@@ -424,7 +464,7 @@ const isSameParentStackedScriptPair = (first: StrokeGroup, second: StrokeGroup) 
   return sameColumn && clearlySeparatedRows
 }
 
-const collectStableAttachments = (groups: StrokeGroup[], edges: LayoutEdge[], blockedGroupIds: Set<string>) => {
+const collectStableAttachments = (groups: StrokeGroup[], edges: LayoutEdge[], blockedGroupIds: Set<string>, topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>) => {
   const attachments: StableAttachment[] = []
   const groupIds = new Set(groups.map((group) => group.id))
 
@@ -445,6 +485,7 @@ const collectStableAttachments = (groups: StrokeGroup[], edges: LayoutEdge[], bl
     if (!best) continue
     if (!groupIds.has(best.edge.fromId) || !groupIds.has(best.edge.toId)) continue
     if (blockedGroupIds.has(best.edge.fromId) || blockedGroupIds.has(best.edge.toId)) continue
+    if (!hostSupportsScriptField(topBrickHypothesisByGroupId, best.edge.fromId, best.role).supported) continue
     const sequenceScore = bestSequence?.score || 0
     if (best.edge.score < 0.48) continue
     if (sequenceScore > 0 && best.edge.score - sequenceScore < 0.12) continue
@@ -695,10 +736,9 @@ const getEnclosureSemanticRootId = (
   return roots.sort((left, right) => left.bounds.left - right.bounds.left)[0]?.id || null
 }
 
-const detectEnclosures = (groups: StrokeGroup[], subexpressions: LocalSubexpression[], groupMap: Map<string, StrokeGroup>, blockedGroupIds: Set<string>) => {
-  const candidates = groups
+const detectEnclosures = (candidateBoundaryGroups: StrokeGroup[], subexpressions: LocalSubexpression[], groupMap: Map<string, StrokeGroup>, blockedGroupIds: Set<string>) => {
+  const candidates = candidateBoundaryGroups
     .filter((group) => !blockedGroupIds.has(group.id))
-    .filter(isEnclosureBoundaryCandidate)
     .sort((left, right) => left.bounds.left - right.bounds.left)
 
   const rootsWithBounds = subexpressions.map((subexpression) => ({
@@ -1338,18 +1378,49 @@ const resolveStructuralAdmissibility = (groups: StrokeGroup[], roles: Structural
   }
 }
 
-export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[]) => {
+export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[], brickHypotheses: LegoBrickHypothesis[] = []) => {
   const roles = new Map<string, StructuralRole>()
   const ambiguities: StructuralAmbiguity[] = []
-  const fractionBarLikeGroups = groups.filter(isFractionBarLikeGroup)
+  const topBrickHypothesisByGroupId = getTopBrickHypothesisByGroupId(brickHypotheses)
+  const fractionBarLikeGroups = groups.filter((group) => {
+    const topHypothesis = topBrickHypothesisByGroupId.get(group.id)
+    if (topHypothesis) {
+      if (topHypothesis.family !== 'fractionBarBrick' || topHypothesis.score < 0.52) {
+        return false
+      }
+
+      if (isFractionBarLikeGroup(group)) {
+        return true
+      }
+
+      const bestScriptScore = Math.max(
+        bestIncoming(edges, group.id, 'superscriptCandidate')?.score || 0,
+        bestIncoming(edges, group.id, 'subscriptCandidate')?.score || 0,
+      )
+
+      const operatorAlternativeScore = brickHypotheses.find((hypothesis) => (
+        hypothesis.groupId === group.id && hypothesis.family === 'operatorBrick'
+      ))?.score || 0
+
+      return topHypothesis.score >= Math.max(0.68, operatorAlternativeScore + 0.12) && bestScriptScore < 0.38
+    }
+    return isFractionBarLikeGroup(group)
+  })
   const fractionBarIds = new Set(fractionBarLikeGroups.map((group) => group.id))
-  const enclosureBoundaryIds = new Set(groups.filter(isEnclosureBoundaryCandidate).map((group) => group.id))
+  const enclosureBoundaryCandidateGroups = groups.filter((group) => {
+    const topHypothesis = topBrickHypothesisByGroupId.get(group.id)
+    if (topHypothesis) {
+      return topHypothesis.family === 'enclosureBoundaryBrick' && topHypothesis.score >= 0.5
+    }
+    return isEnclosureBoundaryCandidate(group)
+  })
+  const enclosureBoundaryIds = new Set(enclosureBoundaryCandidateGroups.map((group) => group.id))
   const blockedAttachmentIds = new Set<string>([...fractionBarIds, ...enclosureBoundaryIds])
-  const stableAttachments = collectStableAttachments(groups, edges, blockedAttachmentIds)
+  const stableAttachments = collectStableAttachments(groups, edges, blockedAttachmentIds, topBrickHypothesisByGroupId)
   const groupMap = new Map(groups.map((group) => [group.id, group]))
   const { subexpressions, rootClaims } = buildLocalSubexpressions(groups, stableAttachments, fractionBarIds)
   const childIds = new Set(stableAttachments.map((attachment) => attachment.childId))
-  const enclosures = detectEnclosures(groups, subexpressions, groupMap, fractionBarIds)
+  const enclosures = detectEnclosures(enclosureBoundaryCandidateGroups, subexpressions, groupMap, fractionBarIds)
   const fractionBindings: FractionStructureBinding[] = []
   const containerIdsByGroupId = new Map<string, string[]>()
   const enclosureByBoundaryId = new Map<string, EnclosureStructure & { memberGroupIds: string[] }>()
@@ -1538,10 +1609,12 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
       ))
     }
     for (const attachment of subexpression.attachments) {
+      const hostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, attachment.parentGroupId, attachment.role)
       roles.set(attachment.childGroupId, makeRole(attachment.childGroupId, attachment.role, attachment.score, 1, attachment.parentGroupId, [
         'owned by local subexpression',
         `family=${getRoleDescriptor(attachment.role).family}`,
         `peers=${getRoleDescriptor(attachment.role).peerRoles.join(',') || 'none'}`,
+        `host-field=${getScriptFieldKind(attachment.role)}:${hostFieldSupport.fieldWeight === null ? 'legacy' : hostFieldSupport.fieldWeight.toFixed(2)}`,
       ], containerIdsByGroupId.get(attachment.childGroupId) || []))
     }
   }
@@ -1556,17 +1629,25 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     const candidates: StructuralRoleCandidate[] = [makeCandidate('baseline', 0.34, null, ['fallback root role'])]
 
     if (bestSuper) {
-      candidates.push(makeCandidate('superscript', bestSuper.score, bestSuper.fromId, [
-        `above-right=${bestSuper.metrics.dx > 0 && bestSuper.metrics.dy < 0 ? '1' : '0'}`,
-        `size-ratio=${(bestSuper.metrics.sizeRatio || 0).toFixed(2)}`,
-      ]))
+      const hostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, bestSuper.fromId, 'superscript')
+      if (hostFieldSupport.supported) {
+        candidates.push(makeCandidate('superscript', bestSuper.score, bestSuper.fromId, [
+          `above-right=${bestSuper.metrics.dx > 0 && bestSuper.metrics.dy < 0 ? '1' : '0'}`,
+          `size-ratio=${(bestSuper.metrics.sizeRatio || 0).toFixed(2)}`,
+          `host-field=upperRightScript:${hostFieldSupport.fieldWeight === null ? 'legacy' : hostFieldSupport.fieldWeight.toFixed(2)}`,
+        ]))
+      }
     }
     if (bestSub) {
-      candidates.push(makeCandidate('subscript', bestSub.score, bestSub.fromId, [
-        `below-right=${(bestSub.metrics.belowRightScore || 0).toFixed(2)}`,
-        `directly-below=${(bestSub.metrics.directlyBelowScore || 0).toFixed(2)}`,
-        `width-ratio=${(bestSub.metrics.widthRatio || 0).toFixed(2)}`,
-      ]))
+      const hostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, bestSub.fromId, 'subscript')
+      if (hostFieldSupport.supported) {
+        candidates.push(makeCandidate('subscript', bestSub.score, bestSub.fromId, [
+          `below-right=${(bestSub.metrics.belowRightScore || 0).toFixed(2)}`,
+          `directly-below=${(bestSub.metrics.directlyBelowScore || 0).toFixed(2)}`,
+          `width-ratio=${(bestSub.metrics.widthRatio || 0).toFixed(2)}`,
+          `host-field=lowerRightScript:${hostFieldSupport.fieldWeight === null ? 'legacy' : hostFieldSupport.fieldWeight.toFixed(2)}`,
+        ]))
+      }
     }
 
     if (bestSequence) {
@@ -1612,10 +1693,14 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
 
     const parentRole = resolvedParentGroupId ? roles.get(resolvedParentGroupId) : null
     const assumedOperandRole = parentRole?.role || 'baseline'
+    const hostFieldSupport = best.role === 'superscript' || best.role === 'subscript'
+      ? hostSupportsScriptField(topBrickHypothesisByGroupId, resolvedParentGroupId, best.role)
+      : { supported: true, fieldWeight: null as number | null }
     const parentSupportsAttachment = Boolean(resolvedParentGroupId)
       && !fractionBarIds.has(resolvedParentGroupId)
       && (!roleRequiresOperandReference(best.role) || roleUsesParentOperand(best.role))
       && roleAllowsOperandRole(best.role, assumedOperandRole)
+      && hostFieldSupport.supported
       && (!parentRole || (roleCanOwnScripts(parentRole.role) && roleAllowsChildRole(parentRole.role, best.role)))
 
     const promotableFractionWideCandidate = sortedCandidates.find((candidate) => {
@@ -1634,8 +1719,11 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
 
       if (!promotableFractionWideCandidate?.parentGroupId) return null
       const promotedParentRole = roles.get(promotableFractionWideCandidate.parentGroupId) || null
+      const promotedScriptRole = promotableFractionWideCandidate.role as 'superscript' | 'subscript'
+      const promotedHostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, promotableFractionWideCandidate.parentGroupId, promotedScriptRole)
       const promotedParentSupportsAttachment = (!roleRequiresOperandReference(promotableFractionWideCandidate.role) || roleUsesParentOperand(promotableFractionWideCandidate.role))
         && roleAllowsOperandRole(promotableFractionWideCandidate.role, promotedParentRole?.role || 'baseline')
+        && promotedHostFieldSupport.supported
         && (!promotedParentRole || (roleCanOwnScripts(promotedParentRole.role) && roleAllowsChildRole(promotedParentRole.role, promotableFractionWideCandidate.role)))
       if (!promotedParentSupportsAttachment) return null
       if (promotableFractionWideCandidate.score < 0.32) return null
@@ -1650,9 +1738,12 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
     })()
 
     if (selectedScriptCandidate) {
+      const selectedScriptRole = selectedScriptCandidate.candidate.role as 'superscript' | 'subscript'
+      const selectedHostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, selectedScriptCandidate.parentGroupId, selectedScriptRole)
       const nextRole = makeRole(group.id, selectedScriptCandidate.candidate.role, selectedScriptCandidate.candidate.score, 1, selectedScriptCandidate.parentGroupId, [
         ...(selectedScriptCandidate.candidate.evidence || []),
         `parent-family=${selectedScriptCandidate.parentRole ? selectedScriptCandidate.parentRole.descriptor.family : 'expressionRoot'}`,
+        `host-field=${getScriptFieldKind(selectedScriptRole)}:${selectedHostFieldSupport.fieldWeight === null ? 'legacy' : selectedHostFieldSupport.fieldWeight.toFixed(2)}`,
         `operator-kind=${getRoleDescriptor(selectedScriptCandidate.candidate.role).operatorKind}`,
         `operand-mode=${getRoleDescriptor(selectedScriptCandidate.candidate.role).operandReferenceMode}`,
         `operand-allows=${String(roleAllowsOperandRole(selectedScriptCandidate.candidate.role, selectedScriptCandidate.parentRole?.role || 'baseline'))}`,
@@ -1725,7 +1816,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
   const { roles: admissibleRoles, flags } = resolveStructuralAdmissibility(groups, operandSafeRoles, edges)
   const fractionSemanticRootSafeRoles = ensureFractionSemanticRootsRemainBaseline(admissibleRoles, fractionBindings, groups)
   const contexts = buildExpressionContexts(groups, fractionSemanticRootSafeRoles, subexpressions, enclosures, fractionBindings)
-  const sequencePromotedRoles = promoteSequenceWideScripts(fractionSemanticRootSafeRoles, contexts, groups, edges)
+  const sequencePromotedRoles = promoteSequenceWideScripts(fractionSemanticRootSafeRoles, contexts, groups, edges, topBrickHypothesisByGroupId)
   const promotedContexts = buildExpressionContexts(groups, sequencePromotedRoles, subexpressions, enclosures, fractionBindings)
   const annotatedRoles = annotateRolesWithContexts(sequencePromotedRoles, promotedContexts, groups)
   const annotatedRoleMap = new Map(annotatedRoles.map((role) => [role.groupId, role]))

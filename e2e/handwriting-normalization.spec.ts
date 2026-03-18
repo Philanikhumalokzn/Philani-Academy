@@ -5,7 +5,7 @@ import { buildLayoutGraph } from '../lib/handwritingNormalization/graph'
 import { normalizeInkLayout } from '../lib/handwritingNormalization/normalize'
 import { buildExpressionParseForest } from '../lib/handwritingNormalization/parser'
 import { inferStructuralRoles } from '../lib/handwritingNormalization/roles'
-import type { ExpressionContext, HandwritingAnalysis, InkStroke, LayoutEdge, LegoBrickFamilyKind, LegoBrickHypothesis, StrokeGroup, StructuralRole } from '../lib/handwritingNormalization'
+import type { ExpressionContext, HandwritingAnalysis, InkStroke, LayoutEdge, LegoBrickFamilyKind, LegoBrickHypothesis, LegoBrickOccupancy, StrokeGroup, StructuralRole } from '../lib/handwritingNormalization'
 
 const makeStroke = (id: string): InkStroke => ({
   id,
@@ -883,6 +883,55 @@ test.describe('handwriting normalization fixtures', () => {
     expect(ambiguityParseNode).toBeTruthy()
     expect(ambiguityParseNode?.alternatives?.some((alternative) => alternative.role === 'superscript' && alternative.nodeKind === 'scriptApplication')).toBe(true)
     expect(ambiguityParseNode?.alternatives?.some((alternative) => alternative.role === 'baseline' && alternative.nodeKind === 'group' && alternative.contextId === 'context:root')).toBe(true)
+  })
+
+  test('sequence parse roots follow LEGO occupancy chain order', async () => {
+    const groups = [
+      makeGroup('a', { left: 100, top: 220, right: 132, bottom: 264, width: 32, height: 44, centerX: 116, centerY: 242 }),
+      makeGroup('b', { left: 146, top: 220, right: 178, bottom: 264, width: 32, height: 44, centerX: 162, centerY: 242 }),
+      makeGroup('c', { left: 192, top: 220, right: 224, bottom: 264, width: 32, height: 44, centerX: 208, centerY: 242 }),
+    ]
+    const roles: StructuralRole[] = groups.map((groupId) => ({
+      groupId: groupId.id,
+      role: 'baseline',
+      descriptor: getRoleDescriptor('baseline'),
+      score: 0.7,
+      depth: 0,
+      parentGroupId: null,
+      associationContextId: 'context:sequence:test',
+      normalizationAnchorGroupIds: [groupId.id],
+      containerGroupIds: [],
+      evidence: [],
+    }))
+    const contexts: ExpressionContext[] = [
+      {
+        id: 'context:root',
+        kind: 'root',
+        parentContextId: null,
+        semanticRootGroupId: null,
+        anchorGroupIds: ['a'],
+        memberGroupIds: ['a', 'b', 'c'],
+      },
+      {
+        id: 'context:sequence:test',
+        kind: 'sequence',
+        parentContextId: 'context:root',
+        semanticRootGroupId: 'a',
+        anchorGroupIds: ['a', 'b', 'c'],
+        memberGroupIds: ['a', 'b', 'c'],
+      },
+    ]
+    const occupancies: LegoBrickOccupancy[] = [
+      { groupId: 'a', family: 'ordinaryBaselineSymbolBrick', field: 'center', score: 0.8, hostGroupId: null, hostContextId: 'context:sequence:test', evidence: [] },
+      { groupId: 'c', family: 'ordinaryBaselineSymbolBrick', field: 'rightInline', score: 0.8, hostGroupId: 'a', hostContextId: 'context:sequence:test', evidence: [] },
+      { groupId: 'b', family: 'ordinaryBaselineSymbolBrick', field: 'rightInline', score: 0.8, hostGroupId: 'c', hostContextId: 'context:sequence:test', evidence: [] },
+    ]
+
+    const { parseNodes, parseRoots } = buildExpressionParseForest(groups, roles, contexts, [], [], occupancies)
+    const sequenceParseRoot = parseRoots.find((root) => root.contextId === 'context:sequence:test')
+    const sequenceNode = parseNodes.find((node) => node.id === sequenceParseRoot?.rootNodeId)
+
+    expect(sequenceNode?.childNodeIds).toEqual(['parse:group:a', 'parse:group:c', 'parse:group:b'])
   })
 
   test('stacked same-parent subscripts are reduced to one local script row', async () => {

@@ -20,7 +20,7 @@ export const analyzeHandwrittenExpression = (strokes: InkStroke[]): HandwritingA
   const edges = buildLayoutGraph(groups, brickHypotheses)
   const { roles, ambiguities, flags, subexpressions, enclosures, contexts } = inferStructuralRoles(groups, edges, brickHypotheses)
   const brickOccupancies = inferLegoBrickOccupancies(brickHypotheses, roles, contexts, edges)
-  const { parseNodes, parseRoots } = buildExpressionParseForest(groups, roles, contexts, enclosures, ambiguities)
+  const { parseNodes, parseRoots } = buildExpressionParseForest(groups, roles, contexts, enclosures, ambiguities, brickOccupancies)
   const normalization = normalizeInkLayout(groups, roles, contexts)
   return { groups, edges, brickHypotheses, brickOccupancies, roles, ambiguities, flags, subexpressions, enclosures, contexts, parseNodes, parseRoots, normalization }
 }

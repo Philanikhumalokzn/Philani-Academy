@@ -1,4 +1,4 @@
-import type { ContextParseRoot, EnclosureStructure, ExpressionContext, ExpressionParseAlternative, ExpressionParseNode, StrokeGroup, StructuralAmbiguity, StructuralRole, StructuralRoleCandidate } from './types'
+import type { ContextParseRoot, EnclosureStructure, ExpressionContext, ExpressionParseAlternative, ExpressionParseNode, LegoBrickOccupancy, StrokeGroup, StructuralAmbiguity, StructuralRole, StructuralRoleCandidate } from './types'
 
 const uniqueIds = (values: string[]) => Array.from(new Set(values.filter(Boolean)))
 
@@ -30,6 +30,7 @@ export const buildExpressionParseForest = (
   contexts: ExpressionContext[],
   enclosures: EnclosureStructure[],
   ambiguities: StructuralAmbiguity[],
+  brickOccupancies: LegoBrickOccupancy[] = [],
 ) => {
   const nodes: ExpressionParseNode[] = []
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
@@ -44,6 +45,7 @@ export const buildExpressionParseForest = (
   const enclosureNodeMetaById = new Map<string, { expressionContextId: string }>()
   const fractionNodeMetaById = new Map<string, { expressionContextId?: string | null, numeratorContextId?: string | null, denominatorContextId?: string | null, numeratorGroupId?: string | null, denominatorGroupId?: string | null }>()
   const ambiguityNodeIdByPreferredChildNodeId = new Map<string, string>()
+  const occupancyByGroupId = new Map(brickOccupancies.map((occupancy) => [occupancy.groupId, occupancy]))
   const parseScopedAmbiguities = ambiguities.filter((ambiguity) => (
     ambiguity.reason === 'fraction-wide-script-vs-baseline'
     || ambiguity.reason === 'enclosure-wide-script-vs-baseline'
@@ -348,6 +350,53 @@ export const buildExpressionParseForest = (
     return getOrCreateGroupNode(context.semanticRootGroupId)
   }
 
+  const getSequenceOrderedNodeIdsFromOccupancies = (context: ExpressionContext) => {
+    if (context.kind !== 'sequence') return []
+
+    const anchorGroupIds = uniqueIds(context.anchorGroupIds)
+    if (!anchorGroupIds.length) return []
+
+    const childIdsByHostGroupId = new Map<string, string[]>()
+    const rootIds: string[] = []
+
+    for (const groupId of anchorGroupIds) {
+      const occupancy = occupancyByGroupId.get(groupId) || null
+      const hostGroupId = occupancy?.hostGroupId || null
+      const field = occupancy?.field || 'center'
+      if (field === 'rightInline' && hostGroupId && anchorGroupIds.includes(hostGroupId)) {
+        const existing = childIdsByHostGroupId.get(hostGroupId) || []
+        childIdsByHostGroupId.set(hostGroupId, [...existing, groupId])
+        continue
+      }
+      rootIds.push(groupId)
+    }
+
+    const orderedRootIds = uniqueIds(rootIds).sort((left, right) => getNodeLeft(getOrCreateGroupNode(left)) - getNodeLeft(getOrCreateGroupNode(right)))
+    const orderedGroupIds: string[] = []
+    const visited = new Set<string>()
+
+    const visit = (groupId: string) => {
+      if (visited.has(groupId)) return
+      visited.add(groupId)
+      orderedGroupIds.push(groupId)
+      const children = (childIdsByHostGroupId.get(groupId) || [])
+        .sort((left, right) => getNodeLeft(getOrCreateGroupNode(left)) - getNodeLeft(getOrCreateGroupNode(right)))
+      for (const childId of children) {
+        visit(childId)
+      }
+    }
+
+    for (const rootId of orderedRootIds) {
+      visit(rootId)
+    }
+
+    for (const groupId of anchorGroupIds) {
+      visit(groupId)
+    }
+
+    return orderedGroupIds.map((groupId) => getOrCreateGroupNode(groupId))
+  }
+
   const replacePreferredChildNodeIds = (childNodeIds: string[]) => {
     return uniqueIds(childNodeIds.map((childNodeId) => ambiguityNodeIdByPreferredChildNodeId.get(childNodeId) || childNodeId))
   }
@@ -470,6 +519,13 @@ export const buildExpressionParseForest = (
     const topLevelNodeIds = contextNodeIds
       .filter((nodeId) => !referencedChildIds.has(nodeId))
       .sort((left, right) => getNodeLeft(left) - getNodeLeft(right))
+
+    if (context.kind === 'sequence') {
+      const occupancyOrderedNodeIds = getSequenceOrderedNodeIdsFromOccupancies(context)
+      if (occupancyOrderedNodeIds.length) {
+        topLevelNodeIds.splice(0, topLevelNodeIds.length, ...occupancyOrderedNodeIds)
+      }
+    }
 
     if (!topLevelNodeIds.length) {
       const semanticRootNodeId = getContextSemanticRootNodeId(context)

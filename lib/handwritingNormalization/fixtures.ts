@@ -1,6 +1,6 @@
 import type { InkStroke, StructuralRoleKind } from './types'
 
-export type HandwritingFixtureName = 'superscript' | 'fraction' | 'nested' | 'adjacentAmbiguous' | 'crossingFour' | 'superscriptThenBar' | 'fractionWithExponent' | 'fractionOuterExponent' | 'fractionDenominatorOuterExponent' | 'fractionOuterSubscript' | 'fractionDenominatorOuterSubscript' | 'offsetLineSubscript' | 'parenthesizedSuperscript' | 'parenthesizedExponent' | 'parenthesizedFractionNumerator' | 'parenthesizedFractionExponent' | 'stackedBaselinesUnsupported'
+export type HandwritingFixtureName = 'superscript' | 'fraction' | 'nested' | 'adjacentAmbiguous' | 'crossingFour' | 'superscriptThenBar' | 'fractionWithExponent' | 'fractionOuterExponent' | 'fractionDenominatorOuterExponent' | 'fractionOuterSubscript' | 'fractionDenominatorOuterSubscript' | 'offsetLineSubscript' | 'parenthesizedSuperscript' | 'parenthesizedExponent' | 'parenthesizedFractionNumerator' | 'parenthesizedFractionExponent' | 'fractionCompositeNumerator' | 'stackedBaselinesUnsupported'
 
 export type HandwritingFixtureExpectation = {
   groupCount: number
@@ -227,6 +227,20 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
     ],
     expectation: { groupCount: 6, requiredRoles: ['enclosureOpen', 'enclosureClose', 'fractionBar', 'numerator', 'denominator', 'superscript'] },
   },
+  fractionCompositeNumerator: {
+    name: 'fractionCompositeNumerator',
+    label: 'v+v over v sample',
+    description: 'A three-group numerator that must remain one shared numerator block during normalization.',
+    strokes: [
+      makeStroke('num-left-1', [[124, 170], [142, 198], [160, 170]]),
+      makeStroke('plus-1', [[200, 156], [200, 204]]),
+      makeStroke('plus-2', [[178, 180], [222, 180]]),
+      makeStroke('num-right-1', [[250, 170], [268, 198], [286, 170]]),
+      makeStroke('bar-1', [[116, 242], [294, 242]], 6),
+      makeStroke('den-1', [[186, 286], [206, 318], [226, 286]]),
+    ],
+    expectation: { groupCount: 5, requiredRoles: ['fractionBar', 'numerator', 'denominator'] },
+  },
   stackedBaselinesUnsupported: {
     name: 'stackedBaselinesUnsupported',
     label: 'Stacked baselines warning',
@@ -240,7 +254,7 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
   },
 }
 
-export const HANDWRITING_FIXTURE_ORDER: HandwritingFixtureName[] = ['superscript', 'fraction', 'nested', 'adjacentAmbiguous', 'crossingFour', 'superscriptThenBar', 'fractionWithExponent', 'fractionOuterExponent', 'fractionDenominatorOuterExponent', 'fractionOuterSubscript', 'fractionDenominatorOuterSubscript', 'offsetLineSubscript', 'parenthesizedSuperscript', 'parenthesizedExponent', 'parenthesizedFractionNumerator', 'parenthesizedFractionExponent', 'stackedBaselinesUnsupported']
+export const HANDWRITING_FIXTURE_ORDER: HandwritingFixtureName[] = ['superscript', 'fraction', 'nested', 'adjacentAmbiguous', 'crossingFour', 'superscriptThenBar', 'fractionWithExponent', 'fractionOuterExponent', 'fractionDenominatorOuterExponent', 'fractionOuterSubscript', 'fractionDenominatorOuterSubscript', 'offsetLineSubscript', 'parenthesizedSuperscript', 'parenthesizedExponent', 'parenthesizedFractionNumerator', 'parenthesizedFractionExponent', 'fractionCompositeNumerator', 'stackedBaselinesUnsupported']
 
 export const getHandwritingFixture = (name: HandwritingFixtureName) => {
   const fixture = fixtures[name]

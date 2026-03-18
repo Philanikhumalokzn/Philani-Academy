@@ -121,6 +121,43 @@ test.describe('handwriting normalization fixtures', () => {
     expect((normalizedById.get('num-right')?.bounds.bottom || 0)).toBeLessThan((normalizedById.get('bar')?.bounds.top || 0) - 12)
   })
 
+  test('composite v-plus-v numerator stays a shared block in real analysis and normalization', async () => {
+    const fixture = getHandwritingFixture('fractionCompositeNumerator')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const numeratorRoles = analysis.roles.filter((role) => role.role === 'numerator')
+    const denominatorRoles = analysis.roles.filter((role) => role.role === 'denominator')
+    const fractionBar = analysis.roles.find((role) => role.role === 'fractionBar')
+    const numeratorContext = analysis.contexts.find((context) => context.kind === 'numerator')
+    const normalizedById = new Map(analysis.normalization.groups.map((group) => [group.id, group]))
+    const normalizedNumeratorMembers = (numeratorContext?.memberGroupIds || [])
+      .map((groupId) => ({
+        groupId,
+        role: analysis.roles.find((role) => role.groupId === groupId) || null,
+        normalized: normalizedById.get(groupId) || null,
+      }))
+      .filter((entry) => entry.normalized)
+      .sort((left, right) => (left.normalized?.bounds.centerX || 0) - (right.normalized?.bounds.centerX || 0))
+    const normalizedBar = fractionBar ? normalizedById.get(fractionBar.groupId) || null : null
+    const vEntries = normalizedNumeratorMembers.filter((entry) => entry.role?.recognizedSymbol?.value === 'v')
+    const plusEntry = normalizedNumeratorMembers.find((entry) => entry.role?.recognizedSymbol?.value === '+') || null
+    const leftV = vEntries[0] || null
+    const rightV = vEntries[1] || null
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(numeratorRoles).toHaveLength(1)
+    expect(denominatorRoles).toHaveLength(1)
+    expect(numeratorContext?.memberGroupIds).toHaveLength(3)
+    expect(leftV?.normalized).toBeTruthy()
+    expect(plusEntry?.normalized).toBeTruthy()
+    expect(rightV?.normalized).toBeTruthy()
+    expect(normalizedBar).toBeTruthy()
+    expect((plusEntry?.normalized?.bounds.centerX || 0)).toBeGreaterThan((leftV?.normalized?.bounds.centerX || 0) + 22)
+    expect((rightV?.normalized?.bounds.centerX || 0)).toBeGreaterThan((plusEntry?.normalized?.bounds.centerX || 0) + 22)
+    expect((leftV?.normalized?.bounds.bottom || 0)).toBeLessThan((normalizedBar?.bounds.top || 0) - 12)
+    expect((plusEntry?.normalized?.bounds.bottom || 0)).toBeLessThan((normalizedBar?.bounds.top || 0) - 12)
+    expect((rightV?.normalized?.bounds.bottom || 0)).toBeLessThan((normalizedBar?.bounds.top || 0) - 12)
+  })
+
   test('nested fixture preserves chained local ownership', async () => {
     const fixture = getHandwritingFixture('nested')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)

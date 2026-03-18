@@ -131,6 +131,8 @@ export type StructuralRole = {
   depth: number
   parentGroupId?: string | null
   associationContextId?: string | null
+  hostedContextId?: string | null
+  hostedContextKind?: ExpressionContext['kind'] | null
   normalizationAnchorGroupIds: string[]
   containerGroupIds: string[]
   recognizedSymbol?: RecognizedSymbol | null

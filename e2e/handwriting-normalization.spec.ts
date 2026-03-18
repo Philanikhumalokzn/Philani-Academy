@@ -88,6 +88,8 @@ test.describe('handwriting normalization fixtures', () => {
     expect(denominatorRoot?.role).toBe('baseline')
     expect(numeratorRoot?.associationContextId).toBe(numeratorContext?.id)
     expect(denominatorRoot?.associationContextId).toBe(denominatorContext?.id)
+    expect(numeratorRoot?.qualifiedRoleLabel).toContain('@ numerator')
+    expect(denominatorRoot?.qualifiedRoleLabel).toContain('@ denominator')
     expect(analysis.parseNodes.some((node) => node.kind === 'fractionExpression')).toBe(true)
   })
 

@@ -196,6 +196,16 @@ const getHostedFractionMemberContext = (groupId: string, contexts: ExpressionCon
     .sort((left, right) => left.memberGroupIds.length - right.memberGroupIds.length || left.id.localeCompare(right.id))[0] || null
 }
 
+const getHostedContextForRole = (role: StructuralRole, contexts: ExpressionContext[]) => {
+  const hostedFractionMemberContext = getHostedFractionMemberContext(role.groupId, contexts)
+  if (hostedFractionMemberContext) return hostedFractionMemberContext
+  if (!role.containerGroupIds.length) return null
+  return contexts.find((context) => (
+    context.kind === 'enclosure'
+    && role.containerGroupIds.every((groupId) => context.anchorGroupIds.includes(groupId))
+  )) || null
+}
+
 const isFractionWideOutsideHostedMember = (groupId: string, parentGroupId: string | null | undefined, contexts: ExpressionContext[], groupMap: Map<string, StrokeGroup>) => {
   if (!parentGroupId) return false
   const memberContext = contexts.find((context) => (
@@ -1060,8 +1070,8 @@ const annotateRolesWithContexts = (roles: StructuralRole[], contexts: Expression
 
   return roles.map((role) => {
     if ((role.role !== 'superscript' && role.role !== 'subscript') || !role.parentGroupId) {
-      const hostedFractionMemberContext = getHostedFractionMemberContext(role.groupId, contexts)
-      const defaultContextId = hostedFractionMemberContext?.id || (
+      const hostedContext = getHostedContextForRole(role, contexts)
+      const defaultContextId = hostedContext?.id || (
         role.containerGroupIds.length
           ? enclosureContexts.find((context) => role.containerGroupIds.every((groupId) => context.anchorGroupIds.includes(groupId)))?.id || 'context:root'
           : 'context:root'
@@ -1069,9 +1079,11 @@ const annotateRolesWithContexts = (roles: StructuralRole[], contexts: Expression
       return {
         ...role,
         associationContextId: role.associationContextId || defaultContextId,
-        normalizationAnchorGroupIds: role.normalizationAnchorGroupIds.length ? role.normalizationAnchorGroupIds : (hostedFractionMemberContext?.anchorGroupIds || [role.groupId]),
-        evidence: hostedFractionMemberContext && !role.evidence.some((entry) => entry === `hosted-context=${hostedFractionMemberContext.id}`)
-          ? [...role.evidence, `hosted-context=${hostedFractionMemberContext.id}`]
+        hostedContextId: hostedContext?.id || null,
+        hostedContextKind: hostedContext?.kind || null,
+        normalizationAnchorGroupIds: role.normalizationAnchorGroupIds.length ? role.normalizationAnchorGroupIds : (hostedContext?.anchorGroupIds || [role.groupId]),
+        evidence: hostedContext && !role.evidence.some((entry) => entry === `hosted-context=${hostedContext.id}`)
+          ? [...role.evidence, `hosted-context=${hostedContext.id}`]
           : role.evidence,
       }
     }
@@ -1103,6 +1115,8 @@ const annotateRolesWithContexts = (roles: StructuralRole[], contexts: Expression
       return {
         ...role,
         associationContextId: fractionContext.id,
+        hostedContextId: sharedFractionMemberContext?.id || null,
+        hostedContextKind: sharedFractionMemberContext?.kind || null,
         normalizationAnchorGroupIds: anchorGroupIds,
         evidence: [...role.evidence, `association-context=${fractionContext.id}`, `normalization-anchors=${anchorGroupIds.join(',')}`],
       }
@@ -1113,15 +1127,20 @@ const annotateRolesWithContexts = (roles: StructuralRole[], contexts: Expression
       return {
         ...role,
         associationContextId: sequenceContext.id,
+        hostedContextId: null,
+        hostedContextKind: null,
         normalizationAnchorGroupIds: anchorGroupIds,
         evidence: [...role.evidence, `association-context=${sequenceContext.id}`, `normalization-anchors=${anchorGroupIds.join(',')}`],
       }
     }
 
     if (!enclosureContext) {
+      const hostedContext = sharedFractionMemberContext || getHostedContextForRole(role, contexts)
       return {
         ...role,
         associationContextId: role.associationContextId || sharedFractionMemberContext?.id || (role.containerGroupIds.length ? `context:enclosure:${role.containerGroupIds.join(':')}` : 'context:root'),
+        hostedContextId: hostedContext?.id || null,
+        hostedContextKind: hostedContext?.kind || null,
         normalizationAnchorGroupIds: role.normalizationAnchorGroupIds.length ? role.normalizationAnchorGroupIds : [role.parentGroupId],
       }
     }
@@ -1130,12 +1149,16 @@ const annotateRolesWithContexts = (roles: StructuralRole[], contexts: Expression
     return {
       ...role,
       associationContextId: enclosureContext.id,
+      hostedContextId: enclosureContext.id,
+      hostedContextKind: enclosureContext.kind,
       normalizationAnchorGroupIds: anchorGroupIds,
       evidence: [...role.evidence, `association-context=${enclosureContext.id}`, `normalization-anchors=${anchorGroupIds.join(',')}`],
     }
   }).map((role) => ({
     ...role,
     associationContextId: role.associationContextId || 'context:root',
+    hostedContextId: role.hostedContextId || null,
+    hostedContextKind: role.hostedContextKind || null,
     normalizationAnchorGroupIds: role.normalizationAnchorGroupIds.length ? role.normalizationAnchorGroupIds : [role.groupId],
   }))
 }

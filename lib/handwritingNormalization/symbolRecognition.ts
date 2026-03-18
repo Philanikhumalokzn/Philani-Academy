@@ -224,7 +224,16 @@ export const recognizeSymbolForRole = (group: StrokeGroup, role: StructuralRole)
   return makeSymbol('unknown', 'unknown', 0.18, ['no seeded symbol heuristic matched this stroke group'])
 }
 
-export const formatQualifiedRoleLabel = (role: StructuralRole, symbol: RecognizedSymbol | null | undefined) => `${role.role}-${symbol?.value || 'unknown'}`
+export const formatQualifiedRoleLabel = (role: StructuralRole, symbol: RecognizedSymbol | null | undefined) => {
+  const baseLabel = `${role.role}-${symbol?.value || 'unknown'}`
+  if (role.hostedContextKind === 'numerator' || role.hostedContextKind === 'denominator') {
+    return `${baseLabel} @ ${role.hostedContextKind}`
+  }
+  if (role.hostedContextKind === 'enclosure') {
+    return `${baseLabel} @ enclosure`
+  }
+  return baseLabel
+}
 
 export const annotateRolesWithRecognizedSymbols = (roles: StructuralRole[], groups: StrokeGroup[]) => {
   const groupMap = new Map(groups.map((group) => [group.id, group]))
@@ -243,7 +252,13 @@ export const annotateRolesWithRecognizedSymbols = (roles: StructuralRole[], grou
       ...role,
       recognizedSymbol,
       qualifiedRoleLabel,
-      evidence: [...role.evidence, `symbol=${recognizedSymbol.value}`, `symbol-category=${recognizedSymbol.category}`, `qualified-role=${qualifiedRoleLabel}`],
+      evidence: [
+        ...role.evidence,
+        `symbol=${recognizedSymbol.value}`,
+        `symbol-category=${recognizedSymbol.category}`,
+        ...(role.hostedContextKind ? [`hosted-context-kind=${role.hostedContextKind}`] : []),
+        `qualified-role=${qualifiedRoleLabel}`,
+      ],
     }
   })
 }

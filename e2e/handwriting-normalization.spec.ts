@@ -504,6 +504,10 @@ test.describe('handwriting normalization fixtures', () => {
     const superscript = analysis.roles.find((role) => role.role === 'superscript')
     const openBoundary = analysis.roles.find((role) => role.role === 'enclosureOpen')
     const closeBoundary = analysis.roles.find((role) => role.role === 'enclosureClose')
+    const normalizedBaseline = analysis.normalization.groups.find((group) => group.id === baseline?.groupId)
+    const normalizedSuperscript = analysis.normalization.groups.find((group) => group.id === superscript?.groupId)
+    const normalizedOpen = analysis.normalization.groups.find((group) => group.id === openBoundary?.groupId)
+    const normalizedClose = analysis.normalization.groups.find((group) => group.id === closeBoundary?.groupId)
 
     expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
     expect(analysis.roles.some((role) => role.role === 'enclosureOpen')).toBe(true)
@@ -514,6 +518,26 @@ test.describe('handwriting normalization fixtures', () => {
     expect(superscript?.containerGroupIds).toHaveLength(2)
     expect(openBoundary?.qualifiedRoleLabel).toBe('enclosureOpen-(')
     expect(closeBoundary?.qualifiedRoleLabel).toBe('enclosureClose-)')
+    expect(normalizedBaseline).toBeTruthy()
+    expect(normalizedSuperscript).toBeTruthy()
+    expect(normalizedOpen).toBeTruthy()
+    expect(normalizedClose).toBeTruthy()
+
+    const enclosedContentLeft = normalizedOpen?.bounds.right || 0
+    const enclosedContentRight = normalizedClose?.bounds.left || 0
+    const enclosedContentTop = Math.max(normalizedOpen?.bounds.top || 0, normalizedClose?.bounds.top || 0)
+    const enclosedContentBottom = Math.min(normalizedOpen?.bounds.bottom || 0, normalizedClose?.bounds.bottom || 0)
+    const normalizedContentCenterX = ((normalizedBaseline?.bounds.centerX || 0) + (normalizedSuperscript?.bounds.centerX || 0)) / 2
+    const normalizedContentCenterY = ((normalizedBaseline?.bounds.centerY || 0) + (normalizedSuperscript?.bounds.centerY || 0)) / 2
+    const enclosureCenterX = (enclosedContentLeft + enclosedContentRight) / 2
+    const enclosureCenterY = (enclosedContentTop + enclosedContentBottom) / 2
+    const contentHeight = Math.max((normalizedBaseline?.bounds.bottom || 0), (normalizedSuperscript?.bounds.bottom || 0)) - Math.min((normalizedBaseline?.bounds.top || 0), (normalizedSuperscript?.bounds.top || 0))
+    const enclosureHeight = enclosedContentBottom - enclosedContentTop
+
+    expect(Math.abs(normalizedContentCenterX - enclosureCenterX)).toBeLessThan(18)
+    expect(Math.abs(normalizedContentCenterY - enclosureCenterY)).toBeLessThan(22)
+    expect(contentHeight).toBeGreaterThan(enclosureHeight * 0.34)
+    expect(contentHeight).toBeLessThan(enclosureHeight * 0.88)
   })
 
   test('outer superscript attaches to the enclosed semantic root rather than an enclosure boundary', async () => {

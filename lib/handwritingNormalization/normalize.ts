@@ -27,6 +27,34 @@ const getScriptAnchorBounds = (
   return transformedBounds.get(role.parentGroupId) || groupMap.get(role.parentGroupId)?.bounds || null
 }
 
+const getTranslatedBounds = (bounds: ReturnType<typeof mergeBounds>, dx: number, dy: number) => ({
+  ...bounds,
+  left: bounds.left + dx,
+  right: bounds.right + dx,
+  top: bounds.top + dy,
+  bottom: bounds.bottom + dy,
+  centerX: bounds.centerX + dx,
+  centerY: bounds.centerY + dy,
+})
+
+const getScaledAndTranslatedBounds = (
+  bounds: ReturnType<typeof mergeBounds>,
+  centerX: number,
+  centerY: number,
+  scale: number,
+  dx: number,
+  dy: number,
+) => ({
+  left: (bounds.left - centerX) * scale + centerX + dx,
+  right: (bounds.right - centerX) * scale + centerX + dx,
+  top: (bounds.top - centerY) * scale + centerY + dy,
+  bottom: (bounds.bottom - centerY) * scale + centerY + dy,
+  width: bounds.width * scale,
+  height: bounds.height * scale,
+  centerX: (bounds.centerX - centerX) * scale + centerX + dx,
+  centerY: (bounds.centerY - centerY) * scale + centerY + dy,
+})
+
 export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[], contexts: ExpressionContext[] = []): NormalizationResult => {
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
   const groupMap = new Map(groups.map((group) => [group.id, group]))
@@ -39,8 +67,10 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
   const scaledBoundsByGroupId = new Map<string, ReturnType<typeof mergeBounds>>()
   const localTranslationsByGroupId = new Map<string, { dx: number, dy: number }>()
   const contextTranslationsByContextId = new Map<string, { dx: number, dy: number }>()
+  const enclosureTransformsByContextId = new Map<string, { scale: number, centerX: number, centerY: number, dx: number, dy: number, memberGroupIds: string[] }>()
 
   const fractionMemberContexts = contexts.filter((context) => context.kind === 'numerator' || context.kind === 'denominator')
+  const enclosureContexts = contexts.filter((context) => context.kind === 'enclosure')
   const fractionMemberContextIdByGroupId = new Map<string, string>()
   for (const context of [...fractionMemberContexts].sort((left, right) => left.memberGroupIds.length - right.memberGroupIds.length)) {
     for (const groupId of context.memberGroupIds) {
@@ -106,15 +136,7 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
 
     localTranslationsByGroupId.set(group.id, { dx, dy })
 
-    const locallyTranslatedBounds = mergeBounds(scaledStrokes.map(getStrokeBounds).map((bounds) => ({
-      ...bounds,
-      left: bounds.left + dx,
-      right: bounds.right + dx,
-      top: bounds.top + dy,
-      bottom: bounds.bottom + dy,
-      centerX: bounds.centerX + dx,
-      centerY: bounds.centerY + dy,
-    })))
+    const locallyTranslatedBounds = mergeBounds(scaledStrokes.map(getStrokeBounds).map((bounds) => getTranslatedBounds(bounds, dx, dy)))
 
     transformedBounds.set(group.id, locallyTranslatedBounds)
   }
@@ -142,15 +164,58 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     for (const groupId of context.memberGroupIds) {
       const memberBounds = transformedBounds.get(groupId)
       if (!memberBounds) continue
-      transformedBounds.set(groupId, {
-        ...memberBounds,
-        left: memberBounds.left + dx,
-        right: memberBounds.right + dx,
-        top: memberBounds.top + dy,
-        bottom: memberBounds.bottom + dy,
-        centerX: memberBounds.centerX + dx,
-        centerY: memberBounds.centerY + dy,
-      })
+      transformedBounds.set(groupId, getTranslatedBounds(memberBounds, dx, dy))
+    }
+  }
+
+  for (const context of [...enclosureContexts].sort((left, right) => left.memberGroupIds.length - right.memberGroupIds.length)) {
+    const boundaryIds = context.anchorGroupIds.filter((groupId) => {
+      const roleName = roleMap.get(groupId)?.role || 'baseline'
+      return roleName === 'enclosureOpen' || roleName === 'enclosureClose'
+    })
+    if (boundaryIds.length < 2) continue
+
+    const contentGroupIds = context.memberGroupIds.filter((groupId) => !boundaryIds.includes(groupId))
+    const boundaryBounds = boundaryIds
+      .map((groupId) => transformedBounds.get(groupId))
+      .filter(Boolean) as Array<ReturnType<typeof mergeBounds>>
+    const contentBoundsList = contentGroupIds
+      .map((groupId) => transformedBounds.get(groupId))
+      .filter(Boolean) as Array<ReturnType<typeof mergeBounds>>
+    if (boundaryBounds.length < 2 || !contentBoundsList.length) continue
+
+    const leftBoundary = boundaryBounds.sort((left, right) => left.centerX - right.centerX)[0]
+    const rightBoundary = boundaryBounds.sort((left, right) => left.centerX - right.centerX)[boundaryBounds.length - 1]
+    const contentBounds = mergeBounds(contentBoundsList)
+    const interiorLeft = leftBoundary.right + Math.max(8, leftBoundary.width * 0.18)
+    const interiorRight = rightBoundary.left - Math.max(8, rightBoundary.width * 0.18)
+    const interiorTop = Math.max(leftBoundary.top, rightBoundary.top) + Math.max(6, Math.min(leftBoundary.height, rightBoundary.height) * 0.08)
+    const interiorBottom = Math.min(leftBoundary.bottom, rightBoundary.bottom) - Math.max(6, Math.min(leftBoundary.height, rightBoundary.height) * 0.08)
+    const interiorWidth = Math.max(1, interiorRight - interiorLeft)
+    const interiorHeight = Math.max(1, interiorBottom - interiorTop)
+    if (interiorWidth <= 1 || interiorHeight <= 1) continue
+
+    const targetWidth = interiorWidth * 0.7
+    const targetHeight = interiorHeight * 0.68
+    const scale = Math.max(0.88, Math.min(1.24, Math.min(targetWidth / Math.max(contentBounds.width, 1), targetHeight / Math.max(contentBounds.height, 1))))
+    const targetCenterX = (interiorLeft + interiorRight) / 2
+    const targetCenterY = (interiorTop + interiorBottom) / 2
+    const dx = targetCenterX - contentBounds.centerX
+    const dy = targetCenterY - contentBounds.centerY
+
+    enclosureTransformsByContextId.set(context.id, {
+      scale,
+      centerX: contentBounds.centerX,
+      centerY: contentBounds.centerY,
+      dx,
+      dy,
+      memberGroupIds: contentGroupIds,
+    })
+
+    for (const groupId of contentGroupIds) {
+      const memberBounds = transformedBounds.get(groupId)
+      if (!memberBounds) continue
+      transformedBounds.set(groupId, getScaledAndTranslatedBounds(memberBounds, contentBounds.centerX, contentBounds.centerY, scale, dx, dy))
     }
   }
 
@@ -163,13 +228,27 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     if (!role || !scaledStrokes || !scaledBounds || !localTranslation || typeof scale !== 'number') continue
     const fractionMemberContextId = fractionMemberContextIdByGroupId.get(group.id) || null
     const contextTranslation = fractionMemberContextId ? contextTranslationsByContextId.get(fractionMemberContextId) || { dx: 0, dy: 0 } : { dx: 0, dy: 0 }
-    const dx = localTranslation.dx + contextTranslation.dx
-    const dy = localTranslation.dy + contextTranslation.dy
-
-    const finalStrokes = scaledStrokes.map((stroke) => ({
+    let finalStrokes = scaledStrokes.map((stroke) => ({
       ...stroke,
-      points: stroke.points.map((point) => ({ ...point, x: point.x + dx, y: point.y + dy })),
+      points: stroke.points.map((point) => ({
+        ...point,
+        x: point.x + localTranslation.dx + contextTranslation.dx,
+        y: point.y + localTranslation.dy + contextTranslation.dy,
+      })),
     }))
+
+    for (const transform of enclosureTransformsByContextId.values()) {
+      if (!transform.memberGroupIds.includes(group.id)) continue
+      finalStrokes = finalStrokes.map((stroke) => ({
+        ...stroke,
+        points: stroke.points.map((point) => ({
+          ...point,
+          x: (point.x - transform.centerX) * transform.scale + transform.centerX + transform.dx,
+          y: (point.y - transform.centerY) * transform.scale + transform.centerY + transform.dy,
+        })),
+      }))
+    }
+
     const finalBounds = mergeBounds(finalStrokes.map(getStrokeBounds))
 
     transformedStrokes.push(...finalStrokes)
@@ -177,8 +256,8 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
       id: group.id,
       bounds: finalBounds,
       scale,
-      translateX: dx,
-      translateY: dy,
+      translateX: finalBounds.centerX - scaledBounds.centerX,
+      translateY: finalBounds.centerY - scaledBounds.centerY,
     })
   }
 

@@ -179,6 +179,12 @@ type FractionStructureBinding = {
   denominatorRootIds: string[]
 }
 
+type RadicalStructureBinding = {
+  radicalGroupId: string
+  radicandRootIds: string[]
+  indexRootIds: string[]
+}
+
 type FractionSideCandidate = {
   subexpression: LocalSubexpression
   bounds: ReturnType<typeof getSubexpressionBounds>
@@ -279,7 +285,13 @@ const demoteMissingOperandScripts = (roles: StructuralRole[]) => {
 
 const getHostedFractionMemberContext = (groupId: string, contexts: ExpressionContext[]) => {
   return contexts
-    .filter((context) => (context.kind === 'numerator' || context.kind === 'denominator') && context.memberGroupIds.includes(groupId))
+    .filter((context) => (
+      (context.kind === 'numerator'
+        || context.kind === 'denominator'
+        || context.kind === 'radicand'
+        || context.kind === 'radicalIndex')
+      && context.memberGroupIds.includes(groupId)
+    ))
     .sort((left, right) => left.memberGroupIds.length - right.memberGroupIds.length || left.id.localeCompare(right.id))[0] || null
 }
 
@@ -766,6 +778,78 @@ const scoreFractionContext = (bar: StrokeGroup, subexpressions: LocalSubexpressi
   }
 }
 
+const getRadicalInteriorCandidates = (
+  radical: StrokeGroup,
+  subexpressions: LocalSubexpression[],
+  groupMap: Map<string, StrokeGroup>,
+) => {
+  const targetLeft = radical.bounds.left + Math.max(14, radical.bounds.width * 0.22)
+  const targetRight = radical.bounds.right + Math.max(18, radical.bounds.width * 0.14)
+  const targetTop = radical.bounds.top - Math.max(8, radical.bounds.height * 0.06)
+  const targetBottom = radical.bounds.bottom - Math.max(4, radical.bounds.height * 0.12)
+
+  return subexpressions
+    .filter((subexpression) => subexpression.rootGroupId !== radical.id)
+    .map((subexpression) => ({ subexpression, bounds: getSubexpressionBounds(subexpression, groupMap) }))
+    .filter(({ bounds }) => bounds.centerX >= radical.bounds.left + radical.bounds.width * 0.18 && bounds.bottom >= radical.bounds.top + radical.bounds.height * 0.16)
+    .map(({ subexpression, bounds }) => {
+      const width = Math.max(1, bounds.right - bounds.left)
+      const height = Math.max(1, bounds.bottom - bounds.top)
+      const horizontalOverlap = clamp(Math.min(bounds.right, targetRight) - Math.max(bounds.left, targetLeft), 0, width) / width
+      const verticalOverlap = clamp(Math.min(bounds.bottom, targetBottom) - Math.max(bounds.top, targetTop), 0, height) / height
+      const leftProgress = clamp((bounds.left - (radical.bounds.left + radical.bounds.width * 0.12)) / Math.max(24, radical.bounds.width * 0.5), 0, 1)
+      const rightPenalty = clamp(1 - Math.max(bounds.left - (radical.bounds.right + radical.bounds.width * 0.2), 0) / Math.max(28, radical.bounds.width * 0.3), 0, 1)
+      const score = horizontalOverlap * 0.36 + verticalOverlap * 0.24 + leftProgress * 0.18 + rightPenalty * 0.22
+      return { subexpression, bounds, score }
+    })
+    .filter(({ score }) => score >= 0.42)
+    .sort((left, right) => right.score - left.score || left.bounds.left - right.bounds.left)
+}
+
+const getRadicalIndexCandidates = (
+  radical: StrokeGroup,
+  subexpressions: LocalSubexpression[],
+  groupMap: Map<string, StrokeGroup>,
+  excludedRootIds: Set<string>,
+) => {
+  const targetX = radical.bounds.left - Math.max(18, radical.bounds.width * 0.34)
+  const targetY = radical.bounds.top - Math.max(10, radical.bounds.height * 0.18)
+
+  return subexpressions
+    .filter((subexpression) => subexpression.rootGroupId !== radical.id && !excludedRootIds.has(subexpression.rootGroupId))
+    .map((subexpression) => ({ subexpression, bounds: getSubexpressionBounds(subexpression, groupMap) }))
+    .filter(({ bounds }) => bounds.right <= radical.bounds.left + radical.bounds.width * 0.14 && bounds.bottom <= radical.bounds.top + radical.bounds.height * 0.12)
+    .map(({ subexpression, bounds }) => {
+      const horizontalCloseness = clamp(1 - Math.abs(bounds.centerX - targetX) / Math.max(22, radical.bounds.width * 0.42), 0, 1)
+      const verticalCloseness = clamp(1 - Math.abs(bounds.centerY - targetY) / Math.max(20, radical.bounds.height * 0.34), 0, 1)
+      const sizeScore = clamp(1 - Math.max((bounds.right - bounds.left) - radical.bounds.width * 0.42, 0) / Math.max(18, radical.bounds.width * 0.24), 0, 1)
+      const score = horizontalCloseness * 0.42 + verticalCloseness * 0.4 + sizeScore * 0.18
+      return { subexpression, bounds, score }
+    })
+    .filter(({ score }) => score >= 0.44)
+    .sort((left, right) => right.score - left.score || left.bounds.left - right.bounds.left)
+}
+
+const scoreRadicalContext = (
+  radical: StrokeGroup,
+  subexpressions: LocalSubexpression[],
+  groupMap: Map<string, StrokeGroup>,
+) => {
+  const radicandCandidates = getRadicalInteriorCandidates(radical, subexpressions, groupMap)
+  const indexCandidates = getRadicalIndexCandidates(radical, subexpressions, groupMap, new Set(radicandCandidates.map((candidate) => candidate.subexpression.rootGroupId)))
+  const radicandRoots = getOrderedRootIds(radicandCandidates.map((candidate) => candidate.subexpression.rootGroupId), groupMap)
+  const indexRoots = getOrderedRootIds(indexCandidates.map((candidate) => candidate.subexpression.rootGroupId), groupMap)
+
+  return {
+    radicandRoots,
+    indexRoots,
+    radicandScore: radicandCandidates[0]?.score || 0,
+    indexScore: indexCandidates[0]?.score || 0,
+    preferredRadicandRootId: radicandCandidates[0]?.subexpression.rootGroupId || null,
+    preferredIndexRootId: indexCandidates[0]?.subexpression.rootGroupId || null,
+  }
+}
+
 const isEnclosureBoundaryCandidate = (group: StrokeGroup) => {
   const tallEnough = group.bounds.height >= 56
   const narrowEnough = group.bounds.width <= Math.max(34, group.bounds.height * 0.68)
@@ -1061,6 +1145,7 @@ const buildExpressionContexts = (
   subexpressions: LocalSubexpression[],
   enclosures: EnclosureStructure[],
   fractionBindings: FractionStructureBinding[],
+  radicalBindings: RadicalStructureBinding[],
   edges: LayoutEdge[],
   topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
 ) => {
@@ -1073,7 +1158,7 @@ const buildExpressionContexts = (
     kind: 'root',
     parentContextId: null,
     semanticRootGroupId: null,
-    anchorGroupIds: uniqueIds(roles.filter((role) => role.role === 'baseline' && role.containerGroupIds.length === 0).map((role) => role.groupId)),
+    anchorGroupIds: uniqueIds(roles.filter((role) => (role.role === 'baseline' || role.role === 'radical') && role.containerGroupIds.length === 0).map((role) => role.groupId)),
     memberGroupIds: groups.filter((group) => (roleMap.get(group.id)?.containerGroupIds.length || 0) === 0).map((group) => group.id),
   })
 
@@ -1109,6 +1194,50 @@ const buildExpressionContexts = (
   }
 
   const enclosureContexts = contexts.filter((context) => context.kind === 'enclosure')
+
+  for (const radicalRole of roles.filter((role) => role.role === 'radical')) {
+    const binding = radicalBindings.find((candidate) => candidate.radicalGroupId === radicalRole.groupId) || null
+    const radicandRootIds = getOrderedRootIds(binding?.radicandRootIds || [], groupMap)
+    const indexRootIds = getOrderedRootIds(binding?.indexRootIds || [], groupMap)
+    const radicandSemanticRootId = radicandRootIds[0] || null
+    const indexSemanticRootId = indexRootIds[0] || null
+    const radicandMembers = expandCompositeMemberGroupIds(radicandRootIds, subexpressions, roleMap, enclosureContexts, groupMap)
+    const indexMembers = expandCompositeMemberGroupIds(indexRootIds, subexpressions, roleMap, enclosureContexts, groupMap)
+    const parentContextId = radicalRole.containerGroupIds.length
+      ? `context:enclosure:${radicalRole.containerGroupIds.join(':')}`
+      : 'context:root'
+
+    contexts.push({
+      id: `context:radical:${radicalRole.groupId}`,
+      kind: 'radical',
+      parentContextId,
+      semanticRootGroupId: radicalRole.groupId,
+      anchorGroupIds: uniqueIds([radicalRole.groupId, ...(radicandSemanticRootId ? [radicandSemanticRootId] : []), ...(indexSemanticRootId ? [indexSemanticRootId] : [])]),
+      memberGroupIds: uniqueIds([radicalRole.groupId, ...radicandMembers, ...indexMembers]),
+    })
+
+    if (radicandSemanticRootId && radicandMembers.length) {
+      contexts.push({
+        id: `context:radicand:${radicandSemanticRootId}`,
+        kind: 'radicand',
+        parentContextId: `context:radical:${radicalRole.groupId}`,
+        semanticRootGroupId: radicandSemanticRootId,
+        anchorGroupIds: uniqueIds([radicalRole.groupId, radicandSemanticRootId]),
+        memberGroupIds: radicandMembers,
+      })
+    }
+
+    if (indexSemanticRootId && indexMembers.length) {
+      contexts.push({
+        id: `context:radicalIndex:${indexSemanticRootId}`,
+        kind: 'radicalIndex',
+        parentContextId: `context:radical:${radicalRole.groupId}`,
+        semanticRootGroupId: indexSemanticRootId,
+        anchorGroupIds: uniqueIds([radicalRole.groupId, indexSemanticRootId]),
+        memberGroupIds: indexMembers,
+      })
+    }
+  }
 
   for (const fractionBarRole of roles.filter((role) => role.role === 'fractionBar' || role.role === 'provisionalFractionBar')) {
     const binding = fractionBindings.find((candidate) => candidate.barGroupId === fractionBarRole.groupId) || null
@@ -1164,7 +1293,13 @@ const annotateRolesWithContexts = (roles: StructuralRole[], contexts: Expression
   const enclosureContexts = contexts.filter((context) => context.kind === 'enclosure')
   const sequenceContexts = contexts.filter((context) => context.kind === 'sequence')
   const fractionContexts = contexts.filter((context) => context.kind === 'fraction')
-  const fractionMemberContexts = contexts.filter((context) => context.kind === 'numerator' || context.kind === 'denominator')
+  const radicalContexts = contexts.filter((context) => context.kind === 'radical')
+  const fractionMemberContexts = contexts.filter((context) => (
+    context.kind === 'numerator'
+    || context.kind === 'denominator'
+    || context.kind === 'radicand'
+    || context.kind === 'radicalIndex'
+  ))
 
   return roles.map((role) => {
     if ((role.role !== 'superscript' && role.role !== 'subscript') || !role.parentGroupId) {
@@ -1206,6 +1341,9 @@ const annotateRolesWithContexts = (roles: StructuralRole[], contexts: Expression
       : (parentRole?.parentGroupId
         ? fractionContexts.find((context) => context.semanticRootGroupId === parentRole.parentGroupId && context.memberGroupIds.includes(parentRole.groupId)) || null
         : null)
+    const radicalContext = parentRole?.role === 'radical'
+      ? radicalContexts.find((context) => context.semanticRootGroupId === parentRole.groupId) || null
+      : null
     const fractionWideOutsideMember = Boolean(sharedFractionMemberContext) && isFractionWideOutsideHostedMember(role.groupId, role.parentGroupId, contexts, groupMap)
 
     if (!enclosureContext && fractionContext && (!sharedFractionMemberContext || fractionWideOutsideMember)) {
@@ -1236,7 +1374,7 @@ const annotateRolesWithContexts = (roles: StructuralRole[], contexts: Expression
       const hostedContext = sharedFractionMemberContext || getHostedContextForRole(role, contexts)
       return {
         ...role,
-        associationContextId: role.associationContextId || sharedFractionMemberContext?.id || (role.containerGroupIds.length ? `context:enclosure:${role.containerGroupIds.join(':')}` : 'context:root'),
+        associationContextId: role.associationContextId || sharedFractionMemberContext?.id || radicalContext?.id || (role.containerGroupIds.length ? `context:enclosure:${role.containerGroupIds.join(':')}` : 'context:root'),
         hostedContextId: hostedContext?.id || null,
         hostedContextKind: hostedContext?.kind || null,
         normalizationAnchorGroupIds: role.normalizationAnchorGroupIds.length ? role.normalizationAnchorGroupIds : [role.parentGroupId],
@@ -1472,14 +1610,25 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
     }
     return isEnclosureBoundaryCandidate(group)
   })
+  const radicalGroups = groups.filter((group) => {
+    const radicalScore = brickHypotheses.find((hypothesis) => (
+      hypothesis.groupId === group.id && hypothesis.family === 'radicalBrick'
+    ))?.score || 0
+    const operatorScore = brickHypotheses.find((hypothesis) => (
+      hypothesis.groupId === group.id && hypothesis.family === 'operatorBrick'
+    ))?.score || 0
+    return radicalScore >= Math.max(0.72, operatorScore + 0.08)
+  })
   const enclosureBoundaryIds = new Set(enclosureBoundaryCandidateGroups.map((group) => group.id))
-  const blockedAttachmentIds = new Set<string>([...fractionBarIds, ...enclosureBoundaryIds])
+  const radicalIds = new Set(radicalGroups.map((group) => group.id))
+  const blockedAttachmentIds = new Set<string>([...fractionBarIds, ...enclosureBoundaryIds, ...radicalIds])
   const stableAttachments = collectStableAttachments(groups, edges, blockedAttachmentIds, topBrickHypothesisByGroupId)
   const groupMap = new Map(groups.map((group) => [group.id, group]))
   const { subexpressions, rootClaims } = buildLocalSubexpressions(groups, stableAttachments, fractionBarIds)
   const childIds = new Set(stableAttachments.map((attachment) => attachment.childId))
   const enclosures = detectEnclosures(enclosureBoundaryCandidateGroups, subexpressions, groupMap, fractionBarIds)
   const fractionBindings: FractionStructureBinding[] = []
+  const radicalBindings: RadicalStructureBinding[] = []
   const containerIdsByGroupId = new Map<string, string[]>()
   const enclosureByBoundaryId = new Map<string, EnclosureStructure & { memberGroupIds: string[] }>()
 
@@ -1646,6 +1795,28 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
     }
   }
 
+  for (const radicalGroup of radicalGroups) {
+    if (roles.has(radicalGroup.id)) continue
+    const context = scoreRadicalContext(radicalGroup, subexpressions, groupMap)
+    if (!context.radicandRoots.length || context.radicandScore < 0.44) continue
+
+    radicalBindings.push({
+      radicalGroupId: radicalGroup.id,
+      radicandRootIds: prioritizeRootId(context.radicandRoots, context.preferredRadicandRootId, groupMap),
+      indexRootIds: prioritizeRootId(context.indexRoots, context.preferredIndexRootId, groupMap),
+    })
+
+    roles.set(radicalGroup.id, makeRole(radicalGroup.id, 'radical', Math.max(0.64, context.radicandScore * 0.72 + context.indexScore * 0.12), 0, null, [
+      `family=${getRoleDescriptor('radical').family}`,
+      `operator-kind=${getRoleDescriptor('radical').operatorKind}`,
+      `operand-mode=${getRoleDescriptor('radical').operandReferenceMode}`,
+      `radicand-score=${context.radicandScore.toFixed(2)}`,
+      `index-score=${context.indexScore.toFixed(2)}`,
+      `radicand-roots=${context.radicandRoots.join(',') || 'none'}`,
+      `index-roots=${context.indexRoots.join(',') || 'none'}`,
+    ], containerIdsByGroupId.get(radicalGroup.id) || []))
+  }
+
   for (const subexpression of subexpressions) {
     const rootClaim = rootClaims.get(subexpression.rootGroupId)
     subexpression.rootRole = rootClaim?.role || 'baseline'
@@ -1677,7 +1848,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
     }
   }
 
-  const remaining = groups.filter((group) => !roles.has(group.id) && !fractionBarIds.has(group.id) && !childIds.has(group.id))
+  const remaining = groups.filter((group) => !roles.has(group.id) && !fractionBarIds.has(group.id) && !radicalIds.has(group.id) && !childIds.has(group.id))
   for (const group of remaining) {
     const superCandidates = incomingByKind(edges, group.id, 'superscriptCandidate')
     const subCandidates = incomingByKind(edges, group.id, 'subscriptCandidate')
@@ -1873,9 +2044,14 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
   const { roles: operandSafeRoles, flags: operandFlags } = demoteMissingOperandScripts(resolvedRoles)
   const { roles: admissibleRoles, flags } = resolveStructuralAdmissibility(groups, operandSafeRoles, edges)
   const fractionSemanticRootSafeRoles = ensureFractionSemanticRootsRemainBaseline(admissibleRoles, fractionBindings, groups)
-  const contexts = buildExpressionContexts(groups, fractionSemanticRootSafeRoles, subexpressions, enclosures, fractionBindings, edges, topBrickHypothesisByGroupId)
-  const sequencePromotedRoles = promoteSequenceWideScripts(fractionSemanticRootSafeRoles, contexts, groups, edges, topBrickHypothesisByGroupId)
-  const promotedContexts = buildExpressionContexts(groups, sequencePromotedRoles, subexpressions, enclosures, fractionBindings, edges, topBrickHypothesisByGroupId)
+  const radicalSemanticRootSafeRoles = ensureFractionSemanticRootsRemainBaseline(fractionSemanticRootSafeRoles, radicalBindings.map((binding) => ({
+    barGroupId: binding.radicalGroupId,
+    numeratorRootIds: binding.radicandRootIds,
+    denominatorRootIds: binding.indexRootIds,
+  })), groups)
+  const contexts = buildExpressionContexts(groups, radicalSemanticRootSafeRoles, subexpressions, enclosures, fractionBindings, radicalBindings, edges, topBrickHypothesisByGroupId)
+  const sequencePromotedRoles = promoteSequenceWideScripts(radicalSemanticRootSafeRoles, contexts, groups, edges, topBrickHypothesisByGroupId)
+  const promotedContexts = buildExpressionContexts(groups, sequencePromotedRoles, subexpressions, enclosures, fractionBindings, radicalBindings, edges, topBrickHypothesisByGroupId)
   const annotatedRoles = annotateRolesWithContexts(sequencePromotedRoles, promotedContexts, groups)
   const annotatedRoleMap = new Map(annotatedRoles.map((role) => [role.groupId, role]))
   const contextualizedRoles = annotatedRoles.map((role) => ({

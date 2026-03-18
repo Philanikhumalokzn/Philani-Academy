@@ -129,6 +129,7 @@ export type LegoBrickOccupancy = {
 export type StructuralRoleKind =
   | 'baseline'
   | 'unsupportedSymbol'
+  | 'radical'
   | 'provisionalFractionBar'
   | 'superscript'
   | 'subscript'
@@ -138,7 +139,7 @@ export type StructuralRoleKind =
   | 'enclosureOpen'
   | 'enclosureClose'
 
-export type StructuralRoleFamily = 'expressionRoot' | 'specialSymbol' | 'script' | 'fractionStructure' | 'fractionMember' | 'enclosureStructure'
+export type StructuralRoleFamily = 'expressionRoot' | 'specialSymbol' | 'script' | 'fractionStructure' | 'fractionMember' | 'enclosureStructure' | 'radicalStructure'
 
 export type StructuralRoleZone = 'center' | 'upper' | 'lower'
 
@@ -271,14 +272,16 @@ export type EnclosureStructure = {
 
 export type ExpressionContext = {
   id: string
-  kind: 'root' | 'enclosure' | 'fraction' | 'numerator' | 'denominator' | 'sequence'
+  kind: 'root' | 'enclosure' | 'fraction' | 'numerator' | 'denominator' | 'radical' | 'radicand' | 'radicalIndex' | 'sequence'
   parentContextId?: string | null
   semanticRootGroupId?: string | null
   anchorGroupIds: string[]
   memberGroupIds: string[]
 }
 
-export type ExpressionParseNodeKind = 'group' | 'scriptApplication' | 'enclosureExpression' | 'fractionExpression' | 'sequenceExpression' | 'ambiguityExpression'
+export type ParseAssemblyStrategy = 'topLevelSpatial' | 'occupancyOrdered' | 'semanticFallback'
+
+export type ExpressionParseNodeKind = 'group' | 'scriptApplication' | 'enclosureExpression' | 'fractionExpression' | 'radicalExpression' | 'sequenceExpression' | 'ambiguityExpression'
 
 export type ExpressionParseAlternative = {
   nodeId: string
@@ -298,6 +301,7 @@ export type ExpressionParseNode = {
   contextId: string
   groupIds: string[]
   childNodeIds: string[]
+  childOrderingStrategy?: ParseAssemblyStrategy
   operatorGroupId?: string | null
   role?: StructuralRoleKind
   ambiguityReason?: StructuralAmbiguity['reason']
@@ -310,6 +314,7 @@ export type ContextParseRoot = {
   contextId: string
   nodeIds: string[]
   rootNodeId?: string | null
+  assemblyStrategy?: ParseAssemblyStrategy
 }
 
 export type NormalizedGroup = {

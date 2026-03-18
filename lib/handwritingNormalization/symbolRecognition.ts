@@ -229,6 +229,9 @@ export const formatQualifiedRoleLabel = (role: StructuralRole, symbol: Recognize
   if (role.hostedContextKind === 'numerator' || role.hostedContextKind === 'denominator') {
     return `${baseLabel} @ ${role.hostedContextKind}`
   }
+  if (role.hostedContextKind === 'radicand' || role.hostedContextKind === 'radicalIndex') {
+    return `${baseLabel} @ ${role.hostedContextKind}`
+  }
   if (role.hostedContextKind === 'enclosure') {
     return `${baseLabel} @ enclosure`
   }

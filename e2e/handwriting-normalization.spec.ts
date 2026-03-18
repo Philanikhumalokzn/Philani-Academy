@@ -114,6 +114,33 @@ test.describe('handwriting normalization fixtures', () => {
     expect(analysis.parseNodes.some((node) => node.kind === 'fractionExpression')).toBe(true)
   })
 
+  test('radical fixture recognizes hosted radicand and optional index structure', async () => {
+    const fixture = getHandwritingFixture('radicalWithIndex')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const radicalRole = analysis.roles.find((role) => role.role === 'radical')
+    const radicandContext = getContextByKind(analysis, 'radicand')
+    const indexContext = getContextByKind(analysis, 'radicalIndex')
+    const radicandRoot = getSemanticRootRole(analysis, radicandContext)
+    const indexRoot = getSemanticRootRole(analysis, indexContext)
+    const radicalBrick = radicalRole ? getTopBrickHypothesis(analysis, radicalRole.groupId) : null
+    const radicandOccupancy = radicandRoot ? getBrickOccupancy(analysis, radicandRoot.groupId, 'interior') : null
+    const indexOccupancy = indexRoot ? getBrickOccupancy(analysis, indexRoot.groupId, 'upperLeftScript') : null
+    const radicalNode = analysis.parseNodes.find((node) => node.kind === 'radicalExpression')
+
+    expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+    expect(radicalRole).toBeTruthy()
+    expect(radicalBrick?.family).toBe('radicalBrick')
+    expect(radicandContext).toBeTruthy()
+    expect(indexContext).toBeTruthy()
+    expect(radicandRoot?.associationContextId).toBe(radicandContext?.id)
+    expect(indexRoot?.associationContextId).toBe(indexContext?.id)
+    expect(radicandRoot?.qualifiedRoleLabel).toContain('@ radicand')
+    expect(indexRoot?.qualifiedRoleLabel).toContain('@ radicalIndex')
+    expect(radicandOccupancy?.hostGroupId).toBe(radicalRole?.groupId)
+    expect(indexOccupancy?.hostGroupId).toBe(radicalRole?.groupId)
+    expect(radicalNode?.childNodeIds).toHaveLength(2)
+  })
+
   test('lego brick hypotheses classify canonical structural families', async () => {
     const fractionFixture = getHandwritingFixture('fraction')
     const fractionAnalysis = analyzeHandwrittenExpression(fractionFixture.strokes)
@@ -1061,6 +1088,120 @@ test.describe('handwriting normalization fixtures', () => {
 
     expect(numeratorSequenceNode?.childNodeIds).toEqual(['parse:group:a', 'parse:group:c', 'parse:group:b'])
     expect(fractionNode?.childNodeIds[0]).toBe(numeratorSequenceNode?.id)
+  })
+
+  test('radical expression consumes hosted index and radicand roots', async () => {
+    const groups = [
+      makeGroup('index', { left: 88, top: 152, right: 120, bottom: 188, width: 32, height: 36, centerX: 104, centerY: 170 }),
+      makeGroup('radical', { left: 120, top: 160, right: 244, bottom: 252, width: 124, height: 92, centerX: 182, centerY: 206 }),
+      makeGroup('radicand-a', { left: 210, top: 214, right: 242, bottom: 258, width: 32, height: 44, centerX: 226, centerY: 236 }),
+      makeGroup('radicand-b', { left: 256, top: 214, right: 288, bottom: 258, width: 32, height: 44, centerX: 272, centerY: 236 }),
+    ]
+    const roles: StructuralRole[] = [
+      {
+        groupId: 'index',
+        role: 'baseline',
+        descriptor: getRoleDescriptor('baseline'),
+        score: 0.72,
+        depth: 0,
+        parentGroupId: null,
+        associationContextId: 'context:radicalIndex:index',
+        hostedContextKind: 'radicalIndex',
+        hostedContextId: 'context:radicalIndex:index',
+        normalizationAnchorGroupIds: ['index'],
+        containerGroupIds: [],
+        evidence: [],
+      },
+      {
+        groupId: 'radical',
+        role: 'radical',
+        descriptor: getRoleDescriptor('radical'),
+        score: 0.84,
+        depth: 0,
+        parentGroupId: null,
+        associationContextId: 'context:root',
+        normalizationAnchorGroupIds: ['radical'],
+        containerGroupIds: [],
+        evidence: [],
+      },
+      {
+        groupId: 'radicand-a',
+        role: 'baseline',
+        descriptor: getRoleDescriptor('baseline'),
+        score: 0.72,
+        depth: 0,
+        parentGroupId: null,
+        associationContextId: 'context:radicand:radicand-a',
+        hostedContextKind: 'radicand',
+        hostedContextId: 'context:radicand:radicand-a',
+        normalizationAnchorGroupIds: ['radicand-a'],
+        containerGroupIds: [],
+        evidence: [],
+      },
+      {
+        groupId: 'radicand-b',
+        role: 'baseline',
+        descriptor: getRoleDescriptor('baseline'),
+        score: 0.72,
+        depth: 0,
+        parentGroupId: null,
+        associationContextId: 'context:radicand:radicand-a',
+        hostedContextKind: 'radicand',
+        hostedContextId: 'context:radicand:radicand-a',
+        normalizationAnchorGroupIds: ['radicand-b'],
+        containerGroupIds: [],
+        evidence: [],
+      },
+    ]
+    const contexts: ExpressionContext[] = [
+      {
+        id: 'context:root',
+        kind: 'root',
+        parentContextId: null,
+        semanticRootGroupId: 'radical',
+        anchorGroupIds: ['radical'],
+        memberGroupIds: ['radical'],
+      },
+      {
+        id: 'context:radical:radical',
+        kind: 'radical',
+        parentContextId: 'context:root',
+        semanticRootGroupId: 'radical',
+        anchorGroupIds: ['radical', 'index', 'radicand-a'],
+        memberGroupIds: ['index', 'radical', 'radicand-a', 'radicand-b'],
+      },
+      {
+        id: 'context:radicalIndex:index',
+        kind: 'radicalIndex',
+        parentContextId: 'context:radical:radical',
+        semanticRootGroupId: 'index',
+        anchorGroupIds: ['radical', 'index'],
+        memberGroupIds: ['index'],
+      },
+      {
+        id: 'context:radicand:radicand-a',
+        kind: 'radicand',
+        parentContextId: 'context:radical:radical',
+        semanticRootGroupId: 'radicand-a',
+        anchorGroupIds: ['radical', 'radicand-a'],
+        memberGroupIds: ['radicand-a', 'radicand-b'],
+      },
+    ]
+    const occupancies: LegoBrickOccupancy[] = [
+      { groupId: 'index', family: 'ordinaryBaselineSymbolBrick', field: 'upperLeftScript', score: 0.74, hostGroupId: 'radical', hostContextId: 'context:radicalIndex:index', evidence: [] },
+      { groupId: 'radical', family: 'radicalBrick', field: 'center', score: 0.84, hostGroupId: null, hostContextId: 'context:root', evidence: [] },
+      { groupId: 'radicand-a', family: 'ordinaryBaselineSymbolBrick', field: 'interior', score: 0.78, hostGroupId: 'radical', hostContextId: 'context:radicand:radicand-a', evidence: [] },
+      { groupId: 'radicand-b', family: 'ordinaryBaselineSymbolBrick', field: 'rightInline', score: 0.78, hostGroupId: 'radicand-a', hostContextId: 'context:radicand:radicand-a', evidence: [] },
+    ]
+
+    const { parseNodes, parseRoots } = buildExpressionParseForest(groups, roles, contexts, [], [], occupancies)
+    const radicandParseRoot = parseRoots.find((root) => root.contextId === 'context:radicand:radicand-a')
+    const radicandSequenceNode = parseNodes.find((node) => node.id === radicandParseRoot?.rootNodeId)
+    const radicalNode = parseNodes.find((node) => node.id === 'parse:radical:radical')
+
+    expect(radicandSequenceNode?.childNodeIds).toEqual(['parse:group:radicand-a', 'parse:group:radicand-b'])
+    expect(radicandParseRoot?.assemblyStrategy).toBe('occupancyOrdered')
+    expect(radicalNode?.childNodeIds).toEqual(['parse:sequence:context:radicalIndex:index', 'parse:sequence:context:radicand:radicand-a'])
   })
 
   test('stacked same-parent subscripts are reduced to one local script row', async () => {

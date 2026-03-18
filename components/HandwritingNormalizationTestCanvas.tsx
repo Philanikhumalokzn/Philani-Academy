@@ -114,9 +114,9 @@ export default function HandwritingNormalizationTestCanvas() {
       const alternatives = node.alternatives?.length
         ? ` alternatives=[${node.alternatives.map((alternative) => `#${alternative.rank}:${alternative.role}/${alternative.nodeKind}@${alternative.nodeId} ctx=${alternative.contextId || 'none'} parent=${alternative.parentGroupId || 'none'} score=${alternative.score.toFixed(2)} ${alternative.relation}`).join(' | ')}]`
         : ''
-      return `${node.id}: ${node.kind} ctx=${node.contextId}${node.role ? ` role=${node.role}` : ''}${node.operatorGroupId ? ` op=${node.operatorGroupId}` : ''}${node.ambiguityReason ? ` ambiguity=${node.ambiguityReason}` : ''}${node.preferredChildNodeId ? ` preferred=${node.preferredChildNodeId}` : ''} groups=[${node.groupIds.join(', ')}] children=[${node.childNodeIds.join(', ')}]${alternatives}`
+      return `${node.id}: ${node.kind} ctx=${node.contextId}${node.role ? ` role=${node.role}` : ''}${node.operatorGroupId ? ` op=${node.operatorGroupId}` : ''}${node.childOrderingStrategy ? ` assembly=${node.childOrderingStrategy}` : ''}${node.ambiguityReason ? ` ambiguity=${node.ambiguityReason}` : ''}${node.preferredChildNodeId ? ` preferred=${node.preferredChildNodeId}` : ''} groups=[${node.groupIds.join(', ')}] children=[${node.childNodeIds.join(', ')}]${alternatives}`
     })
-    const parseRoots = analysis.parseRoots.map((root) => `${root.contextId}: root=${root.rootNodeId || 'none'} nodes=[${root.nodeIds.join(', ')}]`)
+    const parseRoots = analysis.parseRoots.map((root) => `${root.contextId}: root=${root.rootNodeId || 'none'} assembly=${root.assemblyStrategy || 'topLevelSpatial'} nodes=[${root.nodeIds.join(', ')}]`)
 
     return [
       {

@@ -151,6 +151,7 @@ const inferFamilyCandidatesForGroup = (group: StrokeGroup) => {
 	const operatorScore = getCrossOperatorScore(group)
 	const radicalScore = getRadicalGlyphScore(group)
 	const compactGlyphScore = getCompactGlyphScore(group)
+	const ordinaryBaselinePenalty = radicalScore >= 0.72 ? clamp((radicalScore - 0.7) / 0.24, 0, 0.34) : 0
 
 	const candidates: Array<{ family: LegoBrickFamilyKind, prototype: LegoBrickPrototypeKind, score: number, evidence: string[] }> = [
 		{
@@ -180,7 +181,7 @@ const inferFamilyCandidatesForGroup = (group: StrokeGroup) => {
 		{
 			family: 'ordinaryBaselineSymbolBrick',
 			prototype: compactGlyphScore >= operatorScore ? 'compactGlyph' : 'operatorCross',
-			score: Math.max(0.34, compactGlyphScore),
+			score: Math.max(0.34, compactGlyphScore - ordinaryBaselinePenalty),
 			evidence: [`compact-glyph-score=${compactGlyphScore.toFixed(2)}`, 'ordinary baseline symbol brick is the default local body family'],
 		},
 		{
@@ -276,6 +277,18 @@ export const inferLegoBrickOccupancies = (
 			}
 		}
 
+		if (role.role === 'radical') {
+			return {
+				groupId: role.groupId,
+				family: 'radicalBrick',
+				field: 'center',
+				score: role.score,
+				hostGroupId: null,
+				hostContextId: role.associationContextId || null,
+				evidence: ['exports the LEGO interior hosted field and optional upper-left index field'],
+			}
+		}
+
 		if (role.hostedContextKind === 'numerator' || role.hostedContextKind === 'denominator') {
 			const memberContext = role.hostedContextId ? contextMap.get(role.hostedContextId) || null : null
 			const fractionContext = memberContext?.parentContextId ? contextMap.get(memberContext.parentContextId) || null : null
@@ -299,6 +312,58 @@ export const inferLegoBrickOccupancies = (
 				hostGroupId: fractionContext?.semanticRootGroupId || null,
 				hostContextId: role.hostedContextId || null,
 				evidence: [`occupies the ${role.hostedContextKind === 'numerator' ? 'over' : 'under'} hosted field of a fraction bar brick`],
+			}
+		}
+
+		if (role.hostedContextKind === 'radicand') {
+			const memberContext = role.hostedContextId ? contextMap.get(role.hostedContextId) || null : null
+			const radicalContext = memberContext?.parentContextId ? contextMap.get(memberContext.parentContextId) || null : null
+			const hostedSequenceParentId = bestSequenceParentByGroupId.get(role.groupId) || null
+			if (hostedSequenceParentId && memberContext?.memberGroupIds.includes(hostedSequenceParentId)) {
+				return {
+					groupId: role.groupId,
+					family: topFamily,
+					field: 'rightInline',
+					score: role.score,
+					hostGroupId: hostedSequenceParentId,
+					hostContextId: role.hostedContextId || null,
+					evidence: ['occupies the right-inline field within the radicand hosted region'],
+				}
+			}
+			return {
+				groupId: role.groupId,
+				family: topFamily,
+				field: 'interior',
+				score: role.score,
+				hostGroupId: radicalContext?.semanticRootGroupId || null,
+				hostContextId: role.hostedContextId || null,
+				evidence: ['occupies the interior hosted field of a radical brick'],
+			}
+		}
+
+		if (role.hostedContextKind === 'radicalIndex') {
+			const memberContext = role.hostedContextId ? contextMap.get(role.hostedContextId) || null : null
+			const radicalContext = memberContext?.parentContextId ? contextMap.get(memberContext.parentContextId) || null : null
+			const hostedSequenceParentId = bestSequenceParentByGroupId.get(role.groupId) || null
+			if (hostedSequenceParentId && memberContext?.memberGroupIds.includes(hostedSequenceParentId)) {
+				return {
+					groupId: role.groupId,
+					family: topFamily,
+					field: 'rightInline',
+					score: role.score,
+					hostGroupId: hostedSequenceParentId,
+					hostContextId: role.hostedContextId || null,
+					evidence: ['occupies the right-inline field within the radical index hosted region'],
+				}
+			}
+			return {
+				groupId: role.groupId,
+				family: topFamily,
+				field: 'upperLeftScript',
+				score: role.score,
+				hostGroupId: radicalContext?.semanticRootGroupId || null,
+				hostContextId: role.hostedContextId || null,
+				evidence: ['occupies the upper-left index field of a radical brick'],
 			}
 		}
 

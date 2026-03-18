@@ -1,17 +1,20 @@
 import { getStrokeBounds, mergeBounds, transformStroke } from './geometry'
 import type { ExpressionContext, InkStroke, NormalizationResult, StrokeGroup, StructuralRole } from './types'
 
-const getRoleScale = (role: StructuralRole, inFractionMemberContext: boolean) => {
+const getRoleScale = (role: StructuralRole, inFractionMemberContext: boolean, hostedRadicalContextKind: ExpressionContext['kind'] | null) => {
   if (role.role === 'superscript' || role.role === 'subscript') {
     const baseScale = Math.max(0.42, 0.68 - role.depth * 0.1)
+    if (hostedRadicalContextKind === 'radicalIndex') return Math.max(0.28, baseScale * 0.68)
     return inFractionMemberContext ? Math.max(0.34, baseScale * 0.82) : baseScale
   }
+  if (hostedRadicalContextKind === 'radicalIndex') return 0.62
+  if (hostedRadicalContextKind === 'radicand') return 0.9
   if (inFractionMemberContext) return 0.82
   return 1
 }
 
 const isBaselineLikeRole = (roleName: StructuralRole['role']) => {
-  return roleName === 'baseline' || roleName === 'enclosureOpen' || roleName === 'enclosureClose'
+  return roleName === 'baseline' || roleName === 'radical' || roleName === 'enclosureOpen' || roleName === 'enclosureClose'
 }
 
 const getScriptAnchorBounds = (
@@ -68,14 +71,26 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
   const localTranslationsByGroupId = new Map<string, { dx: number, dy: number }>()
   const contextTranslationsByContextId = new Map<string, { dx: number, dy: number }>()
   const enclosureTransformsByContextId = new Map<string, { scale: number, centerX: number, centerY: number, dx: number, dy: number, memberGroupIds: string[] }>()
+  const radicalContextTranslationsByContextId = new Map<string, { dx: number, dy: number }>()
 
   const fractionMemberContexts = contexts.filter((context) => context.kind === 'numerator' || context.kind === 'denominator')
+  const radicalMemberContexts = contexts.filter((context) => context.kind === 'radicand' || context.kind === 'radicalIndex')
   const enclosureContexts = contexts.filter((context) => context.kind === 'enclosure')
   const fractionMemberContextIdByGroupId = new Map<string, string>()
+  const radicalContextKindByGroupId = new Map<string, ExpressionContext['kind']>()
+  const radicalMemberContextIdByGroupId = new Map<string, string>()
   for (const context of [...fractionMemberContexts].sort((left, right) => left.memberGroupIds.length - right.memberGroupIds.length)) {
     for (const groupId of context.memberGroupIds) {
       if (!fractionMemberContextIdByGroupId.has(groupId)) {
         fractionMemberContextIdByGroupId.set(groupId, context.id)
+      }
+    }
+  }
+  for (const context of [...radicalMemberContexts].sort((left, right) => left.memberGroupIds.length - right.memberGroupIds.length)) {
+    for (const groupId of context.memberGroupIds) {
+      if (!radicalMemberContextIdByGroupId.has(groupId)) {
+        radicalMemberContextIdByGroupId.set(groupId, context.id)
+        radicalContextKindByGroupId.set(groupId, context.kind)
       }
     }
   }
@@ -102,8 +117,9 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     const role = roleMap.get(group.id)
     if (!role) continue
     const fractionMemberContextId = fractionMemberContextIdByGroupId.get(group.id) || null
+    const hostedRadicalContextKind = radicalContextKindByGroupId.get(group.id) || null
     const inFractionMemberContext = Boolean(fractionMemberContextId)
-    const scale = getRoleScale(role, inFractionMemberContext)
+    const scale = getRoleScale(role, inFractionMemberContext, hostedRadicalContextKind)
     scalesByGroupId.set(group.id, scale)
     const anchor = { x: group.bounds.centerX, y: group.bounds.centerY }
     const scaledStrokes = group.strokes.map((stroke) => transformStroke(stroke, scale, anchor, 0, 0))
@@ -160,6 +176,35 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
       : parentBounds.bottom + Math.max(18, aggregateBounds.height * 0.25) - aggregateBounds.top
 
     contextTranslationsByContextId.set(context.id, { dx, dy })
+
+    for (const groupId of context.memberGroupIds) {
+      const memberBounds = transformedBounds.get(groupId)
+      if (!memberBounds) continue
+      transformedBounds.set(groupId, getTranslatedBounds(memberBounds, dx, dy))
+    }
+  }
+
+  for (const context of radicalMemberContexts) {
+    const radicalContext = context.parentContextId ? contextMap.get(context.parentContextId) || null : null
+    const radicalGroupId = radicalContext?.kind === 'radical' ? radicalContext.semanticRootGroupId || null : null
+    if (!radicalGroupId) continue
+    const parentBounds = transformedBounds.get(radicalGroupId) || groupMap.get(radicalGroupId)?.bounds
+    if (!parentBounds) continue
+
+    const memberBounds = context.memberGroupIds
+      .map((groupId) => transformedBounds.get(groupId))
+      .filter(Boolean) as Array<ReturnType<typeof mergeBounds>>
+    if (!memberBounds.length) continue
+
+    const aggregateBounds = mergeBounds(memberBounds)
+    const dx = context.kind === 'radicand'
+      ? parentBounds.left + Math.max(18, parentBounds.width * 0.24) - aggregateBounds.left
+      : parentBounds.left - Math.max(10, parentBounds.width * 0.14) - aggregateBounds.right
+    const dy = context.kind === 'radicand'
+      ? parentBounds.top + Math.max(6, parentBounds.height * 0.12) - aggregateBounds.top
+      : parentBounds.top - Math.max(10, parentBounds.height * 0.12) - aggregateBounds.bottom
+
+    radicalContextTranslationsByContextId.set(context.id, { dx, dy })
 
     for (const groupId of context.memberGroupIds) {
       const memberBounds = transformedBounds.get(groupId)
@@ -228,12 +273,14 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     if (!role || !scaledStrokes || !scaledBounds || !localTranslation || typeof scale !== 'number') continue
     const fractionMemberContextId = fractionMemberContextIdByGroupId.get(group.id) || null
     const contextTranslation = fractionMemberContextId ? contextTranslationsByContextId.get(fractionMemberContextId) || { dx: 0, dy: 0 } : { dx: 0, dy: 0 }
+    const radicalMemberContextId = radicalMemberContextIdByGroupId.get(group.id) || null
+    const radicalTranslation = radicalMemberContextId ? radicalContextTranslationsByContextId.get(radicalMemberContextId) || { dx: 0, dy: 0 } : { dx: 0, dy: 0 }
     let finalStrokes = scaledStrokes.map((stroke) => ({
       ...stroke,
       points: stroke.points.map((point) => ({
         ...point,
-        x: point.x + localTranslation.dx + contextTranslation.dx,
-        y: point.y + localTranslation.dy + contextTranslation.dy,
+        x: point.x + localTranslation.dx + contextTranslation.dx + radicalTranslation.dx,
+        y: point.y + localTranslation.dy + contextTranslation.dy + radicalTranslation.dy,
       })),
     }))
 

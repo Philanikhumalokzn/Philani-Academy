@@ -8,14 +8,18 @@ const getContextPriority = (context: ExpressionContext) => {
       return 0
     case 'numerator':
     case 'denominator':
+    case 'radicand':
+    case 'radicalIndex':
       return 1
     case 'sequence':
       return 2
-    case 'fraction':
+    case 'radical':
       return 3
+    case 'fraction':
+      return 4
     case 'root':
     default:
-      return 4
+      return 5
   }
 }
 
@@ -42,8 +46,10 @@ export const buildExpressionParseForest = (
   const sequenceRootNodeIdByContextId = new Map<string, string>()
   const enclosureNodeIdByContextId = new Map<string, string>()
   const fractionNodeIdByExpressionContextId = new Map<string, string>()
+  const radicalNodeIdByExpressionContextId = new Map<string, string>()
   const enclosureNodeMetaById = new Map<string, { expressionContextId: string }>()
   const fractionNodeMetaById = new Map<string, { expressionContextId?: string | null, numeratorContextId?: string | null, denominatorContextId?: string | null, numeratorGroupId?: string | null, denominatorGroupId?: string | null }>()
+  const radicalNodeMetaById = new Map<string, { expressionContextId?: string | null, radicandContextId?: string | null, indexContextId?: string | null, radicandGroupId?: string | null, indexGroupId?: string | null }>()
   const ambiguityNodeIdByPreferredChildNodeId = new Map<string, string>()
   const occupancyByGroupId = new Map(brickOccupancies.map((occupancy) => [occupancy.groupId, occupancy]))
   const parseScopedAmbiguities = ambiguities.filter((ambiguity) => (
@@ -60,10 +66,10 @@ export const buildExpressionParseForest = (
     return getContainerContextId(contexts, role.containerGroupIds)
   }
 
-  const getSharedFractionMemberContextId = (groupId: string, parentGroupId?: string | null) => {
+  const getSharedHostedMemberContextId = (groupId: string, parentGroupId?: string | null) => {
     if (!parentGroupId) return null
     return contexts.find((context) => (
-      (context.kind === 'numerator' || context.kind === 'denominator')
+      (context.kind === 'numerator' || context.kind === 'denominator' || context.kind === 'radicand' || context.kind === 'radicalIndex')
       && context.memberGroupIds.includes(groupId)
       && context.memberGroupIds.includes(parentGroupId)
     ))?.id || null
@@ -130,14 +136,18 @@ export const buildExpressionParseForest = (
       const enclosureContextId = parentOnlyContainers.length
         ? contexts.find((context) => context.kind === 'enclosure' && parentOnlyContainers.every((groupId) => context.anchorGroupIds.includes(groupId)))?.id || null
         : null
-      const sharedFractionMemberContextId = getSharedFractionMemberContextId(ambiguity.groupId, candidate.parentGroupId)
+      const sharedFractionMemberContextId = getSharedHostedMemberContextId(ambiguity.groupId, candidate.parentGroupId)
       const fractionContextId = parentRole?.parentGroupId && contextMap.has(`context:fraction:${parentRole.parentGroupId}`)
         ? `context:fraction:${parentRole.parentGroupId}`
+        : null
+      const radicalContextId = parentRole?.role === 'radical' && contextMap.has(`context:radical:${parentRole.groupId}`)
+        ? `context:radical:${parentRole.groupId}`
         : null
       const associationContextId = candidate.associationContextId
         || enclosureContextId
         || sharedFractionMemberContextId
         || fractionContextId
+        || radicalContextId
         || getDefaultInlineContextId(ambiguity.groupId, candidateContainerGroupIds)
       const normalizationAnchorGroupIds = candidate.normalizationAnchorGroupIds || uniqueIds([
         ...(candidate.parentGroupId ? [candidate.parentGroupId] : []),
@@ -268,8 +278,14 @@ export const buildExpressionParseForest = (
     if (scriptRole.associationContextId && fractionNodeIdByExpressionContextId.has(scriptRole.associationContextId)) {
       return fractionNodeIdByExpressionContextId.get(scriptRole.associationContextId) || null
     }
+    if (scriptRole.associationContextId && radicalNodeIdByExpressionContextId.has(scriptRole.associationContextId)) {
+      return radicalNodeIdByExpressionContextId.get(scriptRole.associationContextId) || null
+    }
     const parentGroupId = fallbackParentGroupId || scriptRole.parentGroupId
     if (!parentGroupId) return null
+    if (radicalNodeIdByExpressionContextId.has(`context:radical:${parentGroupId}`)) {
+      return radicalNodeIdByExpressionContextId.get(`context:radical:${parentGroupId}`) || null
+    }
     const parentEnclosure = enclosures.find((enclosure) => enclosure.openGroupId === parentGroupId || enclosure.closeGroupId === parentGroupId) || null
     if (parentEnclosure) {
       const parentEnclosureContextId = `context:enclosure:${parentEnclosure.openGroupId}:${parentEnclosure.closeGroupId}`
@@ -339,6 +355,10 @@ export const buildExpressionParseForest = (
       return fractionNodeIdByExpressionContextId.get(context.id) || null
     }
 
+    if (context.kind === 'radical' && radicalNodeIdByExpressionContextId.has(context.id)) {
+      return radicalNodeIdByExpressionContextId.get(context.id) || null
+    }
+
     const semanticRole = roleMap.get(context.semanticRootGroupId) || null
     const semanticEnclosureContextId = semanticRole?.containerGroupIds.length
       ? `context:enclosure:${semanticRole.containerGroupIds.join(':')}`
@@ -351,7 +371,16 @@ export const buildExpressionParseForest = (
   }
 
   const getOccupancyOrderedNodeIdsForContext = (context: ExpressionContext, candidateNodeIds: string[]) => {
-    if (context.kind === 'fraction') return []
+    if (
+      context.kind !== 'sequence'
+      && context.kind !== 'numerator'
+      && context.kind !== 'denominator'
+      && context.kind !== 'enclosure'
+      && context.kind !== 'radicand'
+      && context.kind !== 'radicalIndex'
+    ) {
+      return []
+    }
 
     const memberGroupIds = new Set(context.memberGroupIds)
     const candidateGroupIds = uniqueIds(candidateNodeIds.flatMap((nodeId) => (nodeMap.get(nodeId)?.groupIds || []).filter((groupId) => memberGroupIds.has(groupId))))
@@ -454,6 +483,40 @@ export const buildExpressionParseForest = (
     })
   }
 
+  const radicalRoles = roles.filter((role) => role.role === 'radical')
+  for (const radicalRole of radicalRoles) {
+    const expressionContextId = contextMap.has(`context:radical:${radicalRole.groupId}`) ? `context:radical:${radicalRole.groupId}` : null
+    const radicandContext = expressionContextId
+      ? contexts.find((context) => context.kind === 'radicand' && context.parentContextId === expressionContextId) || null
+      : null
+    const indexContext = expressionContextId
+      ? contexts.find((context) => context.kind === 'radicalIndex' && context.parentContextId === expressionContextId) || null
+      : null
+    const childNodeIds = [indexContext?.semanticRootGroupId, radicandContext?.semanticRootGroupId]
+      .filter(Boolean)
+      .map((groupId) => getOrCreateGroupNode(groupId as string))
+    const node = addNode({
+      id: `parse:radical:${radicalRole.groupId}`,
+      kind: 'radicalExpression',
+      contextId: radicalRole.associationContextId || 'context:root',
+      groupIds: uniqueIds([radicalRole.groupId, ...(indexContext?.semanticRootGroupId ? [indexContext.semanticRootGroupId] : []), ...(radicandContext?.semanticRootGroupId ? [radicandContext.semanticRootGroupId] : [])]),
+      childNodeIds,
+      operatorGroupId: radicalRole.groupId,
+      role: radicalRole.role,
+      label: `radical:${radicalRole.groupId}`,
+    })
+    if (expressionContextId) {
+      radicalNodeIdByExpressionContextId.set(expressionContextId, node.id)
+    }
+    radicalNodeMetaById.set(node.id, {
+      expressionContextId,
+      radicandContextId: radicandContext?.id || null,
+      indexContextId: indexContext?.id || null,
+      radicandGroupId: radicandContext?.semanticRootGroupId || null,
+      indexGroupId: indexContext?.semanticRootGroupId || null,
+    })
+  }
+
   const scriptRoles = roles.filter((role) => role.role === 'superscript' || role.role === 'subscript')
   for (const scriptRole of scriptRoles) {
     if (parseScopedAmbiguityGroupIds.has(scriptRole.groupId)) continue
@@ -498,7 +561,7 @@ export const buildExpressionParseForest = (
   }
 
   for (const role of roles) {
-    if (role.role === 'fractionBar' || role.role === 'enclosureOpen' || role.role === 'enclosureClose' || role.role === 'superscript' || role.role === 'subscript') continue
+    if (role.role === 'fractionBar' || role.role === 'radical' || role.role === 'enclosureOpen' || role.role === 'enclosureClose' || role.role === 'superscript' || role.role === 'subscript') continue
     getOrCreateGroupNode(role.groupId)
   }
 
@@ -526,6 +589,8 @@ export const buildExpressionParseForest = (
       topLevelNodeIds.splice(0, topLevelNodeIds.length, ...occupancyOrderedNodeIds)
     }
 
+    let assemblyStrategy: ContextParseRoot['assemblyStrategy'] = occupancyOrderedNodeIds.length ? 'occupancyOrdered' : 'topLevelSpatial'
+
     if (!topLevelNodeIds.length) {
       const semanticRootNodeId = getContextSemanticRootNodeId(context)
       if (!semanticRootNodeId) {
@@ -533,9 +598,11 @@ export const buildExpressionParseForest = (
           contextId: context.id,
           nodeIds: contextNodeIds,
           rootNodeId: null,
+          assemblyStrategy,
         }
       }
       topLevelNodeIds.push(ambiguityNodeIdByPreferredChildNodeId.get(semanticRootNodeId) || semanticRootNodeId)
+      assemblyStrategy = 'semanticFallback'
     }
 
     const rootNode = addNode({
@@ -544,6 +611,7 @@ export const buildExpressionParseForest = (
       contextId: context.id,
       groupIds: uniqueIds(topLevelNodeIds.flatMap((nodeId) => nodes.find((entry) => entry.id === nodeId)?.groupIds || [])),
       childNodeIds: replacePreferredChildNodeIds(topLevelNodeIds),
+      childOrderingStrategy: assemblyStrategy,
       label: `sequence:${context.id}`,
     })
     sequenceRootNodeIdByContextId.set(context.id, rootNode.id)
@@ -552,6 +620,7 @@ export const buildExpressionParseForest = (
       contextId: context.id,
       nodeIds: [rootNode.id],
       rootNodeId: rootNode.id,
+      assemblyStrategy,
     }
   })
 
@@ -574,6 +643,20 @@ export const buildExpressionParseForest = (
     const childNodeIds = [
       numeratorRootNodeId || (meta.numeratorGroupId ? getOrCreateGroupNode(meta.numeratorGroupId) : null),
       denominatorRootNodeId || (meta.denominatorGroupId ? getOrCreateGroupNode(meta.denominatorGroupId) : null),
+    ].filter(Boolean) as string[]
+    node.childNodeIds = replacePreferredChildNodeIds(childNodeIds)
+    node.groupIds = uniqueIds([node.operatorGroupId || '', ...childNodeIds.flatMap((childNodeId) => nodeMap.get(childNodeId)?.groupIds || [])])
+    refreshSequenceRootNode(node.contextId)
+  }
+
+  for (const [nodeId, meta] of radicalNodeMetaById.entries()) {
+    const node = nodeMap.get(nodeId)
+    if (!node) continue
+    const radicandRootNodeId = meta.radicandContextId ? sequenceRootNodeIdByContextId.get(meta.radicandContextId) || null : null
+    const indexRootNodeId = meta.indexContextId ? sequenceRootNodeIdByContextId.get(meta.indexContextId) || null : null
+    const childNodeIds = [
+      indexRootNodeId || (meta.indexGroupId ? getOrCreateGroupNode(meta.indexGroupId) : null),
+      radicandRootNodeId || (meta.radicandGroupId ? getOrCreateGroupNode(meta.radicandGroupId) : null),
     ].filter(Boolean) as string[]
     node.childNodeIds = replacePreferredChildNodeIds(childNodeIds)
     node.groupIds = uniqueIds([node.operatorGroupId || '', ...childNodeIds.flatMap((childNodeId) => nodeMap.get(childNodeId)?.groupIds || [])])

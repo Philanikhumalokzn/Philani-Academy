@@ -338,6 +338,19 @@ export type NormalizationResult = {
   groups: NormalizedGroup[]
 }
 
+export type HandwritingRefinementPass = {
+  iteration: number
+  signature: string
+  changed: boolean
+}
+
+export type HandwritingRefinementSummary = {
+  iterations: number
+  converged: boolean
+  maxIterations: number
+  passes: HandwritingRefinementPass[]
+}
+
 export type HandwritingAnalysis = {
   groups: StrokeGroup[]
   edges: LayoutEdge[]
@@ -352,4 +365,5 @@ export type HandwritingAnalysis = {
   parseNodes: ExpressionParseNode[]
   parseRoots: ContextParseRoot[]
   normalization: NormalizationResult
+  refinement?: HandwritingRefinementSummary
 }

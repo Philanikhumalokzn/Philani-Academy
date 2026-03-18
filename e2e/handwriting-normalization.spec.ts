@@ -111,6 +111,20 @@ test.describe('handwriting normalization fixtures', () => {
     }
   })
 
+  test('whole-expression refinement converges to a stable fixed point', async () => {
+    const fixtureNames = ['fractionWithExponent', 'digitTwoSuperscriptSeven', 'radicalLooseRoof', 'compactTSuperscript'] as const
+
+    for (const fixtureName of fixtureNames) {
+      const fixture = getHandwritingFixture(fixtureName)
+      const analysis = analyzeHandwrittenExpression(fixture.strokes)
+      await attachFixtureBrickFamilyDiagnostics(fixture, analysis)
+
+      expect(analysis.refinement?.converged, `${fixture.name} should converge under global refinement`).toBe(true)
+      expect((analysis.refinement?.passes.length || 0), `${fixture.name} should record refinement passes`).toBeGreaterThanOrEqual(2)
+      expect(analysis.refinement?.passes.at(-1)?.changed, `${fixture.name} final refinement pass should be stable`).toBe(false)
+    }
+  })
+
   test('superscript fixture groups the base and exponent separately', async () => {
     const fixture = getHandwritingFixture('superscript')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)

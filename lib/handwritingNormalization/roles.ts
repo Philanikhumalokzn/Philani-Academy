@@ -282,6 +282,10 @@ type FractionSideCandidate = {
   subexpression: LocalSubexpression
   bounds: ReturnType<typeof getSubexpressionBounds>
   alignment: ReturnType<typeof scoreFractionMemberAlignment>
+  fieldFitScore: number
+  occupantBeliefScore: number
+  hostMutualReinforcementScore: number
+  sideConsistencyScore: number
 }
 
 type FractionHypothesis = {
@@ -290,6 +294,10 @@ type FractionHypothesis = {
   score: number
   axisConsistency: number
   memberWidthHarmony: number
+  hostBeliefScore: number
+  occupantMutualScore: number
+  localCoherenceScore: number
+  globalCompatibilityScore: number
 }
 
 type ScoredFractionContext = {
@@ -303,8 +311,13 @@ type ScoredFractionContext = {
   bestHypothesis: FractionHypothesis | null
   provisionalNumeratorScore: number
   provisionalDenominatorScore: number
+  mutualReinforcementScore: number
+  localCoherenceScore: number
+  globalCompatibilityScore: number
+  revisionPressureScore: number
   preferredNumeratorRootId: string | null
   preferredDenominatorRootId: string | null
+  evidence?: string[]
 }
 
 const PROVISIONAL_FRACTION_BAR_MIN_SCORE = 0.42
@@ -805,6 +818,31 @@ const scoreFractionMemberAlignment = (bar: StrokeGroup, memberBounds: ReturnType
   }
 }
 
+const getFractionSideFieldFitScore = (
+  bar: StrokeGroup,
+  memberBounds: ReturnType<typeof getSubexpressionBounds>,
+  side: 'numerator' | 'denominator',
+) => {
+  const verticalGap = side === 'numerator'
+    ? Math.max(0, bar.bounds.top - memberBounds.bottom)
+    : Math.max(0, memberBounds.top - bar.bounds.bottom)
+  const wrongSideIntrusion = side === 'numerator'
+    ? Math.max(0, memberBounds.bottom - bar.bounds.centerY)
+    : Math.max(0, bar.bounds.centerY - memberBounds.top)
+  const gapScore = clamp(1 - verticalGap / Math.max(44, bar.bounds.height * 7.5), 0, 1)
+  const sidePurityScore = clamp(1 - wrongSideIntrusion / Math.max(24, bar.bounds.height * 2.6), 0, 1)
+  const fieldReachScore = clamp(1 - Math.abs(memberBounds.centerX - bar.bounds.centerX) / Math.max(32, bar.bounds.width * 0.9), 0, 1)
+  return gapScore * 0.42 + sidePurityScore * 0.26 + fieldReachScore * 0.32
+}
+
+const getCandidateClarityScore = <T>(candidates: T[], getScore: (candidate: T) => number) => {
+  const orderedScores = candidates.map(getScore).sort((left, right) => right - left)
+  const topScore = orderedScores[0] || 0
+  const runnerUpScore = orderedScores[1] || 0
+  if (topScore <= 0) return 0
+  return clamp((topScore - runnerUpScore) / Math.max(0.12, topScore), 0, 1)
+}
+
 const getFractionSideCandidates = (
   bar: StrokeGroup,
   subexpressions: LocalSubexpression[],
@@ -822,11 +860,22 @@ const getFractionSideCandidates = (
     .filter(({ bounds }) => side === 'numerator'
       ? bounds.bottom <= bar.bounds.top + 24
       : bounds.top >= bar.bounds.bottom - 12)
-    .map(({ subexpression, bounds }) => ({
-      subexpression,
-      bounds,
-      alignment: scoreFractionMemberAlignment(bar, bounds),
-    }))
+    .map(({ subexpression, bounds }) => {
+      const alignment = scoreFractionMemberAlignment(bar, bounds)
+      const fieldFitScore = getFractionSideFieldFitScore(bar, bounds, side)
+      const occupantBeliefScore = clamp(alignment.score * 0.54 + fieldFitScore * 0.28 + alignment.centeredScore * 0.18, 0, 1)
+      const hostMutualReinforcementScore = clamp(Math.sqrt(Math.max(shapeScore, 0) * Math.max(occupantBeliefScore, 0)), 0, 1)
+      const sideConsistencyScore = clamp(occupantBeliefScore * 0.58 + hostMutualReinforcementScore * 0.42, 0, 1)
+      return {
+        subexpression,
+        bounds,
+        alignment,
+        fieldFitScore,
+        occupantBeliefScore,
+        hostMutualReinforcementScore,
+        sideConsistencyScore,
+      }
+    })
     .filter(({ bounds, alignment }) => {
       const centeredOrOverlapping = alignment.centeredScore >= relaxedCenteredThreshold
         || alignment.overlapScore >= clamp(Math.min(0.46, bar.bounds.width > 0 ? Math.max(0.12, 16 / bar.bounds.width) : 0.12), 0.12, 0.46)
@@ -836,17 +885,55 @@ const getFractionSideCandidates = (
       const fieldAligned = Math.abs(bounds.centerX - bar.bounds.centerX) <= Math.max(26, relaxedFieldHalfWidth)
       return strongStructuralSearch && fieldAligned && alignment.score >= relaxedAlignmentThreshold
     })
+    .sort((left, right) => right.sideConsistencyScore - left.sideConsistencyScore || left.bounds.left - right.bounds.left)
 }
 
-const scoreFractionHypothesis = (bar: StrokeGroup, numerator: FractionSideCandidate, denominator: FractionSideCandidate): FractionHypothesis => {
+const scoreFractionHypothesis = (bar: StrokeGroup, numerator: FractionSideCandidate, denominator: FractionSideCandidate, shapeScore: number): FractionHypothesis => {
   const axisConsistency = clamp(1 - Math.abs(numerator.bounds.centerX - denominator.bounds.centerX) / Math.max(24, bar.bounds.width * 0.42), 0, 1)
   const numeratorWidth = Math.max(1, numerator.bounds.right - numerator.bounds.left)
   const denominatorWidth = Math.max(1, denominator.bounds.right - denominator.bounds.left)
   const memberWidthHarmony = clamp(1 - Math.abs(numeratorWidth - denominatorWidth) / Math.max(28, Math.max(numeratorWidth, denominatorWidth) * 0.85), 0, 1)
-  const score = numerator.alignment.score * 0.32
-    + denominator.alignment.score * 0.28
-    + axisConsistency * 0.24
-    + memberWidthHarmony * 0.16
+  const numeratorGap = Math.max(0, bar.bounds.top - numerator.bounds.bottom)
+  const denominatorGap = Math.max(0, denominator.bounds.top - bar.bounds.bottom)
+  const verticalSymmetry = clamp(1 - Math.abs(numeratorGap - denominatorGap) / Math.max(28, bar.bounds.height * 6), 0, 1)
+  const occupantMutualScore = clamp(
+    Math.sqrt(Math.max(numerator.sideConsistencyScore, 0) * Math.max(denominator.sideConsistencyScore, 0)) * 0.58
+      + ((numerator.occupantBeliefScore + denominator.occupantBeliefScore) / 2) * 0.42,
+    0,
+    1,
+  )
+  const hostBeliefScore = clamp(
+    shapeScore * 0.36
+      + Math.sqrt(Math.max(numerator.hostMutualReinforcementScore, 0) * Math.max(denominator.hostMutualReinforcementScore, 0)) * 0.4
+      + ((numerator.fieldFitScore + denominator.fieldFitScore) / 2) * 0.24,
+    0,
+    1,
+  )
+  const localCoherenceScore = clamp(
+    axisConsistency * 0.3
+      + memberWidthHarmony * 0.18
+      + verticalSymmetry * 0.18
+      + numerator.fieldFitScore * 0.17
+      + denominator.fieldFitScore * 0.17,
+    0,
+    1,
+  )
+  const globalCompatibilityScore = clamp(
+    localCoherenceScore * 0.46
+      + occupantMutualScore * 0.28
+      + hostBeliefScore * 0.18
+      + (numerator.subexpression.rootGroupId !== denominator.subexpression.rootGroupId ? 0.08 : 0),
+    0,
+    1,
+  )
+  const score = clamp(
+    occupantMutualScore * 0.34
+      + hostBeliefScore * 0.24
+      + localCoherenceScore * 0.24
+      + globalCompatibilityScore * 0.18,
+    0,
+    1,
+  )
 
   return {
     numerator,
@@ -854,6 +941,10 @@ const scoreFractionHypothesis = (bar: StrokeGroup, numerator: FractionSideCandid
     score,
     axisConsistency,
     memberWidthHarmony,
+    hostBeliefScore,
+    occupantMutualScore,
+    localCoherenceScore,
+    globalCompatibilityScore,
   }
 }
 
@@ -867,25 +958,76 @@ const scoreFractionContext = (bar: StrokeGroup, subexpressions: LocalSubexpressi
   const denominatorBounds = denominatorCandidates.length ? mergeBounds(denominatorCandidates.map((candidate) => candidate.bounds)) : null
   const numeratorAggregate = numeratorBounds ? scoreFractionMemberAlignment(bar, numeratorBounds) : null
   const denominatorAggregate = denominatorBounds ? scoreFractionMemberAlignment(bar, denominatorBounds) : null
-  const hypotheses = numeratorCandidates.flatMap((numerator) => denominatorCandidates.map((denominator) => scoreFractionHypothesis(bar, numerator, denominator)))
+  const hypotheses = numeratorCandidates.flatMap((numerator) => denominatorCandidates.map((denominator) => scoreFractionHypothesis(bar, numerator, denominator, shapeScore)))
   const bestHypothesis = hypotheses.sort((left, right) => right.score - left.score)[0] || null
+  const numeratorClarityScore = getCandidateClarityScore(numeratorCandidates, (candidate) => candidate.sideConsistencyScore)
+  const denominatorClarityScore = getCandidateClarityScore(denominatorCandidates, (candidate) => candidate.sideConsistencyScore)
+  const hypothesisClarityScore = getCandidateClarityScore(hypotheses, (candidate) => candidate.score)
   const legacyBarRecognitionScore = numeratorAggregate
     ? shapeScore * 0.32 + numeratorAggregate.centeredScore * 0.36 + numeratorAggregate.widthScore * 0.2 + numeratorAggregate.overlapScore * 0.12
     : 0
   const legacyMemberClaimScore = numeratorAggregate && denominatorAggregate
     ? shapeScore * 0.18 + numeratorAggregate.centeredScore * 0.32 * barLocality.local + denominatorAggregate.centeredScore * 0.22 * barLocality.adjacent + numeratorAggregate.widthScore * 0.18 + denominatorAggregate.overlapScore * 0.1
     : 0
-  const provisionalNumeratorScore = numeratorAggregate
-    ? shapeScore * 0.28 + numeratorAggregate.score * 0.5 + numeratorAggregate.centeredScore * 0.22
+  const provisionalNumeratorScore = numeratorCandidates[0]
+    ? clamp(
+      shapeScore * 0.22
+        + numeratorCandidates[0].occupantBeliefScore * 0.4
+        + numeratorCandidates[0].hostMutualReinforcementScore * 0.28
+        + numeratorClarityScore * 0.1,
+      0,
+      1,
+    )
     : 0
-  const provisionalDenominatorScore = denominatorAggregate
-    ? shapeScore * 0.28 + denominatorAggregate.score * 0.5 + denominatorAggregate.centeredScore * 0.22
+  const provisionalDenominatorScore = denominatorCandidates[0]
+    ? clamp(
+      shapeScore * 0.22
+        + denominatorCandidates[0].occupantBeliefScore * 0.4
+        + denominatorCandidates[0].hostMutualReinforcementScore * 0.28
+        + denominatorClarityScore * 0.1,
+      0,
+      1,
+    )
     : 0
+  const mutualReinforcementScore = bestHypothesis
+    ? clamp(bestHypothesis.occupantMutualScore * 0.58 + bestHypothesis.hostBeliefScore * 0.42, 0, 1)
+    : Math.max(
+      numeratorCandidates[0]?.hostMutualReinforcementScore || 0,
+      denominatorCandidates[0]?.hostMutualReinforcementScore || 0,
+    )
+  const localCoherenceScore = bestHypothesis?.localCoherenceScore || 0
+  const globalCompatibilityScore = bestHypothesis?.globalCompatibilityScore || 0
+  const revisionPressureScore = clamp(
+    (1 - numeratorClarityScore) * 0.28
+      + (1 - denominatorClarityScore) * 0.28
+      + (1 - hypothesisClarityScore) * 0.28
+      + (bestHypothesis ? (1 - bestHypothesis.globalCompatibilityScore) * 0.16 : 0.16),
+    0,
+    1,
+  )
   const jointBarRecognitionScore = bestHypothesis
-    ? shapeScore * 0.24 + bestHypothesis.score * 0.6 + bestHypothesis.axisConsistency * 0.1 + bestHypothesis.memberWidthHarmony * 0.06
+    ? clamp(
+      shapeScore * 0.16
+        + mutualReinforcementScore * 0.32
+        + localCoherenceScore * 0.22
+        + globalCompatibilityScore * 0.22
+        + hypothesisClarityScore * 0.14
+        - revisionPressureScore * 0.06,
+      0,
+      1,
+    )
     : Math.max(provisionalNumeratorScore, provisionalDenominatorScore)
   const jointMemberClaimScore = bestHypothesis
-    ? shapeScore * 0.16 + bestHypothesis.score * 0.54 + (bestHypothesis.numerator.alignment.centeredScore * 0.16 * barLocality.local) + (bestHypothesis.denominator.alignment.centeredScore * 0.14 * barLocality.adjacent)
+    ? clamp(
+      mutualReinforcementScore * 0.34
+        + localCoherenceScore * 0.24
+        + globalCompatibilityScore * 0.2
+        + hypothesisClarityScore * 0.12
+        + shapeScore * 0.1
+        - revisionPressureScore * 0.04,
+      0,
+      1,
+    )
     : 0
   const barRecognitionScore = Math.max(legacyBarRecognitionScore, jointBarRecognitionScore)
   const memberClaimScore = Math.max(legacyMemberClaimScore, jointMemberClaimScore)
@@ -901,8 +1043,26 @@ const scoreFractionContext = (bar: StrokeGroup, subexpressions: LocalSubexpressi
     bestHypothesis,
     provisionalNumeratorScore,
     provisionalDenominatorScore,
+    mutualReinforcementScore,
+    localCoherenceScore,
+    globalCompatibilityScore,
+    revisionPressureScore,
     preferredNumeratorRootId: bestHypothesis?.numerator.subexpression.rootGroupId || null,
     preferredDenominatorRootId: bestHypothesis?.denominator.subexpression.rootGroupId || null,
+    evidence: [
+      `shapeScore=${shapeScore.toFixed(3)}`,
+      `barRecognitionScore=${barRecognitionScore.toFixed(3)}`,
+      `memberClaimScore=${memberClaimScore.toFixed(3)}`,
+      bestHypothesis ? `bestHypothesisScore=${bestHypothesis.score.toFixed(3)}` : 'noBestHypothesis',
+      `provisionalNumeratorScore=${provisionalNumeratorScore.toFixed(3)}`,
+      `provisionalDenominatorScore=${provisionalDenominatorScore.toFixed(3)}`,
+      `mutualReinforcementScore=${mutualReinforcementScore.toFixed(3)}`,
+      `localCoherenceScore=${localCoherenceScore.toFixed(3)}`,
+      `globalCompatibilityScore=${globalCompatibilityScore.toFixed(3)}`,
+      `revisionPressureScore=${revisionPressureScore.toFixed(3)}`,
+      bestHypothesis ? `hostBeliefScore=${bestHypothesis.hostBeliefScore.toFixed(3)}` : undefined,
+      bestHypothesis ? `occupantMutualScore=${bestHypothesis.occupantMutualScore.toFixed(3)}` : undefined,
+    ].filter(Boolean) as string[],
   }
 }
 
@@ -1819,6 +1979,10 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
       `centered-below=${context.denominatorAggregate?.centeredScore.toFixed(2) || '0.00'}`,
       `width-match=${context.numeratorAggregate?.widthScore.toFixed(2) || '0.00'}`,
       `joint-score=${context.bestHypothesis?.score.toFixed(2) || '0.00'}`,
+      `mutual-reinforcement=${context.mutualReinforcementScore.toFixed(2)}`,
+      `local-coherence=${context.localCoherenceScore.toFixed(2)}`,
+      `global-compatibility=${context.globalCompatibilityScore.toFixed(2)}`,
+      `revision-pressure=${context.revisionPressureScore.toFixed(2)}`,
       `axis-consistency=${context.bestHypothesis?.axisConsistency.toFixed(2) || '0.00'}`,
       `member-width-harmony=${context.bestHypothesis?.memberWidthHarmony.toFixed(2) || '0.00'}`,
       `provisional-above=${context.provisionalNumeratorScore.toFixed(2)}`,
@@ -1845,6 +2009,10 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
       `operand-mode=${getRoleDescriptor('provisionalFractionBar').operandReferenceMode}`,
       `shape=${context.shapeScore.toFixed(2)}`,
       `joint-score=${context.bestHypothesis?.score.toFixed(2) || '0.00'}`,
+      `mutual-reinforcement=${context.mutualReinforcementScore.toFixed(2)}`,
+      `local-coherence=${context.localCoherenceScore.toFixed(2)}`,
+      `global-compatibility=${context.globalCompatibilityScore.toFixed(2)}`,
+      `revision-pressure=${context.revisionPressureScore.toFixed(2)}`,
       `provisional-above=${context.provisionalNumeratorScore.toFixed(2)}`,
       `provisional-below=${context.provisionalDenominatorScore.toFixed(2)}`,
       'line-like group is being preserved as a provisional fraction operator while operand evidence remains incomplete',

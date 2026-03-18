@@ -112,6 +112,10 @@ test.describe('handwriting normalization fixtures', () => {
     expect(numeratorRoot?.qualifiedRoleLabel).toContain('@ numerator')
     expect(denominatorRoot?.qualifiedRoleLabel).toContain('@ denominator')
     expect(analysis.parseNodes.some((node) => node.kind === 'fractionExpression')).toBe(true)
+    expect(barRole?.evidence.some((entry) => entry.startsWith('mutual-reinforcement='))).toBe(true)
+    expect(barRole?.evidence.some((entry) => entry.startsWith('local-coherence='))).toBe(true)
+    expect(barRole?.evidence.some((entry) => entry.startsWith('global-compatibility='))).toBe(true)
+    expect(barRole?.evidence.some((entry) => entry.startsWith('revision-pressure='))).toBe(true)
   })
 
   test('radical fixture recognizes hosted radicand and optional index structure', async () => {

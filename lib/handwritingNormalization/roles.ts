@@ -92,6 +92,35 @@ type FractionStructureBinding = {
   denominatorRootIds: string[]
 }
 
+type FractionSideCandidate = {
+  subexpression: LocalSubexpression
+  bounds: ReturnType<typeof getSubexpressionBounds>
+  alignment: ReturnType<typeof scoreFractionMemberAlignment>
+}
+
+type FractionHypothesis = {
+  numerator: FractionSideCandidate
+  denominator: FractionSideCandidate
+  score: number
+  axisConsistency: number
+  memberWidthHarmony: number
+}
+
+type ScoredFractionContext = {
+  shapeScore: number
+  numeratorRoots: LocalSubexpression[]
+  denominatorRoots: LocalSubexpression[]
+  numeratorAggregate: ReturnType<typeof scoreFractionMemberAlignment> | null
+  denominatorAggregate: ReturnType<typeof scoreFractionMemberAlignment> | null
+  barRecognitionScore: number
+  memberClaimScore: number
+  bestHypothesis: FractionHypothesis | null
+  provisionalNumeratorScore: number
+  provisionalDenominatorScore: number
+  preferredNumeratorRootId: string | null
+  preferredDenominatorRootId: string | null
+}
+
 const isSameContextStackedPair = (upper: StrokeGroup, lower: StrokeGroup) => {
   const overlapWidth = Math.max(0, Math.min(upper.bounds.right, lower.bounds.right) - Math.max(upper.bounds.left, lower.bounds.left))
   const minWidth = Math.max(1, Math.min(upper.bounds.width, lower.bounds.width))
@@ -407,37 +436,76 @@ const scoreFractionMemberAlignment = (bar: StrokeGroup, memberBounds: ReturnType
   }
 }
 
-const scoreFractionContext = (bar: StrokeGroup, subexpressions: LocalSubexpression[], groupMap: Map<string, StrokeGroup>) => {
+const getFractionSideCandidates = (
+  bar: StrokeGroup,
+  subexpressions: LocalSubexpression[],
+  groupMap: Map<string, StrokeGroup>,
+  side: 'numerator' | 'denominator',
+) => {
+  return subexpressions
+    .map((subexpression) => ({ subexpression, bounds: getSubexpressionBounds(subexpression, groupMap) }))
+    .filter(({ bounds }) => side === 'numerator'
+      ? bounds.bottom <= bar.bounds.top + 24
+      : bounds.top >= bar.bounds.bottom - 12)
+    .map(({ subexpression, bounds }) => ({
+      subexpression,
+      bounds,
+      alignment: scoreFractionMemberAlignment(bar, bounds),
+    }))
+    .filter(({ bounds, alignment }) => alignment.centeredScore >= 0.22 || alignment.overlapScore >= clamp(Math.min(0.46, bar.bounds.width > 0 ? Math.max(0.12, 16 / bar.bounds.width) : 0.12), 0.12, 0.46))
+}
+
+const scoreFractionHypothesis = (bar: StrokeGroup, numerator: FractionSideCandidate, denominator: FractionSideCandidate): FractionHypothesis => {
+  const axisConsistency = clamp(1 - Math.abs(numerator.bounds.centerX - denominator.bounds.centerX) / Math.max(24, bar.bounds.width * 0.42), 0, 1)
+  const numeratorWidth = Math.max(1, numerator.bounds.right - numerator.bounds.left)
+  const denominatorWidth = Math.max(1, denominator.bounds.right - denominator.bounds.left)
+  const memberWidthHarmony = clamp(1 - Math.abs(numeratorWidth - denominatorWidth) / Math.max(28, Math.max(numeratorWidth, denominatorWidth) * 0.85), 0, 1)
+  const score = numerator.alignment.score * 0.32
+    + denominator.alignment.score * 0.28
+    + axisConsistency * 0.24
+    + memberWidthHarmony * 0.16
+
+  return {
+    numerator,
+    denominator,
+    score,
+    axisConsistency,
+    memberWidthHarmony,
+  }
+}
+
+const scoreFractionContext = (bar: StrokeGroup, subexpressions: LocalSubexpression[], groupMap: Map<string, StrokeGroup>): ScoredFractionContext => {
   const shapeScore = getFractionBarShapeScore(bar)
   const barLocality = getRoleLocalityBias('fractionBar')
-  const numeratorCandidates = subexpressions
-    .map((subexpression) => ({ subexpression, bounds: getSubexpressionBounds(subexpression, groupMap) }))
-    .filter(({ bounds }) => bounds.bottom <= bar.bounds.top + 24)
-    .filter(({ bounds }) => {
-      const centeredScore = clamp(1 - Math.abs(bounds.centerX - bar.bounds.centerX) / Math.max(24, bar.bounds.width * 0.5), 0, 1)
-      const overlapWidth = Math.max(0, Math.min(bar.bounds.right, bounds.right) - Math.max(bar.bounds.left, bounds.left))
-      return centeredScore >= 0.22 || overlapWidth >= Math.max(16, bar.bounds.width * 0.12)
-    })
-
-  const denominatorCandidates = subexpressions
-    .map((subexpression) => ({ subexpression, bounds: getSubexpressionBounds(subexpression, groupMap) }))
-    .filter(({ bounds }) => bounds.top >= bar.bounds.bottom - 12)
-    .filter(({ bounds }) => {
-      const centeredScore = clamp(1 - Math.abs(bounds.centerX - bar.bounds.centerX) / Math.max(24, bar.bounds.width * 0.5), 0, 1)
-      const overlapWidth = Math.max(0, Math.min(bar.bounds.right, bounds.right) - Math.max(bar.bounds.left, bounds.left))
-      return centeredScore >= 0.22 || overlapWidth >= Math.max(16, bar.bounds.width * 0.12)
-    })
+  const numeratorCandidates = getFractionSideCandidates(bar, subexpressions, groupMap, 'numerator')
+  const denominatorCandidates = getFractionSideCandidates(bar, subexpressions, groupMap, 'denominator')
 
   const numeratorBounds = numeratorCandidates.length ? mergeBounds(numeratorCandidates.map((candidate) => candidate.bounds)) : null
   const denominatorBounds = denominatorCandidates.length ? mergeBounds(denominatorCandidates.map((candidate) => candidate.bounds)) : null
   const numeratorAggregate = numeratorBounds ? scoreFractionMemberAlignment(bar, numeratorBounds) : null
   const denominatorAggregate = denominatorBounds ? scoreFractionMemberAlignment(bar, denominatorBounds) : null
-  const barRecognitionScore = numeratorAggregate
+  const hypotheses = numeratorCandidates.flatMap((numerator) => denominatorCandidates.map((denominator) => scoreFractionHypothesis(bar, numerator, denominator)))
+  const bestHypothesis = hypotheses.sort((left, right) => right.score - left.score)[0] || null
+  const legacyBarRecognitionScore = numeratorAggregate
     ? shapeScore * 0.32 + numeratorAggregate.centeredScore * 0.36 + numeratorAggregate.widthScore * 0.2 + numeratorAggregate.overlapScore * 0.12
     : 0
-  const memberClaimScore = numeratorAggregate && denominatorAggregate
+  const legacyMemberClaimScore = numeratorAggregate && denominatorAggregate
     ? shapeScore * 0.18 + numeratorAggregate.centeredScore * 0.32 * barLocality.local + denominatorAggregate.centeredScore * 0.22 * barLocality.adjacent + numeratorAggregate.widthScore * 0.18 + denominatorAggregate.overlapScore * 0.1
     : 0
+  const provisionalNumeratorScore = numeratorAggregate
+    ? shapeScore * 0.28 + numeratorAggregate.score * 0.5 + numeratorAggregate.centeredScore * 0.22
+    : 0
+  const provisionalDenominatorScore = denominatorAggregate
+    ? shapeScore * 0.28 + denominatorAggregate.score * 0.5 + denominatorAggregate.centeredScore * 0.22
+    : 0
+  const jointBarRecognitionScore = bestHypothesis
+    ? shapeScore * 0.24 + bestHypothesis.score * 0.6 + bestHypothesis.axisConsistency * 0.1 + bestHypothesis.memberWidthHarmony * 0.06
+    : Math.max(provisionalNumeratorScore, provisionalDenominatorScore)
+  const jointMemberClaimScore = bestHypothesis
+    ? shapeScore * 0.16 + bestHypothesis.score * 0.54 + (bestHypothesis.numerator.alignment.centeredScore * 0.16 * barLocality.local) + (bestHypothesis.denominator.alignment.centeredScore * 0.14 * barLocality.adjacent)
+    : 0
+  const barRecognitionScore = Math.max(legacyBarRecognitionScore, jointBarRecognitionScore)
+  const memberClaimScore = Math.max(legacyMemberClaimScore, jointMemberClaimScore)
 
   return {
     shapeScore,
@@ -447,6 +515,11 @@ const scoreFractionContext = (bar: StrokeGroup, subexpressions: LocalSubexpressi
     denominatorAggregate,
     barRecognitionScore,
     memberClaimScore,
+    bestHypothesis,
+    provisionalNumeratorScore,
+    provisionalDenominatorScore,
+    preferredNumeratorRootId: bestHypothesis?.numerator.subexpression.rootGroupId || null,
+    preferredDenominatorRootId: bestHypothesis?.denominator.subexpression.rootGroupId || null,
   }
 }
 
@@ -574,6 +647,12 @@ const getOrderedRootIds = (rootIds: string[], groupMap: Map<string, StrokeGroup>
     if (leftX !== rightX) return leftX - rightX
     return left.localeCompare(right)
   })
+}
+
+const prioritizeRootId = (rootIds: string[], preferredRootId: string | null, groupMap: Map<string, StrokeGroup>) => {
+  const ordered = getOrderedRootIds(rootIds, groupMap)
+  if (!preferredRootId || !ordered.includes(preferredRootId)) return ordered
+  return [preferredRootId, ...ordered.filter((rootId) => rootId !== preferredRootId)]
 }
 
 const expandCompositeMemberGroupIds = (
@@ -1030,12 +1109,21 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[])
       `centered-above=${context.numeratorAggregate?.centeredScore.toFixed(2) || '0.00'}`,
       `centered-below=${context.denominatorAggregate?.centeredScore.toFixed(2) || '0.00'}`,
       `width-match=${context.numeratorAggregate?.widthScore.toFixed(2) || '0.00'}`,
+      `joint-score=${context.bestHypothesis?.score.toFixed(2) || '0.00'}`,
+      `axis-consistency=${context.bestHypothesis?.axisConsistency.toFixed(2) || '0.00'}`,
+      `member-width-harmony=${context.bestHypothesis?.memberWidthHarmony.toFixed(2) || '0.00'}`,
+      `provisional-above=${context.provisionalNumeratorScore.toFixed(2)}`,
+      `provisional-below=${context.provisionalDenominatorScore.toFixed(2)}`,
     ]))
   }
 
   for (const { bar, context } of confirmedFractionBars) {
-    const numeratorRoots = context.memberClaimScore >= 0.46 && context.denominatorRoots.length > 0 ? getOrderedRootIds(context.numeratorRoots.map((candidate) => candidate.rootGroupId), groupMap) : []
-    const denominatorRoots = context.memberClaimScore >= 0.46 && context.denominatorRoots.length > 0 ? getOrderedRootIds(context.denominatorRoots.map((candidate) => candidate.rootGroupId), groupMap) : []
+    const numeratorRoots = context.memberClaimScore >= 0.46 && context.denominatorRoots.length > 0
+      ? prioritizeRootId(context.numeratorRoots.map((candidate) => candidate.rootGroupId), context.preferredNumeratorRootId, groupMap)
+      : []
+    const denominatorRoots = context.memberClaimScore >= 0.46 && context.denominatorRoots.length > 0
+      ? prioritizeRootId(context.denominatorRoots.map((candidate) => candidate.rootGroupId), context.preferredDenominatorRootId, groupMap)
+      : []
     const numeratorPrimaryRootId = numeratorRoots[0] || null
     const denominatorPrimaryRootId = denominatorRoots[0] || null
 

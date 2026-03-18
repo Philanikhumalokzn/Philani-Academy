@@ -16,8 +16,8 @@ export { getHandwritingFixture, HANDWRITING_FIXTURE_ORDER, listHandwritingFixtur
 
 export const analyzeHandwrittenExpression = (strokes: InkStroke[]): HandwritingAnalysis => {
   const groups = groupInkStrokes(strokes)
-  const edges = buildLayoutGraph(groups)
   const brickHypotheses = inferLegoBrickHypotheses(groups)
+  const edges = buildLayoutGraph(groups, brickHypotheses)
   const { roles, ambiguities, flags, subexpressions, enclosures, contexts } = inferStructuralRoles(groups, edges, brickHypotheses)
   const brickOccupancies = inferLegoBrickOccupancies(brickHypotheses, roles, contexts, edges)
   const { parseNodes, parseRoots } = buildExpressionParseForest(groups, roles, contexts, enclosures, ambiguities)

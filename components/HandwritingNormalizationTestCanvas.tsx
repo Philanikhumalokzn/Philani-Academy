@@ -87,7 +87,16 @@ export default function HandwritingNormalizationTestCanvas() {
     const grouped = analysis.groups.map((group) => `${group.id}: ${group.strokeIds.length} stroke(s), ${Math.round(group.bounds.width)}x${Math.round(group.bounds.height)}`)
     const brickHypotheses = analysis.brickHypotheses.map((hypothesis) => `${hypothesis.groupId}: ${hypothesis.family} prototype=${hypothesis.prototype} score=${hypothesis.score.toFixed(2)} fields=[${hypothesis.fields.map((field) => `${field.kind}:${field.capacity}:${field.weight.toFixed(2)}`).join(', ')}]${hypothesis.evidence.length ? ` :: ${hypothesis.evidence.join(' | ')}` : ''}`)
     const brickOccupancies = analysis.brickOccupancies.map((occupancy) => `${occupancy.groupId}: ${occupancy.family} field=${occupancy.field} score=${occupancy.score.toFixed(2)}${occupancy.hostGroupId ? ` host=${occupancy.hostGroupId}` : ''}${occupancy.hostContextId ? ` ctx=${occupancy.hostContextId}` : ''}${occupancy.evidence.length ? ` :: ${occupancy.evidence.join(' | ')}` : ''}`)
-    const edges = analysis.edges.slice(0, 12).map((edge) => `${edge.kind} ${edge.fromId} -> ${edge.toId} (${edge.score.toFixed(2)})`)
+    const edges = analysis.edges.slice(0, 12).map((edge) => {
+      if (edge.kind === 'sequence') {
+        const fromRight = edge.metrics.fromRightInlineWeight
+        const toLeft = edge.metrics.toLeftInlineWeight
+        const inlineAffordance = edge.metrics.inlineAffordanceScore
+        return `${edge.kind} ${edge.fromId} -> ${edge.toId} (${edge.score.toFixed(2)}) inline=${inlineAffordance >= 0 ? inlineAffordance.toFixed(2) : 'legacy'} fromRight=${fromRight >= 0 ? fromRight.toFixed(2) : 'legacy'} toLeft=${toLeft >= 0 ? toLeft.toFixed(2) : 'legacy'}`
+      }
+
+      return `${edge.kind} ${edge.fromId} -> ${edge.toId} (${edge.score.toFixed(2)})`
+    })
     const roles = analysis.roles.map((role) => `${role.groupId}: ${role.role} label=${role.qualifiedRoleLabel || `${role.role}-unknown`} symbol=${role.recognizedSymbol?.value || 'unknown'} family=${role.descriptor.family} depth=${role.depth} score=${role.score.toFixed(2)}${role.parentGroupId ? ` parent=${role.parentGroupId}` : ''}${role.hostedContextKind ? ` hosted=${role.hostedContextKind}` : ''}${role.associationContextId ? ` assoc=${role.associationContextId}` : ''}${role.containerGroupIds.length ? ` containers=${role.containerGroupIds.join(',')}` : ''}${role.evidence.length ? ` :: ${role.evidence.join(' | ')}` : ''}`)
     const ambiguities = analysis.ambiguities.map((ambiguity) => {
       const alternatives = ambiguity.candidates.map((candidate) => `${candidate.role}:${candidate.score.toFixed(2)}`).join(' | ')

@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test'
 
-import { analyzeHandwrittenExpression, getHandwritingFixture, getRoleDescriptor, recognizeSymbolForRole, roleAllowsChildRole } from '../lib/handwritingNormalization'
+import { analyzeHandwrittenExpression, getHandwritingFixture, getRoleDescriptor, LEGO_BRICK_FAMILIES, recognizeSymbolForRole, roleAllowsChildRole } from '../lib/handwritingNormalization'
+import { buildLayoutGraph } from '../lib/handwritingNormalization/graph'
 import { normalizeInkLayout } from '../lib/handwritingNormalization/normalize'
 import { buildExpressionParseForest } from '../lib/handwritingNormalization/parser'
 import { inferStructuralRoles } from '../lib/handwritingNormalization/roles'
-import type { ExpressionContext, HandwritingAnalysis, InkStroke, LayoutEdge, StrokeGroup, StructuralRole } from '../lib/handwritingNormalization'
+import type { ExpressionContext, HandwritingAnalysis, InkStroke, LayoutEdge, LegoBrickFamilyKind, LegoBrickHypothesis, StrokeGroup, StructuralRole } from '../lib/handwritingNormalization'
 
 const makeStroke = (id: string): InkStroke => ({
   id,
@@ -62,6 +63,16 @@ const getTopBrickHypothesis = (analysis: HandwritingAnalysis, groupId: string) =
 const getBrickOccupancy = (analysis: HandwritingAnalysis, groupId: string, field: string) => {
   return analysis.brickOccupancies.find((occupancy) => occupancy.groupId === groupId && occupancy.field === field) || null
 }
+
+const makeBrickHypothesis = (groupId: string, family: LegoBrickFamilyKind, score = 0.9): LegoBrickHypothesis => ({
+  id: `brick:test:${groupId}:${family}`,
+  groupId,
+  family,
+  prototype: LEGO_BRICK_FAMILIES[family].prototypeKinds[0],
+  score,
+  fields: LEGO_BRICK_FAMILIES[family].fields,
+  evidence: ['test brick hypothesis'],
+})
 
 test.describe('handwriting normalization fixtures', () => {
   test('superscript fixture groups the base and exponent separately', async () => {
@@ -167,6 +178,34 @@ test.describe('handwriting normalization fixtures', () => {
 
     expect(sequenceSuperscript?.associationContextId?.startsWith('context:sequence:')).toBe(true)
     expect(sequenceSuperscript?.evidence.some((entry) => entry.startsWith('host-field=upperRightScript:'))).toBe(true)
+  })
+
+  test('lego inline fields modulate sequence scoring', async () => {
+    const left = makeGroup('left', { left: 100, top: 120, right: 132, bottom: 164, width: 32, height: 44, centerX: 116, centerY: 142 })
+    const right = makeGroup('right', { left: 132, top: 121, right: 164, bottom: 165, width: 32, height: 44, centerX: 148, centerY: 143 })
+
+    const ordinaryEdges = buildLayoutGraph(
+      [left, right],
+      [
+        makeBrickHypothesis('left', 'ordinaryBaselineSymbolBrick'),
+        makeBrickHypothesis('right', 'ordinaryBaselineSymbolBrick'),
+      ],
+    )
+    const fractionBarEdges = buildLayoutGraph(
+      [left, right],
+      [
+        makeBrickHypothesis('left', 'ordinaryBaselineSymbolBrick'),
+        makeBrickHypothesis('right', 'fractionBarBrick'),
+      ],
+    )
+
+    const ordinarySequence = ordinaryEdges.find((edge) => edge.kind === 'sequence' && edge.fromId === 'left' && edge.toId === 'right')
+    const fractionBarSequence = fractionBarEdges.find((edge) => edge.kind === 'sequence' && edge.fromId === 'left' && edge.toId === 'right')
+
+    expect(ordinarySequence).toBeTruthy()
+    expect(ordinarySequence?.score || 0).toBeGreaterThan(fractionBarSequence?.score || 0)
+    expect((ordinarySequence?.metrics.inlineAffordanceScore || 0)).toBeGreaterThan((fractionBarSequence?.metrics.inlineAffordanceScore || 0))
+    expect(ordinarySequence?.metrics.toLeftInlineWeight).toBeGreaterThan(fractionBarSequence?.metrics.toLeftInlineWeight || 0)
   })
 
   test('a lone horizontal line is preserved as a provisional fraction bar candidate', async () => {

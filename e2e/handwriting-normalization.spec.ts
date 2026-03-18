@@ -208,6 +208,25 @@ test.describe('handwriting normalization fixtures', () => {
     expect(ordinarySequence?.metrics.toLeftInlineWeight).toBeGreaterThan(fractionBarSequence?.metrics.toLeftInlineWeight || 0)
   })
 
+  test('inline affordance fixtures surface strong ordinary flow and weak bar-like flow', async () => {
+    const strongFixture = getHandwritingFixture('inlineOrdinaryPair')
+    const strongAnalysis = analyzeHandwrittenExpression(strongFixture.strokes)
+    const weakFixture = getHandwritingFixture('inlineFractionBarTemptation')
+    const weakAnalysis = analyzeHandwrittenExpression(weakFixture.strokes)
+
+    const strongSequence = strongAnalysis.edges.find((edge) => edge.kind === 'sequence')
+    const weakSequence = weakAnalysis.edges.find((edge) => edge.kind === 'sequence')
+    const weakBarBrick = weakAnalysis.groups[1] ? getTopBrickHypothesis(weakAnalysis, weakAnalysis.groups[1].id) : null
+
+    expect(strongAnalysis.groups).toHaveLength(strongFixture.expectation.groupCount)
+    expect(weakAnalysis.groups).toHaveLength(weakFixture.expectation.groupCount)
+    expect(strongSequence).toBeTruthy()
+    expect((strongSequence?.metrics.inlineAffordanceScore || 0)).toBeGreaterThan(0.6)
+    expect(weakSequence?.score || 0).toBeLessThan(strongSequence?.score || 0)
+    expect((weakSequence?.metrics.inlineAffordanceScore || 0)).toBeLessThan((strongSequence?.metrics.inlineAffordanceScore || 0))
+    expect(weakBarBrick?.family).toBe('fractionBarBrick')
+  })
+
   test('a lone horizontal line is preserved as a provisional fraction bar candidate', async () => {
     const strokes: InkStroke[] = [{
       ...makeStroke('line-only'),

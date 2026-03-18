@@ -1,6 +1,6 @@
 import type { InkStroke, StructuralRoleKind } from './types'
 
-export type HandwritingFixtureName = 'superscript' | 'fraction' | 'nested' | 'adjacentAmbiguous' | 'crossingFour' | 'superscriptThenBar' | 'fractionWithExponent' | 'fractionOuterExponent' | 'fractionDenominatorOuterExponent' | 'fractionOuterSubscript' | 'fractionDenominatorOuterSubscript' | 'offsetLineSubscript' | 'parenthesizedSuperscript' | 'parenthesizedExponent' | 'parenthesizedFractionNumerator' | 'parenthesizedFractionExponent' | 'fractionCompositeNumerator' | 'sequenceOuterExponent' | 'sequenceOuterSubscript' | 'stackedBaselinesUnsupported'
+export type HandwritingFixtureName = 'superscript' | 'fraction' | 'nested' | 'adjacentAmbiguous' | 'crossingFour' | 'superscriptThenBar' | 'fractionWithExponent' | 'fractionOuterExponent' | 'fractionDenominatorOuterExponent' | 'fractionOuterSubscript' | 'fractionDenominatorOuterSubscript' | 'offsetLineSubscript' | 'parenthesizedSuperscript' | 'parenthesizedExponent' | 'parenthesizedFractionNumerator' | 'parenthesizedFractionExponent' | 'fractionCompositeNumerator' | 'sequenceOuterExponent' | 'sequenceOuterSubscript' | 'inlineOrdinaryPair' | 'inlineFractionBarTemptation' | 'stackedBaselinesUnsupported'
 
 export type HandwritingFixtureExpectation = {
   groupCount: number
@@ -267,6 +267,28 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
     ],
     expectation: { groupCount: 4, requiredRoles: ['baseline', 'subscript'] },
   },
+  inlineOrdinaryPair: {
+    name: 'inlineOrdinaryPair',
+    label: 'Strong inline pair',
+    description: 'Two ordinary baseline symbols placed in a clean left-to-right inline relation so the sequence edge should stay strong.',
+    strokes: [
+      makeStroke('left-x-1', [[118, 232], [152, 274]]),
+      makeStroke('left-x-2', [[152, 232], [118, 274]]),
+      makeStroke('right-v-1', [[160, 234], [178, 266], [196, 234]]),
+    ],
+    expectation: { groupCount: 2, requiredRoles: ['baseline'] },
+  },
+  inlineFractionBarTemptation: {
+    name: 'inlineFractionBarTemptation',
+    label: 'Weak inline to bar-like line',
+    description: 'A baseline symbol followed by a horizontal line-like group; inline scoring should be weakened by LEGO affordances even when geometry is rightward.',
+    strokes: [
+      makeStroke('left-x-1', [[118, 232], [152, 274]]),
+      makeStroke('left-x-2', [[152, 232], [118, 274]]),
+      makeStroke('line-1', [[162, 252], [224, 252]], 6),
+    ],
+    expectation: { groupCount: 2, requiredRoles: ['baseline', 'provisionalFractionBar'] },
+  },
   stackedBaselinesUnsupported: {
     name: 'stackedBaselinesUnsupported',
     label: 'Stacked baselines warning',
@@ -280,7 +302,7 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
   },
 }
 
-export const HANDWRITING_FIXTURE_ORDER: HandwritingFixtureName[] = ['superscript', 'fraction', 'nested', 'adjacentAmbiguous', 'crossingFour', 'superscriptThenBar', 'fractionWithExponent', 'fractionOuterExponent', 'fractionDenominatorOuterExponent', 'fractionOuterSubscript', 'fractionDenominatorOuterSubscript', 'offsetLineSubscript', 'parenthesizedSuperscript', 'parenthesizedExponent', 'parenthesizedFractionNumerator', 'parenthesizedFractionExponent', 'fractionCompositeNumerator', 'sequenceOuterExponent', 'sequenceOuterSubscript', 'stackedBaselinesUnsupported']
+export const HANDWRITING_FIXTURE_ORDER: HandwritingFixtureName[] = ['superscript', 'fraction', 'nested', 'adjacentAmbiguous', 'crossingFour', 'superscriptThenBar', 'fractionWithExponent', 'fractionOuterExponent', 'fractionDenominatorOuterExponent', 'fractionOuterSubscript', 'fractionDenominatorOuterSubscript', 'offsetLineSubscript', 'parenthesizedSuperscript', 'parenthesizedExponent', 'parenthesizedFractionNumerator', 'parenthesizedFractionExponent', 'fractionCompositeNumerator', 'sequenceOuterExponent', 'sequenceOuterSubscript', 'inlineOrdinaryPair', 'inlineFractionBarTemptation', 'stackedBaselinesUnsupported']
 
 export const getHandwritingFixture = (name: HandwritingFixtureName) => {
   const fixture = fixtures[name]

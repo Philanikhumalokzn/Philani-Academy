@@ -357,6 +357,23 @@ test.describe('handwriting normalization fixtures', () => {
     expect(radicalNode?.childNodeIds).toHaveLength(2)
   })
 
+  test('radical native fields block index and radicand groups from stealing each other as scripts', () => {
+    const fixture = getHandwritingFixture('radicalWithIndex')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const indexContext = getContextByKind(analysis, 'radicalIndex')
+    const radicandContext = getContextByKind(analysis, 'radicand')
+    const indexRoot = getSemanticRootRole(analysis, indexContext)
+    const radicandRoot = getSemanticRootRole(analysis, radicandContext)
+    const conflictingScript = analysis.roles.find((role) => {
+      if (role.role !== 'superscript' && role.role !== 'subscript') return false
+      return role.parentGroupId === indexRoot?.groupId || role.parentGroupId === radicandRoot?.groupId
+    }) || null
+
+    expect(indexRoot?.role).toBe('baseline')
+    expect(radicandRoot?.role).toBe('baseline')
+    expect(conflictingScript, 'radical hosted groups should stay in their native index/radicand fields instead of re-owning each other as scripts').toBeFalsy()
+  })
+
   test('lego brick hypotheses classify canonical structural families', async () => {
     const fractionFixture = getHandwritingFixture('fraction')
     const fractionAnalysis = analyzeHandwrittenExpression(fractionFixture.strokes)

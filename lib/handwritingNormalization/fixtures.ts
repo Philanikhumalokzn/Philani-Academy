@@ -1,11 +1,15 @@
 import type { InkStroke, StructuralRoleKind } from './types'
 
-export type HandwritingFixtureName = 'superscript' | 'fraction' | 'nested' | 'adjacentAmbiguous' | 'crossingFour' | 'superscriptThenBar' | 'fractionWithExponent' | 'fractionOuterExponent' | 'fractionDenominatorOuterExponent' | 'fractionOuterSubscript' | 'fractionDenominatorOuterSubscript' | 'offsetLineSubscript' | 'barSeparatedPotentialScript' | 'operatorSeparatedLowerV' | 'parenthesizedSuperscript' | 'parenthesizedExponent' | 'parenthesizedFractionNumerator' | 'parenthesizedFractionExponent' | 'fractionCompositeNumerator' | 'sequenceOuterExponent' | 'sequenceOuterSubscript' | 'inlineOrdinaryPair' | 'inlineFractionBarTemptation' | 'radicalWithIndex' | 'stackedBaselinesUnsupported' | 'digitTwoSuperscriptSeven'
+export type HandwritingFixtureName = 'superscript' | 'fraction' | 'nested' | 'adjacentAmbiguous' | 'crossingFour' | 'superscriptThenBar' | 'fractionWithExponent' | 'fractionOuterExponent' | 'fractionDenominatorOuterExponent' | 'fractionOuterSubscript' | 'fractionDenominatorOuterSubscript' | 'offsetLineSubscript' | 'barSeparatedPotentialScript' | 'operatorSeparatedLowerV' | 'parenthesizedSuperscript' | 'parenthesizedExponent' | 'parenthesizedFractionNumerator' | 'parenthesizedFractionExponent' | 'fractionCompositeNumerator' | 'sequenceOuterExponent' | 'sequenceOuterSubscript' | 'inlineOrdinaryPair' | 'inlineFractionBarTemptation' | 'radicalWithIndex' | 'stackedBaselinesUnsupported' | 'digitTwoSuperscriptSeven' | 'digitFiveRadicalTemptation' | 'digitTwoRadicalTemptation' | 'shortBarSuperscript' | 'shortBarSubscript' | 'compactTBaseline' | 'compactTSuperscript' | 'radicalLooseRoof' | 'tightFractionBar'
 
 export type HandwritingFixtureExpectation = {
   groupCount: number
   requiredRoles: StructuralRoleKind[]
   minAmbiguities?: number
+}
+
+export type HandwritingFixtureDiagnostics = {
+  recordTopBrickFamilies?: boolean
 }
 
 export type HandwritingFixture = {
@@ -14,6 +18,7 @@ export type HandwritingFixture = {
   description: string
   strokes: InkStroke[]
   expectation: HandwritingFixtureExpectation
+  diagnostics?: HandwritingFixtureDiagnostics
 }
 
 const makeStroke = (id: string, points: Array<[number, number]>, width = 4): InkStroke => ({
@@ -183,6 +188,7 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
       makeStroke('four-2', [[286, 226], [330, 226]]),
     ],
     expectation: { groupCount: 3, requiredRoles: ['baseline', 'provisionalFractionBar'] },
+    diagnostics: { recordTopBrickFamilies: true },
   },
   operatorSeparatedLowerV: {
     name: 'operatorSeparatedLowerV',
@@ -313,6 +319,7 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
       makeStroke('line-1', [[162, 252], [224, 252]], 6),
     ],
     expectation: { groupCount: 2, requiredRoles: ['baseline', 'provisionalFractionBar'] },
+    diagnostics: { recordTopBrickFamilies: true },
   },
   radicalWithIndex: {
     name: 'radicalWithIndex',
@@ -325,6 +332,7 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
       makeStroke('x-2', [[320, 220], [286, 262]]),
     ],
     expectation: { groupCount: 3, requiredRoles: ['radical', 'baseline'] },
+    diagnostics: { recordTopBrickFamilies: true },
   },
   stackedBaselinesUnsupported: {
     name: 'stackedBaselinesUnsupported',
@@ -346,10 +354,102 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
       makeStroke('seven-1', [[258, 154], [296, 152], [282, 176], [268, 206]]),
     ],
     expectation: { groupCount: 2, requiredRoles: ['baseline', 'superscript'] },
+    diagnostics: { recordTopBrickFamilies: true },
+  },
+  digitFiveRadicalTemptation: {
+    name: 'digitFiveRadicalTemptation',
+    label: '5 radical temptation',
+    description: 'A single-stroke 5-like digit with a descending kink that should remain an ordinary baseline symbol rather than being promoted to a radical.',
+    strokes: [
+      makeStroke('five-1', [[226, 164], [176, 164], [174, 194], [208, 194], [228, 210], [230, 240], [212, 268], [184, 286], [154, 280]]),
+    ],
+    expectation: { groupCount: 1, requiredRoles: ['baseline'] },
+    diagnostics: { recordTopBrickFamilies: true },
+  },
+  digitTwoRadicalTemptation: {
+    name: 'digitTwoRadicalTemptation',
+    label: '2 radical temptation',
+    description: 'A compact single-stroke 2-like digit that leans forward enough to flirt with radical geometry but should stay an ordinary baseline symbol.',
+    strokes: [
+      makeStroke('two-1', [[144, 168], [176, 150], [208, 152], [226, 170], [228, 194], [208, 220], [184, 246], [160, 272], [142, 294], [178, 298], [214, 300]]),
+    ],
+    expectation: { groupCount: 1, requiredRoles: ['baseline'] },
+    diagnostics: { recordTopBrickFamilies: true },
+  },
+  shortBarSuperscript: {
+    name: 'shortBarSuperscript',
+    label: 'Short bar superscript',
+    description: 'A baseline x with a short mostly-horizontal mark above-right that should behave as a local superscript rather than a fraction bar.',
+    strokes: [
+      makeStroke('x-1', [[120, 240], [155, 285]]),
+      makeStroke('x-2', [[156, 240], [120, 285]]),
+      makeStroke('bar-1', [[188, 202], [232, 194]], 6),
+    ],
+    expectation: { groupCount: 2, requiredRoles: ['baseline', 'superscript'] },
+    diagnostics: { recordTopBrickFamilies: true },
+  },
+  shortBarSubscript: {
+    name: 'shortBarSubscript',
+    label: 'Short bar subscript',
+    description: 'A baseline x with a short horizontal mark below-right that should behave as a local subscript rather than a fraction bar.',
+    strokes: [
+      makeStroke('x-1', [[120, 226], [155, 271]]),
+      makeStroke('x-2', [[156, 226], [120, 271]]),
+      makeStroke('bar-1', [[206, 292], [246, 292]], 6),
+    ],
+    expectation: { groupCount: 2, requiredRoles: ['baseline', 'subscript'] },
+    diagnostics: { recordTopBrickFamilies: true },
+  },
+  compactTBaseline: {
+    name: 'compactTBaseline',
+    label: 'Compact t-like symbol',
+    description: 'A compact cross-like t shape that should stay an ordinary baseline symbol instead of an operator brick.',
+    strokes: [
+      makeStroke('stem-1', [[172, 168], [172, 302]]),
+      makeStroke('bar-1', [[146, 190], [198, 190]]),
+    ],
+    expectation: { groupCount: 1, requiredRoles: ['baseline'] },
+    diagnostics: { recordTopBrickFamilies: true },
+  },
+  compactTSuperscript: {
+    name: 'compactTSuperscript',
+    label: 'Compact t with exponent',
+    description: 'A compact t-like host with an upper-right 7 that should still resolve as an ordinary baseline host plus superscript.',
+    strokes: [
+      makeStroke('stem-1', [[172, 176], [172, 308]]),
+      makeStroke('bar-1', [[146, 198], [198, 198]]),
+      makeStroke('seven-1', [[228, 150], [264, 150], [250, 174], [236, 202]]),
+    ],
+    expectation: { groupCount: 2, requiredRoles: ['baseline', 'superscript'] },
+    diagnostics: { recordTopBrickFamilies: true },
+  },
+  radicalLooseRoof: {
+    name: 'radicalLooseRoof',
+    label: 'Loose-roof radical',
+    description: 'A slightly flatter radical sign with hosted interior content that should still resolve as a radical despite the roof being less canonical.',
+    strokes: [
+      makeStroke('radical-1', [[122, 234], [144, 256], [170, 214], [208, 200], [246, 194], [282, 198]]),
+      makeStroke('x-1', [[304, 222], [338, 264]]),
+      makeStroke('x-2', [[338, 222], [304, 264]]),
+    ],
+    expectation: { groupCount: 2, requiredRoles: ['radical', 'baseline'] },
+    diagnostics: { recordTopBrickFamilies: true },
+  },
+  tightFractionBar: {
+    name: 'tightFractionBar',
+    label: 'Tight fraction bar',
+    description: 'A shorter bar with closely packed numerator and denominator members that should still form a fraction structure.',
+    strokes: [
+      makeStroke('num-1', [[164, 176], [184, 206], [204, 176]]),
+      makeStroke('bar-1', [[154, 234], [236, 234]], 6),
+      makeStroke('den-1', [[172, 272], [192, 304], [212, 272]]),
+    ],
+    expectation: { groupCount: 3, requiredRoles: ['fractionBar', 'numerator', 'denominator'] },
+    diagnostics: { recordTopBrickFamilies: true },
   },
 }
 
-export const HANDWRITING_FIXTURE_ORDER: HandwritingFixtureName[] = ['superscript', 'fraction', 'nested', 'adjacentAmbiguous', 'crossingFour', 'superscriptThenBar', 'fractionWithExponent', 'fractionOuterExponent', 'fractionDenominatorOuterExponent', 'fractionOuterSubscript', 'fractionDenominatorOuterSubscript', 'offsetLineSubscript', 'barSeparatedPotentialScript', 'operatorSeparatedLowerV', 'parenthesizedSuperscript', 'parenthesizedExponent', 'parenthesizedFractionNumerator', 'parenthesizedFractionExponent', 'fractionCompositeNumerator', 'sequenceOuterExponent', 'sequenceOuterSubscript', 'inlineOrdinaryPair', 'inlineFractionBarTemptation', 'radicalWithIndex', 'stackedBaselinesUnsupported', 'digitTwoSuperscriptSeven']
+export const HANDWRITING_FIXTURE_ORDER: HandwritingFixtureName[] = ['superscript', 'fraction', 'nested', 'adjacentAmbiguous', 'crossingFour', 'superscriptThenBar', 'fractionWithExponent', 'fractionOuterExponent', 'fractionDenominatorOuterExponent', 'fractionOuterSubscript', 'fractionDenominatorOuterSubscript', 'offsetLineSubscript', 'barSeparatedPotentialScript', 'operatorSeparatedLowerV', 'parenthesizedSuperscript', 'parenthesizedExponent', 'parenthesizedFractionNumerator', 'parenthesizedFractionExponent', 'fractionCompositeNumerator', 'sequenceOuterExponent', 'sequenceOuterSubscript', 'inlineOrdinaryPair', 'inlineFractionBarTemptation', 'radicalWithIndex', 'stackedBaselinesUnsupported', 'digitTwoSuperscriptSeven', 'digitFiveRadicalTemptation', 'digitTwoRadicalTemptation', 'shortBarSuperscript', 'shortBarSubscript', 'compactTBaseline', 'compactTSuperscript', 'radicalLooseRoof', 'tightFractionBar']
 
 export const getHandwritingFixture = (name: HandwritingFixtureName) => {
   const fixture = fixtures[name]

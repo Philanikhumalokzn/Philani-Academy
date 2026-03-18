@@ -5,11 +5,32 @@ import { getTopBrickHypothesisByGroupId, inferLegoBrickHypotheses, inferLegoBric
 import { normalizeInkLayout } from './normalize'
 import { buildExpressionParseForest } from './parser'
 import { inferStructuralRoles } from './roles'
-import type { HandwritingAnalysis, HandwritingRefinementPass, InkStroke, LegoBrickFamilyKind, LegoBrickHypothesis, StrokeGroup, StructuralRole } from './types'
+import type {
+  HandwritingAnalysis,
+  HandwritingAnalysisOptions,
+  HandwritingIncrementalGroupState,
+  HandwritingIncrementalState,
+  HandwritingIncrementalWarmStartSummary,
+  HandwritingRefinementPass,
+  InkBounds,
+  InkStroke,
+  LegoBrickFamilyKind,
+  LegoBrickHypothesis,
+  StrokeGroup,
+  StructuralRole,
+} from './types'
 
 const MAX_GLOBAL_REFINEMENT_ITERATIONS = 6
+const MIN_INCREMENTAL_MATCH_SCORE = 0.4
 
 type AnalysisPass = Omit<HandwritingAnalysis, 'refinement'>
+type WarmStartMatch = {
+  currentGroupId: string
+  priorGroupId: string
+  topFamily: LegoBrickFamilyKind
+  topFamilyScore: number
+  score: number
+}
 
 const runAnalysisPass = (groups: StrokeGroup[], brickHypotheses: LegoBrickHypothesis[]): AnalysisPass => {
   const edges = buildLayoutGraph(groups, brickHypotheses)
@@ -232,9 +253,149 @@ const getAnalysisSignature = (analysis: AnalysisPass) => {
   return [topFamilies, roles, contexts, parseRoots, occupancies].join('||')
 }
 
-export const analyzeHandwrittenExpressionIteratively = (strokes: InkStroke[]): HandwritingAnalysis => {
+const getTopBrickFamilyStates = (analysis: HandwritingAnalysis): HandwritingIncrementalGroupState[] => {
+  const topByGroupId = getTopBrickHypothesisByGroupId(analysis.brickHypotheses)
+
+  return analysis.groups.map((group) => {
+    const topHypothesis = topByGroupId.get(group.id) || null
+    return {
+      groupId: group.id,
+      strokeIds: [...group.strokeIds],
+      bounds: group.bounds,
+      topFamily: topHypothesis?.family || null,
+      topFamilyScore: topHypothesis?.score || 0,
+    }
+  })
+}
+
+const getStrokeOverlapScore = (currentGroup: StrokeGroup, priorGroup: HandwritingIncrementalGroupState) => {
+  const currentStrokeIds = new Set(currentGroup.strokeIds)
+  let sharedCount = 0
+
+  for (const strokeId of priorGroup.strokeIds) {
+    if (currentStrokeIds.has(strokeId)) sharedCount += 1
+  }
+
+  if (!sharedCount) return 0
+  return sharedCount / Math.max(currentGroup.strokeIds.length, priorGroup.strokeIds.length)
+}
+
+const getBoundsSimilarityScore = (left: InkBounds, right: InkBounds) => {
+  const widthDelta = Math.abs(left.width - right.width) / Math.max(left.width, right.width, 1)
+  const heightDelta = Math.abs(left.height - right.height) / Math.max(left.height, right.height, 1)
+  const centerDistance = Math.hypot(left.centerX - right.centerX, left.centerY - right.centerY)
+  const sizeScale = Math.max(left.width, left.height, right.width, right.height, 1)
+  const centerScore = clamp(1 - centerDistance / Math.max(sizeScale * 1.8, 1), 0, 1)
+  const shapeScore = clamp(1 - (widthDelta + heightDelta) / 2, 0, 1)
+
+  return centerScore * 0.6 + shapeScore * 0.4
+}
+
+const getWarmStartMatchScore = (currentGroup: StrokeGroup, priorGroup: HandwritingIncrementalGroupState) => {
+  const strokeOverlapScore = getStrokeOverlapScore(currentGroup, priorGroup)
+  if (strokeOverlapScore > 0) return strokeOverlapScore * 0.8 + getBoundsSimilarityScore(currentGroup.bounds, priorGroup.bounds) * 0.2
+  return getBoundsSimilarityScore(currentGroup.bounds, priorGroup.bounds) * 0.35
+}
+
+const collectWarmStartMatches = (groups: StrokeGroup[], incrementalState: HandwritingIncrementalState): WarmStartMatch[] => {
+  const matches: WarmStartMatch[] = []
+
+  for (const group of groups) {
+    let bestMatch: WarmStartMatch | null = null
+
+    for (const priorGroup of incrementalState.groups) {
+      if (!priorGroup.topFamily) continue
+      const score = getWarmStartMatchScore(group, priorGroup)
+      if (score < MIN_INCREMENTAL_MATCH_SCORE) continue
+      if (!bestMatch || score > bestMatch.score) {
+        bestMatch = {
+          currentGroupId: group.id,
+          priorGroupId: priorGroup.groupId,
+          topFamily: priorGroup.topFamily,
+          topFamilyScore: priorGroup.topFamilyScore,
+          score,
+        }
+      }
+    }
+
+    if (bestMatch) matches.push(bestMatch)
+  }
+
+  return matches
+}
+
+const applyIncrementalWarmStart = (
+  seedBrickHypotheses: LegoBrickHypothesis[],
+  groups: StrokeGroup[],
+  incrementalState: HandwritingIncrementalState | null | undefined,
+): { hypotheses: LegoBrickHypothesis[]; warmStart: HandwritingIncrementalWarmStartSummary } => {
+  if (!incrementalState) {
+    return {
+      hypotheses: seedBrickHypotheses,
+      warmStart: { enabled: false, matchedGroups: 0, reusedFamilySeeds: 0, averageMatchScore: 0 },
+    }
+  }
+
+  const matches = collectWarmStartMatches(groups, incrementalState)
+  if (!matches.length) {
+    return {
+      hypotheses: seedBrickHypotheses,
+      warmStart: { enabled: true, matchedGroups: 0, reusedFamilySeeds: 0, averageMatchScore: 0 },
+    }
+  }
+
+  const matchByGroupId = new Map(matches.map((match) => [match.currentGroupId, match]))
+  let reusedFamilySeeds = 0
+
+  const hypotheses = seedBrickHypotheses.map((hypothesis) => {
+    const match = matchByGroupId.get(hypothesis.groupId)
+    if (!match) return hypothesis
+
+    const familyBoost = hypothesis.family === match.topFamily ? clamp(0.18 * match.score * Math.max(match.topFamilyScore, 0.5), 0.04, 0.2) : 0
+    const stabilityBoost = match.score >= 0.75 && hypothesis.family === 'ordinaryBaselineSymbolBrick' ? 0.03 : 0
+    if (familyBoost > 0) reusedFamilySeeds += 1
+    const nextScore = clamp(hypothesis.score + familyBoost + stabilityBoost, 0.01, 1)
+    const evidence = familyBoost || stabilityBoost
+      ? [
+          ...hypothesis.evidence,
+          `incremental-warm-start=${match.priorGroupId}`,
+          `incremental-match-score=${match.score.toFixed(3)}`,
+          `incremental-family-boost=${familyBoost.toFixed(3)}`,
+          `incremental-stability-boost=${stabilityBoost.toFixed(3)}`,
+        ]
+      : hypothesis.evidence
+
+    return {
+      ...hypothesis,
+      score: nextScore,
+      evidence,
+    }
+  })
+
+  const averageMatchScore = matches.reduce((sum, match) => sum + match.score, 0) / matches.length
+  return {
+    hypotheses,
+    warmStart: {
+      enabled: true,
+      matchedGroups: matches.length,
+      reusedFamilySeeds,
+      averageMatchScore,
+    },
+  }
+}
+
+export const createHandwritingIncrementalState = (analysis: HandwritingAnalysis): HandwritingIncrementalState => ({
+  analysis,
+  groups: getTopBrickFamilyStates(analysis),
+})
+
+export const analyzeHandwrittenExpressionIteratively = (
+  strokes: InkStroke[],
+  options?: HandwritingAnalysisOptions,
+): HandwritingAnalysis => {
   const groups = groupInkStrokes(strokes)
-  const seedBrickHypotheses = inferLegoBrickHypotheses(groups)
+  const initialBrickHypotheses = inferLegoBrickHypotheses(groups)
+  const { hypotheses: seedBrickHypotheses, warmStart } = applyIncrementalWarmStart(initialBrickHypotheses, groups, options?.incrementalState)
 
   let currentPass = runAnalysisPass(groups, seedBrickHypotheses)
   let previousSignature = getAnalysisSignature(currentPass)
@@ -257,6 +418,7 @@ export const analyzeHandwrittenExpressionIteratively = (strokes: InkStroke[]): H
           converged: true,
           maxIterations: MAX_GLOBAL_REFINEMENT_ITERATIONS,
           passes: refinementPasses,
+          warmStart,
         },
       }
     }
@@ -269,6 +431,7 @@ export const analyzeHandwrittenExpressionIteratively = (strokes: InkStroke[]): H
           converged: false,
           maxIterations: MAX_GLOBAL_REFINEMENT_ITERATIONS,
           passes: refinementPasses,
+          warmStart,
         },
       }
     }
@@ -285,6 +448,7 @@ export const analyzeHandwrittenExpressionIteratively = (strokes: InkStroke[]): H
       converged: false,
       maxIterations: MAX_GLOBAL_REFINEMENT_ITERATIONS,
       passes: refinementPasses,
+      warmStart,
     },
   }
 }

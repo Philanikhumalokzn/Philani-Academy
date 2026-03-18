@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import RecognitionDebugPanel, { type DebugSection } from './RecognitionDebugPanel'
-import { analyzeHandwrittenExpression, getHandwritingFixture, HANDWRITING_FIXTURE_ORDER, type InkBounds, type InkPoint, type InkStroke } from '../lib/handwritingNormalization'
+import { analyzeHandwrittenExpression, createHandwritingIncrementalState, getHandwritingFixture, HANDWRITING_FIXTURE_ORDER, type InkBounds, type InkPoint, type InkStroke } from '../lib/handwritingNormalization'
 import type { HandwritingFixtureName } from '../lib/handwritingNormalization/fixtures'
 
 const VIEWPORT = { width: 760, height: 420, padding: 28 }
@@ -78,10 +78,15 @@ export default function HandwritingNormalizationTestCanvas() {
   const activeStrokeRef = useRef<InkStroke | null>(null)
   const activePointerIdRef = useRef<number | null>(null)
   const nextStrokeIdRef = useRef(1)
+  const incrementalStateRef = useRef<ReturnType<typeof createHandwritingIncrementalState> | null>(null)
 
-  const analysis = useMemo(() => analyzeHandwrittenExpression(strokes), [strokes])
+  const analysis = useMemo(() => analyzeHandwrittenExpression(strokes, { incrementalState: incrementalStateRef.current }), [strokes])
   const outputStrokes = normalizationEnabled ? analysis.normalization.strokes : strokes
   const outputBounds = useMemo(() => getGlobalBounds(outputStrokes), [outputStrokes])
+
+  useEffect(() => {
+    incrementalStateRef.current = createHandwritingIncrementalState(analysis)
+  }, [analysis])
 
   const debugSections = useMemo<DebugSection[]>(() => {
     const grouped = analysis.groups.map((group) => `${group.id}: ${group.strokeIds.length} stroke(s), ${Math.round(group.bounds.width)}x${Math.round(group.bounds.height)}`)
@@ -125,6 +130,8 @@ export default function HandwritingNormalizationTestCanvas() {
           { label: 'Stroke count', value: strokes.length },
           { label: 'Group count', value: analysis.groups.length },
           { label: 'Normalization', value: normalizationEnabled ? 'Enabled' : 'Disabled' },
+          { label: 'Refinement passes', value: analysis.refinement?.passes.length || 0 },
+          { label: 'Warm start', value: analysis.refinement?.warmStart?.enabled ? `${analysis.refinement?.warmStart?.matchedGroups || 0} matched` : 'Disabled' },
         ],
       },
       {
@@ -233,6 +240,7 @@ export default function HandwritingNormalizationTestCanvas() {
   const loadSample = (preset: HandwritingFixtureName) => {
     const fixture = getHandwritingFixture(preset)
     nextStrokeIdRef.current = fixture.strokes.length + 1
+    incrementalStateRef.current = null
     setSelectedFixture(preset)
     setStrokes(fixture.strokes)
   }
@@ -275,7 +283,14 @@ export default function HandwritingNormalizationTestCanvas() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2 rounded-[24px] border border-white/10 bg-white/5 px-4 py-3">
-        <button type="button" className="rounded-full border border-[#8cc9ff]/40 bg-[#0d2748] px-4 py-2 text-sm text-white transition hover:bg-[#12345c]" onClick={() => setStrokes([])}>
+        <button
+          type="button"
+          className="rounded-full border border-[#8cc9ff]/40 bg-[#0d2748] px-4 py-2 text-sm text-white transition hover:bg-[#12345c]"
+          onClick={() => {
+            incrementalStateRef.current = null
+            setStrokes([])
+          }}
+        >
           Clear
         </button>
         {HANDWRITING_FIXTURE_ORDER.map((fixtureName) => {

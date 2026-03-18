@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { analyzeHandwrittenExpression, formatBrickFamilyScoreDiagnostics, getHandwritingFixture, getRoleDescriptor, HANDWRITING_FIXTURE_ORDER, LEGO_BRICK_FAMILIES, recognizeSymbolForRole, roleAllowsChildRole } from '../lib/handwritingNormalization'
+import { analyzeHandwrittenExpression, createHandwritingIncrementalState, formatBrickFamilyScoreDiagnostics, getHandwritingFixture, getRoleDescriptor, HANDWRITING_FIXTURE_ORDER, LEGO_BRICK_FAMILIES, recognizeSymbolForRole, roleAllowsChildRole } from '../lib/handwritingNormalization'
 import { buildLayoutGraph } from '../lib/handwritingNormalization/graph'
 import { normalizeInkLayout } from '../lib/handwritingNormalization/normalize'
 import { buildExpressionParseForest } from '../lib/handwritingNormalization/parser'
@@ -64,6 +64,30 @@ const getBrickOccupancy = (analysis: HandwritingAnalysis, groupId: string, field
   return analysis.brickOccupancies.find((occupancy) => occupancy.groupId === groupId && occupancy.field === field) || null
 }
 
+const getAnalysisSignature = (analysis: HandwritingAnalysis) => {
+  const topFamilies = analysis.brickHypotheses
+    .slice()
+    .sort((left, right) => right.score - left.score)
+    .filter((hypothesis, index, array) => array.findIndex((candidate) => candidate.groupId === hypothesis.groupId) === index)
+    .sort((left, right) => left.groupId.localeCompare(right.groupId))
+    .map((hypothesis) => `${hypothesis.groupId}:${hypothesis.family}`)
+    .join('|')
+
+  const roles = analysis.roles
+    .slice()
+    .sort((left, right) => left.groupId.localeCompare(right.groupId))
+    .map((role) => `${role.groupId}:${role.role}:${role.parentGroupId || 'none'}:${role.associationContextId || 'root'}`)
+    .join('|')
+
+  const contexts = analysis.contexts
+    .slice()
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .map((context) => `${context.kind}:${context.semanticRootGroupId || 'none'}:${context.anchorGroupIds.join(',')}`)
+    .join('|')
+
+  return [topFamilies, roles, contexts].join('||')
+}
+
 const makeBrickHypothesis = (groupId: string, family: LegoBrickFamilyKind, score = 0.9): LegoBrickHypothesis => ({
   id: `brick:test:${groupId}:${family}`,
   groupId,
@@ -122,6 +146,26 @@ test.describe('handwriting normalization fixtures', () => {
       expect(analysis.refinement?.converged, `${fixture.name} should converge under global refinement`).toBe(true)
       expect((analysis.refinement?.passes.length || 0), `${fixture.name} should record refinement passes`).toBeGreaterThanOrEqual(2)
       expect(analysis.refinement?.passes.at(-1)?.changed, `${fixture.name} final refinement pass should be stable`).toBe(false)
+    }
+  })
+
+  test('incremental warm start stays aligned with cold global analysis as strokes accumulate', () => {
+    const fixture = getHandwritingFixture('fractionWithExponent')
+    let incrementalState: ReturnType<typeof createHandwritingIncrementalState> | null = null
+
+    for (let count = 1; count <= fixture.strokes.length; count += 1) {
+      const partialStrokes = fixture.strokes.slice(0, count)
+      const warmAnalysis = analyzeHandwrittenExpression(partialStrokes, { incrementalState })
+      const coldAnalysis = analyzeHandwrittenExpression(partialStrokes)
+
+      expect(getAnalysisSignature(warmAnalysis), `prefix ${count} should match cold analysis`).toBe(getAnalysisSignature(coldAnalysis))
+
+      if (count > 1) {
+        expect(warmAnalysis.refinement?.warmStart?.enabled, `prefix ${count} should enable warm start`).toBe(true)
+        expect((warmAnalysis.refinement?.warmStart?.matchedGroups || 0), `prefix ${count} should reuse prior groups`).toBeGreaterThan(0)
+      }
+
+      incrementalState = createHandwritingIncrementalState(warmAnalysis)
     }
   })
 

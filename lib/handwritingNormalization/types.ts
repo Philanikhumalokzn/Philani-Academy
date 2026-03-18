@@ -344,11 +344,36 @@ export type HandwritingRefinementPass = {
   changed: boolean
 }
 
+export type HandwritingIncrementalGroupState = {
+  groupId: string
+  strokeIds: string[]
+  bounds: InkBounds
+  topFamily: LegoBrickFamilyKind | null
+  topFamilyScore: number
+}
+
+export type HandwritingIncrementalState = {
+  groups: HandwritingIncrementalGroupState[]
+  analysis: HandwritingAnalysis
+}
+
+export type HandwritingIncrementalWarmStartSummary = {
+  enabled: boolean
+  matchedGroups: number
+  reusedFamilySeeds: number
+  averageMatchScore: number
+}
+
 export type HandwritingRefinementSummary = {
   iterations: number
   converged: boolean
   maxIterations: number
   passes: HandwritingRefinementPass[]
+  warmStart?: HandwritingIncrementalWarmStartSummary
+}
+
+export type HandwritingAnalysisOptions = {
+  incrementalState?: HandwritingIncrementalState | null
 }
 
 export type HandwritingAnalysis = {

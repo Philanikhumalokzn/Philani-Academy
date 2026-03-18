@@ -658,6 +658,88 @@ const prioritizeRootId = (rootIds: string[], preferredRootId: string | null, gro
   return [preferredRootId, ...ordered.filter((rootId) => rootId !== preferredRootId)]
 }
 
+const buildSequenceContexts = (
+  roles: StructuralRole[],
+  subexpressions: LocalSubexpression[],
+  groupMap: Map<string, StrokeGroup>,
+  parentContextId: string,
+  containerGroupIds: string[],
+) => {
+  const roleMap = new Map(roles.map((role) => [role.groupId, role]))
+  const candidates = subexpressions
+    .filter((subexpression) => subexpression.rootRole === 'baseline')
+    .map((subexpression) => ({
+      subexpression,
+      role: roleMap.get(subexpression.rootGroupId) || null,
+      bounds: getSubexpressionBounds(subexpression, groupMap),
+    }))
+    .filter(({ role }) => role?.role === 'baseline' && role.parentGroupId == null)
+    .filter(({ role }) => [...(role?.containerGroupIds || [])].sort().join(',') === [...containerGroupIds].sort().join(','))
+    .sort((left, right) => left.bounds.left - right.bounds.left)
+
+  const clusters: Array<typeof candidates> = []
+  let currentCluster: Array<typeof candidates[number]> = []
+
+  for (const candidate of candidates) {
+    const previous = currentCluster[currentCluster.length - 1]
+    if (!previous) {
+      currentCluster.push(candidate)
+      continue
+    }
+
+    const horizontalGap = candidate.bounds.left - previous.bounds.right
+    const verticalOffset = Math.abs(candidate.bounds.centerY - previous.bounds.centerY)
+    const compatibleGap = horizontalGap <= Math.max(44, Math.max(previous.bounds.right - previous.bounds.left, candidate.bounds.right - candidate.bounds.left) * 0.9)
+    const compatibleBaseline = verticalOffset <= Math.max(28, Math.max(previous.bounds.bottom - previous.bounds.top, candidate.bounds.bottom - candidate.bounds.top) * 0.55)
+
+    if (compatibleGap && compatibleBaseline) {
+      currentCluster.push(candidate)
+      continue
+    }
+
+    if (currentCluster.length > 1) {
+      clusters.push(currentCluster)
+    }
+    currentCluster = [candidate]
+  }
+
+  if (currentCluster.length > 1) {
+    clusters.push(currentCluster)
+  }
+
+  return clusters.map((cluster) => {
+    const rootIds = cluster.map((entry) => entry.subexpression.rootGroupId)
+    return {
+      id: `context:sequence:${parentContextId.replace(/:/g, '_')}:${rootIds.join(':')}`,
+      kind: 'sequence' as const,
+      parentContextId,
+      semanticRootGroupId: rootIds[0] || null,
+      anchorGroupIds: rootIds,
+      memberGroupIds: uniqueIds(cluster.flatMap((entry) => entry.subexpression.memberGroupIds)),
+    }
+  })
+}
+
+const getSequenceContextBounds = (context: ExpressionContext, groupMap: Map<string, StrokeGroup>) => {
+  const memberBounds = context.anchorGroupIds
+    .map((groupId) => groupMap.get(groupId)?.bounds)
+    .filter(Boolean) as StrokeGroup['bounds'][]
+  if (!memberBounds.length) return null
+  return mergeBounds(memberBounds.map((bounds) => ({
+    left: bounds.left,
+    top: bounds.top,
+    right: bounds.right,
+    bottom: bounds.bottom,
+    centerX: bounds.centerX,
+    centerY: bounds.centerY,
+  })))
+}
+
+const getRightmostAnchorGroupId = (context: ExpressionContext, groupMap: Map<string, StrokeGroup>) => {
+  return [...context.anchorGroupIds]
+    .sort((left, right) => (groupMap.get(right)?.bounds.right || 0) - (groupMap.get(left)?.bounds.right || 0))[0] || null
+}
+
 const expandCompositeMemberGroupIds = (
   rootIds: string[],
   subexpressions: LocalSubexpression[],
@@ -773,6 +855,13 @@ const buildExpressionContexts = (
     })
   }
 
+  contexts.push(...buildSequenceContexts(roles, subexpressions, groupMap, 'context:root', []))
+
+  for (const enclosureContext of contexts.filter((context) => context.kind === 'enclosure')) {
+    const containerGroupIds = enclosureContext.anchorGroupIds.filter((groupId) => groupId !== enclosureContext.semanticRootGroupId)
+    contexts.push(...buildSequenceContexts(roles, subexpressions, groupMap, enclosureContext.id, containerGroupIds))
+  }
+
   const enclosureContexts = contexts.filter((context) => context.kind === 'enclosure')
 
   for (const fractionBarRole of roles.filter((role) => role.role === 'fractionBar' || role.role === 'provisionalFractionBar')) {
@@ -827,6 +916,7 @@ const annotateRolesWithContexts = (roles: StructuralRole[], contexts: Expression
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
   const groupMap = new Map(groups.map((group) => [group.id, group]))
   const enclosureContexts = contexts.filter((context) => context.kind === 'enclosure')
+  const sequenceContexts = contexts.filter((context) => context.kind === 'sequence')
   const fractionContexts = contexts.filter((context) => context.kind === 'fraction')
   const fractionMemberContexts = contexts.filter((context) => context.kind === 'numerator' || context.kind === 'denominator')
 
@@ -848,6 +938,13 @@ const annotateRolesWithContexts = (roles: StructuralRole[], contexts: Expression
     const enclosureContext = parentOnlyContainers.length
       ? enclosureContexts.find((context) => parentOnlyContainers.every((groupId) => context.anchorGroupIds.includes(groupId))) || null
       : null
+    const sequenceContext = sequenceContexts.find((context) => {
+      if (!context.memberGroupIds.includes(role.parentGroupId || '')) return false
+      const sequenceBounds = getSequenceContextBounds(context, groupMap)
+      const scriptGroup = groupMap.get(role.groupId)
+      if (!sequenceBounds || !scriptGroup) return false
+      return scriptGroup.bounds.left >= sequenceBounds.right + Math.max(12, (sequenceBounds.right - sequenceBounds.left) * 0.06)
+    }) || null
     const sharedFractionMemberContext = fractionMemberContexts.find((context) => context.memberGroupIds.includes(role.groupId) && context.memberGroupIds.includes(role.parentGroupId || '')) || null
     const fractionContext = parentRole?.parentGroupId
       ? fractionContexts.find((context) => context.semanticRootGroupId === parentRole.parentGroupId && context.memberGroupIds.includes(parentRole.groupId)) || null
@@ -861,6 +958,16 @@ const annotateRolesWithContexts = (roles: StructuralRole[], contexts: Expression
         associationContextId: fractionContext.id,
         normalizationAnchorGroupIds: anchorGroupIds,
         evidence: [...role.evidence, `association-context=${fractionContext.id}`, `normalization-anchors=${anchorGroupIds.join(',')}`],
+      }
+    }
+
+    if (!enclosureContext && !sharedFractionMemberContext && sequenceContext) {
+      const anchorGroupIds = uniqueIds(sequenceContext.anchorGroupIds)
+      return {
+        ...role,
+        associationContextId: sequenceContext.id,
+        normalizationAnchorGroupIds: anchorGroupIds,
+        evidence: [...role.evidence, `association-context=${sequenceContext.id}`, `normalization-anchors=${anchorGroupIds.join(',')}`],
       }
     }
 

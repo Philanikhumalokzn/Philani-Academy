@@ -9,11 +9,13 @@ const getContextPriority = (context: ExpressionContext) => {
     case 'numerator':
     case 'denominator':
       return 1
-    case 'fraction':
+    case 'sequence':
       return 2
+    case 'fraction':
+      return 3
     case 'root':
     default:
-      return 3
+      return 4
   }
 }
 
@@ -174,7 +176,10 @@ export const buildExpressionParseForest = (
     const fallbackContextId = scriptRole.containerGroupIds.length
       ? getContainerContextId(contexts, scriptRole.containerGroupIds)
       : getFallbackContextIdForRole(scriptRole)
-    const contextId = getMostLocalContextId(uniqueIds([scriptRole.groupId, ...(parentGroupId ? [parentGroupId] : [])]), fallbackContextId)
+    const sequenceAssociationContext = scriptRole.associationContextId ? contextMap.get(scriptRole.associationContextId) || null : null
+    const contextId = sequenceAssociationContext?.kind === 'sequence'
+      ? sequenceAssociationContext.parentContextId || 'context:root'
+      : getMostLocalContextId(uniqueIds([scriptRole.groupId, ...(parentGroupId ? [parentGroupId] : [])]), fallbackContextId)
 
     addNode({
       id: nodeId,
@@ -254,6 +259,9 @@ export const buildExpressionParseForest = (
   const buildScriptOperandNodeId = (scriptRole: StructuralRole, fallbackParentGroupId?: string | null) => {
     if (scriptRole.associationContextId && enclosureNodeIdByContextId.has(scriptRole.associationContextId) && scriptRole.containerGroupIds.length === 0) {
       return enclosureNodeIdByContextId.get(scriptRole.associationContextId) || null
+    }
+    if (scriptRole.associationContextId && contextMap.get(scriptRole.associationContextId)?.kind === 'sequence' && sequenceRootNodeIdByContextId.has(scriptRole.associationContextId)) {
+      return sequenceRootNodeIdByContextId.get(scriptRole.associationContextId) || null
     }
     if (scriptRole.associationContextId && fractionNodeIdByExpressionContextId.has(scriptRole.associationContextId)) {
       return fractionNodeIdByExpressionContextId.get(scriptRole.associationContextId) || null
@@ -509,6 +517,17 @@ export const buildExpressionParseForest = (
     node.childNodeIds = replacePreferredChildNodeIds(childNodeIds)
     node.groupIds = uniqueIds([node.operatorGroupId || '', ...childNodeIds.flatMap((childNodeId) => nodeMap.get(childNodeId)?.groupIds || [])])
     refreshSequenceRootNode(node.contextId)
+  }
+
+  for (const scriptRole of scriptRoles) {
+    if (!scriptRole.associationContextId) continue
+    if (contextMap.get(scriptRole.associationContextId)?.kind !== 'sequence') continue
+    const scriptNode = nodeMap.get(`parse:script:${scriptRole.groupId}`)
+    const sequenceRootNodeId = sequenceRootNodeIdByContextId.get(scriptRole.associationContextId)
+    if (!scriptNode || !sequenceRootNodeId) continue
+    scriptNode.childNodeIds = [sequenceRootNodeId]
+    scriptNode.groupIds = uniqueIds([scriptRole.groupId, ...(nodeMap.get(sequenceRootNodeId)?.groupIds || [])])
+    refreshSequenceRootNode(scriptNode.contextId)
   }
 
   return { parseNodes: nodes, parseRoots }

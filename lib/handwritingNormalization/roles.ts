@@ -128,6 +128,74 @@ const getDirectScriptHostBarrier = (
   return blockers[0]?.score >= 0.58 ? blockers[0] : null
 }
 
+const getCrossFractionStructureBarrier = (
+  groupMap: Map<string, StrokeGroup>,
+  fractionBarrierGroups: StrokeGroup[],
+  parentGroupId: string | null | undefined,
+  childGroupId: string | null | undefined,
+  ignoredGroupIds: Set<string> = new Set(),
+) => {
+  if (!parentGroupId || !childGroupId) return null
+  const parentGroup = groupMap.get(parentGroupId)
+  const childGroup = groupMap.get(childGroupId)
+  if (!parentGroup || !childGroup) return null
+
+  const barriers = fractionBarrierGroups
+    .filter((group) => group.id !== parentGroupId && group.id !== childGroupId)
+    .filter((group) => !ignoredGroupIds.has(group.id))
+    .map((barrier) => {
+      const parentAbove = parentGroup.bounds.bottom <= barrier.bounds.centerY + Math.max(10, barrier.bounds.height * 2.4)
+      const parentBelow = parentGroup.bounds.top >= barrier.bounds.centerY - Math.max(10, barrier.bounds.height * 2.4)
+      const childAbove = childGroup.bounds.bottom <= barrier.bounds.centerY + Math.max(10, barrier.bounds.height * 2.4)
+      const childBelow = childGroup.bounds.top >= barrier.bounds.centerY - Math.max(10, barrier.bounds.height * 2.4)
+      const oppositeSides = (parentAbove && childBelow) || (parentBelow && childAbove)
+      if (!oppositeSides) return null
+
+      const parentHorizontalOverlap = clamp(
+        (Math.min(parentGroup.bounds.right, barrier.bounds.right) - Math.max(parentGroup.bounds.left, barrier.bounds.left)) / Math.max(1, Math.min(parentGroup.bounds.width, barrier.bounds.width)),
+        0,
+        1,
+      )
+      const childHorizontalOverlap = clamp(
+        (Math.min(childGroup.bounds.right, barrier.bounds.right) - Math.max(childGroup.bounds.left, barrier.bounds.left)) / Math.max(1, Math.min(childGroup.bounds.width, barrier.bounds.width)),
+        0,
+        1,
+      )
+      if (parentHorizontalOverlap < 0.18 || childHorizontalOverlap < 0.18) return null
+
+      const spanLeft = Math.min(parentGroup.bounds.left, childGroup.bounds.left)
+      const spanRight = Math.max(parentGroup.bounds.right, childGroup.bounds.right)
+      const horizontalCoverage = clamp(
+        (Math.min(barrier.bounds.right, spanRight + Math.max(14, barrier.bounds.width * 0.08)) - Math.max(barrier.bounds.left, spanLeft - Math.max(14, barrier.bounds.width * 0.08)))
+          / Math.max(1, spanRight - spanLeft + Math.max(20, barrier.bounds.width * 0.16)),
+        0,
+        1,
+      )
+      const centrality = clamp(
+        1 - Math.abs(barrier.bounds.centerX - (parentGroup.bounds.centerX + childGroup.bounds.centerX) / 2)
+          / Math.max(28, Math.abs(childGroup.bounds.centerX - parentGroup.bounds.centerX) * 0.7 + barrier.bounds.width * 0.22),
+        0,
+        1,
+      )
+      const verticalSeparation = clamp(
+        Math.abs(parentGroup.bounds.centerY - childGroup.bounds.centerY) / Math.max(28, barrier.bounds.height * 7.5),
+        0,
+        1,
+      )
+      const score = horizontalCoverage * 0.32 + centrality * 0.2 + verticalSeparation * 0.24 + parentHorizontalOverlap * 0.12 + childHorizontalOverlap * 0.12
+
+      return {
+        groupId: barrier.id,
+        family: 'fractionBarBrick' as const,
+        score,
+      }
+    })
+    .filter(Boolean)
+    .sort((left, right) => (right?.score || 0) - (left?.score || 0))
+
+  return (barriers[0]?.score || 0) >= 0.54 ? barriers[0] : null
+}
+
 const getInlineFieldKind = (direction: 'left' | 'right') => {
   return direction === 'left' ? 'leftInline' : 'rightInline'
 }
@@ -204,6 +272,7 @@ const findBestAdmissibleScriptEdge = (
   role: 'superscript' | 'subscript',
   groupMap: Map<string, StrokeGroup>,
   topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
+  fractionBarrierGroups: StrokeGroup[] = [],
 ) => {
   const orderedEdges = [...edges].sort((left, right) => {
     if (right.score !== left.score) return right.score - left.score
@@ -220,6 +289,7 @@ const findBestAdmissibleScriptEdge = (
     const hostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, edge.fromId, role)
     if (!hostFieldSupport.supported) continue
     if (getDirectScriptHostBarrier(groupMap, topBrickHypothesisByGroupId, edge.fromId, edge.toId)) continue
+    if (getCrossFractionStructureBarrier(groupMap, fractionBarrierGroups, edge.fromId, edge.toId)) continue
     return { edge, hostFieldSupport }
   }
   return null
@@ -658,11 +728,12 @@ const collectStableAttachments = (groups: StrokeGroup[], edges: LayoutEdge[], bl
   const attachments: StableAttachment[] = []
   const groupIds = new Set(groups.map((group) => group.id))
   const groupMap = new Map(groups.map((group) => [group.id, group]))
+  const fractionBarrierGroups = groups.filter((group) => topBrickHypothesisByGroupId.get(group.id)?.family === 'fractionBarBrick')
 
   for (const group of groups) {
     if (blockedGroupIds.has(group.id)) continue
-    const bestSuper = findBestAdmissibleScriptEdge(incomingByKind(edges, group.id, 'superscriptCandidate'), 'superscript', groupMap, topBrickHypothesisByGroupId)?.edge || null
-    const bestSub = findBestAdmissibleScriptEdge(incomingByKind(edges, group.id, 'subscriptCandidate'), 'subscript', groupMap, topBrickHypothesisByGroupId)?.edge || null
+    const bestSuper = findBestAdmissibleScriptEdge(incomingByKind(edges, group.id, 'superscriptCandidate'), 'superscript', groupMap, topBrickHypothesisByGroupId, fractionBarrierGroups)?.edge || null
+    const bestSub = findBestAdmissibleScriptEdge(incomingByKind(edges, group.id, 'subscriptCandidate'), 'subscript', groupMap, topBrickHypothesisByGroupId, fractionBarrierGroups)?.edge || null
     const bestSequence = incomingByKind(edges, group.id, 'sequence')[0] || null
 
     const candidates = [
@@ -1955,6 +2026,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
     })
 
   const confirmedFractionBarIdSet = new Set(confirmedFractionBars.map(({ bar }) => bar.id))
+  const fractionStructureBarrierGroups = fractionBarLikeGroups
 
   const provisionalFractionBars = fractionBarLikeGroups
     .map((bar) => ({ bar, context: scoreFractionContext(bar, subexpressions, groupMap) }))
@@ -2177,8 +2249,8 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
   for (const group of remaining) {
     const superCandidates = incomingByKind(edges, group.id, 'superscriptCandidate')
     const subCandidates = incomingByKind(edges, group.id, 'subscriptCandidate')
-    const bestSuperEntry = findBestAdmissibleScriptEdge(superCandidates, 'superscript', groupMap, topBrickHypothesisByGroupId)
-    const bestSubEntry = findBestAdmissibleScriptEdge(subCandidates, 'subscript', groupMap, topBrickHypothesisByGroupId)
+    const bestSuperEntry = findBestAdmissibleScriptEdge(superCandidates, 'superscript', groupMap, topBrickHypothesisByGroupId, fractionStructureBarrierGroups)
+    const bestSubEntry = findBestAdmissibleScriptEdge(subCandidates, 'subscript', groupMap, topBrickHypothesisByGroupId, fractionStructureBarrierGroups)
     const bestSuper = bestSuperEntry?.edge || null
     const bestSub = bestSubEntry?.edge || null
     const bestSequence = bestIncoming(edges, group.id, 'sequence')
@@ -2266,6 +2338,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
     }
     const hostBarrier = best.role === 'superscript' || best.role === 'subscript'
       ? getDirectScriptHostBarrier(groupMap, topBrickHypothesisByGroupId, resolvedParentGroupId, group.id, ignoredBarrierIds)
+        || getCrossFractionStructureBarrier(groupMap, fractionStructureBarrierGroups, resolvedParentGroupId, group.id, ignoredBarrierIds)
       : null
     const hostFieldSupport = best.role === 'superscript' || best.role === 'subscript'
       ? hostSupportsScriptField(topBrickHypothesisByGroupId, resolvedParentGroupId, best.role)
@@ -2304,6 +2377,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
         const promotedParentRole = roles.get(promotableSequenceWideCandidate.parentGroupId) || null
         const promotedScriptRole = promotableSequenceWideCandidate.role as 'superscript' | 'subscript'
         const promotedHostBarrier = getDirectScriptHostBarrier(groupMap, topBrickHypothesisByGroupId, promotableSequenceWideCandidate.parentGroupId, group.id)
+          || getCrossFractionStructureBarrier(groupMap, fractionStructureBarrierGroups, promotableSequenceWideCandidate.parentGroupId, group.id)
         const promotedHostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, promotableSequenceWideCandidate.parentGroupId, promotedScriptRole)
         const promotedParentSupportsAttachment = (!roleRequiresOperandReference(promotableSequenceWideCandidate.role) || roleUsesParentOperand(promotableSequenceWideCandidate.role))
           && roleAllowsOperandRole(promotableSequenceWideCandidate.role, promotedParentRole?.role || 'baseline')
@@ -2328,6 +2402,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
       const promotedFractionParentRole = roles.get(promotableFractionWideCandidate.parentGroupId) || null
       const promotedFractionScriptRole = promotableFractionWideCandidate.role as 'superscript' | 'subscript'
       const promotedFractionHostBarrier = getDirectScriptHostBarrier(groupMap, topBrickHypothesisByGroupId, promotableFractionWideCandidate.parentGroupId, group.id)
+        || getCrossFractionStructureBarrier(groupMap, fractionStructureBarrierGroups, promotableFractionWideCandidate.parentGroupId, group.id)
       const promotedFractionHostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, promotableFractionWideCandidate.parentGroupId, promotedFractionScriptRole)
       const promotedFractionParentSupportsAttachment = (!roleRequiresOperandReference(promotableFractionWideCandidate.role) || roleUsesParentOperand(promotableFractionWideCandidate.role))
         && roleAllowsOperandRole(promotableFractionWideCandidate.role, promotedFractionParentRole?.role || 'baseline')

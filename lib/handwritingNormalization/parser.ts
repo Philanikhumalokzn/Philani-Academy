@@ -449,7 +449,7 @@ export const buildExpressionParseForest = (
     enclosureNodeMetaById.set(node.id, { expressionContextId: contextId })
   }
 
-  const fractionBarRoles = roles.filter((role) => role.role === 'fractionBar' || role.role === 'provisionalFractionBar')
+  const fractionBarRoles = roles.filter((role) => role.role === 'fractionBar')
   for (const barRole of fractionBarRoles) {
     const expressionContextId = contextMap.has(`context:fraction:${barRole.groupId}`) ? `context:fraction:${barRole.groupId}` : null
     const numeratorContext = expressionContextId

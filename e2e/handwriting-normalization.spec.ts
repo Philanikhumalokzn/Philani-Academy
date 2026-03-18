@@ -533,6 +533,7 @@ test.describe('handwriting normalization fixtures', () => {
     expect(denominatorContext).toBeFalsy()
     expect(numeratorRoot?.role).toBe('baseline')
     expect(provisionalBar?.evidence.some((entry) => entry.startsWith('provisional-above='))).toBe(true)
+    expect(analysis.parseNodes.some((node) => node.kind === 'fractionExpression')).toBe(false)
   })
 
   test('a denominator plus bar forms a provisional denominator-bar pair before the numerator appears', async () => {
@@ -567,6 +568,62 @@ test.describe('handwriting normalization fixtures', () => {
     expect(denominatorContext).toBeTruthy()
     expect(denominatorRoot?.role).toBe('baseline')
     expect(provisionalBar?.evidence.some((entry) => entry.startsWith('provisional-below='))).toBe(true)
+    expect(analysis.parseNodes.some((node) => node.kind === 'fractionExpression')).toBe(false)
+  })
+
+  test('a below-bar denominator cannot steal an above-bar numerator as a cross-bar superscript host', () => {
+    const strokes: InkStroke[] = [
+      {
+        ...makeStroke('num-2'),
+        points: [
+          { x: 214, y: 174, t: 0 },
+          { x: 240, y: 156, t: 16 },
+          { x: 266, y: 160, t: 32 },
+          { x: 262, y: 184, t: 48 },
+          { x: 232, y: 202, t: 64 },
+          { x: 268, y: 202, t: 80 },
+        ],
+      },
+      {
+        ...makeStroke('bar-1'),
+        width: 6,
+        points: [
+          { x: 144, y: 238, t: 0 },
+          { x: 316, y: 238, t: 16 },
+        ],
+      },
+      {
+        ...makeStroke('four-1'),
+        points: [
+          { x: 184, y: 256, t: 0 },
+          { x: 224, y: 256, t: 16 },
+          { x: 196, y: 256, t: 32 },
+          { x: 196, y: 330, t: 48 },
+        ],
+      },
+      {
+        ...makeStroke('four-2'),
+        points: [
+          { x: 172, y: 292, t: 0 },
+          { x: 228, y: 292, t: 16 },
+        ],
+      },
+    ]
+
+    const analysis = analyzeHandwrittenExpression(strokes)
+    const fractionBar = analysis.roles.find((role) => role.role === 'fractionBar' || role.role === 'provisionalFractionBar') || null
+    const numeratorContext = getContextByKind(analysis, 'numerator')
+    const denominatorContext = getContextByKind(analysis, 'denominator')
+    const numeratorRoot = getSemanticRootRole(analysis, numeratorContext)
+    const denominatorRoot = getSemanticRootRole(analysis, denominatorContext)
+    const superscript = analysis.roles.find((role) => role.role === 'superscript') || null
+
+    expect(fractionBar, 'the line-like host should still be favored as fraction structure').toBeTruthy()
+    expect(numeratorContext, 'the upper group should be claimed as a numerator candidate').toBeTruthy()
+    expect(denominatorContext, 'the lower group should be claimed as a denominator candidate').toBeTruthy()
+    expect(numeratorRoot?.groupId).not.toBe(denominatorRoot?.groupId)
+    expect(superscript?.parentGroupId, 'the lower denominator must not own the upper numerator across the fraction bar').not.toBe(denominatorRoot?.groupId)
+    expect(denominatorContext?.memberGroupIds).toContain(denominatorRoot?.groupId || '')
   })
 
   test('multiple numerator-labeled groups keep their local spacing during fraction normalization', async () => {

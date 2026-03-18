@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { analyzeHandwrittenExpression, getHandwritingFixture, getRoleDescriptor, LEGO_BRICK_FAMILIES, recognizeSymbolForRole, roleAllowsChildRole } from '../lib/handwritingNormalization'
+import { analyzeHandwrittenExpression, getHandwritingFixture, getRoleDescriptor, HANDWRITING_FIXTURE_ORDER, LEGO_BRICK_FAMILIES, recognizeSymbolForRole, roleAllowsChildRole } from '../lib/handwritingNormalization'
 import { buildLayoutGraph } from '../lib/handwritingNormalization/graph'
 import { normalizeInkLayout } from '../lib/handwritingNormalization/normalize'
 import { buildExpressionParseForest } from '../lib/handwritingNormalization/parser'
@@ -75,6 +75,33 @@ const makeBrickHypothesis = (groupId: string, family: LegoBrickFamilyKind, score
 })
 
 test.describe('handwriting normalization fixtures', () => {
+  test('all fixture examples satisfy their declared role and group expectations', async () => {
+    for (const fixtureName of HANDWRITING_FIXTURE_ORDER) {
+      const fixture = getHandwritingFixture(fixtureName)
+      const analysis = analyzeHandwrittenExpression(fixture.strokes)
+
+      expect(analysis.groups, `${fixture.name} group count`).toHaveLength(fixture.expectation.groupCount)
+      for (const requiredRole of fixture.expectation.requiredRoles) {
+        const isSatisfied = requiredRole === 'numerator' || requiredRole === 'denominator'
+          ? analysis.contexts.some((context) => context.kind === requiredRole)
+            || analysis.roles.some((role) => role.role === requiredRole)
+          : requiredRole === 'fractionBar'
+            ? analysis.roles.some((role) => role.role === 'fractionBar' || role.role === 'provisionalFractionBar')
+            : requiredRole === 'provisionalFractionBar'
+              ? analysis.roles.some((role) => role.role === 'fractionBar' || role.role === 'provisionalFractionBar')
+                || analysis.groups.some((group) => getTopBrickHypothesis(analysis, group.id)?.family === 'fractionBarBrick')
+            : analysis.roles.some((role) => role.role === requiredRole)
+        expect(
+          isSatisfied,
+          `${fixture.name} should contain role ${requiredRole}`,
+        ).toBe(true)
+      }
+      if (fixture.expectation.minAmbiguities != null) {
+        expect(analysis.ambiguities.length, `${fixture.name} ambiguity count`).toBeGreaterThanOrEqual(fixture.expectation.minAmbiguities)
+      }
+    }
+  })
+
   test('superscript fixture groups the base and exponent separately', async () => {
     const fixture = getHandwritingFixture('superscript')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
@@ -107,6 +134,23 @@ test.describe('handwriting normalization fixtures', () => {
     expect(superscriptRole?.parentGroupId).toBe(baselineRole?.groupId)
     expect(baselineBrick?.family).toBe('ordinaryBaselineSymbolBrick')
       expect(superscriptEdge?.score || 0).toBeGreaterThan(0.5)
+  })
+
+  test('simple script-host bases avoid exotic operator or radical brick families', async () => {
+    const fixtureNames = ['superscript', 'nested', 'superscriptThenBar', 'digitTwoSuperscriptSeven'] as const
+
+    for (const fixtureName of fixtureNames) {
+      const fixture = getHandwritingFixture(fixtureName)
+      const analysis = analyzeHandwrittenExpression(fixture.strokes)
+      const superscriptRole = analysis.roles.find((role) => role.role === 'superscript') || null
+      const parentBrick = superscriptRole?.parentGroupId ? getTopBrickHypothesis(analysis, superscriptRole.parentGroupId) : null
+
+      expect(superscriptRole, `${fixture.name} should resolve a superscript`).toBeTruthy()
+      expect(
+        parentBrick?.family,
+        `${fixture.name} superscript host should stay an ordinary baseline symbol brick`,
+      ).toBe('ordinaryBaselineSymbolBrick')
+    }
   })
 
   test('fraction fixture recognizes fraction structure', async () => {

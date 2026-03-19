@@ -8,6 +8,9 @@ const FRACTION_BAR_MAX_HEIGHT = 18
 const FRACTION_BAR_MIN_WIDTH = 70
 const LEGO_SCRIPT_HOST_MIN_WEIGHT = 0.44
 const LEGO_SEQUENCE_CONTEXT_MIN_INLINE_SCORE = 0.42
+const COMPETING_INTERPRETATION_MIN_CLAIM_SCORE = 0.26
+const COMPETING_INTERPRETATION_TRANSFER_WEIGHT = 0.16
+const COMPETING_INTERPRETATION_MAX_RIVAL_MARGIN = 0.22
 
 const getFractionBarShapeScore = (group: StrokeGroup) => {
   const heightScore = clamp(1 - Math.max(group.bounds.height - FRACTION_BAR_MAX_HEIGHT, 0) / FRACTION_BAR_MAX_HEIGHT, 0, 1)
@@ -389,6 +392,89 @@ const chooseBestCandidate = (candidates: StructuralRoleCandidate[]) => {
   })[0]
 }
 
+const stripCompetitionEvidence = (evidence: string[] = []) => (
+  evidence.filter((entry) => (
+    !entry.startsWith('claiming-evidence=')
+    && !entry.startsWith('counter-evidence-reinforcement=')
+    && !entry.startsWith('counter-evidence-source=')
+  ))
+)
+
+const rebalanceCompetingCandidates = (candidates: StructuralRoleCandidate[]) => {
+  if (candidates.length < 2) return candidates
+
+  const maxScore = candidates.reduce((highest, candidate) => Math.max(highest, candidate.score), 0)
+  const claimRange = Math.max(0.16, maxScore - COMPETING_INTERPRETATION_MIN_CLAIM_SCORE)
+
+  return candidates.map((candidate, candidateIndex) => {
+    const claimStrength = clamp((candidate.score - COMPETING_INTERPRETATION_MIN_CLAIM_SCORE) / claimRange, 0, 1)
+    if (claimStrength <= 0) {
+      return {
+        ...candidate,
+        evidence: stripCompetitionEvidence(candidate.evidence || []),
+      }
+    }
+
+    let strongestRival: StructuralRoleCandidate | null = null
+    let strongestTransfer = 0
+    let totalTransfer = 0
+    let transferCount = 0
+
+    for (let rivalIndex = 0; rivalIndex < candidates.length; rivalIndex += 1) {
+      if (rivalIndex === candidateIndex) continue
+      const rival = candidates[rivalIndex]
+      const rivalWeakness = clamp(1 - rival.score, 0, 1)
+      if (rivalWeakness <= 0) continue
+
+      const rivalLead = Math.max(rival.score - candidate.score, 0)
+      const rivalryEligibility = clamp(1 - rivalLead / COMPETING_INTERPRETATION_MAX_RIVAL_MARGIN, 0, 1)
+      if (rivalryEligibility <= 0) continue
+
+      const pairTransfer = rivalWeakness * rivalryEligibility
+      if (pairTransfer <= 0) continue
+
+      totalTransfer += pairTransfer
+      transferCount += 1
+      if (pairTransfer > strongestTransfer) {
+        strongestTransfer = pairTransfer
+        strongestRival = rival
+      }
+    }
+
+    if (!transferCount) {
+      return {
+        ...candidate,
+        evidence: stripCompetitionEvidence(candidate.evidence || []),
+      }
+    }
+
+    const reinforcementBoost = clamp(
+      claimStrength * (totalTransfer / transferCount) * COMPETING_INTERPRETATION_TRANSFER_WEIGHT,
+      0,
+      0.12,
+    )
+
+    const evidence = stripCompetitionEvidence(candidate.evidence || [])
+    if (reinforcementBoost < 0.01) {
+      return {
+        ...candidate,
+        evidence,
+      }
+    }
+
+    return {
+      ...candidate,
+      score: clamp(candidate.score + reinforcementBoost, 0, 1),
+      evidence: [
+        ...evidence,
+        `claiming-evidence=${candidate.score.toFixed(3)}`,
+        `counter-evidence-reinforcement=+${reinforcementBoost.toFixed(3)}`,
+        strongestRival ? `counter-evidence-source=${strongestRival.role}:${strongestRival.score.toFixed(3)}` : undefined,
+      ].filter(Boolean) as string[],
+    }
+  })
+}
+
 const findBestAdmissibleScriptEdge = (
   edges: LayoutEdge[],
   role: 'superscript' | 'subscript',
@@ -707,7 +793,7 @@ const appendFractionWideScriptAmbiguities = (roles: StructuralRole[], groups: St
       groupId: role.groupId,
       reason: 'fraction-wide-script-vs-baseline',
       chosenRole: role.role,
-      candidates: [
+      candidates: rebalanceCompetingCandidates([
         makeCandidate(role.role, role.score, role.parentGroupId, ['resolved as fraction-wide script promotion'], {
           associationContextId: role.associationContextId,
           containerGroupIds: role.containerGroupIds,
@@ -716,7 +802,7 @@ const appendFractionWideScriptAmbiguities = (roles: StructuralRole[], groups: St
         makeCandidate('baseline', Math.max(0.28, role.score - 0.2), null, ['detached baseline alternative'], {
           associationContextId: detachedContextId,
         }),
-      ],
+      ]),
     })
   }
 
@@ -739,7 +825,7 @@ const appendEnclosureWideScriptAmbiguities = (roles: StructuralRole[], contexts:
       groupId: role.groupId,
       reason: 'enclosure-wide-script-vs-baseline',
       chosenRole: role.role,
-      candidates: [
+      candidates: rebalanceCompetingCandidates([
         makeCandidate(role.role, role.score, role.parentGroupId, ['resolved as enclosure-wide script promotion'], {
           associationContextId: role.associationContextId,
           containerGroupIds: role.containerGroupIds,
@@ -748,7 +834,7 @@ const appendEnclosureWideScriptAmbiguities = (roles: StructuralRole[], contexts:
         makeCandidate('baseline', Math.max(0.28, role.score - 0.2), null, ['detached baseline alternative'], {
           associationContextId: detachedContextId,
         }),
-      ],
+      ]),
     })
   }
 
@@ -772,7 +858,7 @@ const appendRadicalWideScriptAmbiguities = (roles: StructuralRole[], groups: Str
       groupId: role.groupId,
       reason: 'radical-wide-script-vs-baseline',
       chosenRole: role.role,
-      candidates: [
+      candidates: rebalanceCompetingCandidates([
         makeCandidate(role.role, role.score, role.parentGroupId, ['resolved as radical-wide script promotion'], {
           associationContextId: role.associationContextId,
           containerGroupIds: role.containerGroupIds,
@@ -781,7 +867,7 @@ const appendRadicalWideScriptAmbiguities = (roles: StructuralRole[], groups: Str
         makeCandidate('baseline', Math.max(0.28, role.score - 0.2), null, ['detached baseline alternative'], {
           associationContextId: detachedContextId,
         }),
-      ],
+      ]),
     })
   }
 
@@ -2464,10 +2550,10 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
         groupId: provisionalNumeratorRootId,
         reason: 'fraction-membership',
         chosenRole: 'numerator',
-        candidates: [
+        candidates: rebalanceCompetingCandidates([
           makeCandidate('numerator', Math.max(0.58, context.provisionalNumeratorScore), bar.id, ['centered above provisional fraction bar', 'one-sided fraction-member reinforcement']),
           makeCandidate('baseline', 0.34, null, ['fallback root role']),
-        ],
+        ]),
       })
     }
 
@@ -2476,10 +2562,10 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
         groupId: provisionalDenominatorRootId,
         reason: 'fraction-membership',
         chosenRole: 'denominator',
-        candidates: [
+        candidates: rebalanceCompetingCandidates([
           makeCandidate('denominator', Math.max(0.58, context.provisionalDenominatorScore), bar.id, ['centered below provisional fraction bar', 'one-sided fraction-member reinforcement']),
           makeCandidate('baseline', 0.34, null, ['fallback root role']),
-        ],
+        ]),
       })
     }
 
@@ -2518,10 +2604,10 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
 
     if (numeratorPrimaryRootId) {
       if (!roleUsesChildOperands('fractionBar') || !roleAllowsChildRole('fractionBar', 'numerator') || !roleAllowsOperandRole('fractionBar', 'numerator')) continue
-      const candidates: StructuralRoleCandidate[] = [
+      const candidates = rebalanceCompetingCandidates([
         makeCandidate('numerator', 0.82, bar.id, ['centered above confirmed fraction bar', 'inherits fraction-member ancestry']),
         makeCandidate('baseline', 0.36, null, ['fallback root role']),
-      ]
+      ])
       ambiguities.push({
         groupId: numeratorPrimaryRootId,
         reason: 'fraction-membership',
@@ -2532,10 +2618,10 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
 
     if (denominatorPrimaryRootId) {
       if (!roleUsesChildOperands('fractionBar') || !roleAllowsChildRole('fractionBar', 'denominator') || !roleAllowsOperandRole('fractionBar', 'denominator')) continue
-      const candidates: StructuralRoleCandidate[] = [
+      const candidates = rebalanceCompetingCandidates([
         makeCandidate('denominator', 0.82, bar.id, ['centered below confirmed fraction bar', 'inherits fraction-member ancestry']),
         makeCandidate('baseline', 0.35, null, ['fallback root role']),
-      ]
+      ])
       ambiguities.push({
         groupId: denominatorPrimaryRootId,
         reason: 'fraction-membership',
@@ -2921,6 +3007,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
     }
 
     roles.set(group.id, makeRole(group.id, 'baseline', sortedCandidates[0]?.score || 0.34, 0, null, [
+      ...(sortedCandidates[0]?.evidence || []),
       'defaulted to baseline after candidate comparison',
       `family=${getRoleDescriptor('baseline').family}`,
     ], containerIdsByGroupId.get(group.id) || []))

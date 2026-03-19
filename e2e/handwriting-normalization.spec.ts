@@ -274,6 +274,22 @@ test.describe('handwriting normalization fixtures', () => {
     }
   })
 
+  test('fraction-wide final candidates expose claim evidence and bounded counter-evidence reinforcement', async () => {
+    const fixture = getHandwritingFixture('fractionOuterExponent')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const outerSuperscript = analysis.roles.find((role) => role.role === 'superscript') || null
+    const ambiguity = analysis.ambiguities.find((candidateAmbiguity) => (
+      candidateAmbiguity.groupId === outerSuperscript?.groupId
+      && candidateAmbiguity.reason === 'fraction-wide-script-vs-baseline'
+    )) || null
+    const chosenCandidate = ambiguity?.candidates.find((candidate) => candidate.role === ambiguity.chosenRole) || null
+
+    expect(outerSuperscript, `${fixture.name} should produce an outer superscript`).toBeTruthy()
+    expect(ambiguity, `${fixture.name} should surface a fraction-wide script ambiguity`).toBeTruthy()
+    expect(chosenCandidate?.evidence?.some((entry) => entry.startsWith('claiming-evidence=')), `${fixture.name} chosen final candidate should preserve its positive claim evidence`).toBe(true)
+    expect(chosenCandidate?.evidence?.some((entry) => entry.startsWith('counter-evidence-reinforcement=')), `${fixture.name} chosen final candidate should receive bounded reinforcement from weaker competing interpretations`).toBe(true)
+  })
+
   test('short horizontal marks near scripts stay scripts instead of fraction structure', async () => {
     const fixtures = [
       { name: 'shortBarSuperscript', expectedRole: 'superscript' },

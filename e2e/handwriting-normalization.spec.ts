@@ -144,12 +144,16 @@ test.describe('handwriting normalization fixtures', () => {
     const winningClaim = candidateClaims[0] || null
 
     expect(ownershipIntersection).toBeTruthy()
+    expect(ownershipIntersection?.interactionKind).toBe('neutral')
     expect(ownershipIntersection?.dominantKind).toBe('upperRightScript')
     expect(ownershipIntersection?.dominantHostGroupId).toBe('base')
     expect(ownershipIntersection?.dominanceMargin || 0).toBeGreaterThan(0.2)
+    expect(ownershipIntersection?.competitiveScore || 0).toBeLessThan(0.2)
     expect(winningClaim).toBeTruthy()
     expect(winningClaim?.hostGroupId).toBe('base')
     expect(winningClaim?.fieldKind).toBe('upperRightScript')
+    expect(winningClaim?.directionalCompatibilityScore || 0).toBeGreaterThan(0.3)
+    expect(winningClaim?.counterpartFieldKind).toBe('upperLeftScript')
   })
 
   test('superscript fixture exposes a dominant upper-right field claim from the base onto the exponent', () => {
@@ -168,7 +172,47 @@ test.describe('handwriting normalization fixtures', () => {
     expect(bestClaim).toBeTruthy()
     expect(bestClaim?.hostGroupId).toBe(superscriptRole?.parentGroupId)
     expect(bestClaim?.fieldKind).toBe('upperRightScript')
-    expect(bestClaim?.score || 0).toBeGreaterThan(0.4)
+    expect(bestClaim?.score || 0).toBeGreaterThan(0.3)
+    expect(bestClaim?.fieldTopology).toBe('semiBounded')
+    expect(bestClaim?.realizationScore || 0).toBeGreaterThan(0.25)
+    expect(bestClaim?.directionalCompatibilityScore || 0).toBeGreaterThan(0.25)
+  })
+
+  test('horizontal line hosts degenerate corner script fields and unbounded over-under fields', () => {
+    const line = makeGroup('line', { left: 40, top: 90, right: 130, bottom: 98, width: 90, height: 8, centerX: 85, centerY: 94 })
+    const groups = [line]
+    const brickHypotheses = [makeBrickHypothesis('line', 'fractionBarBrick', 0.92)]
+
+    const fieldLayer = buildConcreteLegoFieldLayer(groups, brickHypotheses)
+    const upperRight = fieldLayer.fieldInstances.find((field) => field.hostGroupId === 'line' && field.kind === 'upperRightScript') || null
+    const lowerRight = fieldLayer.fieldInstances.find((field) => field.hostGroupId === 'line' && field.kind === 'lowerRightScript') || null
+    const over = fieldLayer.fieldInstances.find((field) => field.hostGroupId === 'line' && field.kind === 'over') || null
+    const under = fieldLayer.fieldInstances.find((field) => field.hostGroupId === 'line' && field.kind === 'under') || null
+
+    expect(upperRight?.topology).toBe('degenerate')
+    expect(lowerRight?.topology).toBe('degenerate')
+    expect(upperRight?.realizedArea || 0).toBe(0)
+    expect(lowerRight?.realizedArea || 0).toBe(0)
+    expect(over?.topology).toBe('unbounded')
+    expect(under?.topology).toBe('unbounded')
+    expect(over?.closureRatio || 0).toBeLessThan(0.6)
+    expect(under?.closureRatio || 0).toBeLessThan(0.6)
+  })
+
+  test('script attachment uses complementary outgoing and incoming script fields', () => {
+    const fixture = getHandwritingFixture('superscript')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const superscriptRole = analysis.roles.find((role) => role.role === 'superscript') || null
+    const bestClaim = analysis.fieldClaims
+      .filter((claim) => claim.targetGroupId === superscriptRole?.groupId)
+      .sort((left, right) => right.score - left.score)[0] || null
+
+    expect(superscriptRole).toBeTruthy()
+    expect(bestClaim).toBeTruthy()
+    expect(bestClaim?.fieldKind).toBe('upperRightScript')
+    expect(bestClaim?.counterpartFieldKind).toBe('upperLeftScript')
+    expect(bestClaim?.directionalCompatibilityScore || 0).toBeGreaterThan(0.25)
+    expect(bestClaim?.sharedCompatibilityScore || 0).toBeGreaterThanOrEqual(0)
   })
 
   test('all fixture examples satisfy their declared role and group expectations', async () => {

@@ -126,15 +126,15 @@ export default function HandwritingNormalizationTestCanvas() {
     })
     const enclosures = analysis.enclosures.map((enclosure) => `${enclosure.kind}: ${enclosure.openGroupId} ... ${enclosure.closeGroupId} members=[${enclosure.memberRootIds.join(', ')}] score=${enclosure.score.toFixed(2)}`)
     const contexts = analysis.contexts.map((context) => `${context.id}: ${context.kind}${context.parentContextId ? ` parent=${context.parentContextId}` : ''}${context.semanticRootGroupId ? ` root=${context.semanticRootGroupId}` : ''} anchors=[${context.anchorGroupIds.join(', ')}] members=[${context.memberGroupIds.join(', ')}]`)
-    const fieldInstances = analysis.fieldInstances.map((field) => `${field.hostGroupId}: ${field.kind} family=${field.hostFamily} weight=${field.weight.toFixed(2)} strength=${field.ownershipStrength.toFixed(2)} bounds=${Math.round(field.bounds.left)},${Math.round(field.bounds.top)} ${Math.round(field.bounds.width)}x${Math.round(field.bounds.height)}`)
-    const fieldIntersections = analysis.fieldIntersections.map((intersection) => `${intersection.leftHostGroupId}:${intersection.leftKind} x ${intersection.rightHostGroupId}:${intersection.rightKind} overlap=${intersection.overlapRatio.toFixed(2)} dominant=${intersection.dominantHostGroupId || 'tie'}:${intersection.dominantKind || 'tie'} margin=${intersection.dominanceMargin.toFixed(2)}`)
+    const fieldInstances = analysis.fieldInstances.map((field) => `${field.hostGroupId}: ${field.kind} family=${field.hostFamily} dir=${field.direction} topology=${field.topology} closure=${field.closureRatio.toFixed(2)} inner=${field.innerClosureRatio.toFixed(2)} outer=${field.outerClosureRatio.toFixed(2)} open=[${field.openSides.join(',') || 'none'}] strength=${field.ownershipStrength.toFixed(2)} bounds=${Math.round(field.bounds.left)},${Math.round(field.bounds.top)} ${Math.round(field.bounds.width)}x${Math.round(field.bounds.height)}`)
+    const fieldIntersections = analysis.fieldIntersections.map((intersection) => `${intersection.leftHostGroupId}:${intersection.leftKind} x ${intersection.rightHostGroupId}:${intersection.rightKind} interaction=${intersection.interactionKind} overlap=${intersection.overlapRatio.toFixed(2)} coop=${intersection.cooperativeScore.toFixed(2)} comp=${intersection.competitiveScore.toFixed(2)} dominant=${intersection.dominantHostGroupId || 'tie'}:${intersection.dominantKind || 'tie'} margin=${intersection.dominanceMargin.toFixed(2)}`)
     const topFieldClaims = analysis.groups.map((group) => {
       const claims = analysis.fieldClaims
         .filter((claim) => claim.targetGroupId === group.id)
         .sort((left, right) => right.score - left.score)
         .slice(0, 3)
       if (!claims.length) return `${group.id}: no external field owner claims`
-      return `${group.id}: ${claims.map((claim) => `${claim.hostGroupId}:${claim.fieldKind}@${claim.score.toFixed(2)} overlap=${claim.overlapRatio.toFixed(2)} boost=${claim.dominanceBoost.toFixed(2)}`).join(' | ')}`
+      return `${group.id}: ${claims.map((claim) => `${claim.hostGroupId}:${claim.fieldKind}@${claim.score.toFixed(2)} topology=${claim.fieldTopology} dir=${claim.fieldDirection} closure=${claim.closureRatio.toFixed(2)} realize=${claim.realizationScore.toFixed(2)} compat=${claim.directionalCompatibilityScore.toFixed(2)} shared=${claim.sharedCompatibilityScore.toFixed(2)} counterpart=${claim.counterpartFieldKind || 'none'} overlap=${claim.overlapRatio.toFixed(2)}`).join(' | ')}`
     })
     const parseNodes = analysis.parseNodes.map((node) => {
       const alternatives = node.alternatives?.length
@@ -387,12 +387,13 @@ export default function HandwritingNormalizationTestCanvas() {
               {showFields && analysis.fieldInstances.map((field) => {
                 const rect = boundsRect(field.bounds, null)
                 const stroke = fieldColor(field.kind)
-                const opacity = Math.min(0.34, 0.1 + field.ownershipStrength * 0.14)
+                const opacity = Math.min(0.34, 0.08 + field.ownershipStrength * 0.12 + field.closureRatio * 0.08)
+                const dash = field.topology === 'semiBounded' || field.topology === 'unbounded' ? '4 4' : undefined
                 return (
                   <g key={field.id}>
-                    <rect x={rect.x} y={rect.y} width={rect.width} height={rect.height} rx="12" fill={stroke} fillOpacity={opacity} stroke={stroke} strokeWidth="1.2" strokeOpacity="0.74" />
+                    <rect x={rect.x} y={rect.y} width={rect.width} height={rect.height} rx="12" fill={stroke} fillOpacity={opacity} stroke={stroke} strokeWidth="1.2" strokeOpacity="0.74" strokeDasharray={dash} />
                     <text x={rect.x + 8} y={Math.max(14, rect.y + 16)} fill={stroke} fontSize="10.5" fontWeight="600" opacity="0.96">
-                      {field.kind}
+                      {field.kind}:{field.topology}
                     </text>
                   </g>
                 )
@@ -401,9 +402,9 @@ export default function HandwritingNormalizationTestCanvas() {
                 const rect = boundsRect(intersection.bounds, null)
                 return (
                   <g key={intersection.id}>
-                    <rect x={rect.x} y={rect.y} width={rect.width} height={rect.height} rx="10" fill="#ff8ad8" fillOpacity="0.12" stroke="#ff8ad8" strokeWidth="1.3" strokeDasharray="4 4" opacity="0.9" />
+                    <rect x={rect.x} y={rect.y} width={rect.width} height={rect.height} rx="10" fill={intersection.interactionKind === 'cooperative' ? '#7ef0b0' : '#ff8ad8'} fillOpacity="0.12" stroke={intersection.interactionKind === 'cooperative' ? '#7ef0b0' : '#ff8ad8'} strokeWidth="1.3" strokeDasharray="4 4" opacity="0.9" />
                     <text x={rect.x + 6} y={Math.max(12, rect.y + 14)} fill="#ffc4ea" fontSize="10" fontWeight="600">
-                      {intersection.dominantKind || 'tie'}
+                      {intersection.interactionKind === 'cooperative' ? 'coop' : intersection.dominantKind || 'tie'}
                     </text>
                   </g>
                 )

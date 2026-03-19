@@ -382,6 +382,15 @@ type FieldClaimSupport = {
   strongestCompetingScore: number
   strongestCompetingHostGroupId: string | null
   competitionMargin: number
+  closureRatio: number
+  realizationScore: number
+  directionalCompatibilityScore: number
+  sharedCompatibilityScore: number
+  latentPenalty: number
+  fieldDirection: LegoFieldClaim['fieldDirection'] | null
+  fieldTopology: LegoFieldClaim['fieldTopology'] | null
+  counterpartFieldKind: LegoFieldClaim['counterpartFieldKind'] | null
+  counterpartFieldScore: number
   evidence: string[]
 }
 
@@ -400,6 +409,15 @@ const EMPTY_FIELD_CLAIM_SUPPORT: FieldClaimSupport = {
   strongestCompetingScore: 0,
   strongestCompetingHostGroupId: null,
   competitionMargin: 0,
+  closureRatio: 0,
+  realizationScore: 0,
+  directionalCompatibilityScore: 0,
+  sharedCompatibilityScore: 0,
+  latentPenalty: 0,
+  fieldDirection: null,
+  fieldTopology: null,
+  counterpartFieldKind: null,
+  counterpartFieldScore: 0,
   evidence: [],
 }
 
@@ -423,7 +441,12 @@ const getFieldClaimSupport = (
 ): FieldClaimSupport => {
   const candidates = (fieldClaimsByTargetGroupId.get(targetGroupId) || [])
     .filter((claim) => claim.fieldKind === fieldKind)
-    .sort((left, right) => right.score - left.score || right.overlapRatio - left.overlapRatio)
+    .sort((left, right) => (
+      right.score - left.score
+      || right.realizationScore - left.realizationScore
+      || right.sharedCompatibilityScore - left.sharedCompatibilityScore
+      || right.overlapRatio - left.overlapRatio
+    ))
   const directClaim = hostGroupId ? candidates.find((claim) => claim.hostGroupId === hostGroupId) || null : null
   const dominantClaim = candidates[0] || null
   const competingClaim = candidates.find((claim) => claim.hostGroupId !== hostGroupId) || null
@@ -438,12 +461,29 @@ const getFieldClaimSupport = (
     strongestCompetingScore,
     strongestCompetingHostGroupId: competingClaim?.hostGroupId || null,
     competitionMargin,
+    closureRatio: directClaim?.closureRatio || 0,
+    realizationScore: directClaim?.realizationScore || 0,
+    directionalCompatibilityScore: directClaim?.directionalCompatibilityScore || 0,
+    sharedCompatibilityScore: directClaim?.sharedCompatibilityScore || 0,
+    latentPenalty: directClaim?.latentPenalty || 0,
+    fieldDirection: directClaim?.fieldDirection || null,
+    fieldTopology: directClaim?.fieldTopology || null,
+    counterpartFieldKind: directClaim?.counterpartFieldKind || null,
+    counterpartFieldScore: directClaim?.counterpartFieldScore || 0,
     evidence: [
       `field-claim=${fieldKind}:${directScore.toFixed(3)}`,
       `field-claim-dominant=${directClaim && dominantClaim?.hostGroupId === hostGroupId ? 'true' : 'false'}`,
       `field-claim-dominant-host=${dominantClaim?.hostGroupId || 'none'}`,
       `field-claim-competing=${strongestCompetingScore.toFixed(3)}`,
       `field-claim-margin=${competitionMargin.toFixed(3)}`,
+      `field-closure=${(directClaim?.closureRatio || 0).toFixed(3)}`,
+      `field-realization=${(directClaim?.realizationScore || 0).toFixed(3)}`,
+      `field-directional=${(directClaim?.directionalCompatibilityScore || 0).toFixed(3)}`,
+      `field-shared=${(directClaim?.sharedCompatibilityScore || 0).toFixed(3)}`,
+      `field-latent-penalty=${(directClaim?.latentPenalty || 0).toFixed(3)}`,
+      `field-topology=${directClaim?.fieldTopology || 'none'}`,
+      `field-direction=${directClaim?.fieldDirection || 'none'}`,
+      `field-counterpart=${directClaim?.counterpartFieldKind || 'none'}:${(directClaim?.counterpartFieldScore || 0).toFixed(3)}`,
     ],
   }
 }
@@ -467,9 +507,12 @@ const getInlinePairClaimSupport = (
     ? getFieldClaimSupport(fieldClaimsByTargetGroupId, rightGroupId, leftGroupId, 'rightInline')
     : EMPTY_FIELD_CLAIM_SUPPORT
   const score = clamp(
-    Math.sqrt(Math.max(leftClaim.score, 0) * Math.max(rightClaim.score, 0)) * 0.52
-      + Math.max(leftClaim.score, rightClaim.score) * 0.3
-      + (leftClaim.dominant && rightClaim.dominant ? 0.12 : 0),
+    Math.sqrt(Math.max(leftClaim.score, 0) * Math.max(rightClaim.score, 0)) * 0.34
+      + Math.sqrt(Math.max(leftClaim.realizationScore, 0) * Math.max(rightClaim.realizationScore, 0)) * 0.22
+      + Math.sqrt(Math.max(leftClaim.directionalCompatibilityScore, 0) * Math.max(rightClaim.directionalCompatibilityScore, 0)) * 0.14
+      + Math.max(leftClaim.sharedCompatibilityScore, rightClaim.sharedCompatibilityScore) * 0.08
+      + Math.max(leftClaim.score, rightClaim.score) * 0.14
+      + (leftClaim.dominant && rightClaim.dominant ? 0.08 : 0),
     0,
     1,
   )
@@ -483,6 +526,8 @@ const getInlinePairClaimSupport = (
       `inline-field-pair=${score.toFixed(3)}`,
       `inline-left-claim=${leftClaim.score.toFixed(3)}`,
       `inline-right-claim=${rightClaim.score.toFixed(3)}`,
+      `inline-left-realization=${leftClaim.realizationScore.toFixed(3)}`,
+      `inline-right-realization=${rightClaim.realizationScore.toFixed(3)}`,
       `inline-left-margin=${leftClaim.competitionMargin.toFixed(3)}`,
       `inline-right-margin=${rightClaim.competitionMargin.toFixed(3)}`,
     ],
@@ -504,19 +549,38 @@ const getSubexpressionFieldClaimSupport = (
   const averageScore = memberClaims.length
     ? memberClaims.reduce((sum, claim) => sum + claim.score, 0) / memberClaims.length
     : rootClaim.score
+  const averageRealizationScore = memberClaims.length
+    ? memberClaims.reduce((sum, claim) => sum + claim.realizationScore, 0) / memberClaims.length
+    : rootClaim.realizationScore
+  const averageDirectionalCompatibilityScore = memberClaims.length
+    ? memberClaims.reduce((sum, claim) => sum + claim.directionalCompatibilityScore, 0) / memberClaims.length
+    : rootClaim.directionalCompatibilityScore
   const coverageScore = memberClaims.length / Math.max(1, subexpression.memberGroupIds.length)
-  const score = clamp(topScore * 0.48 + averageScore * 0.32 + coverageScore * 0.12 + (rootClaim.dominant ? 0.08 : 0), 0, 1)
+  const score = clamp(
+    topScore * 0.32
+      + averageScore * 0.2
+      + averageRealizationScore * 0.18
+      + averageDirectionalCompatibilityScore * 0.1
+      + coverageScore * 0.12
+      + (rootClaim.dominant ? 0.08 : 0),
+    0,
+    1,
+  )
 
   return {
     score,
     topScore,
     averageScore,
+    averageRealizationScore,
+    averageDirectionalCompatibilityScore,
     coverageScore,
     rootClaim,
     evidence: [
       `hosted-claim=${fieldKind}:${score.toFixed(3)}`,
       `hosted-claim-top=${topScore.toFixed(3)}`,
       `hosted-claim-average=${averageScore.toFixed(3)}`,
+      `hosted-claim-realization=${averageRealizationScore.toFixed(3)}`,
+      `hosted-claim-directional=${averageDirectionalCompatibilityScore.toFixed(3)}`,
       `hosted-claim-coverage=${coverageScore.toFixed(3)}`,
     ],
   }
@@ -662,6 +726,7 @@ const findBestAdmissibleScriptEdge = (
     const lineLikeChild = childGroup ? getMinusBaselineClaimScore(childGroup) >= 0.85 : false
     const childFamily = topBrickHypothesisByGroupId.get(edge.toId)?.family || null
     if (isDisallowedScriptChildFamily(childFamily, lineLikeChild)) continue
+    if (role === 'superscript' && (edge.metrics.dy || 0) >= 0) continue
     const hostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, edge.fromId, role)
     const claimSupport = getScriptFieldClaimSupport(fieldClaimsByTargetGroupId, edge.toId, edge.fromId, role)
     const localGeometrySupport = parentGroup
@@ -673,6 +738,16 @@ const findBestAdmissibleScriptEdge = (
     const lineLikeInlineBaselineSupport = lineLikeChild && childGroup
       ? getInlineNeighborBaselineClaimScore(childGroup, Array.from(groupMap.values())) >= 0.82
       : false
+    const lineLikeVerticalScriptSupport = lineLikeChild && parentGroup && childGroup
+      ? (() => {
+          const minimumDisplacement = Math.max(14, Math.min(parentGroup.bounds.height, childGroup.bounds.height) * 0.8)
+          if (role === 'superscript') {
+            return (edge.metrics.dy || 0) <= -minimumDisplacement
+          }
+          return (edge.metrics.dy || 0) >= minimumDisplacement
+            || Math.max(edge.metrics.belowRightScore || 0, edge.metrics.directlyBelowScore || 0) >= 0.35
+        })()
+      : true
     const stackedBaselinePenalty = role === 'subscript'
       && !lineLikeChild
       && (edge.metrics.overlapX || 0) >= 0.5
@@ -688,6 +763,7 @@ const findBestAdmissibleScriptEdge = (
       && Math.abs(edge.metrics.dx || 0) <= Math.max(24, parentGroup?.bounds.width || 0)
     if (!hostFieldSupport.supported) continue
     if (lineLikeInlineBaselineSupport) continue
+    if (!lineLikeVerticalScriptSupport) continue
     if (stackedBaselineLikeSubscript) continue
     if (!strongLocalGeometry && localGeometrySupport >= 0.4 && claimSupport.score < 0.2 && claimSupport.strongestCompetingScore >= 0.48) continue
     if (!strongLocalGeometry && localGeometrySupport >= 0.4 && claimSupport.competitionMargin < -0.14 && claimSupport.strongestCompetingScore >= 0.4) continue
@@ -697,9 +773,14 @@ const findBestAdmissibleScriptEdge = (
     if (getRadicalWholeScriptHostBarrier(groupMap, radicalBarrierGroups, edge.fromId, edge.toId)) continue
     const adjustedScore = clamp(
       edge.score * 0.84
-        + claimSupport.score * (strongLocalGeometry ? 0.08 : 0.1 * localGeometrySupport)
+        + claimSupport.score * (strongLocalGeometry ? 0.06 : 0.08 * localGeometrySupport)
+        + claimSupport.realizationScore * 0.08
+        + claimSupport.directionalCompatibilityScore * 0.08
+        + claimSupport.sharedCompatibilityScore * 0.06
+        + claimSupport.closureRatio * 0.04
         + (claimSupport.dominant ? (strongLocalGeometry ? 0.02 : 0.03 * localGeometrySupport) : 0)
         - Math.max(0, claimSupport.strongestCompetingScore - claimSupport.score) * (strongLocalGeometry ? 0.03 : 0.08 * localGeometrySupport)
+        - claimSupport.latentPenalty * 0.08
         - stackedBaselinePenalty,
       0,
       1,

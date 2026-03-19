@@ -84,6 +84,18 @@ export type LegoFieldKind =
 
 export type LegoFieldCapacity = 'single' | 'sequence' | 'hostedRegion' | 'stackable'
 
+export type LegoFieldDirection = 'incoming' | 'outgoing' | 'bidirectional' | 'hosted' | 'interior' | 'neutral'
+
+export type LegoFieldTopology = 'bounded' | 'semiBounded' | 'unbounded' | 'degenerate' | 'forbidden'
+
+export type LegoFieldSide = 'top' | 'right' | 'bottom' | 'left'
+
+export type LegoFieldBoundarySource = 'inner' | 'outer' | 'open' | 'degenerate'
+
+export type LegoFieldBoundaryState = Record<LegoFieldSide, LegoFieldBoundarySource>
+
+export type LegoFieldInteractionKind = 'cooperative' | 'competitive' | 'neutral'
+
 export type LegoBrickFamilyKind =
   | 'ordinaryBaselineSymbolBrick'
   | 'operatorBrick'
@@ -135,10 +147,19 @@ export type LegoFieldInstance = {
   hypothesisScore: number
   kind: LegoFieldKind
   capacity: LegoFieldCapacity
+  direction: LegoFieldDirection
+  topology: LegoFieldTopology
   weight: number
   strength: number
   ownershipStrength: number
   bounds: InkBounds
+  realizedArea: number
+  closureRatio: number
+  innerClosureRatio: number
+  outerClosureRatio: number
+  openSides: LegoFieldSide[]
+  boundaryState: LegoFieldBoundaryState
+  counterpartKinds: LegoFieldKind[]
   evidence: string[]
 }
 
@@ -153,6 +174,9 @@ export type LegoFieldIntersection = {
   bounds: InkBounds
   overlapArea: number
   overlapRatio: number
+  interactionKind: LegoFieldInteractionKind
+  cooperativeScore: number
+  competitiveScore: number
   dominantFieldId?: string | null
   dominantHostGroupId?: string | null
   dominantKind?: LegoFieldKind | null
@@ -167,12 +191,22 @@ export type LegoFieldClaim = {
   hostGroupId: string
   hostFamily: LegoBrickFamilyKind
   fieldKind: LegoFieldKind
+  fieldDirection: LegoFieldDirection
+  fieldTopology: LegoFieldTopology
   score: number
   overlapRatio: number
   centerInside: boolean
   distanceScore: number
   dominanceBoost: number
   ownershipStrength: number
+  closureRatio: number
+  realizationScore: number
+  directionalCompatibilityScore: number
+  sharedCompatibilityScore: number
+  latentPenalty: number
+  counterpartFieldKind?: LegoFieldKind | null
+  counterpartFieldScore: number
+  counterpartFieldTopology?: LegoFieldTopology | null
   evidence: string[]
 }
 

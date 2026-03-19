@@ -40,24 +40,8 @@ const rawPoint = (point: InkPoint) => ({ x: point.x, y: point.y })
 
 const clientPointToViewportPoint = (clientX: number, clientY: number, target: SVGSVGElement) => {
   const rect = target.getBoundingClientRect()
-  const viewBoxAspect = VIEWPORT.width / VIEWPORT.height
-  const rectAspect = rect.width / Math.max(rect.height, 1)
-
-  let renderedWidth = rect.width
-  let renderedHeight = rect.height
-  let offsetX = 0
-  let offsetY = 0
-
-  if (rectAspect > viewBoxAspect) {
-    renderedWidth = rect.height * viewBoxAspect
-    offsetX = (rect.width - renderedWidth) / 2
-  } else {
-    renderedHeight = rect.width / viewBoxAspect
-    offsetY = (rect.height - renderedHeight) / 2
-  }
-
-  const normalizedX = clamp((clientX - rect.left - offsetX) / Math.max(renderedWidth, 1), 0, 1)
-  const normalizedY = clamp((clientY - rect.top - offsetY) / Math.max(renderedHeight, 1), 0, 1)
+  const normalizedX = clamp((clientX - rect.left) / Math.max(rect.width, 1), 0, 1)
+  const normalizedY = clamp((clientY - rect.top) / Math.max(rect.height, 1), 0, 1)
 
   return {
     x: normalizedX * VIEWPORT.width,
@@ -429,6 +413,7 @@ export default function HandwritingNormalizationTestCanvas() {
           <div className="flex-1 p-4">
             <svg
               viewBox={`0 0 ${VIEWPORT.width} ${VIEWPORT.height}`}
+              preserveAspectRatio="none"
               className="h-full w-full rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_top,#102755,transparent_55%),linear-gradient(180deg,#051225,#020817)] touch-none"
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}

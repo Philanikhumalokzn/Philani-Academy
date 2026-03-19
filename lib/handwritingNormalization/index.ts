@@ -4,6 +4,7 @@ import type { HandwritingAnalysis, HandwritingAnalysisOptions, InkStroke } from 
 
 export * from './types'
 export * from './diagnostics'
+export * from './fieldLayout'
 export * from './legoModel'
 export * from './refinement'
 export * from './roleTaxonomy'

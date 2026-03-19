@@ -126,6 +126,56 @@ export type LegoBrickOccupancy = {
   evidence: string[]
 }
 
+export type LegoFieldInstance = {
+  id: string
+  hypothesisId: string
+  hostGroupId: string
+  hostFamily: LegoBrickFamilyKind
+  hostPrototype: LegoBrickPrototypeKind
+  hypothesisScore: number
+  kind: LegoFieldKind
+  capacity: LegoFieldCapacity
+  weight: number
+  strength: number
+  ownershipStrength: number
+  bounds: InkBounds
+  evidence: string[]
+}
+
+export type LegoFieldIntersection = {
+  id: string
+  leftFieldId: string
+  rightFieldId: string
+  leftHostGroupId: string
+  rightHostGroupId: string
+  leftKind: LegoFieldKind
+  rightKind: LegoFieldKind
+  bounds: InkBounds
+  overlapArea: number
+  overlapRatio: number
+  dominantFieldId?: string | null
+  dominantHostGroupId?: string | null
+  dominantKind?: LegoFieldKind | null
+  dominanceMargin: number
+  evidence: string[]
+}
+
+export type LegoFieldClaim = {
+  id: string
+  targetGroupId: string
+  fieldId: string
+  hostGroupId: string
+  hostFamily: LegoBrickFamilyKind
+  fieldKind: LegoFieldKind
+  score: number
+  overlapRatio: number
+  centerInside: boolean
+  distanceScore: number
+  dominanceBoost: number
+  ownershipStrength: number
+  evidence: string[]
+}
+
 export type StructuralRoleKind =
   | 'baseline'
   | 'unsupportedSymbol'
@@ -381,6 +431,9 @@ export type HandwritingAnalysis = {
   edges: LayoutEdge[]
   brickHypotheses: LegoBrickHypothesis[]
   brickOccupancies: LegoBrickOccupancy[]
+  fieldInstances: LegoFieldInstance[]
+  fieldIntersections: LegoFieldIntersection[]
+  fieldClaims: LegoFieldClaim[]
   roles: StructuralRole[]
   ambiguities: StructuralAmbiguity[]
   flags: StructuralFlag[]

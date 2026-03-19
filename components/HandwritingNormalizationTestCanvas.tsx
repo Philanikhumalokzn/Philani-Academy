@@ -68,11 +68,22 @@ const roleColor = (role: string) => {
   return '#8fa7d8'
 }
 
+const fieldColor = (kind: string) => {
+  if (kind === 'upperRightScript' || kind === 'lowerRightScript') return '#8bd0ff'
+  if (kind === 'upperLeftScript' || kind === 'lowerLeftScript') return '#d5b4ff'
+  if (kind === 'leftInline' || kind === 'rightInline') return '#7ef0b0'
+  if (kind === 'over' || kind === 'under') return '#ffcf70'
+  if (kind === 'interior') return '#ff9bc6'
+  return '#c9d6ff'
+}
+
 export default function HandwritingNormalizationTestCanvas() {
   const [strokes, setStrokes] = useState<InkStroke[]>([])
   const [normalizationEnabled, setNormalizationEnabled] = useState(true)
   const [showBoxes, setShowBoxes] = useState(true)
   const [showEdges, setShowEdges] = useState(true)
+  const [showFields, setShowFields] = useState(true)
+  const [showFieldIntersections, setShowFieldIntersections] = useState(true)
   const [showDebugPanel, setShowDebugPanel] = useState(true)
   const [selectedFixture, setSelectedFixture] = useState<HandwritingFixtureName>('superscript')
   const activeStrokeRef = useRef<InkStroke | null>(null)
@@ -115,6 +126,16 @@ export default function HandwritingNormalizationTestCanvas() {
     })
     const enclosures = analysis.enclosures.map((enclosure) => `${enclosure.kind}: ${enclosure.openGroupId} ... ${enclosure.closeGroupId} members=[${enclosure.memberRootIds.join(', ')}] score=${enclosure.score.toFixed(2)}`)
     const contexts = analysis.contexts.map((context) => `${context.id}: ${context.kind}${context.parentContextId ? ` parent=${context.parentContextId}` : ''}${context.semanticRootGroupId ? ` root=${context.semanticRootGroupId}` : ''} anchors=[${context.anchorGroupIds.join(', ')}] members=[${context.memberGroupIds.join(', ')}]`)
+    const fieldInstances = analysis.fieldInstances.map((field) => `${field.hostGroupId}: ${field.kind} family=${field.hostFamily} weight=${field.weight.toFixed(2)} strength=${field.ownershipStrength.toFixed(2)} bounds=${Math.round(field.bounds.left)},${Math.round(field.bounds.top)} ${Math.round(field.bounds.width)}x${Math.round(field.bounds.height)}`)
+    const fieldIntersections = analysis.fieldIntersections.map((intersection) => `${intersection.leftHostGroupId}:${intersection.leftKind} x ${intersection.rightHostGroupId}:${intersection.rightKind} overlap=${intersection.overlapRatio.toFixed(2)} dominant=${intersection.dominantHostGroupId || 'tie'}:${intersection.dominantKind || 'tie'} margin=${intersection.dominanceMargin.toFixed(2)}`)
+    const topFieldClaims = analysis.groups.map((group) => {
+      const claims = analysis.fieldClaims
+        .filter((claim) => claim.targetGroupId === group.id)
+        .sort((left, right) => right.score - left.score)
+        .slice(0, 3)
+      if (!claims.length) return `${group.id}: no external field owner claims`
+      return `${group.id}: ${claims.map((claim) => `${claim.hostGroupId}:${claim.fieldKind}@${claim.score.toFixed(2)} overlap=${claim.overlapRatio.toFixed(2)} boost=${claim.dominanceBoost.toFixed(2)}`).join(' | ')}`
+    })
     const parseNodes = analysis.parseNodes.map((node) => {
       const alternatives = node.alternatives?.length
         ? ` alternatives=[${node.alternatives.map((alternative) => `#${alternative.rank}:${alternative.role}/${alternative.nodeKind}@${alternative.nodeId} ctx=${alternative.contextId || 'none'} parent=${alternative.parentGroupId || 'none'} score=${alternative.score.toFixed(2)} ${alternative.relation}`).join(' | ')}]`
@@ -145,6 +166,18 @@ export default function HandwritingNormalizationTestCanvas() {
       {
         title: 'LEGO Occupancies',
         fields: brickOccupancies.length ? brickOccupancies.map((value, index) => ({ label: `O${index + 1}`, value })) : [{ label: 'LEGO Occupancies', value: 'No brick occupancies yet' }],
+      },
+      {
+        title: 'Field Boxes',
+        fields: fieldInstances.length ? fieldInstances.map((value, index) => ({ label: `FB${index + 1}`, value })) : [{ label: 'Field Boxes', value: 'No concrete field boxes yet' }],
+      },
+      {
+        title: 'Field Intersections',
+        fields: fieldIntersections.length ? fieldIntersections.map((value, index) => ({ label: `FI${index + 1}`, value })) : [{ label: 'Field Intersections', value: 'No competing field overlaps yet' }],
+      },
+      {
+        title: 'Field Claims',
+        fields: topFieldClaims.length ? topFieldClaims.map((value, index) => ({ label: `FC${index + 1}`, value })) : [{ label: 'Field Claims', value: 'No field ownership claims yet' }],
       },
       {
         title: 'Relations',
@@ -183,7 +216,7 @@ export default function HandwritingNormalizationTestCanvas() {
         fields: parseRoots.length ? parseRoots.map((value, index) => ({ label: `PR${index + 1}`, value })) : [{ label: 'Parse Roots', value: 'No context parse roots detected' }],
       },
     ]
-  }, [analysis.ambiguities, analysis.brickHypotheses, analysis.brickOccupancies, analysis.contexts, analysis.edges, analysis.enclosures, analysis.flags, analysis.groups, analysis.parseNodes, analysis.parseRoots, analysis.roles, analysis.subexpressions, normalizationEnabled, strokes.length])
+  }, [analysis.ambiguities, analysis.brickHypotheses, analysis.brickOccupancies, analysis.contexts, analysis.edges, analysis.enclosures, analysis.fieldClaims, analysis.fieldInstances, analysis.fieldIntersections, analysis.flags, analysis.groups, analysis.parseNodes, analysis.parseRoots, analysis.roles, analysis.subexpressions, normalizationEnabled, strokes.length])
 
   const updateActiveStroke = (clientX: number, clientY: number, target: SVGSVGElement) => {
     const current = activeStrokeRef.current
@@ -321,6 +354,14 @@ export default function HandwritingNormalizationTestCanvas() {
           <input type="checkbox" checked={showEdges} onChange={(event) => setShowEdges(event.target.checked)} />
           Show graph
         </label>
+        <label className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/8 px-3 py-2 text-sm text-white/88">
+          <input type="checkbox" checked={showFields} onChange={(event) => setShowFields(event.target.checked)} />
+          Show field boxes
+        </label>
+        <label className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/8 px-3 py-2 text-sm text-white/88">
+          <input type="checkbox" checked={showFieldIntersections} onChange={(event) => setShowFieldIntersections(event.target.checked)} />
+          Show field intersections
+        </label>
         <button type="button" className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm text-white/88 transition hover:bg-white/12" onClick={() => setShowDebugPanel((value) => !value)}>
           {showDebugPanel ? 'Hide debug' : 'Show debug'}
         </button>
@@ -343,6 +384,30 @@ export default function HandwritingNormalizationTestCanvas() {
               onPointerCancel={finishStroke}
             >
               <rect x="0" y="0" width={VIEWPORT.width} height={VIEWPORT.height} fill="transparent" />
+              {showFields && analysis.fieldInstances.map((field) => {
+                const rect = boundsRect(field.bounds, null)
+                const stroke = fieldColor(field.kind)
+                const opacity = Math.min(0.34, 0.1 + field.ownershipStrength * 0.14)
+                return (
+                  <g key={field.id}>
+                    <rect x={rect.x} y={rect.y} width={rect.width} height={rect.height} rx="12" fill={stroke} fillOpacity={opacity} stroke={stroke} strokeWidth="1.2" strokeOpacity="0.74" />
+                    <text x={rect.x + 8} y={Math.max(14, rect.y + 16)} fill={stroke} fontSize="10.5" fontWeight="600" opacity="0.96">
+                      {field.kind}
+                    </text>
+                  </g>
+                )
+              })}
+              {showFieldIntersections && analysis.fieldIntersections.map((intersection) => {
+                const rect = boundsRect(intersection.bounds, null)
+                return (
+                  <g key={intersection.id}>
+                    <rect x={rect.x} y={rect.y} width={rect.width} height={rect.height} rx="10" fill="#ff8ad8" fillOpacity="0.12" stroke="#ff8ad8" strokeWidth="1.3" strokeDasharray="4 4" opacity="0.9" />
+                    <text x={rect.x + 6} y={Math.max(12, rect.y + 14)} fill="#ffc4ea" fontSize="10" fontWeight="600">
+                      {intersection.dominantKind || 'tie'}
+                    </text>
+                  </g>
+                )
+              })}
               {renderStrokeLayer(strokes, null)}
               {showBoxes && analysis.groups.map((group) => {
                 const rect = boundsRect(group.bounds, null)

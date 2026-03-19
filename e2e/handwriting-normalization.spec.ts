@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { analyzeHandwrittenExpression, createHandwritingIncrementalState, formatBrickFamilyScoreDiagnostics, formatHostProtectionDiagnostics, formatStructuralRoleDiagnostics, getHandwritingFixture, getRoleDescriptor, HANDWRITING_FIXTURE_ORDER, LEGO_BRICK_FAMILIES, recognizeSymbolForRole, roleAllowsChildRole } from '../lib/handwritingNormalization'
+import { analyzeHandwrittenExpression, buildConcreteLegoFieldLayer, createHandwritingIncrementalState, formatBrickFamilyScoreDiagnostics, formatHostProtectionDiagnostics, formatStructuralRoleDiagnostics, getHandwritingFixture, getRoleDescriptor, HANDWRITING_FIXTURE_ORDER, LEGO_BRICK_FAMILIES, recognizeSymbolForRole, roleAllowsChildRole } from '../lib/handwritingNormalization'
 import { buildLayoutGraph } from '../lib/handwritingNormalization/graph'
 import { normalizeInkLayout } from '../lib/handwritingNormalization/normalize'
 import { buildExpressionParseForest } from '../lib/handwritingNormalization/parser'
@@ -123,6 +123,54 @@ const attachFixtureHostProtectionDiagnostics = async (fixture: HandwritingFixtur
 }
 
 test.describe('handwriting normalization fixtures', () => {
+  test('concrete field intersections favor strong right-script ownership over weaker left-inline competition', () => {
+    const base = makeGroup('base', { left: 20, top: 60, right: 58, bottom: 110, width: 38, height: 50, centerX: 39, centerY: 85 })
+    const neighbor = makeGroup('neighbor', { left: 70, top: 68, right: 108, bottom: 106, width: 38, height: 38, centerX: 89, centerY: 87 })
+    const candidate = makeGroup('candidate', { left: 62, top: 58, right: 80, bottom: 76, width: 18, height: 18, centerX: 71, centerY: 67 })
+    const groups = [base, neighbor, candidate]
+    const brickHypotheses = [
+      makeBrickHypothesis('base', 'ordinaryBaselineSymbolBrick', 0.94),
+      makeBrickHypothesis('neighbor', 'ordinaryBaselineSymbolBrick', 0.88),
+      makeBrickHypothesis('candidate', 'ordinaryBaselineSymbolBrick', 0.76),
+    ]
+
+    const fieldLayer = buildConcreteLegoFieldLayer(groups, brickHypotheses)
+    const ownershipIntersection = fieldLayer.fieldIntersections.find((intersection) => (
+      intersection.leftHostGroupId !== intersection.rightHostGroupId
+      && [intersection.leftKind, intersection.rightKind].includes('upperRightScript')
+      && [intersection.leftKind, intersection.rightKind].includes('leftInline')
+    )) || null
+    const candidateClaims = fieldLayer.fieldClaims.filter((claim) => claim.targetGroupId === 'candidate')
+    const winningClaim = candidateClaims[0] || null
+
+    expect(ownershipIntersection).toBeTruthy()
+    expect(ownershipIntersection?.dominantKind).toBe('upperRightScript')
+    expect(ownershipIntersection?.dominantHostGroupId).toBe('base')
+    expect(ownershipIntersection?.dominanceMargin || 0).toBeGreaterThan(0.2)
+    expect(winningClaim).toBeTruthy()
+    expect(winningClaim?.hostGroupId).toBe('base')
+    expect(winningClaim?.fieldKind).toBe('upperRightScript')
+  })
+
+  test('superscript fixture exposes a dominant upper-right field claim from the base onto the exponent', () => {
+    const fixture = getHandwritingFixture('superscript')
+    const analysis = analyzeHandwrittenExpression(fixture.strokes)
+    const superscriptRole = analysis.roles.find((role) => role.role === 'superscript') || null
+
+    expect(analysis.fieldInstances.length).toBeGreaterThan(0)
+    expect(analysis.fieldIntersections.length).toBeGreaterThan(0)
+    expect(superscriptRole).toBeTruthy()
+
+    const bestClaim = analysis.fieldClaims
+      .filter((claim) => claim.targetGroupId === superscriptRole?.groupId)
+      .sort((left, right) => right.score - left.score)[0] || null
+
+    expect(bestClaim).toBeTruthy()
+    expect(bestClaim?.hostGroupId).toBe(superscriptRole?.parentGroupId)
+    expect(bestClaim?.fieldKind).toBe('upperRightScript')
+    expect(bestClaim?.score || 0).toBeGreaterThan(0.4)
+  })
+
   test('all fixture examples satisfy their declared role and group expectations', async () => {
     for (const fixtureName of HANDWRITING_FIXTURE_ORDER) {
       const fixture = getHandwritingFixture(fixtureName)

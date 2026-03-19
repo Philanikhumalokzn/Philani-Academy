@@ -1,3 +1,4 @@
+import { buildConcreteLegoFieldLayer } from './fieldLayout'
 import { buildLayoutGraph } from './graph'
 import { groupInkStrokes } from './grouping'
 import { clamp } from './geometry'
@@ -36,6 +37,7 @@ const runAnalysisPass = (groups: StrokeGroup[], brickHypotheses: LegoBrickHypoth
   const edges = buildLayoutGraph(groups, brickHypotheses)
   const { roles, ambiguities, flags, subexpressions, enclosures, contexts } = inferStructuralRoles(groups, edges, brickHypotheses)
   const brickOccupancies = inferLegoBrickOccupancies(brickHypotheses, roles, contexts, edges)
+  const { fieldInstances, fieldIntersections, fieldClaims } = buildConcreteLegoFieldLayer(groups, brickHypotheses)
   const { parseNodes, parseRoots } = buildExpressionParseForest(groups, roles, contexts, enclosures, ambiguities, brickOccupancies)
   const normalization = normalizeInkLayout(groups, roles, contexts)
 
@@ -44,6 +46,9 @@ const runAnalysisPass = (groups: StrokeGroup[], brickHypotheses: LegoBrickHypoth
     edges,
     brickHypotheses,
     brickOccupancies,
+    fieldInstances,
+    fieldIntersections,
+    fieldClaims,
     roles,
     ambiguities,
     flags,

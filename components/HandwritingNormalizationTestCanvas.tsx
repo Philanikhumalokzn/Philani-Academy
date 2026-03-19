@@ -473,11 +473,6 @@ export default function HandwritingNormalizationTestCanvas() {
 
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-2">
         <section className="flex min-h-[420px] flex-col overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(7,17,43,0.96),rgba(4,10,28,0.94))] shadow-[0_24px_64px_rgba(2,6,23,0.32)]">
-          <div className="border-b border-white/10 px-5 py-4">
-            <div className="text-xs uppercase tracking-[0.24em] text-[#7ea0d9]">Input ink</div>
-            <div className="mt-1 text-lg font-semibold text-white">Raw handwritten capture</div>
-            <div className="text-sm text-white/68">Draw directly here. The current milestone focuses on stronger grouping plus explicit ambiguity reporting before deeper parsing rules.</div>
-          </div>
           <div className="flex-1 p-4">
             <svg
               viewBox={`0 0 ${VIEWPORT.width} ${VIEWPORT.height}`}
@@ -583,11 +578,6 @@ export default function HandwritingNormalizationTestCanvas() {
         </section>
 
         <section className="flex min-h-[420px] flex-col overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(11,22,42,0.96),rgba(6,10,24,0.94))] shadow-[0_24px_64px_rgba(2,6,23,0.32)]">
-          <div className="border-b border-white/10 px-5 py-4">
-            <div className="text-xs uppercase tracking-[0.24em] text-[#b4cfff]">Normalized output</div>
-            <div className="mt-1 text-lg font-semibold text-white">Structure-aware handwritten preview</div>
-            <div className="text-sm text-white/68">The output remains ink-based. Role inference drives scale, placement, and baseline alignment.</div>
-          </div>
           <div className="flex-1 p-4">
             <svg viewBox={`0 0 ${VIEWPORT.width} ${VIEWPORT.height}`} className="h-full w-full rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_top,#15305e,transparent_58%),linear-gradient(180deg,#081427,#030813)]">
               <rect x="0" y="0" width={VIEWPORT.width} height={VIEWPORT.height} fill="transparent" />

@@ -599,6 +599,45 @@ test.describe('handwriting normalization fixtures', () => {
     expect(analysis.roles.some((role) => role.role === 'unsupportedSymbol')).toBe(false)
   })
 
+  test('an inline minus-like line stays baseline when fraction evidence is weak and baseline evidence is real', async () => {
+    const strokes: InkStroke[] = [
+      {
+        ...makeStroke('left-v'),
+        points: [
+          { x: 120, y: 232, t: 0 },
+          { x: 148, y: 264, t: 16 },
+          { x: 176, y: 232, t: 32 },
+        ],
+      },
+      {
+        ...makeStroke('minus'),
+        width: 6,
+        points: [
+          { x: 182, y: 246, t: 0 },
+          { x: 252, y: 246, t: 16 },
+        ],
+      },
+      {
+        ...makeStroke('right-v'),
+        points: [
+          { x: 258, y: 232, t: 0 },
+          { x: 286, y: 264, t: 16 },
+          { x: 314, y: 232, t: 32 },
+        ],
+      },
+    ]
+    const analysis = analyzeHandwrittenExpression(strokes)
+    const minusRole = analysis.roles.find((role) => role.recognizedSymbol?.value === '-') || null
+    const sequenceContext = analysis.contexts.find((context) => context.kind === 'sequence') || null
+
+    expect(analysis.groups).toHaveLength(3)
+    expect(analysis.roles.some((role) => role.role === 'fractionBar' || role.role === 'provisionalFractionBar')).toBe(false)
+    expect(analysis.roles.filter((role) => role.role === 'baseline')).toHaveLength(3)
+    expect(minusRole?.role).toBe('baseline')
+    expect(minusRole?.evidence.some((entry) => entry.startsWith('pairing=') && entry.endsWith('-vs-baseline'))).toBe(true)
+    expect(minusRole?.evidence.some((entry) => entry.startsWith('counter-evidence-reinforcement='))).toBe(true)
+  })
+
   test('a numerator plus bar forms a provisional numerator-bar pair before the denominator appears', async () => {
     const strokes: InkStroke[] = [
       {

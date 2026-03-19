@@ -29,6 +29,12 @@ const bestIncoming = (edges: LayoutEdge[], groupId: string, kind: LayoutEdge['ki
     .sort((left, right) => right.score - left.score)[0] || null
 }
 
+const bestOutgoing = (edges: LayoutEdge[], groupId: string, kind: LayoutEdge['kind']) => {
+  return edges
+    .filter((edge) => edge.fromId === groupId && edge.kind === kind)
+    .sort((left, right) => right.score - left.score)[0] || null
+}
+
 const incomingByKind = (edges: LayoutEdge[], groupId: string, kind: LayoutEdge['kind']) => {
   return edges
     .filter((edge) => edge.toId === groupId && edge.kind === kind)
@@ -601,8 +607,118 @@ type ScoredFractionContext = {
   evidence?: string[]
 }
 
+type FractionBaselineReleaseCandidate = StructuralRoleCandidate
+
 const PROVISIONAL_FRACTION_BAR_MIN_SCORE = 0.42
 const PROVISIONAL_FRACTION_SIDE_MIN_SCORE = 0.36
+
+const getMinusBaselineClaimScore = (group: StrokeGroup) => {
+  if (group.strokeCount !== 1) return 0
+  if (group.bounds.width < Math.max(24, group.bounds.height * 2.4)) return 0
+  return clamp((group.aspectRatio - 2.4) / 2.8, 0, 1)
+}
+
+const getInlineNeighborBaselineClaimScore = (group: StrokeGroup, groups: StrokeGroup[]) => {
+  const scoreNeighbor = (candidate: StrokeGroup) => {
+    const verticalAlignment = clamp(
+      1 - Math.abs(candidate.bounds.centerY - group.bounds.centerY) / Math.max(24, Math.max(candidate.bounds.height, group.bounds.height) * 0.6),
+      0,
+      1,
+    )
+    const horizontalGap = candidate.bounds.centerX < group.bounds.centerX
+      ? Math.max(0, group.bounds.left - candidate.bounds.right)
+      : Math.max(0, candidate.bounds.left - group.bounds.right)
+    const gapCloseness = clamp(1 - horizontalGap / Math.max(36, group.bounds.width * 0.7), 0, 1)
+    return verticalAlignment * 0.58 + gapCloseness * 0.42
+  }
+
+  const leftNeighbor = groups
+    .filter((candidate) => candidate.id !== group.id)
+    .filter((candidate) => candidate.bounds.centerX < group.bounds.centerX)
+    .map((candidate) => ({ candidate, score: scoreNeighbor(candidate) }))
+    .sort((left, right) => right.score - left.score || right.candidate.bounds.centerX - left.candidate.bounds.centerX)[0] || null
+
+  const rightNeighbor = groups
+    .filter((candidate) => candidate.id !== group.id)
+    .filter((candidate) => candidate.bounds.centerX > group.bounds.centerX)
+    .map((candidate) => ({ candidate, score: scoreNeighbor(candidate) }))
+    .sort((left, right) => right.score - left.score || left.candidate.bounds.centerX - right.candidate.bounds.centerX)[0] || null
+
+  if (!leftNeighbor && !rightNeighbor) return 0
+  if (leftNeighbor && rightNeighbor) {
+    return clamp(leftNeighbor.score * 0.5 + rightNeighbor.score * 0.5, 0, 1)
+  }
+  return (leftNeighbor?.score || rightNeighbor?.score || 0) * 0.72
+}
+
+const getFractionBaselineReleaseCandidate = (
+  bar: StrokeGroup,
+  context: ScoredFractionContext,
+  edges: LayoutEdge[],
+  groups: StrokeGroup[],
+  operatorAlternativeScore: number,
+  fractionRole: 'fractionBar' | 'provisionalFractionBar',
+  fractionSupportScore: number,
+): FractionBaselineReleaseCandidate | null => {
+  const operandSignal = Math.max(context.memberClaimScore, context.provisionalNumeratorScore, context.provisionalDenominatorScore)
+  if (operandSignal >= 0.28) return null
+
+  const bestIncomingSequence = bestIncoming(edges, bar.id, 'sequence')
+  const bestOutgoingSequence = bestOutgoing(edges, bar.id, 'sequence')
+  const incomingSequenceScore = bestIncomingSequence?.score || 0
+  const outgoingSequenceScore = bestOutgoingSequence?.score || 0
+  const incomingInlineAffordanceScore = bestIncomingSequence?.metrics.inlineAffordanceScore || 0
+  const outgoingInlineAffordanceScore = bestOutgoingSequence?.metrics.inlineAffordanceScore || 0
+  const sequenceSupportScore = clamp(
+    Math.max(incomingSequenceScore, outgoingSequenceScore) * 0.58
+      + Math.min(incomingSequenceScore, outgoingSequenceScore) * 0.22
+      + Math.max(incomingInlineAffordanceScore, outgoingInlineAffordanceScore) * 0.2,
+    0,
+    1,
+  )
+  const inlineAffordanceScore = Math.max(incomingInlineAffordanceScore, outgoingInlineAffordanceScore)
+  const minusGeometryScore = getMinusBaselineClaimScore(bar)
+  const inlineNeighborSupportScore = getInlineNeighborBaselineClaimScore(bar, groups)
+  if (sequenceSupportScore < 0.22 && inlineNeighborSupportScore < 0.8) return null
+  const baselineClaimScore = clamp(
+    sequenceSupportScore * 0.18
+      + inlineNeighborSupportScore * 0.34
+      + inlineAffordanceScore * 0.08
+      + operatorAlternativeScore * 0.18
+      + minusGeometryScore * 0.22,
+    0,
+    1,
+  )
+  if (baselineClaimScore < 0.34) return null
+
+  const pairedCandidates = rebalanceCompetingCandidates([
+    makeCandidate(fractionRole, fractionSupportScore, null, [
+      'fraction-bar side of paired baseline competition',
+      `fraction-bar-support=${fractionSupportScore.toFixed(3)}`,
+      `shape=${context.shapeScore.toFixed(3)}`,
+      `member-claim=${context.memberClaimScore.toFixed(3)}`,
+      `operand-signal=${operandSignal.toFixed(3)}`,
+    ]),
+    makeCandidate('baseline', baselineClaimScore, null, [
+      'baseline side of paired fraction-bar competition',
+      `sequence-support=${sequenceSupportScore.toFixed(3)}`,
+      `incoming-sequence-support=${incomingSequenceScore.toFixed(3)}`,
+      `outgoing-sequence-support=${outgoingSequenceScore.toFixed(3)}`,
+      `inline-neighbor-support=${inlineNeighborSupportScore.toFixed(3)}`,
+      `inline-affordance=${inlineAffordanceScore.toFixed(3)}`,
+      `operator-alternative=${operatorAlternativeScore.toFixed(3)}`,
+      `minus-geometry=${minusGeometryScore.toFixed(3)}`,
+      `pairing=${fractionRole}-vs-baseline`,
+    ]),
+  ])
+
+  const baselineCandidate = pairedCandidates.find((candidate) => candidate.role === 'baseline') || null
+  const fractionCandidate = pairedCandidates.find((candidate) => candidate.role === fractionRole) || null
+  if (!baselineCandidate || !fractionCandidate) return null
+  if (baselineCandidate.score < fractionCandidate.score + 0.04) return null
+
+  return baselineCandidate
+}
 
 const isSameContextStackedPair = (upper: StrokeGroup, lower: StrokeGroup) => {
   const overlapWidth = Math.max(0, Math.min(upper.bounds.right, lower.bounds.right) - Math.max(upper.bounds.left, lower.bounds.left))
@@ -2376,6 +2492,14 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
   const ambiguities: StructuralAmbiguity[] = []
   const semanticFlags: StructuralFlag[] = []
   const topBrickHypothesisByGroupId = getTopBrickHypothesisByGroupId(brickHypotheses)
+  const operatorAlternativeScoreByGroupId = new Map<string, number>()
+  for (const hypothesis of brickHypotheses) {
+    if (hypothesis.family !== 'operatorBrick') continue
+    const currentScore = operatorAlternativeScoreByGroupId.get(hypothesis.groupId) || 0
+    if (hypothesis.score > currentScore) {
+      operatorAlternativeScoreByGroupId.set(hypothesis.groupId, hypothesis.score)
+    }
+  }
   const fractionBarLikeGroups = groups.filter((group) => {
     const topHypothesis = topBrickHypothesisByGroupId.get(group.id)
     if (topHypothesis) {
@@ -2464,20 +2588,60 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
     })
 
   const confirmedFractionBarIdSet = new Set(confirmedFractionBars.map(({ bar }) => bar.id))
-  const fractionStructureBarrierGroups = fractionBarLikeGroups
   const radicalStructureBarrierGroups = radicalGroups
+  const fractionBaselineReleaseCandidateByGroupId = new Map<string, FractionBaselineReleaseCandidate>()
+  const admittedConfirmedFractionBars = confirmedFractionBars.filter(({ bar, context }) => {
+    const completeFractionSupport = context.barRecognitionScore >= 0.5
+      && context.memberClaimScore >= 0.46
+      && context.numeratorRoots.length > 0
+      && context.denominatorRoots.length > 0
+    if (completeFractionSupport) return true
+    if (context.barRecognitionScore > 0.12) return true
+
+    const releaseCandidate = getFractionBaselineReleaseCandidate(
+      bar,
+      context,
+      edges,
+      groups,
+      operatorAlternativeScoreByGroupId.get(bar.id) || 0,
+      'fractionBar',
+      context.barRecognitionScore,
+    )
+    if (!releaseCandidate) return true
+    fractionBaselineReleaseCandidateByGroupId.set(bar.id, releaseCandidate)
+    return false
+  })
+  const admittedConfirmedFractionBarIdSet = new Set(admittedConfirmedFractionBars.map(({ bar }) => bar.id))
 
   const provisionalFractionBars = fractionBarLikeGroups
     .map((bar) => ({ bar, context: scoreFractionContext(bar, subexpressions, groupMap) }))
-    .filter(({ bar }) => !confirmedFractionBarIdSet.has(bar.id))
+    .filter(({ bar }) => !admittedConfirmedFractionBarIdSet.has(bar.id))
     .filter(({ context }) => (
       context.barRecognitionScore >= PROVISIONAL_FRACTION_BAR_MIN_SCORE
       || context.provisionalNumeratorScore >= PROVISIONAL_FRACTION_SIDE_MIN_SCORE
       || context.provisionalDenominatorScore >= PROVISIONAL_FRACTION_SIDE_MIN_SCORE
       || context.shapeScore >= 0.74
     ))
+    .filter(({ bar, context }) => {
+      const releaseCandidate = getFractionBaselineReleaseCandidate(
+        bar,
+        context,
+        edges,
+        groups,
+        operatorAlternativeScoreByGroupId.get(bar.id) || 0,
+        'provisionalFractionBar',
+        Math.max(PROVISIONAL_FRACTION_BAR_MIN_SCORE, context.barRecognitionScore),
+      )
+      if (!releaseCandidate) return true
+      fractionBaselineReleaseCandidateByGroupId.set(bar.id, releaseCandidate)
+      return false
+    })
 
-  for (const { bar, context } of confirmedFractionBars) {
+  const admittedFractionBarGroups = [...admittedConfirmedFractionBars.map(({ bar }) => bar), ...provisionalFractionBars.map(({ bar }) => bar)]
+  const admittedFractionBarIds = new Set(admittedFractionBarGroups.map((group) => group.id))
+  const fractionStructureBarrierGroups = admittedFractionBarGroups
+
+  for (const { bar, context } of admittedConfirmedFractionBars) {
     roles.set(bar.id, makeRole(bar.id, 'fractionBar', context.barRecognitionScore, 0, null, [
       `family=${getRoleDescriptor('fractionBar').family}`,
       `operator-kind=${getRoleDescriptor('fractionBar').operatorKind}`,
@@ -2684,7 +2848,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
     }
   }
 
-  const remaining = groups.filter((group) => !roles.has(group.id) && !fractionBarIds.has(group.id) && !radicalIds.has(group.id) && !childIds.has(group.id))
+  const remaining = groups.filter((group) => !roles.has(group.id) && !admittedFractionBarIds.has(group.id) && !radicalIds.has(group.id) && !childIds.has(group.id))
   for (const group of remaining) {
     const superCandidates = incomingByKind(edges, group.id, 'superscriptCandidate')
     const subCandidates = incomingByKind(edges, group.id, 'subscriptCandidate')
@@ -2694,6 +2858,11 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
     const bestSub = bestSubEntry?.edge || null
     const bestSequence = bestIncoming(edges, group.id, 'sequence')
     const candidates: StructuralRoleCandidate[] = [makeCandidate('baseline', 0.34, null, ['fallback root role'])]
+    const releasedFractionBaselineCandidate = fractionBaselineReleaseCandidateByGroupId.get(group.id) || null
+
+    if (releasedFractionBaselineCandidate) {
+      candidates.push(releasedFractionBaselineCandidate)
+    }
 
     if (bestSuper) {
       const hostFieldSupport = bestSuperEntry?.hostFieldSupport || hostSupportsScriptField(topBrickHypothesisByGroupId, bestSuper.fromId, 'superscript')
@@ -2822,7 +2991,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
       ? hostSupportsScriptField(topBrickHypothesisByGroupId, resolvedParentGroupId, best.role)
       : { supported: true, fieldWeight: null as number | null }
     const parentSupportsAttachment = Boolean(resolvedParentGroupId)
-      && !fractionBarIds.has(resolvedParentGroupId)
+      && !admittedFractionBarIds.has(resolvedParentGroupId)
       && !hostBarrier
       && (!roleRequiresOperandReference(best.role) || roleUsesParentOperand(best.role))
       && roleAllowsOperandRole(best.role, assumedOperandRole)
@@ -3034,7 +3203,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
     .map((group) => {
       const existing = roles.get(group.id)
       if (existing) return existing
-      if (fractionBarIds.has(group.id)) {
+      if (admittedFractionBarIds.has(group.id)) {
         return makeRole(group.id, 'unsupportedSymbol', 0.58, 0, null, [
           'line-like group did not satisfy supported fraction structure requirements',
           'preserved instead of defaulting to baseline',

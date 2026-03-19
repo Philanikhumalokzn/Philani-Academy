@@ -84,14 +84,7 @@ export const minStrokeDistance = (left: InkStroke, right: InkStroke) => {
 }
 
 export const strokesVisiblyOverlap = (left: InkStroke, right: InkStroke) => {
-  const leftBounds = getStrokeBounds(left)
-  const rightBounds = getStrokeBounds(right)
-  const overlapX = Math.max(0, Math.min(leftBounds.right, rightBounds.right) - Math.max(leftBounds.left, rightBounds.left))
-  const overlapY = Math.max(0, Math.min(leftBounds.bottom, rightBounds.bottom) - Math.max(leftBounds.top, rightBounds.top))
-  const minDimension = Math.max(1, Math.min(Math.max(leftBounds.width, leftBounds.height), Math.max(rightBounds.width, rightBounds.height)))
-  const closeDistanceThreshold = Math.max(4, minDimension * 0.12)
-  if (overlapX > 0 && overlapY > 0) return true
-  return minStrokeDistance(left, right) <= closeDistanceThreshold
+  return minStrokeDistance(left, right) <= 0.001
 }
 
 export const getStrokeBounds = (stroke: InkStroke): InkBounds => {

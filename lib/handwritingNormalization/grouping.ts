@@ -1,4 +1,4 @@
-import { clamp, distance, getStrokeBounds, getStrokeCentroid, mergeBounds, minStrokeDistance, strokesVisiblyOverlap } from './geometry'
+import { getStrokeBounds, getStrokeCentroid, mergeBounds, strokesVisiblyOverlap } from './geometry'
 import type { InkStroke, StrokeGroup } from './types'
 
 const getStrokeStart = (stroke: InkStroke, fallback: number) => {
@@ -52,68 +52,12 @@ const buildGroup = (id: string, strokes: InkStroke[]): StrokeGroup => {
   }
 }
 
-const getStrokeOrientation = (stroke: InkStroke) => {
-  const first = stroke.points[0]
-  const last = stroke.points[stroke.points.length - 1]
-  if (!first || !last) return { horizontal: 0, vertical: 0, diagonal: 0 }
-  const dx = Math.abs(last.x - first.x)
-  const dy = Math.abs(last.y - first.y)
-  const total = Math.max(1, dx + dy)
-  const horizontal = dx / total
-  const vertical = dy / total
-  const diagonal = 1 - Math.abs(horizontal - vertical)
-  return { horizontal, vertical, diagonal }
-}
-
 const scorePairCompatibility = (left: InkStroke, right: InkStroke) => {
-  const leftBounds = getStrokeBounds(left)
-  const rightBounds = getStrokeBounds(right)
-  const leftCenter = getStrokeCentroid(left)
-  const rightCenter = getStrokeCentroid(right)
-  const centerDistance = distance(leftCenter, rightCenter)
-  const scale = Math.max(20, Math.max(leftBounds.width, leftBounds.height, rightBounds.width, rightBounds.height))
-  const proximityScore = clamp(1 - centerDistance / (scale * 1.55), 0, 1)
-  const overlapX = Math.max(0, Math.min(leftBounds.right, rightBounds.right) - Math.max(leftBounds.left, rightBounds.left))
-  const overlapY = Math.max(0, Math.min(leftBounds.bottom, rightBounds.bottom) - Math.max(leftBounds.top, rightBounds.top))
-  const overlapScore = clamp((overlapX + overlapY) / Math.max(scale, 1), 0, 1)
+  if (!strokesVisiblyOverlap(left, right)) return 0
+
   const temporalGap = Math.min(Math.abs(getStrokeStart(left, 0) - getStrokeEnd(right, 0)), Math.abs(getStrokeEnd(left, 0) - getStrokeStart(right, 0)))
-  const temporalScore = clamp(1 - temporalGap / 1100, 0, 1)
-  const leftOrientation = getStrokeOrientation(left)
-  const rightOrientation = getStrokeOrientation(right)
-  const crossingBias = leftOrientation.diagonal * rightOrientation.diagonal
-  const plusBias = Math.max(leftOrientation.horizontal * rightOrientation.vertical, leftOrientation.vertical * rightOrientation.horizontal)
-  const lineBias = Math.max(crossingBias, plusBias)
-  const explicitOverlap = strokesVisiblyOverlap(left, right)
-  const minDistance = minStrokeDistance(left, right)
-  const distanceBias = clamp(1 - minDistance / Math.max(6, scale * 0.18), 0, 1)
-
-  if (explicitOverlap) {
-    return Math.max(0.94, proximityScore * 0.28 + temporalScore * 0.08 + lineBias * 0.18 + distanceBias * 0.46)
-  }
-
-  return proximityScore * 0.33 + overlapScore * 0.12 + temporalScore * 0.12 + lineBias * 0.18 + distanceBias * 0.25
-}
-
-const scoreStrokeToGroup = (stroke: InkStroke, group: StrokeGroup) => {
-  const strokeBounds = getStrokeBounds(stroke)
-  const strokeCenter = getStrokeCentroid(stroke)
-  const groupCenter = group.centroid
-  const centerDistance = distance(strokeCenter, groupCenter)
-  const scale = Math.max(28, Math.max(group.bounds.width, group.bounds.height, strokeBounds.width, strokeBounds.height))
-  const distanceScore = clamp(1 - centerDistance / (scale * 1.6), 0, 1)
-  const temporalGap = Math.min(Math.abs(getStrokeStart(stroke, 0) - group.endedAt), Math.abs(getStrokeEnd(stroke, 0) - group.startedAt))
-  const temporalScore = clamp(1 - temporalGap / 850, 0, 1)
-  const overlapX = Math.max(0, Math.min(strokeBounds.right, group.bounds.right) - Math.max(strokeBounds.left, group.bounds.left))
-  const overlapY = Math.max(0, Math.min(strokeBounds.bottom, group.bounds.bottom) - Math.max(strokeBounds.top, group.bounds.top))
-  const overlapScore = clamp((overlapX + overlapY) / Math.max(1, scale), 0, 1)
-  const pairCompatibility = group.strokes.reduce((sum, candidate) => sum + scorePairCompatibility(stroke, candidate), 0) / Math.max(1, group.strokes.length)
-  const overlapDominance = group.strokes.some((candidate) => strokesVisiblyOverlap(stroke, candidate))
-
-  if (overlapDominance) {
-    return Math.max(0.94, pairCompatibility)
-  }
-
-  return distanceScore * 0.24 + temporalScore * 0.1 + overlapScore * 0.1 + pairCompatibility * 0.56
+  const temporalScore = Math.max(0, 1 - temporalGap / 1100)
+  return Math.max(0.94, 0.94 + temporalScore * 0.06)
 }
 
 const mergeConnectedSeeds = (strokes: InkStroke[]) => {
@@ -147,29 +91,6 @@ const mergeConnectedSeeds = (strokes: InkStroke[]) => {
 export const groupInkStrokes = (strokes: InkStroke[]) => {
   const ordered = [...strokes].sort((left, right) => getStrokeStart(left, 0) - getStrokeStart(right, 0))
   const groups: StrokeGroup[] = mergeConnectedSeeds(ordered).map((bucket, index) => buildGroup(`group-${index + 1}`, bucket))
-
-  for (const stroke of ordered) {
-    if (!stroke.points.length) continue
-    if (groups.some((group) => group.strokeIds.includes(stroke.id))) continue
-    let bestIndex = -1
-    let bestScore = 0
-
-    for (let index = 0; index < groups.length; index += 1) {
-      const score = scoreStrokeToGroup(stroke, groups[index])
-      if (score > bestScore) {
-        bestScore = score
-        bestIndex = index
-      }
-    }
-
-    if (bestIndex >= 0 && bestScore >= 0.67) {
-      const existing = groups[bestIndex]
-      groups[bestIndex] = buildGroup(existing.id, [...existing.strokes, stroke])
-      continue
-    }
-
-    groups.push(buildGroup(`group-${groups.length + 1}`, [stroke]))
-  }
 
   return groups.sort((left, right) => {
     if (Math.abs(left.bounds.left - right.bounds.left) > 10) return left.bounds.left - right.bounds.left

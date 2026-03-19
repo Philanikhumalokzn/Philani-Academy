@@ -77,19 +77,6 @@ const fieldColor = (kind: string) => {
   return '#c9d6ff'
 }
 
-const fieldGridLabel = (kind: string) => {
-  if (kind === 'upperRightScript') return 'UR'
-  if (kind === 'upperLeftScript') return 'UL'
-  if (kind === 'lowerRightScript') return 'LR'
-  if (kind === 'lowerLeftScript') return 'LL'
-  if (kind === 'rightInline') return 'R'
-  if (kind === 'leftInline') return 'L'
-  if (kind === 'over') return 'O'
-  if (kind === 'under') return 'U'
-  if (kind === 'interior') return 'I'
-  return 'C'
-}
-
 const pushGridCoordinate = (coordinates: number[], value: number) => {
   if (!Number.isFinite(value)) return
   if (coordinates.some((candidate) => Math.abs(candidate - value) <= 1.5)) return
@@ -113,9 +100,7 @@ export default function HandwritingNormalizationTestCanvas() {
   const analysis = useMemo(() => analyzeHandwrittenExpression(strokes, { incrementalState: incrementalStateRef.current }), [strokes])
   const outputStrokes = normalizationEnabled ? analysis.normalization.strokes : strokes
   const outputBounds = useMemo(() => getGlobalBounds(outputStrokes), [outputStrokes])
-  const showMinimalSingleStrokeGrid = analysis.groups.length === 1 && analysis.groups[0]?.strokeCount === 1
   const fieldGrid = useMemo(() => {
-    const groupById = new Map(analysis.groups.map((group) => [group.id, group]))
     const overlays = analysis.groups.map((group) => {
       const fields = analysis.fieldInstances.filter((field) => field.hostGroupId === group.id)
       if (!fields.length) return null
@@ -123,50 +108,12 @@ export default function HandwritingNormalizationTestCanvas() {
       const xCoordinates: number[] = []
       const yCoordinates: number[] = []
       pushGridCoordinate(xCoordinates, group.bounds.left)
-      pushGridCoordinate(xCoordinates, group.bounds.centerX)
       pushGridCoordinate(xCoordinates, group.bounds.right)
       pushGridCoordinate(yCoordinates, group.bounds.top)
-      pushGridCoordinate(yCoordinates, group.bounds.centerY)
       pushGridCoordinate(yCoordinates, group.bounds.bottom)
-
-      if (!showMinimalSingleStrokeGrid) {
-        for (const field of fields) {
-          pushGridCoordinate(xCoordinates, field.bounds.left)
-          pushGridCoordinate(xCoordinates, field.bounds.centerX)
-          pushGridCoordinate(xCoordinates, field.bounds.right)
-          pushGridCoordinate(yCoordinates, field.bounds.top)
-          pushGridCoordinate(yCoordinates, field.bounds.centerY)
-          pushGridCoordinate(yCoordinates, field.bounds.bottom)
-        }
-      }
 
       xCoordinates.sort((left, right) => left - right)
       yCoordinates.sort((left, right) => left - right)
-
-      const labels = showMinimalSingleStrokeGrid
-        ? []
-        : fields
-          .filter((field) => field.topology !== 'degenerate')
-          .map((field) => ({
-            id: `${field.id}:label`,
-            x: field.bounds.centerX,
-            y: field.bounds.centerY,
-            color: fieldColor(field.kind),
-            text: `${fieldGridLabel(field.kind)}:${field.topology}`,
-            opacity: Math.min(0.96, 0.42 + field.closureRatio * 0.34 + field.ownershipStrength * 0.18),
-          }))
-
-      const degenerateJunctions = showMinimalSingleStrokeGrid
-        ? []
-        : fields
-          .filter((field) => field.topology === 'degenerate')
-          .map((field) => ({
-            id: `${field.id}:junction`,
-            x: field.bounds.centerX,
-            y: field.bounds.centerY,
-            color: fieldColor(field.kind),
-            text: fieldGridLabel(field.kind),
-          }))
 
       return {
         hostGroupId: group.id,
@@ -174,37 +121,11 @@ export default function HandwritingNormalizationTestCanvas() {
         role: analysis.roles.find((role) => role.groupId === group.id)?.role || 'baseline',
         xCoordinates,
         yCoordinates,
-        labels,
-        degenerateJunctions,
       }
     }).filter((overlay): overlay is NonNullable<typeof overlay> => Boolean(overlay))
 
-    const interfaces = showMinimalSingleStrokeGrid ? [] : analysis.fieldIntersections.map((intersection) => {
-      const leftHost = groupById.get(intersection.leftHostGroupId) || null
-      const rightHost = groupById.get(intersection.rightHostGroupId) || null
-      const interfaceX = intersection.bounds.centerX
-      const interfaceY = intersection.bounds.centerY
-      const label = intersection.interactionKind === 'cooperative'
-        ? 'coop'
-        : intersection.interactionKind === 'competitive'
-          ? 'comp'
-          : 'neutral'
-
-      return {
-        id: intersection.id,
-        x: interfaceX,
-        y: interfaceY,
-        width: Math.max(8, intersection.bounds.width),
-        height: Math.max(8, intersection.bounds.height),
-        color: intersection.interactionKind === 'cooperative' ? '#7ef0b0' : intersection.interactionKind === 'competitive' ? '#ff8ad8' : '#ffd36f',
-        label,
-        leftRole: leftHost ? analysis.roles.find((role) => role.groupId === leftHost.id)?.role || 'baseline' : 'baseline',
-        rightRole: rightHost ? analysis.roles.find((role) => role.groupId === rightHost.id)?.role || 'baseline' : 'baseline',
-      }
-    })
-
-    return { overlays, interfaces }
-  }, [analysis.fieldInstances, analysis.fieldIntersections, analysis.groups, analysis.roles, showMinimalSingleStrokeGrid])
+    return { overlays, interfaces: [] }
+  }, [analysis.fieldInstances, analysis.groups, analysis.roles])
 
   useEffect(() => {
     incrementalStateRef.current = createHandwritingIncrementalState(analysis)
@@ -495,7 +416,6 @@ export default function HandwritingNormalizationTestCanvas() {
                 return (
                   <g key={`grid:${overlay.hostGroupId}`}>
                     {overlay.xCoordinates.map((x, index) => {
-                      const emphasis = Math.abs(x - overlay.hostBounds.centerX) <= 1.5 ? 0.22 : 0.12
                       return (
                         <line
                           key={`${overlay.hostGroupId}:x:${index}`}
@@ -504,14 +424,13 @@ export default function HandwritingNormalizationTestCanvas() {
                           x2={x}
                           y2={VIEWPORT.height}
                           stroke={gridColor}
-                          strokeWidth={Math.abs(x - overlay.hostBounds.left) <= 1.5 || Math.abs(x - overlay.hostBounds.right) <= 1.5 ? 1.35 : 1}
-                          strokeOpacity={emphasis}
+                          strokeWidth={1.35}
+                          strokeOpacity={0.18}
                           strokeDasharray="2 6"
                         />
                       )
                     })}
                     {overlay.yCoordinates.map((y, index) => {
-                      const emphasis = Math.abs(y - overlay.hostBounds.centerY) <= 1.5 ? 0.22 : 0.12
                       return (
                         <line
                           key={`${overlay.hostGroupId}:y:${index}`}
@@ -520,37 +439,17 @@ export default function HandwritingNormalizationTestCanvas() {
                           x2={VIEWPORT.width}
                           y2={y}
                           stroke={gridColor}
-                          strokeWidth={Math.abs(y - overlay.hostBounds.top) <= 1.5 || Math.abs(y - overlay.hostBounds.bottom) <= 1.5 ? 1.35 : 1}
-                          strokeOpacity={emphasis}
+                          strokeWidth={1.35}
+                          strokeOpacity={0.18}
                           strokeDasharray="2 6"
                         />
                       )
                     })}
-                    {overlay.labels.map((label) => (
-                      <text key={label.id} x={label.x + 4} y={label.y - 4} fill={label.color} fontSize="10.5" fontWeight="700" opacity={label.opacity}>
-                        {label.text}
-                      </text>
-                    ))}
-                    {overlay.degenerateJunctions.map((junction) => (
-                      <g key={junction.id}>
-                        <circle cx={junction.x} cy={junction.y} r="2.8" fill={junction.color} opacity="0.94" />
-                        <text x={junction.x + 5} y={junction.y - 5} fill={junction.color} fontSize="9.5" fontWeight="700" opacity="0.94">
-                          {junction.text}
-                        </text>
-                      </g>
-                    ))}
                   </g>
                 )
               })}
               {showFieldIntersections && fieldGrid.interfaces.map((fieldInterface) => (
-                <g key={fieldInterface.id}>
-                  <circle cx={fieldInterface.x} cy={fieldInterface.y} r={Math.min(10, Math.max(4, Math.min(fieldInterface.width, fieldInterface.height) * 0.24))} fill={fieldInterface.color} fillOpacity="0.16" stroke={fieldInterface.color} strokeWidth="1.2" strokeOpacity="0.92" />
-                  <line x1={fieldInterface.x - Math.min(12, fieldInterface.width * 0.45)} y1={fieldInterface.y} x2={fieldInterface.x + Math.min(12, fieldInterface.width * 0.45)} y2={fieldInterface.y} stroke={fieldInterface.color} strokeWidth="1.1" strokeOpacity="0.84" />
-                  <line x1={fieldInterface.x} y1={fieldInterface.y - Math.min(12, fieldInterface.height * 0.45)} x2={fieldInterface.x} y2={fieldInterface.y + Math.min(12, fieldInterface.height * 0.45)} stroke={fieldInterface.color} strokeWidth="1.1" strokeOpacity="0.84" />
-                  <text x={fieldInterface.x + 6} y={fieldInterface.y - 6} fill={fieldInterface.color} fontSize="10" fontWeight="700" opacity="0.96">
-                    {fieldInterface.label}
-                  </text>
-                </g>
+                <g key={fieldInterface.id} />
               ))}
               {renderStrokeLayer(strokes, null)}
               {showBoxes && analysis.groups.map((group) => {

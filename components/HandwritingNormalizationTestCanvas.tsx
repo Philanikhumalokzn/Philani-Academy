@@ -5,6 +5,8 @@ import type { HandwritingFixtureName } from '../lib/handwritingNormalization/fix
 
 const VIEWPORT = { width: 760, height: 420, padding: 28 }
 
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+
 const getGlobalBounds = (strokes: InkStroke[]): InkBounds => {
   if (!strokes.length) return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0, centerX: 0, centerY: 0 }
   let left = Number.POSITIVE_INFINITY
@@ -35,6 +37,33 @@ const fitPoint = (point: InkPoint, bounds: InkBounds) => {
 }
 
 const rawPoint = (point: InkPoint) => ({ x: point.x, y: point.y })
+
+const clientPointToViewportPoint = (clientX: number, clientY: number, target: SVGSVGElement) => {
+  const rect = target.getBoundingClientRect()
+  const viewBoxAspect = VIEWPORT.width / VIEWPORT.height
+  const rectAspect = rect.width / Math.max(rect.height, 1)
+
+  let renderedWidth = rect.width
+  let renderedHeight = rect.height
+  let offsetX = 0
+  let offsetY = 0
+
+  if (rectAspect > viewBoxAspect) {
+    renderedWidth = rect.height * viewBoxAspect
+    offsetX = (rect.width - renderedWidth) / 2
+  } else {
+    renderedHeight = rect.width / viewBoxAspect
+    offsetY = (rect.height - renderedHeight) / 2
+  }
+
+  const normalizedX = clamp((clientX - rect.left - offsetX) / Math.max(renderedWidth, 1), 0, 1)
+  const normalizedY = clamp((clientY - rect.top - offsetY) / Math.max(renderedHeight, 1), 0, 1)
+
+  return {
+    x: normalizedX * VIEWPORT.width,
+    y: normalizedY * VIEWPORT.height,
+  }
+}
 
 const strokePath = (stroke: InkStroke, bounds?: InkBounds | null) => {
   if (!stroke.points.length) return ''
@@ -253,9 +282,7 @@ export default function HandwritingNormalizationTestCanvas() {
   const updateActiveStroke = (clientX: number, clientY: number, target: SVGSVGElement) => {
     const current = activeStrokeRef.current
     if (!current) return
-    const rect = target.getBoundingClientRect()
-    const x = ((clientX - rect.left) / rect.width) * VIEWPORT.width
-    const y = ((clientY - rect.top) / rect.height) * VIEWPORT.height
+    const { x, y } = clientPointToViewportPoint(clientX, clientY, target)
     const lastPoint = current.points[current.points.length - 1]
     if (lastPoint && Math.abs(lastPoint.x - x) < 0.5 && Math.abs(lastPoint.y - y) < 0.5) {
       return
@@ -272,9 +299,7 @@ export default function HandwritingNormalizationTestCanvas() {
     const target = event.currentTarget
     activePointerIdRef.current = event.pointerId
     target.setPointerCapture(event.pointerId)
-    const rect = target.getBoundingClientRect()
-    const x = ((event.clientX - rect.left) / rect.width) * VIEWPORT.width
-    const y = ((event.clientY - rect.top) / rect.height) * VIEWPORT.height
+    const { x, y } = clientPointToViewportPoint(event.clientX, event.clientY, target)
     const stroke: InkStroke = {
       id: `stroke-${nextStrokeIdRef.current++}`,
       color: '#f8fbff',

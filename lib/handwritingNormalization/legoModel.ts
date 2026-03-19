@@ -79,9 +79,11 @@ export const LEGO_BRICK_FAMILIES: Record<LegoBrickFamilyKind, LegoBrickFamilyDes
 			makeField('center', 1, 'single', ['radical sign body']),
 			makeField('interior', 0.96, 'hostedRegion', ['radicand hosted region']),
 			makeField('upperLeftScript', 0.42, 'stackable', ['index field for radicals']),
+			makeField('upperRightScript', 0.56, 'stackable', ['whole-radical superscript field']),
+			makeField('lowerRightScript', 0.56, 'stackable', ['whole-radical subscript field']),
 			makeField('rightInline', 0.2, 'sequence', ['weak right inline continuation']),
 		],
-		evidence: ['radical bricks host interior content and optionally a left index field'],
+		evidence: ['radical bricks host interior content, optionally a left index field, and may export whole-radical right scripts'],
 	},
 	unsupportedBrick: {
 		kind: 'unsupportedBrick',
@@ -101,10 +103,33 @@ const getHorizontalLineScore = (group: StrokeGroup) => {
 }
 
 const getBoundaryStrokeScore = (group: StrokeGroup) => {
+	if (group.strokeCount !== 1) return 0.08
+	const points = group.strokes?.[0]?.points || []
+	if (points.length < 3) return 0.08
+	let totalAbsDy = 0
+	let directionalChanges = 0
+	let previousDxSign = 0
+	for (let index = 1; index < points.length; index += 1) {
+		const dx = points[index].x - points[index - 1].x
+		const dy = points[index].y - points[index - 1].y
+		totalAbsDy += Math.abs(dy)
+		const dxSign = Math.abs(dx) <= 1 ? 0 : Math.sign(dx)
+		if (dxSign !== 0 && previousDxSign !== 0 && dxSign !== previousDxSign) {
+			directionalChanges += 1
+		}
+		if (dxSign !== 0) previousDxSign = dxSign
+	}
+	const start = points[0]
+	const end = points[points.length - 1]
 	const tallEnough = clamp((group.bounds.height - 54) / 62, 0, 1)
 	const narrowness = clamp(1 - group.bounds.width / Math.max(28, group.bounds.height * 0.72), 0, 1)
 	const aspectBias = clamp((0.9 - group.aspectRatio) / 0.45, 0, 1)
-	return tallEnough * 0.38 + narrowness * 0.34 + aspectBias * 0.28
+	const verticalMonotonicity = totalAbsDy > 0 ? clamp(Math.abs(end.y - start.y) / totalAbsDy, 0, 1) : 0
+	const endpointSpan = clamp(Math.abs(end.y - start.y) / Math.max(1, group.bounds.height), 0, 1)
+	const lowReversalScore = clamp(1 - directionalChanges / 4, 0, 1)
+	const compactGlyphInterference = clamp((getCompactGlyphScore(group) - 0.62) / 0.26, 0, 1)
+	const rawScore = tallEnough * 0.28 + narrowness * 0.24 + aspectBias * 0.18 + verticalMonotonicity * 0.18 + endpointSpan * 0.08 + lowReversalScore * 0.04
+	return clamp(rawScore - compactGlyphInterference * 0.22, 0, 1)
 }
 
 const getStrokeBounds = (group: StrokeGroup, strokeIndex: number) => {
@@ -202,6 +227,29 @@ const getCompactGlyphScore = (group: StrokeGroup) => {
 	return notTooFlat * 0.4 + notTooTall * 0.28 + densityBias * 0.32
 }
 
+const getOrdinaryBaselineSymbolScore = (
+	compactGlyphScore: number,
+	horizontalLineScore: number,
+	boundaryScore: number,
+	boostedOperatorScore: number,
+	radicalScore: number,
+	ordinaryBaselinePenalty: number,
+	operatorDominancePenalty: number,
+) => {
+	const strongestStructuralAlternative = Math.max(horizontalLineScore, boundaryScore, boostedOperatorScore, radicalScore)
+	const contextualPenalty = clamp((strongestStructuralAlternative - 0.3) / 0.52, 0, 0.22)
+	return clamp(
+		0.22
+			+ compactGlyphScore * 0.46
+			+ (1 - strongestStructuralAlternative) * 0.16
+			- ordinaryBaselinePenalty
+			- operatorDominancePenalty
+			- contextualPenalty,
+		0.26,
+		0.88,
+	)
+}
+
 const getPrototypeScore = (group: StrokeGroup, prototype: LegoBrickPrototypeKind) => {
 	switch (prototype) {
 		case 'horizontalLine':
@@ -235,6 +283,15 @@ const inferFamilyCandidatesForGroup = (group: StrokeGroup) => {
 	const operatorDominancePenalty = explicitOperatorCrossBoost > 0 && boostedOperatorScore >= 0.9
 		? clamp((boostedOperatorScore - 0.88) / 0.12, 0, 0.32)
 		: 0
+	const ordinaryBaselineScore = getOrdinaryBaselineSymbolScore(
+		compactGlyphScore,
+		horizontalLineScore,
+		boundaryScore,
+		boostedOperatorScore,
+		radicalScore,
+		ordinaryBaselinePenalty,
+		operatorDominancePenalty,
+	)
 
 	const candidates: Array<{ family: LegoBrickFamilyKind, prototype: LegoBrickPrototypeKind, score: number, evidence: string[] }> = [
 		{
@@ -264,8 +321,13 @@ const inferFamilyCandidatesForGroup = (group: StrokeGroup) => {
 		{
 			family: 'ordinaryBaselineSymbolBrick',
 			prototype: compactGlyphScore >= operatorScore ? 'compactGlyph' : 'operatorCross',
-			score: Math.max(0.34, compactGlyphScore - ordinaryBaselinePenalty - operatorDominancePenalty),
-			evidence: [`compact-glyph-score=${compactGlyphScore.toFixed(2)}`, 'ordinary baseline symbol brick is the default local body family'],
+			score: ordinaryBaselineScore,
+			evidence: [
+				`compact-glyph-score=${compactGlyphScore.toFixed(2)}`,
+				`ordinary-score=${ordinaryBaselineScore.toFixed(2)}`,
+				`alternative-pressure=${Math.max(horizontalLineScore, boundaryScore, boostedOperatorScore, radicalScore).toFixed(2)}`,
+				'ordinary baseline symbol brick is a strong default local body family, but it is damped by competing structural affordances',
+			],
 		},
 		{
 			family: 'unsupportedBrick',

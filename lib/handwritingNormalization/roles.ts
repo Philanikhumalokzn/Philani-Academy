@@ -262,6 +262,61 @@ const getCrossRadicalStructureBarrier = (
   return (barriers[0]?.score || 0) >= 0.52 ? barriers[0] : null
 }
 
+const getRadicalWholeScriptHostBarrier = (
+  groupMap: Map<string, StrokeGroup>,
+  radicalGroups: StrokeGroup[],
+  parentGroupId: string | null | undefined,
+  childGroupId: string | null | undefined,
+  ignoredGroupIds: Set<string> = new Set(),
+) => {
+  if (!parentGroupId || !childGroupId) return null
+  const parentGroup = groupMap.get(parentGroupId)
+  const childGroup = groupMap.get(childGroupId)
+  if (!parentGroup || !childGroup) return null
+
+  const barriers = radicalGroups
+    .filter((group) => group.id !== parentGroupId && group.id !== childGroupId)
+    .filter((group) => !ignoredGroupIds.has(group.id))
+    .map((radical) => {
+      const parentInteriorGeometryFit = (
+        parentGroup.bounds.left >= radical.bounds.left + radical.bounds.width * 0.34
+        && parentGroup.bounds.centerX >= radical.bounds.centerX
+        && parentGroup.bounds.top <= radical.bounds.bottom + Math.max(12, radical.bounds.height * 0.18)
+        && parentGroup.bounds.bottom >= radical.bounds.top - Math.max(8, radical.bounds.height * 0.08)
+      ) ? 0.74 : 0
+      const parentIndexGeometryFit = (
+        parentGroup.bounds.right <= radical.bounds.left + radical.bounds.width * 0.18
+        && parentGroup.bounds.bottom <= radical.bounds.top + radical.bounds.height * 0.2
+      ) ? 0.68 : 0
+      const parentHostedFit = Math.max(
+        getRadicalInteriorFitScore(radical, parentGroup),
+        getRadicalIndexFitScore(radical, parentGroup),
+        parentInteriorGeometryFit,
+        parentIndexGeometryFit,
+      )
+      if (parentHostedFit < 0.32) return null
+      const radicalExtentRight = Math.max(radical.bounds.right, parentGroup.bounds.right)
+      const childRightwardGap = childGroup.bounds.left - radicalExtentRight
+      const childBeyondWholeRadical = clamp(childRightwardGap / Math.max(18, radical.bounds.width * 0.22), 0, 1)
+      if (childBeyondWholeRadical < 0.3) return null
+      const verticalAlignment = clamp(
+        1 - Math.abs(childGroup.bounds.centerY - parentGroup.bounds.centerY) / Math.max(42, Math.max(childGroup.bounds.height, parentGroup.bounds.height) * 1.2),
+        0,
+        1,
+      )
+      const score = parentHostedFit * 0.54 + childBeyondWholeRadical * 0.34 + verticalAlignment * 0.12
+      return {
+        groupId: radical.id,
+        family: 'radicalBrick' as const,
+        score,
+      }
+    })
+    .filter(Boolean)
+    .sort((left, right) => (right?.score || 0) - (left?.score || 0))
+
+  return (barriers[0]?.score || 0) >= 0.48 ? barriers[0] : null
+}
+
 
 const getInlineFieldKind = (direction: 'left' | 'right') => {
   return direction === 'left' ? 'leftInline' : 'rightInline'
@@ -359,6 +414,7 @@ const findBestAdmissibleScriptEdge = (
     if (getDirectScriptHostBarrier(groupMap, topBrickHypothesisByGroupId, edge.fromId, edge.toId)) continue
     if (getCrossFractionStructureBarrier(groupMap, fractionBarrierGroups, edge.fromId, edge.toId)) continue
     if (getCrossRadicalStructureBarrier(groupMap, radicalBarrierGroups, edge.fromId, edge.toId)) continue
+    if (getRadicalWholeScriptHostBarrier(groupMap, radicalBarrierGroups, edge.fromId, edge.toId)) continue
     return { edge, hostFieldSupport }
   }
   return null
@@ -550,6 +606,27 @@ const getHostedContextForRole = (role: StructuralRole, contexts: ExpressionConte
   )) || null
 }
 
+const getContextBounds = (
+  context: ExpressionContext | null | undefined,
+  groupMap: Map<string, StrokeGroup>,
+  excludedGroupIds: Set<string> = new Set(),
+) => {
+  if (!context) return null
+  const boundsList = context.memberGroupIds
+    .filter((groupId) => !excludedGroupIds.has(groupId))
+    .map((groupId) => groupMap.get(groupId)?.bounds)
+    .filter(Boolean) as StrokeGroup['bounds'][]
+  if (!boundsList.length) return null
+  return mergeBounds(boundsList.map((bounds) => ({
+    left: bounds.left,
+    top: bounds.top,
+    right: bounds.right,
+    bottom: bounds.bottom,
+    centerX: bounds.centerX,
+    centerY: bounds.centerY,
+  })))
+}
+
 const isFractionWideOutsideHostedMember = (groupId: string, parentGroupId: string | null | undefined, contexts: ExpressionContext[], groupMap: Map<string, StrokeGroup>) => {
   if (!parentGroupId) return false
   const memberContext = contexts.find((context) => (
@@ -562,6 +639,34 @@ const isFractionWideOutsideHostedMember = (groupId: string, parentGroupId: strin
   const scriptGroup = groupMap.get(groupId)
   if (!fractionBarGroup || !scriptGroup) return false
   return scriptGroup.bounds.left >= fractionBarGroup.bounds.right + Math.max(10, fractionBarGroup.bounds.width * 0.08)
+}
+
+const getRadicalWideContextForParentGroupId = (
+  parentGroupId: string | null | undefined,
+  contexts: ExpressionContext[],
+) => {
+  if (!parentGroupId) return null
+  const directRadicalContext = contexts.find((context) => context.kind === 'radical' && context.semanticRootGroupId === parentGroupId) || null
+  if (directRadicalContext) return directRadicalContext
+  const memberContext = contexts.find((context) => (
+    (context.kind === 'radicand' || context.kind === 'radicalIndex')
+    && context.semanticRootGroupId === parentGroupId
+  )) || null
+  if (!memberContext?.parentContextId) return null
+  return contexts.find((context) => context.id === memberContext.parentContextId && context.kind === 'radical') || null
+}
+
+const isRadicalWideOutsideHostedMember = (
+  groupId: string,
+  parentGroupId: string | null | undefined,
+  contexts: ExpressionContext[],
+  groupMap: Map<string, StrokeGroup>,
+) => {
+  const radicalContext = getRadicalWideContextForParentGroupId(parentGroupId, contexts)
+  const radicalBounds = getContextBounds(radicalContext, groupMap, new Set([groupId]))
+  const scriptGroup = groupMap.get(groupId)
+  if (!radicalBounds || !scriptGroup) return false
+  return scriptGroup.bounds.left >= radicalBounds.right + Math.max(12, (radicalBounds.right - radicalBounds.left) * 0.06)
 }
 
 const isLikelySequenceWideScript = (
@@ -636,6 +741,39 @@ const appendEnclosureWideScriptAmbiguities = (roles: StructuralRole[], contexts:
       chosenRole: role.role,
       candidates: [
         makeCandidate(role.role, role.score, role.parentGroupId, ['resolved as enclosure-wide script promotion'], {
+          associationContextId: role.associationContextId,
+          containerGroupIds: role.containerGroupIds,
+          normalizationAnchorGroupIds: role.normalizationAnchorGroupIds,
+        }),
+        makeCandidate('baseline', Math.max(0.28, role.score - 0.2), null, ['detached baseline alternative'], {
+          associationContextId: detachedContextId,
+        }),
+      ],
+    })
+  }
+
+  return nextAmbiguities
+}
+
+const appendRadicalWideScriptAmbiguities = (roles: StructuralRole[], groups: StrokeGroup[], contexts: ExpressionContext[], ambiguities: StructuralAmbiguity[]) => {
+  const groupMap = new Map(groups.map((group) => [group.id, group]))
+  const contextMap = new Map(contexts.map((context) => [context.id, context]))
+  const nextAmbiguities = [...ambiguities]
+
+  for (const role of roles) {
+    if ((role.role !== 'superscript' && role.role !== 'subscript') || !role.parentGroupId) continue
+    if (!role.associationContextId?.startsWith('context:radical:')) continue
+    if (!isRadicalWideOutsideHostedMember(role.groupId, role.parentGroupId, contexts, groupMap)) continue
+    if (nextAmbiguities.some((ambiguity) => ambiguity.groupId === role.groupId && ambiguity.reason === 'radical-wide-script-vs-baseline')) continue
+
+    const detachedContextId = role.associationContextId ? contextMap.get(role.associationContextId)?.parentContextId || 'context:root' : 'context:root'
+
+    nextAmbiguities.push({
+      groupId: role.groupId,
+      reason: 'radical-wide-script-vs-baseline',
+      chosenRole: role.role,
+      candidates: [
+        makeCandidate(role.role, role.score, role.parentGroupId, ['resolved as radical-wide script promotion'], {
           associationContextId: role.associationContextId,
           containerGroupIds: role.containerGroupIds,
           normalizationAnchorGroupIds: role.normalizationAnchorGroupIds,
@@ -734,6 +872,113 @@ const promoteSequenceWideScripts = (roles: StructuralRole[], contexts: Expressio
   })
 }
 
+const promoteRadicalWideScripts = (roles: StructuralRole[], contexts: ExpressionContext[], groups: StrokeGroup[]): StructuralRole[] => {
+  const groupMap = new Map(groups.map((group) => [group.id, group]))
+
+  return roles.map<StructuralRole>((role) => {
+    if ((role.role !== 'superscript' && role.role !== 'subscript') || !role.parentGroupId) return role
+    if (!isRadicalWideOutsideHostedMember(role.groupId, role.parentGroupId, contexts, groupMap)) return role
+
+    const radicalContext = getRadicalWideContextForParentGroupId(role.parentGroupId, contexts)
+    if (!radicalContext?.semanticRootGroupId) return role
+    if (role.parentGroupId === radicalContext.semanticRootGroupId && role.associationContextId === radicalContext.id) return role
+
+    const redirectedFromParentId = role.parentGroupId
+    return {
+      ...role,
+      parentGroupId: radicalContext.semanticRootGroupId,
+      associationContextId: radicalContext.id,
+      normalizationAnchorGroupIds: uniqueIds(radicalContext.anchorGroupIds),
+      evidence: [
+        ...role.evidence.filter((entry) => !entry.startsWith('redirected-parent=')),
+        'radical-wide script promotion',
+        `redirected-parent=${redirectedFromParentId}->${radicalContext.semanticRootGroupId}`,
+        `association-context=${radicalContext.id}`,
+      ],
+    }
+  })
+}
+
+const forcePromoteRadicalWideScripts = (roles: StructuralRole[], radicalBindings: RadicalStructureBinding[], groups: StrokeGroup[]): StructuralRole[] => {
+  const groupMap = new Map(groups.map((group) => [group.id, group]))
+
+  return roles.map<StructuralRole>((role) => {
+    const scriptGroup = groupMap.get(role.groupId)
+    if (!scriptGroup) return role
+
+    if ((role.role === 'superscript' || role.role === 'subscript') && role.parentGroupId) {
+      const radicalBinding = getRadicalWideBindingForParentGroupId(role.parentGroupId, radicalBindings)
+      const radicalBounds = radicalBinding ? getRadicalBindingBounds(radicalBinding, groupMap) : null
+      if (!radicalBinding || !radicalBounds) return role
+      if (scriptGroup.bounds.left < radicalBounds.right + Math.max(12, (radicalBounds.right - radicalBounds.left) * 0.06)) return role
+      if (role.parentGroupId === radicalBinding.radicalGroupId && role.associationContextId === `context:radical:${radicalBinding.radicalGroupId}`) return role
+
+      return {
+        ...role,
+        parentGroupId: radicalBinding.radicalGroupId,
+        associationContextId: `context:radical:${radicalBinding.radicalGroupId}`,
+        normalizationAnchorGroupIds: uniqueIds([radicalBinding.radicalGroupId, ...radicalBinding.radicandRootIds, ...radicalBinding.indexRootIds]),
+        evidence: [
+          ...role.evidence.filter((entry) => !entry.startsWith('redirected-parent=')),
+          'radical-wide script promotion',
+          `redirected-parent=${role.parentGroupId}->${radicalBinding.radicalGroupId}`,
+          `association-context=context:radical:${radicalBinding.radicalGroupId}`,
+        ],
+      }
+    }
+
+    if (role.role !== 'baseline' || role.parentGroupId) return role
+
+    const promotedCandidate = radicalBindings
+      .map((binding) => {
+        const radicalBounds = getRadicalBindingBounds(binding, groupMap)
+        if (!radicalBounds) return null
+        const radicalWidth = Math.max(1, radicalBounds.right - radicalBounds.left)
+        const radicalHeight = Math.max(1, radicalBounds.bottom - radicalBounds.top)
+        if (scriptGroup.bounds.left < radicalBounds.right + Math.max(10, radicalWidth * 0.05)) return null
+
+        const horizontalGap = Math.max(0, scriptGroup.bounds.left - radicalBounds.right)
+        const horizontalCloseness = clamp(1 - horizontalGap / Math.max(24, radicalWidth * 0.24), 0, 1)
+        const superscriptTargetY = radicalBounds.top + radicalHeight * 0.08
+        const subscriptTargetY = radicalBounds.bottom - radicalHeight * 0.08
+        const superscriptVertical = clamp(1 - Math.abs(scriptGroup.bounds.bottom - superscriptTargetY) / Math.max(26, radicalHeight * 0.58), 0, 1)
+        const subscriptVertical = clamp(1 - Math.abs(scriptGroup.bounds.top - subscriptTargetY) / Math.max(26, radicalHeight * 0.58), 0, 1)
+        const superscriptScore = horizontalCloseness * 0.56 + superscriptVertical * 0.44
+        const subscriptScore = horizontalCloseness * 0.56 + subscriptVertical * 0.44
+        const roleKind: 'superscript' | 'subscript' = superscriptScore >= subscriptScore ? 'superscript' : 'subscript'
+        const score = Math.max(superscriptScore, subscriptScore)
+        if (score < 0.5) return null
+
+        return {
+          binding,
+          roleKind,
+          score,
+        }
+      })
+      .filter(Boolean)
+      .sort((left, right) => (right?.score || 0) - (left?.score || 0))[0] || null
+
+    if (!promotedCandidate) return role
+
+    return {
+      ...role,
+      role: promotedCandidate.roleKind,
+      descriptor: getRoleDescriptor(promotedCandidate.roleKind),
+      score: Math.max(role.score, 0.42 + promotedCandidate.score * 0.26),
+      depth: 1,
+      parentGroupId: promotedCandidate.binding.radicalGroupId,
+      associationContextId: `context:radical:${promotedCandidate.binding.radicalGroupId}`,
+      normalizationAnchorGroupIds: uniqueIds([promotedCandidate.binding.radicalGroupId, ...promotedCandidate.binding.radicandRootIds, ...promotedCandidate.binding.indexRootIds]),
+      evidence: [
+        ...role.evidence,
+        'radical-wide script promotion',
+        `association-context=context:radical:${promotedCandidate.binding.radicalGroupId}`,
+        `promotion-role=${promotedCandidate.roleKind}`,
+      ],
+    }
+  })
+}
+
 const ensureFractionSemanticRootsRemainBaseline = (roles: StructuralRole[], fractionBindings: FractionStructureBinding[], groups: StrokeGroup[]) => {
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
   const nextRoles = [...roles]
@@ -781,6 +1026,43 @@ const isFractionWideOutsideMember = (groupId: string, parentRole: StructuralRole
   const scriptGroup = groupMap.get(groupId)
   if (!fractionBarGroup || !scriptGroup) return false
   return scriptGroup.bounds.left >= fractionBarGroup.bounds.right + Math.max(10, fractionBarGroup.bounds.width * 0.08)
+}
+
+const getRadicalWideBindingForParentGroupId = (
+  parentGroupId: string | null | undefined,
+  radicalBindings: RadicalStructureBinding[],
+) => {
+  if (!parentGroupId) return null
+  return radicalBindings.find((binding) => binding.radicandRootIds.includes(parentGroupId) || binding.indexRootIds.includes(parentGroupId)) || null
+}
+
+const getRadicalBindingBounds = (binding: RadicalStructureBinding, groupMap: Map<string, StrokeGroup>) => {
+  const groupIds = [binding.radicalGroupId, ...binding.radicandRootIds, ...binding.indexRootIds]
+  const boundsList = groupIds
+    .map((groupId) => groupMap.get(groupId)?.bounds)
+    .filter(Boolean) as StrokeGroup['bounds'][]
+  if (!boundsList.length) return null
+  return mergeBounds(boundsList.map((bounds) => ({
+    left: bounds.left,
+    top: bounds.top,
+    right: bounds.right,
+    bottom: bounds.bottom,
+    centerX: bounds.centerX,
+    centerY: bounds.centerY,
+  })))
+}
+
+const isRadicalWideOutsideMember = (
+  groupId: string,
+  parentGroupId: string | null | undefined,
+  radicalBindings: RadicalStructureBinding[],
+  groupMap: Map<string, StrokeGroup>,
+) => {
+  const binding = getRadicalWideBindingForParentGroupId(parentGroupId, radicalBindings)
+  const radicalBounds = binding ? getRadicalBindingBounds(binding, groupMap) : null
+  const scriptGroup = groupMap.get(groupId)
+  if (!binding || !radicalBounds || !scriptGroup) return false
+  return scriptGroup.bounds.left >= radicalBounds.right + Math.max(12, (radicalBounds.right - radicalBounds.left) * 0.06)
 }
 
 const isSameParentStackedScriptPair = (first: StrokeGroup, second: StrokeGroup) => {
@@ -2379,6 +2661,43 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
       candidates.push(fractionWideFallbackCandidates)
     }
 
+    const radicalWideFallbackCandidate = Array.from(roles.values())
+      .filter((role) => role.role === 'baseline')
+      .flatMap((role) => {
+        const radicalBinding = getRadicalWideBindingForParentGroupId(role.groupId, radicalBindings)
+        const radicalGroup = radicalBinding ? groupMap.get(radicalBinding.radicalGroupId) || null : null
+        const radicalBounds = radicalBinding ? getRadicalBindingBounds(radicalBinding, groupMap) : null
+        if (!radicalBinding || !radicalGroup || !radicalBounds || !isRadicalWideOutsideMember(group.id, role.groupId, radicalBindings, groupMap)) return []
+        return (['superscript', 'subscript'] as const)
+          .map((scriptRole) => {
+            const radicalWidth = Math.max(1, radicalBounds.right - radicalBounds.left)
+            const radicalHeight = Math.max(1, radicalBounds.bottom - radicalBounds.top)
+            const horizontalGap = Math.max(0, group.bounds.left - radicalBounds.right)
+            const horizontalCloseness = clamp(1 - horizontalGap / Math.max(24, radicalWidth * 0.24), 0, 1)
+            const targetY = scriptRole === 'superscript'
+              ? radicalBounds.top + radicalHeight * 0.08
+              : radicalBounds.bottom - radicalHeight * 0.08
+            const verticalCloseness = scriptRole === 'superscript'
+              ? clamp(1 - Math.abs(group.bounds.bottom - targetY) / Math.max(28, radicalHeight * 0.6), 0, 1)
+              : clamp(1 - Math.abs(group.bounds.top - targetY) / Math.max(28, radicalHeight * 0.6), 0, 1)
+            const localityScore = horizontalCloseness * 0.58 + verticalCloseness * 0.42
+            if (localityScore < 0.4) return null
+            return makeCandidate(scriptRole, 0.4 + localityScore * 0.28, radicalBinding.radicalGroupId, [
+              'radical-wide geometry fallback',
+              `locality=${localityScore.toFixed(2)}`,
+              `fallback-role=${scriptRole}`,
+              `radical-host=${radicalBinding.radicalGroupId}`,
+            ])
+          })
+          .filter(Boolean) as StructuralRoleCandidate[]
+      })
+      .filter(Boolean)
+      .sort((left, right) => (right?.score || 0) - (left?.score || 0))[0] || null
+
+    if (radicalWideFallbackCandidate) {
+      candidates.push(radicalWideFallbackCandidate)
+    }
+
     const best = chooseBestCandidate(candidates)
     const sortedCandidates = [...candidates].sort((left, right) => right.score - left.score)
     const runnerUp = sortedCandidates[1]
@@ -2411,6 +2730,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
       ? getDirectScriptHostBarrier(groupMap, topBrickHypothesisByGroupId, resolvedParentGroupId, group.id, ignoredBarrierIds)
         || getCrossFractionStructureBarrier(groupMap, fractionStructureBarrierGroups, resolvedParentGroupId, group.id, ignoredBarrierIds)
         || getCrossRadicalStructureBarrier(groupMap, radicalStructureBarrierGroups, resolvedParentGroupId, group.id, ignoredBarrierIds)
+        || getRadicalWholeScriptHostBarrier(groupMap, radicalStructureBarrierGroups, resolvedParentGroupId, group.id, ignoredBarrierIds)
       : null
     const hostFieldSupport = best.role === 'superscript' || best.role === 'subscript'
       ? hostSupportsScriptField(topBrickHypothesisByGroupId, resolvedParentGroupId, best.role)
@@ -2429,6 +2749,11 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
       return isFractionWideOutsideMember(group.id, candidateParentRole, groupMap)
     }) || null
 
+    const promotableRadicalWideCandidate = sortedCandidates.find((candidate) => {
+      if ((candidate.role !== 'superscript' && candidate.role !== 'subscript') || !candidate.parentGroupId) return false
+      return isRadicalWideOutsideMember(group.id, candidate.parentGroupId, radicalBindings, groupMap)
+    }) || null
+
     const promotableSequenceWideCandidate = sortedCandidates.find((candidate) => {
       if ((candidate.role !== 'superscript' && candidate.role !== 'subscript') || !candidate.parentGroupId) return false
       return isLikelySequenceWideScript(candidate.parentGroupId, group.id, groupMap, topBrickHypothesisByGroupId)
@@ -2436,12 +2761,31 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
 
     const selectedScriptCandidate = (() => {
       if ((best.role === 'superscript' || best.role === 'subscript') && resolvedParentGroupId && parentSupportsAttachment) {
+        const directRadicalWideBinding = isRadicalWideOutsideMember(group.id, resolvedParentGroupId, radicalBindings, groupMap)
+          ? getRadicalWideBindingForParentGroupId(resolvedParentGroupId, radicalBindings)
+          : null
+        const directPromotedParentGroupId = directRadicalWideBinding?.radicalGroupId || resolvedParentGroupId
+        const directPromotedParentRole = roles.get(directPromotedParentGroupId) || parentRole
         const minimumScore = (isFractionWideOutsideMember(group.id, parentRole || null, groupMap)
+          || isRadicalWideOutsideMember(group.id, resolvedParentGroupId, radicalBindings, groupMap)
           || isLikelySequenceWideScript(resolvedParentGroupId, group.id, groupMap, topBrickHypothesisByGroupId))
           ? 0.32
           : 0.45
         if (best.score >= minimumScore) {
-          return { candidate: best, parentGroupId: resolvedParentGroupId, parentRole, fractionWidePromotion: minimumScore < 0.45 }
+          return {
+            candidate: directPromotedParentGroupId === resolvedParentGroupId
+              ? best
+              : { ...best, parentGroupId: directPromotedParentGroupId },
+            parentGroupId: directPromotedParentGroupId,
+            parentRole: directPromotedParentRole,
+            promotionKind: isFractionWideOutsideMember(group.id, parentRole || null, groupMap)
+              ? 'fraction'
+              : directRadicalWideBinding
+                ? 'radical'
+                : isLikelySequenceWideScript(resolvedParentGroupId, group.id, groupMap, topBrickHypothesisByGroupId)
+                  ? 'sequence'
+                  : null,
+          }
         }
       }
 
@@ -2451,6 +2795,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
         const promotedHostBarrier = getDirectScriptHostBarrier(groupMap, topBrickHypothesisByGroupId, promotableSequenceWideCandidate.parentGroupId, group.id)
           || getCrossFractionStructureBarrier(groupMap, fractionStructureBarrierGroups, promotableSequenceWideCandidate.parentGroupId, group.id)
           || getCrossRadicalStructureBarrier(groupMap, radicalStructureBarrierGroups, promotableSequenceWideCandidate.parentGroupId, group.id)
+          || getRadicalWholeScriptHostBarrier(groupMap, radicalStructureBarrierGroups, promotableSequenceWideCandidate.parentGroupId, group.id)
         const promotedHostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, promotableSequenceWideCandidate.parentGroupId, promotedScriptRole)
         const promotedParentSupportsAttachment = (!roleRequiresOperandReference(promotableSequenceWideCandidate.role) || roleUsesParentOperand(promotableSequenceWideCandidate.role))
           && roleAllowsOperandRole(promotableSequenceWideCandidate.role, promotedParentRole?.role || 'baseline')
@@ -2466,8 +2811,37 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
             candidate: promotableSequenceWideCandidate,
             parentGroupId: promotableSequenceWideCandidate.parentGroupId,
             parentRole: promotedParentRole,
-            fractionWidePromotion: true,
+            promotionKind: 'sequence',
           }
+        }
+      }
+
+      if (promotableRadicalWideCandidate?.parentGroupId) {
+        const promotedRadicalBinding = getRadicalWideBindingForParentGroupId(promotableRadicalWideCandidate.parentGroupId, radicalBindings)
+        const promotedRadicalParentGroupId = promotedRadicalBinding?.radicalGroupId || promotableRadicalWideCandidate.parentGroupId
+        const promotedRadicalParentRole = roles.get(promotedRadicalParentGroupId) || null
+        const promotedRadicalScriptRole = promotableRadicalWideCandidate.role as 'superscript' | 'subscript'
+        const promotedRadicalHostBarrier = getDirectScriptHostBarrier(groupMap, topBrickHypothesisByGroupId, promotedRadicalParentGroupId, group.id)
+          || getCrossFractionStructureBarrier(groupMap, fractionStructureBarrierGroups, promotedRadicalParentGroupId, group.id)
+          || getCrossRadicalStructureBarrier(groupMap, radicalStructureBarrierGroups, promotedRadicalParentGroupId, group.id)
+          || getRadicalWholeScriptHostBarrier(groupMap, radicalStructureBarrierGroups, promotedRadicalParentGroupId, group.id)
+        const promotedRadicalHostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, promotedRadicalParentGroupId, promotedRadicalScriptRole)
+        const promotedRadicalParentSupportsAttachment = (!roleRequiresOperandReference(promotableRadicalWideCandidate.role) || roleUsesParentOperand(promotableRadicalWideCandidate.role))
+          && roleAllowsOperandRole(promotableRadicalWideCandidate.role, promotedRadicalParentRole?.role || 'baseline')
+          && !promotedRadicalHostBarrier
+          && promotedRadicalHostFieldSupport.supported
+          && (!promotedRadicalParentRole || (roleCanOwnScripts(promotedRadicalParentRole.role) && roleAllowsChildRole(promotedRadicalParentRole.role, promotableRadicalWideCandidate.role)))
+        if (!promotedRadicalParentSupportsAttachment) return null
+        if (promotableRadicalWideCandidate.score < 0.32) return null
+        if ((sortedCandidates[0]?.score || 0) - promotableRadicalWideCandidate.score > 0.18) return null
+
+        return {
+          candidate: promotedRadicalParentGroupId === promotableRadicalWideCandidate.parentGroupId
+            ? promotableRadicalWideCandidate
+            : { ...promotableRadicalWideCandidate, parentGroupId: promotedRadicalParentGroupId },
+          parentGroupId: promotedRadicalParentGroupId,
+          parentRole: promotedRadicalParentRole,
+          promotionKind: 'radical',
         }
       }
 
@@ -2477,6 +2851,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
       const promotedFractionHostBarrier = getDirectScriptHostBarrier(groupMap, topBrickHypothesisByGroupId, promotableFractionWideCandidate.parentGroupId, group.id)
         || getCrossFractionStructureBarrier(groupMap, fractionStructureBarrierGroups, promotableFractionWideCandidate.parentGroupId, group.id)
         || getCrossRadicalStructureBarrier(groupMap, radicalStructureBarrierGroups, promotableFractionWideCandidate.parentGroupId, group.id)
+        || getRadicalWholeScriptHostBarrier(groupMap, radicalStructureBarrierGroups, promotableFractionWideCandidate.parentGroupId, group.id)
       const promotedFractionHostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, promotableFractionWideCandidate.parentGroupId, promotedFractionScriptRole)
       const promotedFractionParentSupportsAttachment = (!roleRequiresOperandReference(promotableFractionWideCandidate.role) || roleUsesParentOperand(promotableFractionWideCandidate.role))
         && roleAllowsOperandRole(promotableFractionWideCandidate.role, promotedFractionParentRole?.role || 'baseline')
@@ -2491,7 +2866,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
         candidate: promotableFractionWideCandidate,
         parentGroupId: promotableFractionWideCandidate.parentGroupId,
         parentRole: promotedFractionParentRole,
-        fractionWidePromotion: true,
+        promotionKind: 'fraction',
       }
     })()
 
@@ -2507,16 +2882,28 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
         `operand-allows=${String(roleAllowsOperandRole(selectedScriptCandidate.candidate.role, selectedScriptCandidate.parentRole?.role || 'baseline'))}`,
         `redirected-parent=${selectedScriptCandidate.candidate.parentGroupId && selectedScriptCandidate.candidate.parentGroupId !== selectedScriptCandidate.parentGroupId ? `${selectedScriptCandidate.candidate.parentGroupId}->${selectedScriptCandidate.parentGroupId}` : 'none'}`,
         `parent-allows=${selectedScriptCandidate.parentRole ? String(roleAllowsChildRole(selectedScriptCandidate.parentRole.role, selectedScriptCandidate.candidate.role)) : 'true'}`,
-        `fraction-wide-promotion=${selectedScriptCandidate.fractionWidePromotion ? 'true' : 'false'}`,
+        `fraction-wide-promotion=${selectedScriptCandidate.promotionKind === 'fraction' ? 'true' : 'false'}`,
+        `promotion-kind=${selectedScriptCandidate.promotionKind || 'none'}`,
         `ancestry=${getRoleDescriptor(selectedScriptCandidate.candidate.role).ancestry.join('>')}`,
       ], containerIdsByGroupId.get(group.id) || [])
       roles.set(group.id, nextRole)
-      if (selectedScriptCandidate.fractionWidePromotion || isFractionWideOutsideMember(group.id, selectedScriptCandidate.parentRole || null, groupMap)) {
+      if (selectedScriptCandidate.promotionKind === 'fraction' || isFractionWideOutsideMember(group.id, selectedScriptCandidate.parentRole || null, groupMap)) {
         const baselineAlternative = sortedCandidates.find((candidate) => candidate.role === 'baseline') || null
         if (baselineAlternative) {
           ambiguities.push({
             groupId: group.id,
             reason: 'fraction-wide-script-vs-baseline',
+            chosenRole: selectedScriptCandidate.candidate.role,
+            candidates: [selectedScriptCandidate.candidate, baselineAlternative],
+          })
+        }
+      }
+      if (selectedScriptCandidate.promotionKind === 'radical' || isRadicalWideOutsideMember(group.id, selectedScriptCandidate.parentGroupId, radicalBindings, groupMap)) {
+        const baselineAlternative = sortedCandidates.find((candidate) => candidate.role === 'baseline') || null
+        if (baselineAlternative) {
+          ambiguities.push({
+            groupId: group.id,
+            reason: 'radical-wide-script-vs-baseline',
             chosenRole: selectedScriptCandidate.candidate.role,
             candidates: [selectedScriptCandidate.candidate, baselineAlternative],
           })
@@ -2582,17 +2969,20 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
   const sequencePromotedRoles = promoteSequenceWideScripts(radicalSemanticRootSafeRoles, contexts, groups, edges, topBrickHypothesisByGroupId)
   const promotedContexts = buildExpressionContexts(groups, sequencePromotedRoles, subexpressions, enclosures, fractionBindings, radicalBindings, edges, topBrickHypothesisByGroupId)
   const annotatedRoles = annotateRolesWithContexts(sequencePromotedRoles, promotedContexts, groups)
-  const annotatedRoleMap = new Map(annotatedRoles.map((role) => [role.groupId, role]))
-  const contextualizedRoles = annotatedRoles.map((role) => ({
+  const radicalPromotedRoles = promoteRadicalWideScripts(annotatedRoles, promotedContexts, groups)
+  const annotatedRoleMap = new Map(radicalPromotedRoles.map((role) => [role.groupId, role]))
+  const contextualizedRoles = radicalPromotedRoles.map((role) => ({
     ...role,
     depth: role.parentGroupId ? roleDepth(annotatedRoleMap, role.groupId) : 0,
   }))
   const identityAwareRoles = annotateRolesWithRecognizedSymbols(contextualizedRoles, groups)
-  const fractionAwareAmbiguities = appendFractionWideScriptAmbiguities(identityAwareRoles, groups, promotedContexts, ambiguities)
-  const contextualizedAmbiguities = appendEnclosureWideScriptAmbiguities(identityAwareRoles, promotedContexts, fractionAwareAmbiguities)
+  const finalRadicalWideRoles = forcePromoteRadicalWideScripts(identityAwareRoles, radicalBindings, groups)
+  const fractionAwareAmbiguities = appendFractionWideScriptAmbiguities(finalRadicalWideRoles, groups, promotedContexts, ambiguities)
+  const radicalAwareAmbiguities = appendRadicalWideScriptAmbiguities(finalRadicalWideRoles, groups, promotedContexts, fractionAwareAmbiguities)
+  const contextualizedAmbiguities = appendEnclosureWideScriptAmbiguities(finalRadicalWideRoles, promotedContexts, radicalAwareAmbiguities)
 
   return {
-    roles: identityAwareRoles,
+    roles: finalRadicalWideRoles,
     flags: [...semanticFlags, ...operandFlags, ...flags],
     subexpressions,
     enclosures,

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { analyzeHandwrittenExpression, createHandwritingIncrementalState, formatBrickFamilyScoreDiagnostics, formatStructuralRoleDiagnostics, getHandwritingFixture, getRoleDescriptor, HANDWRITING_FIXTURE_ORDER, LEGO_BRICK_FAMILIES, recognizeSymbolForRole, roleAllowsChildRole } from '../lib/handwritingNormalization'
+import { analyzeHandwrittenExpression, createHandwritingIncrementalState, formatBrickFamilyScoreDiagnostics, formatHostProtectionDiagnostics, formatStructuralRoleDiagnostics, getHandwritingFixture, getRoleDescriptor, HANDWRITING_FIXTURE_ORDER, LEGO_BRICK_FAMILIES, recognizeSymbolForRole, roleAllowsChildRole } from '../lib/handwritingNormalization'
 import { buildLayoutGraph } from '../lib/handwritingNormalization/graph'
 import { normalizeInkLayout } from '../lib/handwritingNormalization/normalize'
 import { buildExpressionParseForest } from '../lib/handwritingNormalization/parser'
@@ -114,6 +114,14 @@ const attachFixtureStructuralRoleDiagnostics = async (fixture: HandwritingFixtur
   })
 }
 
+const attachFixtureHostProtectionDiagnostics = async (fixture: HandwritingFixture, analysis: HandwritingAnalysis) => {
+  if (!fixture.diagnostics?.recordHostProtection) return
+  await test.info().attach(`${fixture.name}-host-protection.txt`, {
+    body: formatHostProtectionDiagnostics(analysis),
+    contentType: 'text/plain',
+  })
+}
+
 test.describe('handwriting normalization fixtures', () => {
   test('all fixture examples satisfy their declared role and group expectations', async () => {
     for (const fixtureName of HANDWRITING_FIXTURE_ORDER) {
@@ -121,6 +129,7 @@ test.describe('handwriting normalization fixtures', () => {
       const analysis = analyzeHandwrittenExpression(fixture.strokes)
       await attachFixtureBrickFamilyDiagnostics(fixture, analysis)
       await attachFixtureStructuralRoleDiagnostics(fixture, analysis)
+      await attachFixtureHostProtectionDiagnostics(fixture, analysis)
 
       expect(analysis.groups, `${fixture.name} group count`).toHaveLength(fixture.expectation.groupCount)
       for (const requiredRole of fixture.expectation.requiredRoles) {
@@ -152,6 +161,7 @@ test.describe('handwriting normalization fixtures', () => {
       const analysis = analyzeHandwrittenExpression(fixture.strokes)
       await attachFixtureBrickFamilyDiagnostics(fixture, analysis)
       await attachFixtureStructuralRoleDiagnostics(fixture, analysis)
+      await attachFixtureHostProtectionDiagnostics(fixture, analysis)
 
       expect(analysis.refinement?.converged, `${fixture.name} should converge under global refinement`).toBe(true)
       expect((analysis.refinement?.passes.length || 0), `${fixture.name} should record refinement passes`).toBeGreaterThanOrEqual(2)
@@ -245,6 +255,22 @@ test.describe('handwriting normalization fixtures', () => {
       expect(baselineRole, `${fixture.name} should remain a baseline symbol`).toBeTruthy()
       expect(analysis.roles.some((role) => role.role === 'radical'), `${fixture.name} should not become a radical`).toBe(false)
       expect(topBrick?.family, `${fixture.name} should stay an ordinary baseline symbol brick`).toBe('ordinaryBaselineSymbolBrick')
+    }
+  })
+
+  test('ordinary baseline brick remains strong without saturating to 1.0', async () => {
+    const fixtureNames = ['digitTwoSuperscriptSeven', 'digitFiveRadicalTemptation', 'compactTBaseline'] as const
+
+    for (const fixtureName of fixtureNames) {
+      const fixture = getHandwritingFixture(fixtureName)
+      const analysis = analyzeHandwrittenExpression(fixture.strokes)
+      await attachFixtureBrickFamilyDiagnostics(fixture, analysis)
+      const baselineRole = analysis.roles.find((role) => role.role === 'baseline') || null
+      const baselineBrick = baselineRole ? getTopBrickHypothesis(analysis, baselineRole.groupId) : null
+
+      expect(baselineBrick?.family, `${fixture.name} should keep ordinary baseline family`).toBe('ordinaryBaselineSymbolBrick')
+      expect(baselineBrick?.score || 0, `${fixture.name} should not saturate ordinary baseline score to 1.0`).toBeLessThan(0.97)
+      expect(baselineBrick?.score || 0, `${fixture.name} should still keep a strong ordinary baseline prior`).toBeGreaterThan(0.55)
     }
   })
 
@@ -382,6 +408,35 @@ test.describe('handwriting normalization fixtures', () => {
     expect(indexRoot?.role).toBe('baseline')
     expect(radicandRoot?.role).toBe('baseline')
     expect(conflictingScript, 'radical hosted groups should stay in their native index/radicand fields instead of re-owning each other as scripts').toBeFalsy()
+  })
+
+  test('whole-radical outer scripts bind to the radical expression rather than only the radicand', async () => {
+    const fixtures = [
+      { name: 'radicalOuterExponent', expectedRole: 'superscript', expectedReason: 'radical-wide-script-vs-baseline' },
+      { name: 'radicalOuterSubscript', expectedRole: 'subscript', expectedReason: 'radical-wide-script-vs-baseline' },
+    ] as const
+
+    for (const fixtureInfo of fixtures) {
+      const fixture = getHandwritingFixture(fixtureInfo.name)
+      const analysis = analyzeHandwrittenExpression(fixture.strokes)
+      await attachFixtureBrickFamilyDiagnostics(fixture, analysis)
+      await attachFixtureStructuralRoleDiagnostics(fixture, analysis)
+      await attachFixtureHostProtectionDiagnostics(fixture, analysis)
+      const radicalRole = analysis.roles.find((role) => role.role === 'radical') || null
+      const radicalContext = analysis.contexts.find((context) => context.kind === 'radical' && context.semanticRootGroupId === radicalRole?.groupId) || null
+      const outerScript = analysis.roles.find((role) => role.role === fixtureInfo.expectedRole && role.containerGroupIds.length === 0) || null
+      const radicalNode = analysis.parseNodes.find((node) => node.kind === 'radicalExpression' && node.operatorGroupId === radicalRole?.groupId) || null
+      const outerScriptParseNode = analysis.parseNodes.find((node) => node.kind === 'scriptApplication' && node.role === fixtureInfo.expectedRole && node.operatorGroupId === outerScript?.groupId) || null
+
+      expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
+      expect(radicalRole).toBeTruthy()
+      expect(outerScript).toBeTruthy()
+      expect(outerScript?.parentGroupId).toBe(radicalRole?.groupId)
+      expect(outerScript?.associationContextId).toBe(radicalContext?.id)
+      expect(analysis.ambiguities.some((ambiguity) => ambiguity.groupId === outerScript?.groupId && ambiguity.reason === fixtureInfo.expectedReason)).toBe(true)
+      expect(radicalNode).toBeTruthy()
+      expect(outerScriptParseNode?.childNodeIds).toEqual([radicalNode?.id || ''])
+    }
   })
 
   test('lego brick hypotheses classify canonical structural families', async () => {
@@ -1002,6 +1057,7 @@ test.describe('handwriting normalization fixtures', () => {
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
     await attachFixtureBrickFamilyDiagnostics(fixture, analysis)
     await attachFixtureStructuralRoleDiagnostics(fixture, analysis)
+    await attachFixtureHostProtectionDiagnostics(fixture, analysis)
     const plusRole = analysis.roles.find((role) => role.recognizedSymbol?.value === '+')
     const sequenceContext = analysis.contexts.find((context) => context.kind === 'sequence')
 
@@ -1160,6 +1216,7 @@ test.describe('handwriting normalization fixtures', () => {
     const fixture = getHandwritingFixture('parenthesizedFractionSubscript')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
     await attachFixtureStructuralRoleDiagnostics(fixture, analysis)
+    await attachFixtureHostProtectionDiagnostics(fixture, analysis)
     const fractionBar = analysis.roles.find((role) => role.role === 'fractionBar')
     const numeratorContext = getContextByKind(analysis, 'numerator')
     const denominatorContext = getContextByKind(analysis, 'denominator')

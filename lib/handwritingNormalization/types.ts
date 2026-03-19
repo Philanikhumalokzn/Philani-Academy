@@ -217,7 +217,7 @@ export type StructuralRoleCandidate = {
 
 export type StructuralAmbiguity = {
   groupId: string
-  reason: 'competing-relations' | 'sequence-vs-script' | 'fraction-membership' | 'fraction-wide-script-vs-baseline' | 'enclosure-wide-script-vs-baseline'
+  reason: 'competing-relations' | 'sequence-vs-script' | 'fraction-membership' | 'fraction-wide-script-vs-baseline' | 'radical-wide-script-vs-baseline' | 'enclosure-wide-script-vs-baseline'
   chosenRole: StructuralRoleKind
   candidates: StructuralRoleCandidate[]
 }

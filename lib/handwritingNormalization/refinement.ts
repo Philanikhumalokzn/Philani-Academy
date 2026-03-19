@@ -86,7 +86,7 @@ const deriveBrickFamilyAdjustments = (analysis: AnalysisPass) => {
 
     switch (role.role) {
       case 'baseline': {
-        addAdjustment(adjustmentMap, role.groupId, 'ordinaryBaselineSymbolBrick', scriptChildren.length ? 0.18 : 0.12)
+        addAdjustment(adjustmentMap, role.groupId, 'ordinaryBaselineSymbolBrick', scriptChildren.length ? 0.1 : 0.06)
         if (scriptChildren.length) {
           addAdjustment(adjustmentMap, role.groupId, 'operatorBrick', -0.08)
           addAdjustment(adjustmentMap, role.groupId, 'radicalBrick', -0.1)
@@ -101,7 +101,7 @@ const deriveBrickFamilyAdjustments = (analysis: AnalysisPass) => {
       case 'subscript':
       case 'numerator':
       case 'denominator': {
-        addAdjustment(adjustmentMap, role.groupId, 'ordinaryBaselineSymbolBrick', 0.1)
+        addAdjustment(adjustmentMap, role.groupId, 'ordinaryBaselineSymbolBrick', 0.05)
         addAdjustment(adjustmentMap, role.groupId, 'fractionBarBrick', -0.1)
         addAdjustment(adjustmentMap, role.groupId, 'radicalBrick', -0.08)
         addAdjustment(adjustmentMap, role.groupId, 'operatorBrick', -0.05)
@@ -146,7 +146,7 @@ const deriveBrickFamilyAdjustments = (analysis: AnalysisPass) => {
       switch (occupancy.field) {
         case 'upperRightScript':
         case 'lowerRightScript':
-          addAdjustment(adjustmentMap, occupancy.hostGroupId, 'ordinaryBaselineSymbolBrick', 0.08)
+          addAdjustment(adjustmentMap, occupancy.hostGroupId, 'ordinaryBaselineSymbolBrick', 0.04)
           addAdjustment(adjustmentMap, occupancy.hostGroupId, 'operatorBrick', -0.04)
           break
         case 'over':
@@ -172,18 +172,18 @@ const deriveBrickFamilyAdjustments = (analysis: AnalysisPass) => {
     }
 
     if (occupancy.field === 'upperRightScript' || occupancy.field === 'lowerRightScript') {
-      addAdjustment(adjustmentMap, occupancy.groupId, 'ordinaryBaselineSymbolBrick', 0.06)
+      addAdjustment(adjustmentMap, occupancy.groupId, 'ordinaryBaselineSymbolBrick', 0.03)
       addAdjustment(adjustmentMap, occupancy.groupId, 'fractionBarBrick', -0.08)
     }
   }
 
   for (const ambiguity of analysis.ambiguities) {
     if (ambiguity.chosenRole === 'superscript' || ambiguity.chosenRole === 'subscript') {
-      addAdjustment(adjustmentMap, ambiguity.groupId, 'ordinaryBaselineSymbolBrick', 0.05)
+      addAdjustment(adjustmentMap, ambiguity.groupId, 'ordinaryBaselineSymbolBrick', 0.02)
       addAdjustment(adjustmentMap, ambiguity.groupId, 'fractionBarBrick', -0.05)
     }
     if (ambiguity.reason === 'fraction-membership') {
-      addAdjustment(adjustmentMap, ambiguity.groupId, 'ordinaryBaselineSymbolBrick', 0.04)
+      addAdjustment(adjustmentMap, ambiguity.groupId, 'ordinaryBaselineSymbolBrick', 0.02)
     }
   }
 
@@ -200,6 +200,17 @@ const deriveBrickFamilyAdjustments = (analysis: AnalysisPass) => {
   return adjustmentMap
 }
 
+const getBrickFamilyScoreCeiling = (family: LegoBrickFamilyKind) => {
+  switch (family) {
+    case 'ordinaryBaselineSymbolBrick':
+      return 0.94
+    case 'unsupportedBrick':
+      return 0.4
+    default:
+      return 0.98
+  }
+}
+
 const applyGlobalMutualReinforcement = (
   seedBrickHypotheses: LegoBrickHypothesis[],
   analysis: AnalysisPass,
@@ -211,7 +222,7 @@ const applyGlobalMutualReinforcement = (
   return seedBrickHypotheses.map((hypothesis) => {
     const familyAdjustment = adjustmentMap.get(hypothesis.groupId)?.get(hypothesis.family) || 0
     const persistenceBoost = previousTopByGroupId.get(hypothesis.groupId)?.family === hypothesis.family ? 0.02 : 0
-    const nextScore = clamp(hypothesis.score + familyAdjustment + persistenceBoost, 0.01, 1)
+    const nextScore = clamp(hypothesis.score + familyAdjustment + persistenceBoost, 0.01, getBrickFamilyScoreCeiling(hypothesis.family))
     const refinementEvidence = familyAdjustment !== 0 || persistenceBoost !== 0
       ? [`global-refinement-pass=${iteration}`, `global-family-adjustment=${familyAdjustment.toFixed(3)}`, `persistence-boost=${persistenceBoost.toFixed(3)}`]
       : []

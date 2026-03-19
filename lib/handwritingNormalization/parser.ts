@@ -54,6 +54,7 @@ export const buildExpressionParseForest = (
   const occupancyByGroupId = new Map(brickOccupancies.map((occupancy) => [occupancy.groupId, occupancy]))
   const parseScopedAmbiguities = ambiguities.filter((ambiguity) => (
     ambiguity.reason === 'fraction-wide-script-vs-baseline'
+    || ambiguity.reason === 'radical-wide-script-vs-baseline'
     || ambiguity.reason === 'enclosure-wide-script-vs-baseline'
     || ambiguity.reason === 'sequence-vs-script'
     || ambiguity.reason === 'fraction-membership'

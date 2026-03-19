@@ -1,8 +1,9 @@
+import { buildConcreteLegoFieldLayer } from './fieldLayout'
 import { clamp } from './geometry'
 import { getTopBrickHypothesisByGroupId } from './legoModel'
 import { getRoleDescriptor, getRoleLocalityBias, roleAllowsChildRole, roleAllowsOperandRole, roleCanOwnScripts, roleRequiresOperandReference, roleUsesChildOperands, roleUsesParentOperand } from './roleTaxonomy'
 import { annotateRolesWithRecognizedSymbols } from './symbolRecognition'
-import type { EnclosureStructure, ExpressionContext, LayoutEdge, LegoBrickHypothesis, LocalSubexpression, StrokeGroup, StructuralAmbiguity, StructuralFlag, StructuralRole, StructuralRoleCandidate, StructuralRoleKind } from './types'
+import type { EnclosureStructure, ExpressionContext, LayoutEdge, LegoBrickHypothesis, LegoFieldClaim, LocalSubexpression, StrokeGroup, StructuralAmbiguity, StructuralFlag, StructuralRole, StructuralRoleCandidate, StructuralRoleKind } from './types'
 
 const FRACTION_BAR_MAX_HEIGHT = 18
 const FRACTION_BAR_MIN_WIDTH = 70
@@ -43,6 +44,13 @@ const incomingByKind = (edges: LayoutEdge[], groupId: string, kind: LayoutEdge['
 
 const getScriptFieldKind = (role: 'superscript' | 'subscript') => {
   return role === 'superscript' ? 'upperRightScript' : 'lowerRightScript'
+}
+
+const isDisallowedScriptChildFamily = (
+  family: LegoBrickHypothesis['family'] | null | undefined,
+  lineLikeChild: boolean,
+) => {
+  return family === 'enclosureBoundaryBrick' || (family === 'operatorBrick' && !lineLikeChild)
 }
 
 const getBrickFieldWeight = (
@@ -367,6 +375,153 @@ const getInlineAffordanceScore = (
   }
 }
 
+type FieldClaimSupport = {
+  score: number
+  dominant: boolean
+  dominantHostGroupId: string | null
+  strongestCompetingScore: number
+  strongestCompetingHostGroupId: string | null
+  competitionMargin: number
+  evidence: string[]
+}
+
+type InlinePairClaimSupport = {
+  score: number
+  supported: boolean
+  leftClaim: FieldClaimSupport
+  rightClaim: FieldClaimSupport
+  evidence: string[]
+}
+
+const EMPTY_FIELD_CLAIM_SUPPORT: FieldClaimSupport = {
+  score: 0,
+  dominant: false,
+  dominantHostGroupId: null,
+  strongestCompetingScore: 0,
+  strongestCompetingHostGroupId: null,
+  competitionMargin: 0,
+  evidence: [],
+}
+
+const buildFieldClaimMap = (fieldClaims: LegoFieldClaim[]) => {
+  const claimMap = new Map<string, LegoFieldClaim[]>()
+
+  for (const claim of [...fieldClaims].sort((left, right) => right.score - left.score || left.hostGroupId.localeCompare(right.hostGroupId))) {
+    const bucket = claimMap.get(claim.targetGroupId) || []
+    bucket.push(claim)
+    claimMap.set(claim.targetGroupId, bucket)
+  }
+
+  return claimMap
+}
+
+const getFieldClaimSupport = (
+  fieldClaimsByTargetGroupId: Map<string, LegoFieldClaim[]>,
+  targetGroupId: string,
+  hostGroupId: string | null | undefined,
+  fieldKind: LegoFieldClaim['fieldKind'],
+): FieldClaimSupport => {
+  const candidates = (fieldClaimsByTargetGroupId.get(targetGroupId) || [])
+    .filter((claim) => claim.fieldKind === fieldKind)
+    .sort((left, right) => right.score - left.score || right.overlapRatio - left.overlapRatio)
+  const directClaim = hostGroupId ? candidates.find((claim) => claim.hostGroupId === hostGroupId) || null : null
+  const dominantClaim = candidates[0] || null
+  const competingClaim = candidates.find((claim) => claim.hostGroupId !== hostGroupId) || null
+  const directScore = directClaim?.score || 0
+  const strongestCompetingScore = competingClaim?.score || 0
+  const competitionMargin = directScore - strongestCompetingScore
+
+  return {
+    score: directScore,
+    dominant: Boolean(directClaim && dominantClaim?.hostGroupId === hostGroupId),
+    dominantHostGroupId: dominantClaim?.hostGroupId || null,
+    strongestCompetingScore,
+    strongestCompetingHostGroupId: competingClaim?.hostGroupId || null,
+    competitionMargin,
+    evidence: [
+      `field-claim=${fieldKind}:${directScore.toFixed(3)}`,
+      `field-claim-dominant=${directClaim && dominantClaim?.hostGroupId === hostGroupId ? 'true' : 'false'}`,
+      `field-claim-dominant-host=${dominantClaim?.hostGroupId || 'none'}`,
+      `field-claim-competing=${strongestCompetingScore.toFixed(3)}`,
+      `field-claim-margin=${competitionMargin.toFixed(3)}`,
+    ],
+  }
+}
+
+const getScriptFieldClaimSupport = (
+  fieldClaimsByTargetGroupId: Map<string, LegoFieldClaim[]>,
+  childGroupId: string,
+  parentGroupId: string | null | undefined,
+  role: 'superscript' | 'subscript',
+) => getFieldClaimSupport(fieldClaimsByTargetGroupId, childGroupId, parentGroupId, getScriptFieldKind(role))
+
+const getInlinePairClaimSupport = (
+  fieldClaimsByTargetGroupId: Map<string, LegoFieldClaim[]>,
+  leftGroupId: string | null | undefined,
+  rightGroupId: string | null | undefined,
+): InlinePairClaimSupport => {
+  const leftClaim = leftGroupId && rightGroupId
+    ? getFieldClaimSupport(fieldClaimsByTargetGroupId, leftGroupId, rightGroupId, 'leftInline')
+    : EMPTY_FIELD_CLAIM_SUPPORT
+  const rightClaim = leftGroupId && rightGroupId
+    ? getFieldClaimSupport(fieldClaimsByTargetGroupId, rightGroupId, leftGroupId, 'rightInline')
+    : EMPTY_FIELD_CLAIM_SUPPORT
+  const score = clamp(
+    Math.sqrt(Math.max(leftClaim.score, 0) * Math.max(rightClaim.score, 0)) * 0.52
+      + Math.max(leftClaim.score, rightClaim.score) * 0.3
+      + (leftClaim.dominant && rightClaim.dominant ? 0.12 : 0),
+    0,
+    1,
+  )
+
+  return {
+    score,
+    supported: score >= 0.34 && leftClaim.competitionMargin > -0.18 && rightClaim.competitionMargin > -0.18,
+    leftClaim,
+    rightClaim,
+    evidence: [
+      `inline-field-pair=${score.toFixed(3)}`,
+      `inline-left-claim=${leftClaim.score.toFixed(3)}`,
+      `inline-right-claim=${rightClaim.score.toFixed(3)}`,
+      `inline-left-margin=${leftClaim.competitionMargin.toFixed(3)}`,
+      `inline-right-margin=${rightClaim.competitionMargin.toFixed(3)}`,
+    ],
+  }
+}
+
+const getSubexpressionFieldClaimSupport = (
+  subexpression: LocalSubexpression,
+  fieldClaimsByTargetGroupId: Map<string, LegoFieldClaim[]>,
+  hostGroupId: string,
+  fieldKind: LegoFieldClaim['fieldKind'],
+) => {
+  const memberClaims = subexpression.memberGroupIds
+    .map((groupId) => getFieldClaimSupport(fieldClaimsByTargetGroupId, groupId, hostGroupId, fieldKind))
+    .filter((claim) => claim.score > 0)
+    .sort((left, right) => right.score - left.score)
+  const rootClaim = getFieldClaimSupport(fieldClaimsByTargetGroupId, subexpression.rootGroupId, hostGroupId, fieldKind)
+  const topScore = memberClaims[0]?.score || rootClaim.score || 0
+  const averageScore = memberClaims.length
+    ? memberClaims.reduce((sum, claim) => sum + claim.score, 0) / memberClaims.length
+    : rootClaim.score
+  const coverageScore = memberClaims.length / Math.max(1, subexpression.memberGroupIds.length)
+  const score = clamp(topScore * 0.48 + averageScore * 0.32 + coverageScore * 0.12 + (rootClaim.dominant ? 0.08 : 0), 0, 1)
+
+  return {
+    score,
+    topScore,
+    averageScore,
+    coverageScore,
+    rootClaim,
+    evidence: [
+      `hosted-claim=${fieldKind}:${score.toFixed(3)}`,
+      `hosted-claim-top=${topScore.toFixed(3)}`,
+      `hosted-claim-average=${averageScore.toFixed(3)}`,
+      `hosted-claim-coverage=${coverageScore.toFixed(3)}`,
+    ],
+  }
+}
+
 const sequenceContextAllowsRoot = (
   topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
   groupId: string | null | undefined,
@@ -486,6 +641,7 @@ const findBestAdmissibleScriptEdge = (
   role: 'superscript' | 'subscript',
   groupMap: Map<string, StrokeGroup>,
   topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
+  fieldClaimsByTargetGroupId: Map<string, LegoFieldClaim[]>,
   fractionBarrierGroups: StrokeGroup[] = [],
   radicalBarrierGroups: StrokeGroup[] = [],
 ) => {
@@ -501,13 +657,54 @@ const findBestAdmissibleScriptEdge = (
   })
 
   for (const edge of orderedEdges) {
+    const parentGroup = groupMap.get(edge.fromId) || null
+    const childGroup = groupMap.get(edge.toId) || null
+    const lineLikeChild = childGroup ? getMinusBaselineClaimScore(childGroup) >= 0.85 : false
+    const childFamily = topBrickHypothesisByGroupId.get(edge.toId)?.family || null
+    if (isDisallowedScriptChildFamily(childFamily, lineLikeChild)) continue
     const hostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, edge.fromId, role)
+    const claimSupport = getScriptFieldClaimSupport(fieldClaimsByTargetGroupId, edge.toId, edge.fromId, role)
+    const localGeometrySupport = parentGroup
+      ? clamp(1 - (edge.metrics.horizontalGap ?? 0) / Math.max(24, parentGroup.bounds.width * 0.92), 0, 1)
+      : 1
+    const strongLocalGeometry = edge.score >= 0.58
+      || lineLikeChild
+      || (role === 'subscript' && Math.max(edge.metrics.belowRightScore || 0, edge.metrics.directlyBelowScore || 0) >= 0.5)
+    const lineLikeInlineBaselineSupport = lineLikeChild && childGroup
+      ? getInlineNeighborBaselineClaimScore(childGroup, Array.from(groupMap.values())) >= 0.82
+      : false
+    const stackedBaselinePenalty = role === 'subscript'
+      && !lineLikeChild
+      && (edge.metrics.overlapX || 0) >= 0.5
+      && (edge.metrics.sizeRatio || 0) >= 1.05
+      && Math.abs(edge.metrics.dx || 0) <= Math.max(18, parentGroup?.bounds.width || 0)
+        ? 0.12
+        : 0
+    const stackedBaselineLikeSubscript = role === 'subscript'
+      && !lineLikeChild
+      && (edge.metrics.overlapX || 0) >= 0.48
+      && (edge.metrics.sizeRatio || 0) >= 1.02
+      && (edge.metrics.directlyBelowScore || 0) < 0.18
+      && Math.abs(edge.metrics.dx || 0) <= Math.max(24, parentGroup?.bounds.width || 0)
     if (!hostFieldSupport.supported) continue
+    if (lineLikeInlineBaselineSupport) continue
+    if (stackedBaselineLikeSubscript) continue
+    if (!strongLocalGeometry && localGeometrySupport >= 0.4 && claimSupport.score < 0.2 && claimSupport.strongestCompetingScore >= 0.48) continue
+    if (!strongLocalGeometry && localGeometrySupport >= 0.4 && claimSupport.competitionMargin < -0.14 && claimSupport.strongestCompetingScore >= 0.4) continue
     if (getDirectScriptHostBarrier(groupMap, topBrickHypothesisByGroupId, edge.fromId, edge.toId)) continue
     if (getCrossFractionStructureBarrier(groupMap, fractionBarrierGroups, edge.fromId, edge.toId)) continue
     if (getCrossRadicalStructureBarrier(groupMap, radicalBarrierGroups, edge.fromId, edge.toId)) continue
     if (getRadicalWholeScriptHostBarrier(groupMap, radicalBarrierGroups, edge.fromId, edge.toId)) continue
-    return { edge, hostFieldSupport }
+    const adjustedScore = clamp(
+      edge.score * 0.84
+        + claimSupport.score * (strongLocalGeometry ? 0.08 : 0.1 * localGeometrySupport)
+        + (claimSupport.dominant ? (strongLocalGeometry ? 0.02 : 0.03 * localGeometrySupport) : 0)
+        - Math.max(0, claimSupport.strongestCompetingScore - claimSupport.score) * (strongLocalGeometry ? 0.03 : 0.08 * localGeometrySupport)
+        - stackedBaselinePenalty,
+      0,
+      1,
+    )
+    return { edge, hostFieldSupport, claimSupport, adjustedScore }
   }
   return null
 }
@@ -570,6 +767,7 @@ type FractionSideCandidate = {
   bounds: ReturnType<typeof getSubexpressionBounds>
   alignment: ReturnType<typeof scoreFractionMemberAlignment>
   fieldFitScore: number
+  hostedClaimScore: number
   occupantBeliefScore: number
   hostMutualReinforcementScore: number
   sideConsistencyScore: number
@@ -805,6 +1003,25 @@ const getScriptLocalityScoreByKind = (role: 'superscript' | 'subscript', parent:
   return horizontalCloseness * 0.58 + verticalCloseness * 0.42
 }
 
+const getSequenceWideScriptLocalityScore = (
+  role: 'superscript' | 'subscript',
+  sequenceBounds: ReturnType<typeof getSequenceContextBounds>,
+  candidate: StrokeGroup,
+) => {
+  if (!sequenceBounds) return 0
+  const sequenceWidth = Math.max(1, sequenceBounds.right - sequenceBounds.left)
+  const sequenceHeight = Math.max(1, sequenceBounds.bottom - sequenceBounds.top)
+  const horizontalGap = Math.max(0, candidate.bounds.left - sequenceBounds.right)
+  const horizontalCloseness = clamp(1 - horizontalGap / Math.max(72, sequenceWidth * 0.6), 0, 1)
+  const targetY = role === 'superscript'
+    ? sequenceBounds.top + sequenceHeight * 0.08
+    : sequenceBounds.bottom - sequenceHeight * 0.08
+  const verticalCloseness = role === 'superscript'
+    ? clamp(1 - Math.abs(candidate.bounds.bottom - targetY) / Math.max(32, sequenceHeight * 0.9), 0, 1)
+    : clamp(1 - Math.abs(candidate.bounds.top - targetY) / Math.max(32, sequenceHeight * 0.9), 0, 1)
+  return horizontalCloseness * 0.58 + verticalCloseness * 0.42
+}
+
 const demoteMissingOperandScripts = (roles: StructuralRole[]) => {
   const nextRoleMap = new Map(roles.map((role) => [role.groupId, role]))
   const flags: StructuralFlag[] = []
@@ -913,6 +1130,27 @@ const isRadicalWideOutsideHostedMember = (
   const scriptGroup = groupMap.get(groupId)
   if (!radicalBounds || !scriptGroup) return false
   return scriptGroup.bounds.left >= radicalBounds.right + Math.max(12, (radicalBounds.right - radicalBounds.left) * 0.06)
+}
+
+const getEnclosureWideContextForParentGroupId = (
+  parentGroupId: string | null | undefined,
+  contexts: ExpressionContext[],
+) => {
+  if (!parentGroupId) return null
+  return contexts.find((context) => context.kind === 'enclosure' && context.memberGroupIds.includes(parentGroupId)) || null
+}
+
+const isEnclosureWideOutsideHostedMember = (
+  groupId: string,
+  parentGroupId: string | null | undefined,
+  contexts: ExpressionContext[],
+  groupMap: Map<string, StrokeGroup>,
+) => {
+  const enclosureContext = getEnclosureWideContextForParentGroupId(parentGroupId, contexts)
+  const enclosureBounds = getContextBounds(enclosureContext, groupMap, new Set([groupId]))
+  const scriptGroup = groupMap.get(groupId)
+  if (!enclosureBounds || !scriptGroup) return false
+  return scriptGroup.bounds.left >= enclosureBounds.right + Math.max(12, (enclosureBounds.right - enclosureBounds.left) * 0.04)
 }
 
 const isLikelySequenceWideScript = (
@@ -1037,10 +1275,14 @@ const appendRadicalWideScriptAmbiguities = (roles: StructuralRole[], groups: Str
 const promoteSequenceWideScripts = (roles: StructuralRole[], contexts: ExpressionContext[], groups: StrokeGroup[], edges: LayoutEdge[], topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>) => {
   const groupMap = new Map(groups.map((group) => [group.id, group]))
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
+  const fieldClaimsByTargetGroupId = buildFieldClaimMap(buildConcreteLegoFieldLayer(groups, Array.from(topBrickHypothesisByGroupId.values())).fieldClaims)
   const sequenceContexts = contexts.filter((context) => context.kind === 'sequence')
 
   return roles.map((role) => {
     if (role.role !== 'baseline' || role.parentGroupId) return role
+    const roleGroup = groupMap.get(role.groupId) || null
+    const lineLikeChild = roleGroup ? getMinusBaselineClaimScore(roleGroup) >= 0.85 : false
+    if (isDisallowedScriptChildFamily(topBrickHypothesisByGroupId.get(role.groupId)?.family || null, lineLikeChild)) return role
 
     const scriptCandidates = (['superscript', 'subscript'] as const)
       .map((scriptRole) => {
@@ -1069,14 +1311,22 @@ const promoteSequenceWideScripts = (roles: StructuralRole[], contexts: Expressio
         if (scriptGroup.bounds.left < sequenceBounds.right + Math.max(12, (sequenceBounds.right - sequenceBounds.left) * 0.06)) return null
 
         const hostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, rightmostAnchorGroupId, scriptRole)
-        if (!hostFieldSupport.supported) return null
+        const claimSupport = getScriptFieldClaimSupport(fieldClaimsByTargetGroupId, role.groupId, rightmostAnchorGroupId, scriptRole)
+        const relaxedSequenceSubscriptHost = scriptRole === 'subscript'
+          && effectiveMemberGroupIds.length >= 3
+          && effectiveAnchorGroupIds.length >= 2
+        if (!hostFieldSupport.supported && !relaxedSequenceSubscriptHost) return null
 
-        const localityScore = getScriptLocalityScoreByKind(scriptRole, rightmostAnchorGroup, scriptGroup)
-        if (localityScore < 0.4) return null
+        const localAnchorLocalityScore = getScriptLocalityScoreByKind(scriptRole, rightmostAnchorGroup, scriptGroup)
+        const sequenceWideLocalityScore = getSequenceWideScriptLocalityScore(scriptRole, sequenceBounds, scriptGroup)
+        const localityScore = scriptRole === 'subscript'
+          ? Math.max(localAnchorLocalityScore, sequenceWideLocalityScore)
+          : localAnchorLocalityScore
+        if (localityScore < (scriptRole === 'subscript' ? 0.28 : 0.34)) return null
 
-        const promotedScore = Math.max(bestEdge.score, 0.3 + localityScore * 0.22)
-        if (promotedScore < 0.38) return null
-        if (promotedScore + 0.08 < role.score) return null
+        const promotedScore = Math.max(bestEdge.score, 0.26 + localityScore * 0.22 + claimSupport.score * 0.14 + (claimSupport.dominant ? 0.04 : 0))
+        if (promotedScore < 0.35) return null
+        if (promotedScore + (scriptRole === 'subscript' ? 0.14 : 0.08) < role.score) return null
 
         return {
           scriptRole,
@@ -1085,8 +1335,9 @@ const promoteSequenceWideScripts = (roles: StructuralRole[], contexts: Expressio
           evidence: [
             `${scriptRole === 'superscript' ? 'above-right' : 'below-right'}-sequence-fallback=1`,
             `sequence-context=${sequenceContext.id}`,
-            `host-field=${getScriptFieldKind(scriptRole)}:${hostFieldSupport.fieldWeight === null ? 'legacy' : hostFieldSupport.fieldWeight.toFixed(2)}`,
+            `host-field=${getScriptFieldKind(scriptRole)}:${hostFieldSupport.supported ? (hostFieldSupport.fieldWeight === null ? 'legacy' : hostFieldSupport.fieldWeight.toFixed(2)) : 'relaxed-sequence'}`,
             `sequence-locality=${localityScore.toFixed(2)}`,
+            ...claimSupport.evidence,
           ],
         }
       })
@@ -1140,6 +1391,34 @@ const promoteRadicalWideScripts = (roles: StructuralRole[], contexts: Expression
         'radical-wide script promotion',
         `redirected-parent=${redirectedFromParentId}->${radicalContext.semanticRootGroupId}`,
         `association-context=${radicalContext.id}`,
+      ],
+    }
+  })
+}
+
+const promoteEnclosureWideScripts = (roles: StructuralRole[], contexts: ExpressionContext[], groups: StrokeGroup[]): StructuralRole[] => {
+  const groupMap = new Map(groups.map((group) => [group.id, group]))
+
+  return roles.map<StructuralRole>((role) => {
+    if ((role.role !== 'superscript' && role.role !== 'subscript') || !role.parentGroupId) return role
+    if (role.containerGroupIds.length > 0) return role
+    if (!isEnclosureWideOutsideHostedMember(role.groupId, role.parentGroupId, contexts, groupMap)) return role
+
+    const enclosureContext = getEnclosureWideContextForParentGroupId(role.parentGroupId, contexts)
+    if (!enclosureContext?.semanticRootGroupId) return role
+    if (role.parentGroupId === enclosureContext.semanticRootGroupId && role.associationContextId === enclosureContext.id) return role
+
+    const redirectedFromParentId = role.parentGroupId
+    return {
+      ...role,
+      parentGroupId: enclosureContext.semanticRootGroupId,
+      associationContextId: enclosureContext.id,
+      normalizationAnchorGroupIds: uniqueIds(enclosureContext.anchorGroupIds),
+      evidence: [
+        ...role.evidence.filter((entry) => !entry.startsWith('redirected-parent=')),
+        'enclosure-wide script promotion',
+        `redirected-parent=${redirectedFromParentId}->${enclosureContext.semanticRootGroupId}`,
+        `association-context=${enclosureContext.id}`,
       ],
     }
   })
@@ -1321,7 +1600,13 @@ const isSameParentStackedScriptPair = (first: StrokeGroup, second: StrokeGroup) 
   return sameColumn && clearlySeparatedRows
 }
 
-const collectStableAttachments = (groups: StrokeGroup[], edges: LayoutEdge[], blockedGroupIds: Set<string>, topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>) => {
+const collectStableAttachments = (
+  groups: StrokeGroup[],
+  edges: LayoutEdge[],
+  blockedGroupIds: Set<string>,
+  topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
+  fieldClaimsByTargetGroupId: Map<string, LegoFieldClaim[]>,
+) => {
   const attachments: StableAttachment[] = []
   const groupIds = new Set(groups.map((group) => group.id))
   const groupMap = new Map(groups.map((group) => [group.id, group]))
@@ -1330,30 +1615,32 @@ const collectStableAttachments = (groups: StrokeGroup[], edges: LayoutEdge[], bl
 
   for (const group of groups) {
     if (blockedGroupIds.has(group.id)) continue
-    const bestSuper = findBestAdmissibleScriptEdge(incomingByKind(edges, group.id, 'superscriptCandidate'), 'superscript', groupMap, topBrickHypothesisByGroupId, fractionBarrierGroups, radicalBarrierGroups)?.edge || null
-    const bestSub = findBestAdmissibleScriptEdge(incomingByKind(edges, group.id, 'subscriptCandidate'), 'subscript', groupMap, topBrickHypothesisByGroupId, fractionBarrierGroups, radicalBarrierGroups)?.edge || null
+    const bestSuperEntry = findBestAdmissibleScriptEdge(incomingByKind(edges, group.id, 'superscriptCandidate'), 'superscript', groupMap, topBrickHypothesisByGroupId, fieldClaimsByTargetGroupId, fractionBarrierGroups, radicalBarrierGroups)
+    const bestSubEntry = findBestAdmissibleScriptEdge(incomingByKind(edges, group.id, 'subscriptCandidate'), 'subscript', groupMap, topBrickHypothesisByGroupId, fieldClaimsByTargetGroupId, fractionBarrierGroups, radicalBarrierGroups)
+    const bestSuper = bestSuperEntry?.edge || null
+    const bestSub = bestSubEntry?.edge || null
     const bestSequence = incomingByKind(edges, group.id, 'sequence')[0] || null
 
     const candidates = [
-      bestSuper ? { edge: bestSuper, role: 'superscript' as const } : null,
-      bestSub ? { edge: bestSub, role: 'subscript' as const } : null,
+      bestSuper && bestSuperEntry ? { edge: bestSuper, role: 'superscript' as const, score: bestSuperEntry.adjustedScore } : null,
+      bestSub && bestSubEntry ? { edge: bestSub, role: 'subscript' as const, score: bestSubEntry.adjustedScore } : null,
     ]
       .filter(Boolean)
-      .sort((left, right) => (right?.edge.score || 0) - (left?.edge.score || 0))
+      .sort((left, right) => (right?.score || 0) - (left?.score || 0))
 
     const best = candidates[0]
     if (!best) continue
     if (!groupIds.has(best.edge.fromId) || !groupIds.has(best.edge.toId)) continue
     if (blockedGroupIds.has(best.edge.fromId) || blockedGroupIds.has(best.edge.toId)) continue
     const sequenceScore = bestSequence?.score || 0
-    if (best.edge.score < 0.48) continue
-    if (sequenceScore > 0 && best.edge.score - sequenceScore < 0.12) continue
+    if ((best.score || 0) < 0.42) continue
+    if (sequenceScore > 0 && (best.score || 0) - sequenceScore < 0.08) continue
 
     attachments.push({
       parentId: best.edge.fromId,
       childId: best.edge.toId,
       role: best.role,
-      score: best.edge.score,
+      score: best.score || best.edge.score,
     })
   }
 
@@ -1516,6 +1803,7 @@ const getFractionSideCandidates = (
   bar: StrokeGroup,
   subexpressions: LocalSubexpression[],
   groupMap: Map<string, StrokeGroup>,
+  fieldClaimsByTargetGroupId: Map<string, LegoFieldClaim[]>,
   side: 'numerator' | 'denominator',
   shapeScore: number,
 ) => {
@@ -1532,14 +1820,16 @@ const getFractionSideCandidates = (
     .map(({ subexpression, bounds }) => {
       const alignment = scoreFractionMemberAlignment(bar, bounds)
       const fieldFitScore = getFractionSideFieldFitScore(bar, bounds, side)
-      const occupantBeliefScore = clamp(alignment.score * 0.54 + fieldFitScore * 0.28 + alignment.centeredScore * 0.18, 0, 1)
+      const hostedClaimSupport = getSubexpressionFieldClaimSupport(subexpression, fieldClaimsByTargetGroupId, bar.id, side === 'numerator' ? 'over' : 'under')
+      const occupantBeliefScore = clamp(alignment.score * 0.42 + fieldFitScore * 0.22 + hostedClaimSupport.score * 0.24 + alignment.centeredScore * 0.12, 0, 1)
       const hostMutualReinforcementScore = clamp(Math.sqrt(Math.max(shapeScore, 0) * Math.max(occupantBeliefScore, 0)), 0, 1)
-      const sideConsistencyScore = clamp(occupantBeliefScore * 0.58 + hostMutualReinforcementScore * 0.42, 0, 1)
+      const sideConsistencyScore = clamp(occupantBeliefScore * 0.5 + hostMutualReinforcementScore * 0.34 + hostedClaimSupport.score * 0.16, 0, 1)
       return {
         subexpression,
         bounds,
         alignment,
         fieldFitScore,
+        hostedClaimScore: hostedClaimSupport.score,
         occupantBeliefScore,
         hostMutualReinforcementScore,
         sideConsistencyScore,
@@ -1574,7 +1864,8 @@ const scoreFractionHypothesis = (bar: StrokeGroup, numerator: FractionSideCandid
   const hostBeliefScore = clamp(
     shapeScore * 0.36
       + Math.sqrt(Math.max(numerator.hostMutualReinforcementScore, 0) * Math.max(denominator.hostMutualReinforcementScore, 0)) * 0.4
-      + ((numerator.fieldFitScore + denominator.fieldFitScore) / 2) * 0.24,
+      + ((numerator.fieldFitScore + denominator.fieldFitScore) / 2) * 0.14
+      + ((numerator.hostedClaimScore + denominator.hostedClaimScore) / 2) * 0.1,
     0,
     1,
   )
@@ -1582,8 +1873,10 @@ const scoreFractionHypothesis = (bar: StrokeGroup, numerator: FractionSideCandid
     axisConsistency * 0.3
       + memberWidthHarmony * 0.18
       + verticalSymmetry * 0.18
-      + numerator.fieldFitScore * 0.17
-      + denominator.fieldFitScore * 0.17,
+      + numerator.fieldFitScore * 0.12
+      + denominator.fieldFitScore * 0.12
+      + numerator.hostedClaimScore * 0.1
+      + denominator.hostedClaimScore * 0.1,
     0,
     1,
   )
@@ -1617,11 +1910,16 @@ const scoreFractionHypothesis = (bar: StrokeGroup, numerator: FractionSideCandid
   }
 }
 
-const scoreFractionContext = (bar: StrokeGroup, subexpressions: LocalSubexpression[], groupMap: Map<string, StrokeGroup>): ScoredFractionContext => {
+const scoreFractionContext = (
+  bar: StrokeGroup,
+  subexpressions: LocalSubexpression[],
+  groupMap: Map<string, StrokeGroup>,
+  fieldClaimsByTargetGroupId: Map<string, LegoFieldClaim[]>,
+): ScoredFractionContext => {
   const shapeScore = getFractionBarShapeScore(bar)
   const barLocality = getRoleLocalityBias('fractionBar')
-  const numeratorCandidates = getFractionSideCandidates(bar, subexpressions, groupMap, 'numerator', shapeScore)
-  const denominatorCandidates = getFractionSideCandidates(bar, subexpressions, groupMap, 'denominator', shapeScore)
+  const numeratorCandidates = getFractionSideCandidates(bar, subexpressions, groupMap, fieldClaimsByTargetGroupId, 'numerator', shapeScore)
+  const denominatorCandidates = getFractionSideCandidates(bar, subexpressions, groupMap, fieldClaimsByTargetGroupId, 'denominator', shapeScore)
 
   const numeratorBounds = numeratorCandidates.length ? mergeBounds(numeratorCandidates.map((candidate) => candidate.bounds)) : null
   const denominatorBounds = denominatorCandidates.length ? mergeBounds(denominatorCandidates.map((candidate) => candidate.bounds)) : null
@@ -1739,6 +2037,7 @@ const getRadicalInteriorCandidates = (
   radical: StrokeGroup,
   subexpressions: LocalSubexpression[],
   groupMap: Map<string, StrokeGroup>,
+  fieldClaimsByTargetGroupId: Map<string, LegoFieldClaim[]>,
 ) => {
   const targetLeft = radical.bounds.left + Math.max(14, radical.bounds.width * 0.22)
   const targetRight = radical.bounds.right + Math.max(18, radical.bounds.width * 0.14)
@@ -1750,13 +2049,14 @@ const getRadicalInteriorCandidates = (
     .map((subexpression) => ({ subexpression, bounds: getSubexpressionBounds(subexpression, groupMap) }))
     .filter(({ bounds }) => bounds.centerX >= radical.bounds.left + radical.bounds.width * 0.18 && bounds.bottom >= radical.bounds.top + radical.bounds.height * 0.16)
     .map(({ subexpression, bounds }) => {
+      const hostedClaimSupport = getSubexpressionFieldClaimSupport(subexpression, fieldClaimsByTargetGroupId, radical.id, 'interior')
       const width = Math.max(1, bounds.right - bounds.left)
       const height = Math.max(1, bounds.bottom - bounds.top)
       const horizontalOverlap = clamp(Math.min(bounds.right, targetRight) - Math.max(bounds.left, targetLeft), 0, width) / width
       const verticalOverlap = clamp(Math.min(bounds.bottom, targetBottom) - Math.max(bounds.top, targetTop), 0, height) / height
       const leftProgress = clamp((bounds.left - (radical.bounds.left + radical.bounds.width * 0.12)) / Math.max(24, radical.bounds.width * 0.5), 0, 1)
       const rightPenalty = clamp(1 - Math.max(bounds.left - (radical.bounds.right + radical.bounds.width * 0.2), 0) / Math.max(28, radical.bounds.width * 0.3), 0, 1)
-      const score = horizontalOverlap * 0.36 + verticalOverlap * 0.24 + leftProgress * 0.18 + rightPenalty * 0.22
+      const score = horizontalOverlap * 0.3 + verticalOverlap * 0.2 + leftProgress * 0.14 + rightPenalty * 0.18 + hostedClaimSupport.score * 0.18
       return { subexpression, bounds, score }
     })
     .filter(({ score }) => score >= 0.42)
@@ -1767,6 +2067,7 @@ const getRadicalIndexCandidates = (
   radical: StrokeGroup,
   subexpressions: LocalSubexpression[],
   groupMap: Map<string, StrokeGroup>,
+  fieldClaimsByTargetGroupId: Map<string, LegoFieldClaim[]>,
   excludedRootIds: Set<string>,
 ) => {
   const targetX = radical.bounds.left - Math.max(18, radical.bounds.width * 0.34)
@@ -1777,10 +2078,11 @@ const getRadicalIndexCandidates = (
     .map((subexpression) => ({ subexpression, bounds: getSubexpressionBounds(subexpression, groupMap) }))
     .filter(({ bounds }) => bounds.right <= radical.bounds.left + radical.bounds.width * 0.14 && bounds.bottom <= radical.bounds.top + radical.bounds.height * 0.12)
     .map(({ subexpression, bounds }) => {
+      const hostedClaimSupport = getSubexpressionFieldClaimSupport(subexpression, fieldClaimsByTargetGroupId, radical.id, 'upperLeftScript')
       const horizontalCloseness = clamp(1 - Math.abs(bounds.centerX - targetX) / Math.max(22, radical.bounds.width * 0.42), 0, 1)
       const verticalCloseness = clamp(1 - Math.abs(bounds.centerY - targetY) / Math.max(20, radical.bounds.height * 0.34), 0, 1)
       const sizeScore = clamp(1 - Math.max((bounds.right - bounds.left) - radical.bounds.width * 0.42, 0) / Math.max(18, radical.bounds.width * 0.24), 0, 1)
-      const score = horizontalCloseness * 0.42 + verticalCloseness * 0.4 + sizeScore * 0.18
+      const score = horizontalCloseness * 0.34 + verticalCloseness * 0.32 + sizeScore * 0.14 + hostedClaimSupport.score * 0.2
       return { subexpression, bounds, score }
     })
     .filter(({ score }) => score >= 0.44)
@@ -1791,9 +2093,10 @@ const scoreRadicalContext = (
   radical: StrokeGroup,
   subexpressions: LocalSubexpression[],
   groupMap: Map<string, StrokeGroup>,
+  fieldClaimsByTargetGroupId: Map<string, LegoFieldClaim[]>,
 ) => {
-  const radicandCandidates = getRadicalInteriorCandidates(radical, subexpressions, groupMap)
-  const indexCandidates = getRadicalIndexCandidates(radical, subexpressions, groupMap, new Set(radicandCandidates.map((candidate) => candidate.subexpression.rootGroupId)))
+  const radicandCandidates = getRadicalInteriorCandidates(radical, subexpressions, groupMap, fieldClaimsByTargetGroupId)
+  const indexCandidates = getRadicalIndexCandidates(radical, subexpressions, groupMap, fieldClaimsByTargetGroupId, new Set(radicandCandidates.map((candidate) => candidate.subexpression.rootGroupId)))
   const radicandRoots = getOrderedRootIds(radicandCandidates.map((candidate) => candidate.subexpression.rootGroupId), groupMap)
   const indexRoots = getOrderedRootIds(indexCandidates.map((candidate) => candidate.subexpression.rootGroupId), groupMap)
 
@@ -2536,6 +2839,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
   const ambiguities: StructuralAmbiguity[] = []
   const semanticFlags: StructuralFlag[] = []
   const topBrickHypothesisByGroupId = getTopBrickHypothesisByGroupId(brickHypotheses)
+  const fieldClaimsByTargetGroupId = buildFieldClaimMap(buildConcreteLegoFieldLayer(groups, brickHypotheses).fieldClaims)
   const operatorAlternativeScoreByGroupId = new Map<string, number>()
   for (const hypothesis of brickHypotheses) {
     if (hypothesis.family !== 'operatorBrick') continue
@@ -2588,7 +2892,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
   const enclosureBoundaryIds = new Set(enclosureBoundaryCandidateGroups.map((group) => group.id))
   const radicalIds = new Set(radicalGroups.map((group) => group.id))
   const blockedAttachmentIds = new Set<string>([...fractionBarIds, ...enclosureBoundaryIds, ...radicalIds])
-  const stableAttachments = collectStableAttachments(groups, edges, blockedAttachmentIds, topBrickHypothesisByGroupId)
+  const stableAttachments = collectStableAttachments(groups, edges, blockedAttachmentIds, topBrickHypothesisByGroupId, fieldClaimsByTargetGroupId)
   const groupMap = new Map(groups.map((group) => [group.id, group]))
   const { subexpressions, rootClaims } = buildLocalSubexpressions(groups, stableAttachments, fractionBarIds)
   const childIds = new Set(stableAttachments.map((attachment) => attachment.childId))
@@ -2618,7 +2922,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
   }
 
   const confirmedFractionBars = fractionBarLikeGroups
-    .map((bar) => ({ bar, context: scoreFractionContext(bar, subexpressions, groupMap) }))
+    .map((bar) => ({ bar, context: scoreFractionContext(bar, subexpressions, groupMap, fieldClaimsByTargetGroupId) }))
     .filter(({ context }) => hasConfirmedFractionMemberSupport(context))
 
   const conflictReducedConfirmedFractionBars = suppressStandaloneFractionBarsInsideHostedFraction(confirmedFractionBars)
@@ -2647,7 +2951,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
   const admittedConfirmedFractionBarIdSet = new Set(admittedConfirmedFractionBars.map(({ bar }) => bar.id))
 
   const provisionalFractionBars = fractionBarLikeGroups
-    .map((bar) => ({ bar, context: scoreFractionContext(bar, subexpressions, groupMap) }))
+    .map((bar) => ({ bar, context: scoreFractionContext(bar, subexpressions, groupMap, fieldClaimsByTargetGroupId) }))
     .filter(({ bar }) => !admittedConfirmedFractionBarIdSet.has(bar.id))
     .filter(({ context }) => hasProvisionalFractionMemberSupport(context))
     .filter(({ bar, context }) => {
@@ -2825,7 +3129,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
 
   for (const radicalGroup of radicalGroups) {
     if (roles.has(radicalGroup.id)) continue
-    const context = scoreRadicalContext(radicalGroup, subexpressions, groupMap)
+    const context = scoreRadicalContext(radicalGroup, subexpressions, groupMap, fieldClaimsByTargetGroupId)
     if (!context.radicandRoots.length || context.radicandScore < 0.44) continue
 
     radicalBindings.push({
@@ -2867,12 +3171,21 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
     }
     for (const attachment of subexpression.attachments) {
       const hostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, attachment.parentGroupId, attachment.role)
+      const claimSupport = getScriptFieldClaimSupport(fieldClaimsByTargetGroupId, attachment.childGroupId, attachment.parentGroupId, attachment.role)
+      const attachmentEdge = incomingByKind(edges, attachment.childGroupId, attachment.role === 'superscript' ? 'superscriptCandidate' : 'subscriptCandidate')
+        .find((edge) => edge.fromId === attachment.parentGroupId) || null
       roles.set(attachment.childGroupId, makeRole(attachment.childGroupId, attachment.role, attachment.score, 1, attachment.parentGroupId, [
         'owned by local subexpression',
         `family=${getRoleDescriptor(attachment.role).family}`,
         `peers=${getRoleDescriptor(attachment.role).peerRoles.join(',') || 'none'}`,
         `host-field=${getScriptFieldKind(attachment.role)}:${hostFieldSupport.fieldWeight === null ? 'legacy' : hostFieldSupport.fieldWeight.toFixed(2)}`,
-      ], containerIdsByGroupId.get(attachment.childGroupId) || []))
+        attachment.role === 'superscript'
+          ? `above-right=${attachmentEdge?.metrics.dx > 0 && attachmentEdge?.metrics.dy < 0 ? '1' : '0'}`
+          : `below-right=${(attachmentEdge?.metrics.belowRightScore || 0).toFixed(2)}`,
+        attachment.role === 'subscript' ? `directly-below=${(attachmentEdge?.metrics.directlyBelowScore || 0).toFixed(2)}` : undefined,
+        attachmentEdge ? `size-ratio=${(attachmentEdge.metrics.sizeRatio || 0).toFixed(2)}` : undefined,
+        ...claimSupport.evidence,
+      ].filter(Boolean) as string[], containerIdsByGroupId.get(attachment.childGroupId) || []))
     }
   }
 
@@ -2880,11 +3193,12 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
   for (const group of remaining) {
     const superCandidates = incomingByKind(edges, group.id, 'superscriptCandidate')
     const subCandidates = incomingByKind(edges, group.id, 'subscriptCandidate')
-    const bestSuperEntry = findBestAdmissibleScriptEdge(superCandidates, 'superscript', groupMap, topBrickHypothesisByGroupId, fractionStructureBarrierGroups, radicalStructureBarrierGroups)
-    const bestSubEntry = findBestAdmissibleScriptEdge(subCandidates, 'subscript', groupMap, topBrickHypothesisByGroupId, fractionStructureBarrierGroups, radicalStructureBarrierGroups)
+    const bestSuperEntry = findBestAdmissibleScriptEdge(superCandidates, 'superscript', groupMap, topBrickHypothesisByGroupId, fieldClaimsByTargetGroupId, fractionStructureBarrierGroups, radicalStructureBarrierGroups)
+    const bestSubEntry = findBestAdmissibleScriptEdge(subCandidates, 'subscript', groupMap, topBrickHypothesisByGroupId, fieldClaimsByTargetGroupId, fractionStructureBarrierGroups, radicalStructureBarrierGroups)
     const bestSuper = bestSuperEntry?.edge || null
     const bestSub = bestSubEntry?.edge || null
     const bestSequence = bestIncoming(edges, group.id, 'sequence')
+    const bestSequenceInlineClaimSupport = bestSequence ? getInlinePairClaimSupport(fieldClaimsByTargetGroupId, bestSequence.fromId, group.id) : null
     const inlineMinusLikeSuppression = getMinusBaselineClaimScore(group) >= 0.9 && getInlineNeighborBaselineClaimScore(group, groups) >= 0.8
     const candidates: StructuralRoleCandidate[] = [makeCandidate('baseline', 0.34, null, ['fallback root role'])]
     const releasedFractionBaselineCandidate = fractionBaselineReleaseCandidateByGroupId.get(group.id) || null
@@ -2895,30 +3209,44 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
 
     if (bestSuper && !releasedFractionBaselineCandidate && !inlineMinusLikeSuppression) {
       const hostFieldSupport = bestSuperEntry?.hostFieldSupport || hostSupportsScriptField(topBrickHypothesisByGroupId, bestSuper.fromId, 'superscript')
+      const claimSupport = bestSuperEntry?.claimSupport || getScriptFieldClaimSupport(fieldClaimsByTargetGroupId, group.id, bestSuper.fromId, 'superscript')
       if (hostFieldSupport.supported) {
-        candidates.push(makeCandidate('superscript', bestSuper.score, bestSuper.fromId, [
+        candidates.push(makeCandidate('superscript', bestSuperEntry?.adjustedScore || clamp(bestSuper.score * 0.8 + claimSupport.score * 0.2, 0, 1), bestSuper.fromId, [
           `above-right=${bestSuper.metrics.dx > 0 && bestSuper.metrics.dy < 0 ? '1' : '0'}`,
           `size-ratio=${(bestSuper.metrics.sizeRatio || 0).toFixed(2)}`,
           `host-field=upperRightScript:${hostFieldSupport.fieldWeight === null ? 'legacy' : hostFieldSupport.fieldWeight.toFixed(2)}`,
+          ...claimSupport.evidence,
           'direct-host-barrier=none',
         ]))
       }
     }
     if (bestSub && !releasedFractionBaselineCandidate && !inlineMinusLikeSuppression) {
       const hostFieldSupport = bestSubEntry?.hostFieldSupport || hostSupportsScriptField(topBrickHypothesisByGroupId, bestSub.fromId, 'subscript')
+      const claimSupport = bestSubEntry?.claimSupport || getScriptFieldClaimSupport(fieldClaimsByTargetGroupId, group.id, bestSub.fromId, 'subscript')
       if (hostFieldSupport.supported) {
-        candidates.push(makeCandidate('subscript', bestSub.score, bestSub.fromId, [
+        candidates.push(makeCandidate('subscript', bestSubEntry?.adjustedScore || clamp(bestSub.score * 0.8 + claimSupport.score * 0.2, 0, 1), bestSub.fromId, [
           `below-right=${(bestSub.metrics.belowRightScore || 0).toFixed(2)}`,
           `directly-below=${(bestSub.metrics.directlyBelowScore || 0).toFixed(2)}`,
           `width-ratio=${(bestSub.metrics.widthRatio || 0).toFixed(2)}`,
           `host-field=lowerRightScript:${hostFieldSupport.fieldWeight === null ? 'legacy' : hostFieldSupport.fieldWeight.toFixed(2)}`,
+          ...claimSupport.evidence,
           'direct-host-barrier=none',
         ]))
       }
     }
 
     if (bestSequence) {
-      candidates.push(makeCandidate('baseline', Math.max(0.24, bestSequence.score * 0.88), null, ['inline sequence fallback']))
+      const sequenceScore = clamp(
+        bestSequence.score * 0.72
+          + (bestSequenceInlineClaimSupport?.score || 0) * 0.22
+          + (bestSequenceInlineClaimSupport?.supported ? 0.06 : 0),
+        0,
+        1,
+      )
+      candidates.push(makeCandidate('baseline', Math.max(0.24, sequenceScore), null, [
+        'inline sequence fallback',
+        ...(bestSequenceInlineClaimSupport?.evidence || []),
+      ]))
     }
 
     const fractionWideFallbackCandidates = Array.from(roles.values())
@@ -3054,7 +3382,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
           || isRadicalWideOutsideMember(group.id, resolvedParentGroupId, radicalBindings, groupMap)
           || isLikelySequenceWideScript(resolvedParentGroupId, group.id, groupMap, topBrickHypothesisByGroupId))
           ? 0.32
-          : 0.45
+          : 0.4
         if (best.score >= minimumScore) {
           return {
             candidate: directPromotedParentGroupId === resolvedParentGroupId
@@ -3254,7 +3582,8 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
   const sequencePromotedRoles = promoteSequenceWideScripts(radicalSemanticRootSafeRoles, contexts, groups, edges, topBrickHypothesisByGroupId)
   const promotedContexts = buildExpressionContexts(groups, sequencePromotedRoles, subexpressions, enclosures, fractionBindings, radicalBindings, edges, topBrickHypothesisByGroupId)
   const annotatedRoles = annotateRolesWithContexts(sequencePromotedRoles, promotedContexts, groups)
-  const radicalPromotedRoles = promoteRadicalWideScripts(annotatedRoles, promotedContexts, groups)
+  const enclosurePromotedRoles = promoteEnclosureWideScripts(annotatedRoles, promotedContexts, groups)
+  const radicalPromotedRoles = promoteRadicalWideScripts(enclosurePromotedRoles, promotedContexts, groups)
   const annotatedRoleMap = new Map(radicalPromotedRoles.map((role) => [role.groupId, role]))
   const contextualizedRoles = radicalPromotedRoles.map((role) => ({
     ...role,

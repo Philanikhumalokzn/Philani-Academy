@@ -113,6 +113,7 @@ export default function HandwritingNormalizationTestCanvas() {
   const analysis = useMemo(() => analyzeHandwrittenExpression(strokes, { incrementalState: incrementalStateRef.current }), [strokes])
   const outputStrokes = normalizationEnabled ? analysis.normalization.strokes : strokes
   const outputBounds = useMemo(() => getGlobalBounds(outputStrokes), [outputStrokes])
+  const showMinimalSingleStrokeGrid = analysis.groups.length === 1 && analysis.groups[0]?.strokeCount === 1
   const fieldGrid = useMemo(() => {
     const groupById = new Map(analysis.groups.map((group) => [group.id, group]))
     const overlays = analysis.groups.map((group) => {
@@ -128,38 +129,44 @@ export default function HandwritingNormalizationTestCanvas() {
       pushGridCoordinate(yCoordinates, group.bounds.centerY)
       pushGridCoordinate(yCoordinates, group.bounds.bottom)
 
-      for (const field of fields) {
-        pushGridCoordinate(xCoordinates, field.bounds.left)
-        pushGridCoordinate(xCoordinates, field.bounds.centerX)
-        pushGridCoordinate(xCoordinates, field.bounds.right)
-        pushGridCoordinate(yCoordinates, field.bounds.top)
-        pushGridCoordinate(yCoordinates, field.bounds.centerY)
-        pushGridCoordinate(yCoordinates, field.bounds.bottom)
+      if (!showMinimalSingleStrokeGrid) {
+        for (const field of fields) {
+          pushGridCoordinate(xCoordinates, field.bounds.left)
+          pushGridCoordinate(xCoordinates, field.bounds.centerX)
+          pushGridCoordinate(xCoordinates, field.bounds.right)
+          pushGridCoordinate(yCoordinates, field.bounds.top)
+          pushGridCoordinate(yCoordinates, field.bounds.centerY)
+          pushGridCoordinate(yCoordinates, field.bounds.bottom)
+        }
       }
 
       xCoordinates.sort((left, right) => left - right)
       yCoordinates.sort((left, right) => left - right)
 
-      const labels = fields
-        .filter((field) => field.topology !== 'degenerate')
-        .map((field) => ({
-          id: `${field.id}:label`,
-          x: field.bounds.centerX,
-          y: field.bounds.centerY,
-          color: fieldColor(field.kind),
-          text: `${fieldGridLabel(field.kind)}:${field.topology}`,
-          opacity: Math.min(0.96, 0.42 + field.closureRatio * 0.34 + field.ownershipStrength * 0.18),
-        }))
+      const labels = showMinimalSingleStrokeGrid
+        ? []
+        : fields
+          .filter((field) => field.topology !== 'degenerate')
+          .map((field) => ({
+            id: `${field.id}:label`,
+            x: field.bounds.centerX,
+            y: field.bounds.centerY,
+            color: fieldColor(field.kind),
+            text: `${fieldGridLabel(field.kind)}:${field.topology}`,
+            opacity: Math.min(0.96, 0.42 + field.closureRatio * 0.34 + field.ownershipStrength * 0.18),
+          }))
 
-      const degenerateJunctions = fields
-        .filter((field) => field.topology === 'degenerate')
-        .map((field) => ({
-          id: `${field.id}:junction`,
-          x: field.bounds.centerX,
-          y: field.bounds.centerY,
-          color: fieldColor(field.kind),
-          text: fieldGridLabel(field.kind),
-        }))
+      const degenerateJunctions = showMinimalSingleStrokeGrid
+        ? []
+        : fields
+          .filter((field) => field.topology === 'degenerate')
+          .map((field) => ({
+            id: `${field.id}:junction`,
+            x: field.bounds.centerX,
+            y: field.bounds.centerY,
+            color: fieldColor(field.kind),
+            text: fieldGridLabel(field.kind),
+          }))
 
       return {
         hostGroupId: group.id,
@@ -172,7 +179,7 @@ export default function HandwritingNormalizationTestCanvas() {
       }
     }).filter((overlay): overlay is NonNullable<typeof overlay> => Boolean(overlay))
 
-    const interfaces = analysis.fieldIntersections.map((intersection) => {
+    const interfaces = showMinimalSingleStrokeGrid ? [] : analysis.fieldIntersections.map((intersection) => {
       const leftHost = groupById.get(intersection.leftHostGroupId) || null
       const rightHost = groupById.get(intersection.rightHostGroupId) || null
       const interfaceX = intersection.bounds.centerX
@@ -197,7 +204,7 @@ export default function HandwritingNormalizationTestCanvas() {
     })
 
     return { overlays, interfaces }
-  }, [analysis.fieldInstances, analysis.fieldIntersections, analysis.groups, analysis.roles])
+  }, [analysis.fieldInstances, analysis.fieldIntersections, analysis.groups, analysis.roles, showMinimalSingleStrokeGrid])
 
   useEffect(() => {
     incrementalStateRef.current = createHandwritingIncrementalState(analysis)

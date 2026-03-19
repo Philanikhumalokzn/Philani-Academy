@@ -199,7 +199,7 @@ const fixtures: Record<HandwritingFixtureName, HandwritingFixture> = {
       makeStroke('four-1', [[296, 204], [318, 182], [318, 260]]),
       makeStroke('four-2', [[286, 226], [330, 226]]),
     ],
-    expectation: { groupCount: 3, requiredRoles: ['baseline', 'provisionalFractionBar'] },
+    expectation: { groupCount: 3, requiredRoles: ['baseline'] },
     diagnostics: { recordTopBrickFamilies: true },
   },
   operatorSeparatedLowerV: {

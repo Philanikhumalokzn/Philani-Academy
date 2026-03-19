@@ -580,7 +580,7 @@ test.describe('handwriting normalization fixtures', () => {
     expect(weakSequenceContext).toBeFalsy()
   })
 
-  test('a lone horizontal line is preserved as a provisional fraction bar candidate', async () => {
+  test('a lone horizontal line defaults to a baseline symbol while retaining silent structural candidacy', async () => {
     const strokes: InkStroke[] = [{
       ...makeStroke('line-only'),
       width: 6,
@@ -590,12 +590,14 @@ test.describe('handwriting normalization fixtures', () => {
       ],
     }]
     const analysis = analyzeHandwrittenExpression(strokes)
-    const provisionalBar = analysis.roles.find((role) => role.role === 'provisionalFractionBar')
+    const baselineLine = analysis.roles.find((role) => role.recognizedSymbol?.value === '-') || null
+    const topBrick = baselineLine ? getTopBrickHypothesis(analysis, baselineLine.groupId) : null
 
     expect(analysis.groups).toHaveLength(1)
-    expect(provisionalBar).toBeTruthy()
-    expect(provisionalBar?.recognizedSymbol?.value).toBe('fraction-bar')
-    expect(provisionalBar?.evidence.some((entry) => entry.includes('operand evidence remains incomplete'))).toBe(true)
+    expect(analysis.roles.some((role) => role.role === 'fractionBar' || role.role === 'provisionalFractionBar')).toBe(false)
+    expect(baselineLine?.role).toBe('baseline')
+    expect(baselineLine?.recognizedSymbol?.value).toBe('-')
+    expect(topBrick?.family).toBe('fractionBarBrick')
     expect(analysis.roles.some((role) => role.role === 'unsupportedSymbol')).toBe(false)
   })
 
@@ -628,14 +630,80 @@ test.describe('handwriting normalization fixtures', () => {
     ]
     const analysis = analyzeHandwrittenExpression(strokes)
     const minusRole = analysis.roles.find((role) => role.recognizedSymbol?.value === '-') || null
-    const sequenceContext = analysis.contexts.find((context) => context.kind === 'sequence') || null
 
     expect(analysis.groups).toHaveLength(3)
     expect(analysis.roles.some((role) => role.role === 'fractionBar' || role.role === 'provisionalFractionBar')).toBe(false)
     expect(analysis.roles.filter((role) => role.role === 'baseline')).toHaveLength(3)
     expect(minusRole?.role).toBe('baseline')
-    expect(minusRole?.evidence.some((entry) => entry.startsWith('pairing=') && entry.endsWith('-vs-baseline'))).toBe(true)
-    expect(minusRole?.evidence.some((entry) => entry.startsWith('counter-evidence-reinforcement='))).toBe(true)
+    expect(minusRole?.recognizedSymbol?.value).toBe('-')
+  })
+
+  test('a global fraction bar suppresses standalone minus lines from claiming competing fraction-bar roles', async () => {
+    const strokes: InkStroke[] = [
+      {
+        ...makeStroke('num-left-v'),
+        points: [
+          { x: 110, y: 172, t: 0 },
+          { x: 136, y: 204, t: 16 },
+          { x: 162, y: 172, t: 32 },
+        ],
+      },
+      {
+        ...makeStroke('num-minus'),
+        width: 6,
+        points: [
+          { x: 176, y: 186, t: 0 },
+          { x: 238, y: 186, t: 16 },
+        ],
+      },
+      {
+        ...makeStroke('num-right-v'),
+        points: [
+          { x: 250, y: 172, t: 0 },
+          { x: 276, y: 204, t: 16 },
+          { x: 302, y: 172, t: 32 },
+        ],
+      },
+      {
+        ...makeStroke('global-bar'),
+        width: 7,
+        points: [
+          { x: 92, y: 244, t: 0 },
+          { x: 320, y: 244, t: 16 },
+        ],
+      },
+      {
+        ...makeStroke('den-left-v'),
+        points: [
+          { x: 110, y: 286, t: 0 },
+          { x: 136, y: 318, t: 16 },
+          { x: 162, y: 286, t: 32 },
+        ],
+      },
+      {
+        ...makeStroke('den-minus'),
+        width: 6,
+        points: [
+          { x: 176, y: 300, t: 0 },
+          { x: 238, y: 300, t: 16 },
+        ],
+      },
+      {
+        ...makeStroke('den-right-v'),
+        points: [
+          { x: 250, y: 286, t: 0 },
+          { x: 276, y: 318, t: 16 },
+          { x: 302, y: 286, t: 32 },
+        ],
+      },
+    ]
+    const analysis = analyzeHandwrittenExpression(strokes)
+    const fractionBars = analysis.roles.filter((role) => role.role === 'fractionBar' || role.role === 'provisionalFractionBar')
+    const minusBaselines = analysis.roles.filter((role) => role.recognizedSymbol?.value === '-' && role.role === 'baseline')
+
+    expect(fractionBars).toHaveLength(1)
+    expect(fractionBars[0]?.role).toBe('fractionBar')
+    expect(minusBaselines).toHaveLength(2)
   })
 
   test('a numerator plus bar forms a provisional numerator-bar pair before the denominator appears', async () => {
@@ -1083,14 +1151,14 @@ test.describe('handwriting normalization fixtures', () => {
   test('fraction bar blocks cross-bar script attachment even when the bar itself is recognized strongly', async () => {
     const fixture = getHandwritingFixture('barSeparatedPotentialScript')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)
-    const fractionBar = analysis.roles.find((role) => role.role === 'fractionBar')
-    const incompleteFractionFlag = analysis.flags.find((flag) => flag.kind === 'incompleteFractionStructure')
+    const minusRole = analysis.roles.find((role) => role.recognizedSymbol?.value === '-') || null
 
     expect(analysis.groups).toHaveLength(fixture.expectation.groupCount)
-    expect(fractionBar).toBeTruthy()
+    expect(analysis.roles.some((role) => role.role === 'fractionBar' || role.role === 'provisionalFractionBar')).toBe(false)
     expect(analysis.roles.some((role) => role.role === 'superscript' || role.role === 'subscript')).toBe(false)
-    expect(analysis.roles.filter((role) => role.role === 'baseline')).toHaveLength(2)
-    expect(incompleteFractionFlag).toBeTruthy()
+    expect(analysis.roles.filter((role) => role.role === 'baseline')).toHaveLength(3)
+    expect(minusRole?.role).toBe('baseline')
+    expect(analysis.flags.some((flag) => flag.kind === 'incompleteFractionStructure')).toBe(false)
     expect(analysis.ambiguities.some((ambiguity) => ambiguity.reason === 'sequence-vs-script')).toBe(false)
   })
 

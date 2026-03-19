@@ -609,8 +609,26 @@ type ScoredFractionContext = {
 
 type FractionBaselineReleaseCandidate = StructuralRoleCandidate
 
+type ScoredFractionBarCandidate = {
+  bar: StrokeGroup
+  context: ScoredFractionContext
+}
+
 const PROVISIONAL_FRACTION_BAR_MIN_SCORE = 0.42
 const PROVISIONAL_FRACTION_SIDE_MIN_SCORE = 0.36
+
+const hasConfirmedFractionMemberSupport = (context: ScoredFractionContext) => (
+  context.barRecognitionScore >= 0.5
+  && context.memberClaimScore >= 0.46
+  && context.numeratorRoots.length > 0
+  && context.denominatorRoots.length > 0
+)
+
+const hasProvisionalFractionMemberSupport = (context: ScoredFractionContext) => (
+  context.barRecognitionScore >= PROVISIONAL_FRACTION_BAR_MIN_SCORE
+  || context.provisionalNumeratorScore >= PROVISIONAL_FRACTION_SIDE_MIN_SCORE
+  || context.provisionalDenominatorScore >= PROVISIONAL_FRACTION_SIDE_MIN_SCORE
+)
 
 const getMinusBaselineClaimScore = (group: StrokeGroup) => {
   if (group.strokeCount !== 1) return 0
@@ -649,6 +667,32 @@ const getInlineNeighborBaselineClaimScore = (group: StrokeGroup, groups: StrokeG
     return clamp(leftNeighbor.score * 0.5 + rightNeighbor.score * 0.5, 0, 1)
   }
   return (leftNeighbor?.score || rightNeighbor?.score || 0) * 0.72
+}
+
+const suppressStandaloneFractionBarsInsideHostedFraction = (candidates: ScoredFractionBarCandidate[]) => {
+  return candidates.filter((candidate) => {
+    const hasOwnHostedSupport = hasConfirmedFractionMemberSupport(candidate.context) || hasProvisionalFractionMemberSupport(candidate.context)
+    if (hasOwnHostedSupport) return true
+
+    const dominatedByHostedFraction = candidates.some((other) => {
+      if (other.bar.id === candidate.bar.id) return false
+      if (!hasConfirmedFractionMemberSupport(other.context)) return false
+      if (other.bar.bounds.width <= candidate.bar.bounds.width * 1.2) return false
+
+      const horizontalContainment = candidate.bar.bounds.left >= other.bar.bounds.left - Math.max(12, other.bar.bounds.width * 0.06)
+        && candidate.bar.bounds.right <= other.bar.bounds.right + Math.max(12, other.bar.bounds.width * 0.06)
+      if (!horizontalContainment) return false
+
+      const hostedBandOffset = Math.max(18, other.bar.bounds.height * 6)
+      const insideNumeratorBand = candidate.bar.bounds.bottom <= other.bar.bounds.top + hostedBandOffset
+      const insideDenominatorBand = candidate.bar.bounds.top >= other.bar.bounds.bottom - hostedBandOffset
+      if (!insideNumeratorBand && !insideDenominatorBand) return false
+
+      return true
+    })
+
+    return !dominatedByHostedFraction
+  })
 }
 
 const getFractionBaselineReleaseCandidate = (
@@ -2575,26 +2619,15 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
 
   const confirmedFractionBars = fractionBarLikeGroups
     .map((bar) => ({ bar, context: scoreFractionContext(bar, subexpressions, groupMap) }))
-    .filter(({ context }) => {
-      const completeFractionSupport = context.barRecognitionScore >= 0.5
-        && context.memberClaimScore >= 0.46
-        && context.numeratorRoots.length > 0
-        && context.denominatorRoots.length > 0
-      const strongStandaloneBarInExpression = context.shapeScore >= 0.78
-        && context.provisionalNumeratorScore < PROVISIONAL_FRACTION_SIDE_MIN_SCORE
-        && context.provisionalDenominatorScore < PROVISIONAL_FRACTION_SIDE_MIN_SCORE
-        && subexpressions.length > 0
-      return completeFractionSupport || strongStandaloneBarInExpression
-    })
+    .filter(({ context }) => hasConfirmedFractionMemberSupport(context))
 
-  const confirmedFractionBarIdSet = new Set(confirmedFractionBars.map(({ bar }) => bar.id))
+  const conflictReducedConfirmedFractionBars = suppressStandaloneFractionBarsInsideHostedFraction(confirmedFractionBars)
+
+  const confirmedFractionBarIdSet = new Set(conflictReducedConfirmedFractionBars.map(({ bar }) => bar.id))
   const radicalStructureBarrierGroups = radicalGroups
   const fractionBaselineReleaseCandidateByGroupId = new Map<string, FractionBaselineReleaseCandidate>()
-  const admittedConfirmedFractionBars = confirmedFractionBars.filter(({ bar, context }) => {
-    const completeFractionSupport = context.barRecognitionScore >= 0.5
-      && context.memberClaimScore >= 0.46
-      && context.numeratorRoots.length > 0
-      && context.denominatorRoots.length > 0
+  const admittedConfirmedFractionBars = conflictReducedConfirmedFractionBars.filter(({ bar, context }) => {
+    const completeFractionSupport = hasConfirmedFractionMemberSupport(context)
     if (completeFractionSupport) return true
     if (context.barRecognitionScore > 0.12) return true
 
@@ -2616,12 +2649,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
   const provisionalFractionBars = fractionBarLikeGroups
     .map((bar) => ({ bar, context: scoreFractionContext(bar, subexpressions, groupMap) }))
     .filter(({ bar }) => !admittedConfirmedFractionBarIdSet.has(bar.id))
-    .filter(({ context }) => (
-      context.barRecognitionScore >= PROVISIONAL_FRACTION_BAR_MIN_SCORE
-      || context.provisionalNumeratorScore >= PROVISIONAL_FRACTION_SIDE_MIN_SCORE
-      || context.provisionalDenominatorScore >= PROVISIONAL_FRACTION_SIDE_MIN_SCORE
-      || context.shapeScore >= 0.74
-    ))
+    .filter(({ context }) => hasProvisionalFractionMemberSupport(context))
     .filter(({ bar, context }) => {
       const releaseCandidate = getFractionBaselineReleaseCandidate(
         bar,
@@ -2750,7 +2778,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
     }
   }
 
-  for (const { bar, context } of confirmedFractionBars) {
+  for (const { bar, context } of admittedConfirmedFractionBars) {
     const numeratorRoots = context.memberClaimScore >= 0.46 && context.denominatorRoots.length > 0
       ? prioritizeRootId(context.numeratorRoots.map((candidate) => candidate.rootGroupId), context.preferredNumeratorRootId, groupMap)
       : []
@@ -2857,6 +2885,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
     const bestSuper = bestSuperEntry?.edge || null
     const bestSub = bestSubEntry?.edge || null
     const bestSequence = bestIncoming(edges, group.id, 'sequence')
+    const inlineMinusLikeSuppression = getMinusBaselineClaimScore(group) >= 0.9 && getInlineNeighborBaselineClaimScore(group, groups) >= 0.8
     const candidates: StructuralRoleCandidate[] = [makeCandidate('baseline', 0.34, null, ['fallback root role'])]
     const releasedFractionBaselineCandidate = fractionBaselineReleaseCandidateByGroupId.get(group.id) || null
 
@@ -2864,7 +2893,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
       candidates.push(releasedFractionBaselineCandidate)
     }
 
-    if (bestSuper) {
+    if (bestSuper && !releasedFractionBaselineCandidate && !inlineMinusLikeSuppression) {
       const hostFieldSupport = bestSuperEntry?.hostFieldSupport || hostSupportsScriptField(topBrickHypothesisByGroupId, bestSuper.fromId, 'superscript')
       if (hostFieldSupport.supported) {
         candidates.push(makeCandidate('superscript', bestSuper.score, bestSuper.fromId, [
@@ -2875,7 +2904,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
         ]))
       }
     }
-    if (bestSub) {
+    if (bestSub && !releasedFractionBaselineCandidate && !inlineMinusLikeSuppression) {
       const hostFieldSupport = bestSubEntry?.hostFieldSupport || hostSupportsScriptField(topBrickHypothesisByGroupId, bestSub.fromId, 'subscript')
       if (hostFieldSupport.supported) {
         candidates.push(makeCandidate('subscript', bestSub.score, bestSub.fromId, [

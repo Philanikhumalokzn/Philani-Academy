@@ -12,6 +12,9 @@ const LEGO_SEQUENCE_CONTEXT_MIN_INLINE_SCORE = 0.42
 const COMPETING_INTERPRETATION_MIN_CLAIM_SCORE = 0.26
 const COMPETING_INTERPRETATION_TRANSFER_WEIGHT = 0.16
 const COMPETING_INTERPRETATION_MAX_RIVAL_MARGIN = 0.22
+const SCRIPT_INLINE_SUPPRESSION_MIN_INLINE_SCORE = 0.34
+const SCRIPT_INLINE_SUPPRESSION_MIN_HOSTED_ADVANTAGE = 0.08
+const SCRIPT_INLINE_SUPPRESSION_MIN_SCORE_ADVANTAGE = 0.06
 
 const getFractionBarShapeScore = (group: StrokeGroup) => {
   const heightScore = clamp(1 - Math.max(group.bounds.height - FRACTION_BAR_MAX_HEIGHT, 0) / FRACTION_BAR_MAX_HEIGHT, 0, 1)
@@ -500,6 +503,24 @@ const getScriptFieldClaimSupport = (
   role: 'superscript' | 'subscript',
 ) => getFieldClaimSupport(fieldClaimsByTargetGroupId, childGroupId, parentGroupId, getScriptFieldKind(role))
 
+const getCompetingInlineClaimSupport = (
+  fieldClaimsByTargetGroupId: Map<string, LegoFieldClaim[]>,
+  childGroupId: string,
+  parentGroupId: string | null | undefined,
+) => getFieldClaimSupport(fieldClaimsByTargetGroupId, childGroupId, parentGroupId, 'rightInline')
+
+const shouldSuppressScriptByInlineOccupancy = (
+  scriptClaimSupport: FieldClaimSupport,
+  inlineClaimSupport: FieldClaimSupport,
+) => {
+  const hostedAdvantage = inlineClaimSupport.targetHostedRatio - scriptClaimSupport.targetHostedRatio
+  const scoreAdvantage = inlineClaimSupport.score - scriptClaimSupport.score
+
+  return inlineClaimSupport.score >= SCRIPT_INLINE_SUPPRESSION_MIN_INLINE_SCORE
+    && hostedAdvantage >= SCRIPT_INLINE_SUPPRESSION_MIN_HOSTED_ADVANTAGE
+    && scoreAdvantage >= SCRIPT_INLINE_SUPPRESSION_MIN_SCORE_ADVANTAGE
+}
+
 const getInlinePairClaimSupport = (
   fieldClaimsByTargetGroupId: Map<string, LegoFieldClaim[]>,
   leftGroupId: string | null | undefined,
@@ -734,6 +755,7 @@ const findBestAdmissibleScriptEdge = (
     if (role === 'superscript' && (edge.metrics.dy || 0) >= 0) continue
     const hostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, edge.fromId, role)
     const claimSupport = getScriptFieldClaimSupport(fieldClaimsByTargetGroupId, edge.toId, edge.fromId, role)
+    const inlineClaimSupport = getCompetingInlineClaimSupport(fieldClaimsByTargetGroupId, edge.toId, edge.fromId)
     const localGeometrySupport = parentGroup
       ? clamp(1 - (edge.metrics.horizontalGap ?? 0) / Math.max(24, parentGroup.bounds.width * 0.92), 0, 1)
       : 1
@@ -770,27 +792,33 @@ const findBestAdmissibleScriptEdge = (
     if (lineLikeInlineBaselineSupport) continue
     if (!lineLikeVerticalScriptSupport) continue
     if (stackedBaselineLikeSubscript) continue
+    if (shouldSuppressScriptByInlineOccupancy(claimSupport, inlineClaimSupport)) continue
     if (!strongLocalGeometry && localGeometrySupport >= 0.4 && claimSupport.score < 0.2 && claimSupport.strongestCompetingScore >= 0.48) continue
     if (!strongLocalGeometry && localGeometrySupport >= 0.4 && claimSupport.competitionMargin < -0.14 && claimSupport.strongestCompetingScore >= 0.4) continue
     if (getDirectScriptHostBarrier(groupMap, topBrickHypothesisByGroupId, edge.fromId, edge.toId)) continue
     if (getCrossFractionStructureBarrier(groupMap, fractionBarrierGroups, edge.fromId, edge.toId)) continue
     if (getCrossRadicalStructureBarrier(groupMap, radicalBarrierGroups, edge.fromId, edge.toId)) continue
     if (getRadicalWholeScriptHostBarrier(groupMap, radicalBarrierGroups, edge.fromId, edge.toId)) continue
+    const inlineHostedAdvantage = Math.max(0, inlineClaimSupport.targetHostedRatio - claimSupport.targetHostedRatio)
+    const inlineScoreAdvantage = Math.max(0, inlineClaimSupport.score - claimSupport.score)
     const adjustedScore = clamp(
       edge.score * 0.84
         + claimSupport.score * (strongLocalGeometry ? 0.06 : 0.08 * localGeometrySupport)
+        + claimSupport.targetHostedRatio * 0.06
         + claimSupport.realizationScore * 0.08
         + claimSupport.directionalCompatibilityScore * 0.08
         + claimSupport.sharedCompatibilityScore * 0.06
         + claimSupport.closureRatio * 0.04
         + (claimSupport.dominant ? (strongLocalGeometry ? 0.02 : 0.03 * localGeometrySupport) : 0)
         - Math.max(0, claimSupport.strongestCompetingScore - claimSupport.score) * (strongLocalGeometry ? 0.03 : 0.08 * localGeometrySupport)
+        - inlineHostedAdvantage * (strongLocalGeometry ? 0.1 : 0.16)
+        - inlineScoreAdvantage * (strongLocalGeometry ? 0.06 : 0.12)
         - claimSupport.latentPenalty * 0.08
         - stackedBaselinePenalty,
       0,
       1,
     )
-    return { edge, hostFieldSupport, claimSupport, adjustedScore }
+    return { edge, hostFieldSupport, claimSupport, inlineClaimSupport, adjustedScore }
   }
   return null
 }

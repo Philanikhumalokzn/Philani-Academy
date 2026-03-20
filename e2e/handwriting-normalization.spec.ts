@@ -833,6 +833,59 @@ test.describe('handwriting normalization fixtures', () => {
     expect(analysis.parseNodes.some((node) => node.kind === 'fractionExpression')).toBe(false)
   })
 
+  test('provisional fraction hosting still normalizes numerator members above the bar', async () => {
+    const strokes: InkStroke[] = [
+      {
+        ...makeStroke('num-left-v'),
+        points: [
+          { x: 132, y: 176, t: 0 },
+          { x: 154, y: 208, t: 16 },
+          { x: 176, y: 176, t: 32 },
+        ],
+      },
+      {
+        ...makeStroke('num-minus'),
+        width: 6,
+        points: [
+          { x: 194, y: 190, t: 0 },
+          { x: 256, y: 190, t: 16 },
+        ],
+      },
+      {
+        ...makeStroke('num-right-v'),
+        points: [
+          { x: 274, y: 176, t: 0 },
+          { x: 296, y: 208, t: 16 },
+          { x: 318, y: 176, t: 32 },
+        ],
+      },
+      {
+        ...makeStroke('bar-only'),
+        width: 6,
+        points: [
+          { x: 116, y: 246, t: 0 },
+          { x: 334, y: 246, t: 16 },
+        ],
+      },
+    ]
+    const analysis = analyzeHandwrittenExpression(strokes)
+    const provisionalBar = analysis.roles.find((role) => role.role === 'provisionalFractionBar') || null
+    const numeratorContext = getContextByKind(analysis, 'numerator')
+    const normalizedById = new Map(analysis.normalization.groups.map((group) => [group.id, group]))
+    const normalizedBar = provisionalBar ? normalizedById.get(provisionalBar.groupId) || null : null
+    const normalizedNumeratorMembers = (numeratorContext?.memberGroupIds || [])
+      .map((groupId) => normalizedById.get(groupId) || null)
+      .filter(Boolean)
+
+    expect(provisionalBar).toBeTruthy()
+    expect(numeratorContext).toBeTruthy()
+    expect(normalizedBar).toBeTruthy()
+    expect(normalizedNumeratorMembers).toHaveLength(3)
+    for (const member of normalizedNumeratorMembers) {
+      expect((member?.bounds.bottom || 0)).toBeLessThan((normalizedBar?.bounds.top || 0) - 12)
+    }
+  })
+
   test('a denominator plus bar forms a provisional denominator-bar pair before the numerator appears', async () => {
     const strokes: InkStroke[] = [
       {

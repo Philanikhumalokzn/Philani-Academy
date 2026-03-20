@@ -77,7 +77,8 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     if (context.kind !== 'numerator' && context.kind !== 'denominator') return false
     const parentContext = context.parentContextId ? contextMap.get(context.parentContextId) || null : null
     const fractionHostRole = parentContext?.semanticRootGroupId ? roleMap.get(parentContext.semanticRootGroupId) || null : null
-    return parentContext?.kind === 'fraction' && fractionHostRole?.role === 'fractionBar'
+    return parentContext?.kind === 'fraction'
+      && (fractionHostRole?.role === 'fractionBar' || fractionHostRole?.role === 'provisionalFractionBar')
   })
   const radicalMemberContexts = contexts.filter((context) => context.kind === 'radicand' || context.kind === 'radicalIndex')
   const enclosureContexts = contexts.filter((context) => context.kind === 'enclosure')

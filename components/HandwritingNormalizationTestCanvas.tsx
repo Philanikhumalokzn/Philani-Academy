@@ -5,7 +5,6 @@ import type { HandwritingFixtureName } from '../lib/handwritingNormalization/fix
 
 const VIEWPORT = { width: 760, height: 420, padding: 28 }
 const GRID_LINE_SNAP_DISTANCE = 12
-const GRID_LINE_SPAN_GAP_TOLERANCE = 24
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
@@ -112,20 +111,12 @@ type SharedGridLine = {
   ownerRoles: string[]
 }
 
-const spansCanShareGridLine = (leftStart: number, leftEnd: number, rightStart: number, rightEnd: number) => {
-  const overlap = Math.min(leftEnd, rightEnd) - Math.max(leftStart, rightStart)
-  if (overlap >= 0) return true
-  return Math.abs(overlap) <= GRID_LINE_SPAN_GAP_TOLERANCE
-}
-
 const collapseSharedGridLines = (proposals: GridLineProposal[]) => {
   const ordered = [...proposals].sort((left, right) => left.coordinate - right.coordinate)
   const lines: SharedGridLine[] = []
   let cluster: {
     coordinateSum: number
     count: number
-    spanStart: number
-    spanEnd: number
     ownerGroupIds: string[]
     ownerRoles: string[]
   } | null = null
@@ -145,8 +136,6 @@ const collapseSharedGridLines = (proposals: GridLineProposal[]) => {
       cluster = {
         coordinateSum: proposal.coordinate,
         count: 1,
-        spanStart: proposal.spanStart,
-        spanEnd: proposal.spanEnd,
         ownerGroupIds: [proposal.hostGroupId],
         ownerRoles: [proposal.role],
       }
@@ -155,15 +144,12 @@ const collapseSharedGridLines = (proposals: GridLineProposal[]) => {
 
     const clusterCoordinate = cluster.coordinateSum / Math.max(cluster.count, 1)
     const closeEnough = Math.abs(proposal.coordinate - clusterCoordinate) <= GRID_LINE_SNAP_DISTANCE
-    const spanCompatible = spansCanShareGridLine(cluster.spanStart, cluster.spanEnd, proposal.spanStart, proposal.spanEnd)
 
-    if (!closeEnough || !spanCompatible) {
+    if (!closeEnough) {
       flushCluster()
       cluster = {
         coordinateSum: proposal.coordinate,
         count: 1,
-        spanStart: proposal.spanStart,
-        spanEnd: proposal.spanEnd,
         ownerGroupIds: [proposal.hostGroupId],
         ownerRoles: [proposal.role],
       }
@@ -172,8 +158,6 @@ const collapseSharedGridLines = (proposals: GridLineProposal[]) => {
 
     cluster.coordinateSum += proposal.coordinate
     cluster.count += 1
-    cluster.spanStart = Math.min(cluster.spanStart, proposal.spanStart)
-    cluster.spanEnd = Math.max(cluster.spanEnd, proposal.spanEnd)
     if (!cluster.ownerGroupIds.includes(proposal.hostGroupId)) {
       cluster.ownerGroupIds.push(proposal.hostGroupId)
     }

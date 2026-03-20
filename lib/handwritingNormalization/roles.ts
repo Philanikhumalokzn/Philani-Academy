@@ -928,6 +928,19 @@ type ScoredFractionBarCandidate = {
 
 const PROVISIONAL_FRACTION_BAR_MIN_SCORE = 0.42
 const PROVISIONAL_FRACTION_SIDE_MIN_SCORE = 0.36
+const PROVISIONAL_FRACTION_BAR_MINUS_FALLBACK_MIN_SCORE = 0.34
+const PROVISIONAL_FRACTION_BAR_MINUS_FALLBACK_MIN_OPERATOR_SCORE = 0.34
+
+type FractionBaselineFallbackSupport = {
+  operandSignal: number
+  incomingSequenceScore: number
+  outgoingSequenceScore: number
+  sequenceSupportScore: number
+  inlineAffordanceScore: number
+  minusGeometryScore: number
+  inlineNeighborSupportScore: number
+  baselineClaimScore: number
+}
 
 const hasConfirmedFractionMemberSupport = (context: ScoredFractionContext) => (
   context.barRecognitionScore >= 0.5
@@ -941,6 +954,54 @@ const hasProvisionalFractionMemberSupport = (context: ScoredFractionContext) => 
   || context.provisionalNumeratorScore >= PROVISIONAL_FRACTION_SIDE_MIN_SCORE
   || context.provisionalDenominatorScore >= PROVISIONAL_FRACTION_SIDE_MIN_SCORE
 )
+
+const getFractionBaselineFallbackSupport = (
+  bar: StrokeGroup,
+  context: ScoredFractionContext,
+  edges: LayoutEdge[],
+  groups: StrokeGroup[],
+  operatorAlternativeScore: number,
+): FractionBaselineFallbackSupport | null => {
+  const operandSignal = Math.max(context.memberClaimScore, context.provisionalNumeratorScore, context.provisionalDenominatorScore)
+  const bestIncomingSequence = bestIncoming(edges, bar.id, 'sequence')
+  const bestOutgoingSequence = bestOutgoing(edges, bar.id, 'sequence')
+  const incomingSequenceScore = bestIncomingSequence?.score || 0
+  const outgoingSequenceScore = bestOutgoingSequence?.score || 0
+  const incomingInlineAffordanceScore = bestIncomingSequence?.metrics.inlineAffordanceScore || 0
+  const outgoingInlineAffordanceScore = bestOutgoingSequence?.metrics.inlineAffordanceScore || 0
+  const sequenceSupportScore = clamp(
+    Math.max(incomingSequenceScore, outgoingSequenceScore) * 0.58
+      + Math.min(incomingSequenceScore, outgoingSequenceScore) * 0.22
+      + Math.max(incomingInlineAffordanceScore, outgoingInlineAffordanceScore) * 0.2,
+    0,
+    1,
+  )
+  const inlineAffordanceScore = Math.max(incomingInlineAffordanceScore, outgoingInlineAffordanceScore)
+  const minusGeometryScore = getMinusBaselineClaimScore(bar)
+  const inlineNeighborSupportScore = getInlineNeighborBaselineClaimScore(bar, groups)
+  if (sequenceSupportScore < 0.22 && inlineNeighborSupportScore < 0.8) return null
+
+  const baselineClaimScore = clamp(
+    sequenceSupportScore * 0.18
+      + inlineNeighborSupportScore * 0.34
+      + inlineAffordanceScore * 0.08
+      + operatorAlternativeScore * 0.18
+      + minusGeometryScore * 0.22,
+    0,
+    1,
+  )
+
+  return {
+    operandSignal,
+    incomingSequenceScore,
+    outgoingSequenceScore,
+    sequenceSupportScore,
+    inlineAffordanceScore,
+    minusGeometryScore,
+    inlineNeighborSupportScore,
+    baselineClaimScore,
+  }
+}
 
 const getMinusBaselineClaimScore = (group: StrokeGroup) => {
   if (group.strokeCount !== 1) return 0
@@ -1016,35 +1077,20 @@ const getFractionBaselineReleaseCandidate = (
   fractionRole: 'fractionBar' | 'provisionalFractionBar',
   fractionSupportScore: number,
 ): FractionBaselineReleaseCandidate | null => {
-  const operandSignal = Math.max(context.memberClaimScore, context.provisionalNumeratorScore, context.provisionalDenominatorScore)
-  if (operandSignal >= 0.28) return null
+  const fallbackSupport = getFractionBaselineFallbackSupport(bar, context, edges, groups, operatorAlternativeScore)
+  if (!fallbackSupport) return null
 
-  const bestIncomingSequence = bestIncoming(edges, bar.id, 'sequence')
-  const bestOutgoingSequence = bestOutgoing(edges, bar.id, 'sequence')
-  const incomingSequenceScore = bestIncomingSequence?.score || 0
-  const outgoingSequenceScore = bestOutgoingSequence?.score || 0
-  const incomingInlineAffordanceScore = bestIncomingSequence?.metrics.inlineAffordanceScore || 0
-  const outgoingInlineAffordanceScore = bestOutgoingSequence?.metrics.inlineAffordanceScore || 0
-  const sequenceSupportScore = clamp(
-    Math.max(incomingSequenceScore, outgoingSequenceScore) * 0.58
-      + Math.min(incomingSequenceScore, outgoingSequenceScore) * 0.22
-      + Math.max(incomingInlineAffordanceScore, outgoingInlineAffordanceScore) * 0.2,
-    0,
-    1,
-  )
-  const inlineAffordanceScore = Math.max(incomingInlineAffordanceScore, outgoingInlineAffordanceScore)
-  const minusGeometryScore = getMinusBaselineClaimScore(bar)
-  const inlineNeighborSupportScore = getInlineNeighborBaselineClaimScore(bar, groups)
-  if (sequenceSupportScore < 0.22 && inlineNeighborSupportScore < 0.8) return null
-  const baselineClaimScore = clamp(
-    sequenceSupportScore * 0.18
-      + inlineNeighborSupportScore * 0.34
-      + inlineAffordanceScore * 0.08
-      + operatorAlternativeScore * 0.18
-      + minusGeometryScore * 0.22,
-    0,
-    1,
-  )
+  const {
+    operandSignal,
+    incomingSequenceScore,
+    outgoingSequenceScore,
+    sequenceSupportScore,
+    inlineAffordanceScore,
+    minusGeometryScore,
+    inlineNeighborSupportScore,
+    baselineClaimScore,
+  } = fallbackSupport
+  if (operandSignal >= 0.28) return null
   if (baselineClaimScore < 0.34) return null
 
   const pairedCandidates = rebalanceCompetingCandidates([
@@ -1074,6 +1120,49 @@ const getFractionBaselineReleaseCandidate = (
   if (baselineCandidate.score < fractionCandidate.score + 0.04) return null
 
   return baselineCandidate
+}
+
+const getUnvindicatedFractionMinusFallbackCandidate = (
+  bar: StrokeGroup,
+  context: ScoredFractionContext,
+  edges: LayoutEdge[],
+  groups: StrokeGroup[],
+  operatorAlternativeScore: number,
+): FractionBaselineReleaseCandidate | null => {
+  if (hasConfirmedFractionMemberSupport(context)) return null
+
+  const fallbackSupport = getFractionBaselineFallbackSupport(bar, context, edges, groups, operatorAlternativeScore)
+  if (!fallbackSupport) return null
+
+  const {
+    operandSignal,
+    sequenceSupportScore,
+    inlineAffordanceScore,
+    minusGeometryScore,
+    inlineNeighborSupportScore,
+    baselineClaimScore,
+  } = fallbackSupport
+
+  const hasMinusLikeEvidence = operatorAlternativeScore >= PROVISIONAL_FRACTION_BAR_MINUS_FALLBACK_MIN_OPERATOR_SCORE
+    || minusGeometryScore >= 0.72
+    || inlineNeighborSupportScore >= 0.78
+    || sequenceSupportScore >= 0.32
+
+  if (!hasMinusLikeEvidence) return null
+  if (baselineClaimScore < PROVISIONAL_FRACTION_BAR_MINUS_FALLBACK_MIN_SCORE) return null
+
+  return makeCandidate('baseline', Math.max(0.38, baselineClaimScore), null, [
+    'unvindicated fraction candidate defaulted to minus-like baseline operator',
+    `operand-signal=${operandSignal.toFixed(3)}`,
+    `fraction-member-claim=${context.memberClaimScore.toFixed(3)}`,
+    `provisional-above=${context.provisionalNumeratorScore.toFixed(3)}`,
+    `provisional-below=${context.provisionalDenominatorScore.toFixed(3)}`,
+    `sequence-support=${sequenceSupportScore.toFixed(3)}`,
+    `inline-affordance=${inlineAffordanceScore.toFixed(3)}`,
+    `inline-neighbor-support=${inlineNeighborSupportScore.toFixed(3)}`,
+    `operator-alternative=${operatorAlternativeScore.toFixed(3)}`,
+    `minus-geometry=${minusGeometryScore.toFixed(3)}`,
+  ])
 }
 
 const isSameContextStackedPair = (upper: StrokeGroup, lower: StrokeGroup) => {
@@ -3069,6 +3158,18 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
     .filter(({ bar }) => !admittedConfirmedFractionBarIdSet.has(bar.id))
     .filter(({ context }) => hasProvisionalFractionMemberSupport(context))
     .filter(({ bar, context }) => {
+      const minusFallbackCandidate = getUnvindicatedFractionMinusFallbackCandidate(
+        bar,
+        context,
+        edges,
+        groups,
+        operatorAlternativeScoreByGroupId.get(bar.id) || 0,
+      )
+      if (minusFallbackCandidate) {
+        fractionBaselineReleaseCandidateByGroupId.set(bar.id, minusFallbackCandidate)
+        return false
+      }
+
       const releaseCandidate = getFractionBaselineReleaseCandidate(
         bar,
         context,

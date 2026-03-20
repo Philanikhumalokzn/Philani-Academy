@@ -1042,6 +1042,45 @@ const getInlineNeighborBaselineClaimScore = (group: StrokeGroup, groups: StrokeG
   return (leftNeighbor?.score || rightNeighbor?.score || 0) * 0.72
 }
 
+const shouldPreferInlineOperatorOverFractionLikeRole = (
+  group: StrokeGroup,
+  edges: LayoutEdge[],
+  groups: StrokeGroup[],
+  operatorAlternativeScore: number,
+) => {
+  const bestIncomingSequence = bestIncoming(edges, group.id, 'sequence')
+  const bestOutgoingSequence = bestOutgoing(edges, group.id, 'sequence')
+  const incomingSequenceScore = bestIncomingSequence?.score || 0
+  const outgoingSequenceScore = bestOutgoingSequence?.score || 0
+  const bilateralSequenceScore = Math.min(incomingSequenceScore, outgoingSequenceScore)
+  const inlineAffordanceScore = Math.max(
+    bestIncomingSequence?.metrics.inlineAffordanceScore || 0,
+    bestOutgoingSequence?.metrics.inlineAffordanceScore || 0,
+  )
+  const sequenceSupportScore = clamp(
+    Math.max(incomingSequenceScore, outgoingSequenceScore) * 0.34
+      + bilateralSequenceScore * 0.42
+      + inlineAffordanceScore * 0.24,
+    0,
+    1,
+  )
+  const minusGeometryScore = getMinusBaselineClaimScore(group)
+  const inlineNeighborSupportScore = getInlineNeighborBaselineClaimScore(group, groups)
+  const inlineOperatorScore = clamp(
+    sequenceSupportScore * 0.34
+      + inlineNeighborSupportScore * 0.28
+      + operatorAlternativeScore * 0.2
+      + minusGeometryScore * 0.18,
+    0,
+    1,
+  )
+
+  return minusGeometryScore >= 0.72
+    && inlineNeighborSupportScore >= 0.72
+    && bilateralSequenceScore >= 0.24
+    && inlineOperatorScore >= 0.54
+}
+
 const suppressStandaloneFractionBarsInsideHostedFraction = (candidates: ScoredFractionBarCandidate[]) => {
   return candidates.filter((candidate) => {
     const hasOwnHostedSupport = hasConfirmedFractionMemberSupport(candidate.context) || hasProvisionalFractionMemberSupport(candidate.context)
@@ -3053,6 +3092,13 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
   }
   const fractionBarLikeGroups = groups.filter((group) => {
     const topHypothesis = topBrickHypothesisByGroupId.get(group.id)
+    const operatorAlternativeScore = brickHypotheses.find((hypothesis) => (
+      hypothesis.groupId === group.id && hypothesis.family === 'operatorBrick'
+    ))?.score || 0
+    if (shouldPreferInlineOperatorOverFractionLikeRole(group, edges, groups, operatorAlternativeScore)) {
+      return false
+    }
+
     if (topHypothesis) {
       if (topHypothesis.family !== 'fractionBarBrick' || topHypothesis.score < 0.52) {
         return false
@@ -3066,10 +3112,6 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
         bestIncoming(edges, group.id, 'superscriptCandidate')?.score || 0,
         bestIncoming(edges, group.id, 'subscriptCandidate')?.score || 0,
       )
-
-      const operatorAlternativeScore = brickHypotheses.find((hypothesis) => (
-        hypothesis.groupId === group.id && hypothesis.family === 'operatorBrick'
-      ))?.score || 0
 
       return topHypothesis.score >= Math.max(0.68, operatorAlternativeScore + 0.12) && bestScriptScore < 0.38
     }

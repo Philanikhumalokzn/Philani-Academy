@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import RecognitionDebugPanel, { type DebugSection } from './RecognitionDebugPanel'
-import { analyzeHandwrittenExpression, createHandwritingIncrementalState, getHandwritingFixture, HANDWRITING_FIXTURE_ORDER, type InkBounds, type InkPoint, type InkStroke } from '../lib/handwritingNormalization'
+import { analyzeHandwrittenExpression, collectBrickFamilyScoreDiagnostics, createHandwritingIncrementalState, getHandwritingFixture, HANDWRITING_FIXTURE_ORDER, type InkBounds, type InkPoint, type InkStroke } from '../lib/handwritingNormalization'
 import type { HandwritingFixtureName } from '../lib/handwritingNormalization/fixtures'
 
 const VIEWPORT = { width: 760, height: 420, padding: 28 }
@@ -269,7 +269,15 @@ export default function HandwritingNormalizationTestCanvas() {
 
   const debugSections = useMemo<DebugSection[]>(() => {
     const grouped = analysis.groups.map((group) => `${group.id}: ${group.strokeIds.length} stroke(s), ${Math.round(group.bounds.width)}x${Math.round(group.bounds.height)}`)
-    const brickHypotheses = analysis.brickHypotheses.map((hypothesis) => `${hypothesis.groupId}: ${hypothesis.family} prototype=${hypothesis.prototype} score=${hypothesis.score.toFixed(2)} fields=[${hypothesis.fields.map((field) => `${field.kind}:${field.capacity}:${field.weight.toFixed(2)}`).join(', ')}]${hypothesis.evidence.length ? ` :: ${hypothesis.evidence.join(' | ')}` : ''}`)
+    const brickHypotheses = collectBrickFamilyScoreDiagnostics(analysis, { topK: 4 }).map((entry) => {
+      const header = `${entry.groupId}: final=${entry.finalRole || 'none'} label=${entry.qualifiedRoleLabel || 'none'} topGap=${entry.marginToRunnerUp === null ? 'n/a' : entry.marginToRunnerUp.toFixed(2)} borderline=${String(entry.isBorderline)}`
+      const families = entry.topFamilies.map((family, index) => {
+        const marker = index === 0 ? 'TOP' : `#${index + 1}`
+        const evidence = family.evidence.length ? ` :: ${family.evidence.join(' | ')}` : ''
+        return `${marker} ${family.family} prototype=${family.prototype} score=${family.score.toFixed(2)}${evidence}`
+      })
+      return [header, ...families].join('\n')
+    })
     const brickOccupancies = analysis.brickOccupancies.map((occupancy) => `${occupancy.groupId}: ${occupancy.family} field=${occupancy.field} score=${occupancy.score.toFixed(2)}${occupancy.hostGroupId ? ` host=${occupancy.hostGroupId}` : ''}${occupancy.hostContextId ? ` ctx=${occupancy.hostContextId}` : ''}${occupancy.evidence.length ? ` :: ${occupancy.evidence.join(' | ')}` : ''}`)
     const edges = analysis.edges.slice(0, 12).map((edge) => {
       if (edge.kind === 'sequence') {

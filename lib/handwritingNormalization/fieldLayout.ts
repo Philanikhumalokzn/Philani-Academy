@@ -162,19 +162,6 @@ const COUNTERPART_FIELD_KINDS: Record<LegoFieldKind, LegoFieldKind[]> = {
   interior: [],
 }
 
-const OCCUPANCY_COMPETITION_FIELD_KINDS: Record<LegoFieldKind, LegoFieldKind[]> = {
-  center: [],
-  leftInline: ['upperLeftScript', 'leftInline', 'lowerLeftScript'],
-  rightInline: ['upperRightScript', 'rightInline', 'lowerRightScript'],
-  upperLeftScript: ['upperLeftScript', 'leftInline', 'lowerLeftScript'],
-  upperRightScript: ['upperRightScript', 'rightInline', 'lowerRightScript'],
-  lowerLeftScript: ['upperLeftScript', 'leftInline', 'lowerLeftScript'],
-  lowerRightScript: ['upperRightScript', 'rightInline', 'lowerRightScript'],
-  over: ['over', 'under'],
-  under: ['over', 'under'],
-  interior: [],
-}
-
 const getFieldOwnershipBias = (kind: LegoFieldKind) => {
   switch (kind) {
     case 'upperRightScript':
@@ -212,6 +199,16 @@ const getInteractionKind = (leftKind: LegoFieldKind, rightKind: LegoFieldKind): 
   }
 
   return 'neutral'
+}
+
+const getOccupancyCompetingSiblingFields = (
+  field: LegoFieldInstance,
+  siblings: LegoFieldInstance[],
+) => {
+  return siblings
+    .filter((candidate) => candidate.id !== field.id)
+    .filter((candidate) => candidate.topology !== 'degenerate' && candidate.topology !== 'forbidden')
+    .filter((candidate) => getInteractionKind(field.kind, candidate.kind) === 'competitive')
 }
 
 const getHostShapeProfile = (host: StrokeGroup, hypothesis: LegoBrickHypothesis): HostShapeProfile => {
@@ -673,16 +670,11 @@ const buildFieldClaims = (
         }
       }
 
-      const occupancyCompetitionFieldKinds = OCCUPANCY_COMPETITION_FIELD_KINDS[field.kind]
-      const strongestSiblingHostedRatio = occupancyCompetitionFieldKinds.length
-        ? (fieldInstancesByHostGroupId.get(field.hostGroupId) || [])
-            .filter((candidate) => candidate.id !== field.id)
-            .filter((candidate) => occupancyCompetitionFieldKinds.includes(candidate.kind))
-            .reduce((strongest, candidate) => {
-              const siblingOverlapBounds = getBoundsIntersection(target.bounds, candidate.bounds)
-              return Math.max(strongest, getTargetHostedRatio(target, siblingOverlapBounds, candidate.kind))
-            }, 0)
-        : 0
+      const occupancyCompetingSiblings = getOccupancyCompetingSiblingFields(field, fieldInstancesByHostGroupId.get(field.hostGroupId) || [])
+      const strongestSiblingHostedRatio = occupancyCompetingSiblings.reduce((strongest, candidate) => {
+        const siblingOverlapBounds = getBoundsIntersection(target.bounds, candidate.bounds)
+        return Math.max(strongest, getTargetHostedRatio(target, siblingOverlapBounds, candidate.kind))
+      }, 0)
       const occupancyCompetitionMargin = targetHostedRatio - strongestSiblingHostedRatio
       const occupancyDominanceBoost = clamp(occupancyCompetitionMargin, 0, 1)
       const occupancyCompetitionPenalty = clamp(-occupancyCompetitionMargin, 0, 1)

@@ -152,7 +152,7 @@ const deriveBrickFamilyAdjustments = (analysis: AnalysisPass) => {
     const releasedFractionLikeBaseline = isReleasedFractionLikeBaseline(role)
     const inlineContextBackedBaseline = roleEvidenceIncludes(role, 'inline sequence fallback')
       || roleEvidenceIncludes(role, 'inline-field-pair=')
-      || inlineNeighborSupport >= 0.72
+      || inlineNeighborSupport >= 0.6
       || releasedFractionLikeBaseline
     const operatorBaseline = role.recognizedSymbol?.category === 'operator' && !scriptChildren.length && inlineContextBackedBaseline
     const minusBaseline = role.recognizedSymbol?.value === '-' && !scriptChildren.length && inlineContextBackedBaseline

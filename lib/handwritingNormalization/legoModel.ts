@@ -368,6 +368,48 @@ export const getTopBrickHypothesisByGroupId = (brickHypotheses: LegoBrickHypothe
 	return hypothesisMap
 }
 
+export const buildBrickHypothesesByGroupId = (brickHypotheses: LegoBrickHypothesis[]) => {
+	const hypothesisMap = new Map<string, LegoBrickHypothesis[]>()
+	for (const hypothesis of brickHypotheses) {
+		const bucket = hypothesisMap.get(hypothesis.groupId) || []
+		bucket.push(hypothesis)
+		hypothesisMap.set(hypothesis.groupId, bucket)
+	}
+
+	for (const [groupId, hypotheses] of hypothesisMap.entries()) {
+		hypothesisMap.set(groupId, hypotheses.sort((left, right) => right.score - left.score))
+	}
+
+	return hypothesisMap
+}
+
+export const getBlendedInlineFieldWeight = (
+	brickHypothesesByGroupId: Map<string, LegoBrickHypothesis[]>,
+	groupId: string | null | undefined,
+	direction: 'left' | 'right',
+) => {
+	if (!groupId) return null
+	const hypotheses = brickHypothesesByGroupId.get(groupId) || []
+	if (!hypotheses.length) return null
+
+	const fieldKind = direction === 'left' ? 'leftInline' : 'rightInline'
+	const topScore = hypotheses[0]?.score || 0
+	const plausibleHypotheses = hypotheses.filter((hypothesis) => hypothesis.score >= Math.max(0.18, topScore * 0.42))
+	if (!plausibleHypotheses.length) return null
+
+	let weightedFieldWeight = 0
+	let totalScore = 0
+
+	for (const hypothesis of plausibleHypotheses) {
+		const fieldWeight = hypothesis.fields.find((field) => field.kind === fieldKind)?.weight ?? 0
+		weightedFieldWeight += fieldWeight * hypothesis.score
+		totalScore += hypothesis.score
+	}
+
+	if (totalScore <= 0) return null
+	return clamp(weightedFieldWeight / totalScore, 0, 1)
+}
+
 export const inferLegoBrickOccupancies = (
 	brickHypotheses: LegoBrickHypothesis[],
 	roles: StructuralRole[],

@@ -1,15 +1,6 @@
 import { clamp, getBoundsOverlapX, getBoundsOverlapY, getHorizontalGap, getVerticalGap, isInsideBounds } from './geometry'
+import { buildBrickHypothesesByGroupId, getBlendedInlineFieldWeight } from './legoModel'
 import type { LayoutEdge, LegoBrickHypothesis, StrokeGroup } from './types'
-
-const getFieldWeight = (
-  topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
-  groupId: string,
-  fieldKind: 'leftInline' | 'rightInline',
-) => {
-  const topHypothesis = topBrickHypothesisByGroupId.get(groupId)
-  if (!topHypothesis) return null
-  return topHypothesis.fields.find((field) => field.kind === fieldKind)?.weight ?? 0
-}
 
 const pushEdge = (
   edges: LayoutEdge[],
@@ -25,6 +16,7 @@ const pushEdge = (
 
 export const buildLayoutGraph = (groups: StrokeGroup[], brickHypotheses: LegoBrickHypothesis[] = []) => {
   const edges: LayoutEdge[] = []
+  const brickHypothesesByGroupId = buildBrickHypothesesByGroupId(brickHypotheses)
   const topBrickHypothesisByGroupId = new Map<string, LegoBrickHypothesis>()
 
   for (const hypothesis of brickHypotheses) {
@@ -61,8 +53,8 @@ export const buildLayoutGraph = (groups: StrokeGroup[], brickHypotheses: LegoBri
         : 0
       const spanSimilarity = clamp(1 - Math.abs(widthRatio - 1) / 0.82, 0, 1)
       const horizontalSequenceAffinity = clamp(1 - Math.abs(dy) / Math.max(34, scale * 1.15), 0, 1)
-      const fromRightInlineWeight = getFieldWeight(topBrickHypothesisByGroupId, from.id, 'rightInline')
-      const toLeftInlineWeight = getFieldWeight(topBrickHypothesisByGroupId, to.id, 'leftInline')
+      const fromRightInlineWeight = getBlendedInlineFieldWeight(brickHypothesesByGroupId, from.id, 'right')
+      const toLeftInlineWeight = getBlendedInlineFieldWeight(brickHypothesesByGroupId, to.id, 'left')
       const inlineAffordanceScore = fromRightInlineWeight === null || toLeftInlineWeight === null
         ? 1
         : clamp(Math.sqrt(Math.max(fromRightInlineWeight, 0) * Math.max(toLeftInlineWeight, 0)), 0, 1)

@@ -733,6 +733,43 @@ test.describe('handwriting normalization fixtures', () => {
     expect(['operatorBrick', 'ordinaryBaselineSymbolBrick']).toContain(minusTopBrick?.family || '')
   })
 
+  test('digit-minus-digit exposes inline support strongly enough to demote the minus from fraction-bar dominance', async () => {
+    const strokes: InkStroke[] = [
+      {
+        ...makeStroke('two'),
+        points: [
+          { x: 120, y: 220, t: 0 },
+          { x: 170, y: 220, t: 16 },
+          { x: 140, y: 250, t: 32 },
+          { x: 170, y: 280, t: 48 },
+          { x: 120, y: 280, t: 64 },
+        ],
+      },
+      {
+        ...makeStroke('minus'),
+        width: 6,
+        points: [
+          { x: 200, y: 248, t: 0 },
+          { x: 270, y: 248, t: 16 },
+        ],
+      },
+      {
+        ...makeStroke('one'),
+        points: [
+          { x: 310, y: 220, t: 0 },
+          { x: 310, y: 282, t: 16 },
+        ],
+      },
+    ]
+
+    const analysis = analyzeHandwrittenExpression(strokes)
+    const minusRole = analysis.roles.find((role) => role.recognizedSymbol?.value === '-') || null
+    const minusTopBrick = minusRole ? getTopBrickHypothesis(analysis, minusRole.groupId) : null
+    expect(minusRole?.role).toBe('baseline')
+    expect(minusTopBrick?.family).not.toBe('fractionBarBrick')
+    expect(['operatorBrick', 'ordinaryBaselineSymbolBrick']).toContain(minusTopBrick?.family || '')
+  })
+
   test('a global fraction bar suppresses standalone minus lines from claiming competing fraction-bar roles', async () => {
     const strokes: InkStroke[] = [
       {

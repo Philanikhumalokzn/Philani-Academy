@@ -1,6 +1,6 @@
 import { buildConcreteLegoFieldLayer } from './fieldLayout'
 import { clamp } from './geometry'
-import { getTopBrickHypothesisByGroupId } from './legoModel'
+import { buildBrickHypothesesByGroupId, getBlendedInlineFieldWeight, getTopBrickHypothesisByGroupId } from './legoModel'
 import { getRoleDescriptor, getRoleLocalityBias, roleAllowsChildRole, roleAllowsOperandRole, roleCanOwnScripts, roleRequiresOperandReference, roleUsesChildOperands, roleUsesParentOperand } from './roleTaxonomy'
 import { annotateRolesWithRecognizedSymbols } from './symbolRecognition'
 import type { EnclosureStructure, ExpressionContext, LayoutEdge, LegoBrickHypothesis, LegoFieldClaim, LocalSubexpression, StrokeGroup, StructuralAmbiguity, StructuralFlag, StructuralRole, StructuralRoleCandidate, StructuralRoleKind } from './types'
@@ -343,23 +343,20 @@ const getInlineFieldKind = (direction: 'left' | 'right') => {
 }
 
 const getInlineFieldWeight = (
-  topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
+  brickHypothesesByGroupId: Map<string, LegoBrickHypothesis[]>,
   groupId: string | null | undefined,
   direction: 'left' | 'right',
 ) => {
-  if (!groupId) return null
-  const topHypothesis = topBrickHypothesisByGroupId.get(groupId)
-  if (!topHypothesis) return null
-  return topHypothesis.fields.find((field) => field.kind === getInlineFieldKind(direction))?.weight ?? 0
+  return getBlendedInlineFieldWeight(brickHypothesesByGroupId, groupId, direction)
 }
 
 const getInlineAffordanceScore = (
-  topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
+  brickHypothesesByGroupId: Map<string, LegoBrickHypothesis[]>,
   leftGroupId: string | null | undefined,
   rightGroupId: string | null | undefined,
 ) => {
-  const leftWeight = getInlineFieldWeight(topBrickHypothesisByGroupId, leftGroupId, 'right')
-  const rightWeight = getInlineFieldWeight(topBrickHypothesisByGroupId, rightGroupId, 'left')
+  const leftWeight = getInlineFieldWeight(brickHypothesesByGroupId, leftGroupId, 'right')
+  const rightWeight = getInlineFieldWeight(brickHypothesesByGroupId, rightGroupId, 'left')
   if (leftWeight === null || rightWeight === null) {
     return {
       supported: true,
@@ -1399,6 +1396,7 @@ const isLikelySequenceWideScript = (
   parentGroupId: string | null | undefined,
   childGroupId: string,
   groupMap: Map<string, StrokeGroup>,
+  brickHypothesesByGroupId: Map<string, LegoBrickHypothesis[]>,
   topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
 ) => {
   if (!parentGroupId) return false
@@ -1413,7 +1411,7 @@ const isLikelySequenceWideScript = (
     .filter((candidate) => candidate.bounds.centerX < parentGroup.bounds.centerX)
     .filter((candidate) => Math.abs(candidate.bounds.centerY - parentGroup.bounds.centerY) <= Math.max(28, Math.max(candidate.bounds.height, parentGroup.bounds.height) * 0.6))
 
-  return inlinePeers.some((candidate) => getInlineAffordanceScore(topBrickHypothesisByGroupId, candidate.id, parentGroupId).supported)
+  return inlinePeers.some((candidate) => getInlineAffordanceScore(brickHypothesesByGroupId, candidate.id, parentGroupId).supported)
 }
 
 const appendFractionWideScriptAmbiguities = (roles: StructuralRole[], groups: StrokeGroup[], contexts: ExpressionContext[], ambiguities: StructuralAmbiguity[]) => {
@@ -2490,6 +2488,7 @@ const buildSequenceContexts = (
   parentContextId: string,
   containerGroupIds: string[],
   edges: LayoutEdge[],
+  brickHypothesesByGroupId: Map<string, LegoBrickHypothesis[]>,
   topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
 ) => {
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
@@ -2518,7 +2517,7 @@ const buildSequenceContexts = (
     const verticalOffset = Math.abs(candidate.bounds.centerY - previous.bounds.centerY)
     const compatibleGap = horizontalGap <= Math.max(44, Math.max(previous.bounds.right - previous.bounds.left, candidate.bounds.right - candidate.bounds.left) * 0.9)
     const compatibleBaseline = verticalOffset <= Math.max(28, Math.max(previous.bounds.bottom - previous.bounds.top, candidate.bounds.bottom - candidate.bounds.top) * 0.55)
-    const inlineSupport = getInlineAffordanceScore(topBrickHypothesisByGroupId, previous.subexpression.rootGroupId, candidate.subexpression.rootGroupId)
+    const inlineSupport = getInlineAffordanceScore(brickHypothesesByGroupId, previous.subexpression.rootGroupId, candidate.subexpression.rootGroupId)
     const previousAllowsSequence = sequenceContextAllowsRoot(topBrickHypothesisByGroupId, previous.subexpression.rootGroupId)
     const candidateAllowsSequence = sequenceContextAllowsRoot(topBrickHypothesisByGroupId, candidate.subexpression.rootGroupId)
 
@@ -2649,6 +2648,7 @@ const buildExpressionContexts = (
   fractionBindings: FractionStructureBinding[],
   radicalBindings: RadicalStructureBinding[],
   edges: LayoutEdge[],
+  brickHypothesesByGroupId: Map<string, LegoBrickHypothesis[]>,
   topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
 ) => {
   const contexts: ExpressionContext[] = []
@@ -2688,11 +2688,11 @@ const buildExpressionContexts = (
     })
   }
 
-  contexts.push(...buildSequenceContexts(roles, subexpressions, groupMap, 'context:root', [], edges, topBrickHypothesisByGroupId))
+  contexts.push(...buildSequenceContexts(roles, subexpressions, groupMap, 'context:root', [], edges, brickHypothesesByGroupId, topBrickHypothesisByGroupId))
 
   for (const enclosureContext of contexts.filter((context) => context.kind === 'enclosure')) {
     const containerGroupIds = enclosureContext.anchorGroupIds.filter((groupId) => groupId !== enclosureContext.semanticRootGroupId)
-    contexts.push(...buildSequenceContexts(roles, subexpressions, groupMap, enclosureContext.id, containerGroupIds, edges, topBrickHypothesisByGroupId))
+    contexts.push(...buildSequenceContexts(roles, subexpressions, groupMap, enclosureContext.id, containerGroupIds, edges, brickHypothesesByGroupId, topBrickHypothesisByGroupId))
   }
 
   const enclosureContexts = contexts.filter((context) => context.kind === 'enclosure')
@@ -3080,6 +3080,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
   const roles = new Map<string, StructuralRole>()
   const ambiguities: StructuralAmbiguity[] = []
   const semanticFlags: StructuralFlag[] = []
+  const brickHypothesesByGroupId = buildBrickHypothesesByGroupId(brickHypotheses)
   const topBrickHypothesisByGroupId = getTopBrickHypothesisByGroupId(brickHypotheses)
   const fieldClaimsByTargetGroupId = buildFieldClaimMap(buildConcreteLegoFieldLayer(groups, brickHypotheses).fieldClaims)
   const operatorAlternativeScoreByGroupId = new Map<string, number>()
@@ -3625,7 +3626,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
 
     const promotableSequenceWideCandidate = sortedCandidates.find((candidate) => {
       if ((candidate.role !== 'superscript' && candidate.role !== 'subscript') || !candidate.parentGroupId) return false
-      return isLikelySequenceWideScript(candidate.parentGroupId, group.id, groupMap, topBrickHypothesisByGroupId)
+      return isLikelySequenceWideScript(candidate.parentGroupId, group.id, groupMap, brickHypothesesByGroupId, topBrickHypothesisByGroupId)
     }) || null
 
     const selectedScriptCandidate = (() => {
@@ -3637,7 +3638,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
         const directPromotedParentRole = roles.get(directPromotedParentGroupId) || parentRole
         const minimumScore = (isFractionWideOutsideMember(group.id, parentRole || null, groupMap)
           || isRadicalWideOutsideMember(group.id, resolvedParentGroupId, radicalBindings, groupMap)
-          || isLikelySequenceWideScript(resolvedParentGroupId, group.id, groupMap, topBrickHypothesisByGroupId))
+          || isLikelySequenceWideScript(resolvedParentGroupId, group.id, groupMap, brickHypothesesByGroupId, topBrickHypothesisByGroupId))
           ? 0.32
           : 0.4
         if (best.score >= minimumScore) {
@@ -3651,7 +3652,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
               ? 'fraction'
               : directRadicalWideBinding
                 ? 'radical'
-                : isLikelySequenceWideScript(resolvedParentGroupId, group.id, groupMap, topBrickHypothesisByGroupId)
+                : isLikelySequenceWideScript(resolvedParentGroupId, group.id, groupMap, brickHypothesesByGroupId, topBrickHypothesisByGroupId)
                   ? 'sequence'
                   : null,
           }
@@ -3835,9 +3836,9 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
     numeratorRootIds: binding.radicandRootIds,
     denominatorRootIds: binding.indexRootIds,
   })), groups)
-  const contexts = buildExpressionContexts(groups, radicalSemanticRootSafeRoles, subexpressions, enclosures, fractionBindings, radicalBindings, edges, topBrickHypothesisByGroupId)
+  const contexts = buildExpressionContexts(groups, radicalSemanticRootSafeRoles, subexpressions, enclosures, fractionBindings, radicalBindings, edges, brickHypothesesByGroupId, topBrickHypothesisByGroupId)
   const sequencePromotedRoles = promoteSequenceWideScripts(radicalSemanticRootSafeRoles, contexts, groups, edges, topBrickHypothesisByGroupId)
-  const promotedContexts = buildExpressionContexts(groups, sequencePromotedRoles, subexpressions, enclosures, fractionBindings, radicalBindings, edges, topBrickHypothesisByGroupId)
+  const promotedContexts = buildExpressionContexts(groups, sequencePromotedRoles, subexpressions, enclosures, fractionBindings, radicalBindings, edges, brickHypothesesByGroupId, topBrickHypothesisByGroupId)
   const annotatedRoles = annotateRolesWithContexts(sequencePromotedRoles, promotedContexts, groups)
   const enclosurePromotedRoles = promoteEnclosureWideScripts(annotatedRoles, promotedContexts, groups)
   const radicalPromotedRoles = promoteRadicalWideScripts(enclosurePromotedRoles, promotedContexts, groups)

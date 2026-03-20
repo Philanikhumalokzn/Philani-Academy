@@ -4,7 +4,6 @@ import { analyzeHandwrittenExpression, createHandwritingIncrementalState, getHan
 import type { HandwritingFixtureName } from '../lib/handwritingNormalization/fixtures'
 
 const VIEWPORT = { width: 760, height: 420, padding: 28 }
-const GRID_LINE_SNAP_DISTANCE = 12
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
@@ -111,62 +110,58 @@ type SharedGridLine = {
   ownerRoles: string[]
 }
 
-const collapseSharedGridLines = (proposals: GridLineProposal[]) => {
-  const ordered = [...proposals].sort((left, right) => left.coordinate - right.coordinate)
+const getClosestSharedGridLine = (lines: SharedGridLine[], coordinate: number) => {
+  let closest: SharedGridLine | null = null
+  let closestDistance = Number.POSITIVE_INFINITY
+
+  for (const line of lines) {
+    const distance = Math.abs(line.coordinate - coordinate)
+    if (distance < closestDistance) {
+      closest = line
+      closestDistance = distance
+    }
+  }
+
+  return closest
+}
+
+const embraceClosestExistingGridLines = (proposals: GridLineProposal[]) => {
   const lines: SharedGridLine[] = []
-  let cluster: {
-    coordinateSum: number
-    count: number
-    ownerGroupIds: string[]
-    ownerRoles: string[]
-  } | null = null
+  const proposalsByGroupId = new Map<string, GridLineProposal[]>()
+  const groupOrder: string[] = []
 
-  const flushCluster = () => {
-    if (!cluster) return
-    lines.push({
-      coordinate: cluster.coordinateSum / Math.max(cluster.count, 1),
-      ownerGroupIds: cluster.ownerGroupIds,
-      ownerRoles: cluster.ownerRoles,
-    })
-    cluster = null
+  for (const proposal of proposals) {
+    if (!proposalsByGroupId.has(proposal.hostGroupId)) {
+      proposalsByGroupId.set(proposal.hostGroupId, [])
+      groupOrder.push(proposal.hostGroupId)
+    }
+    proposalsByGroupId.get(proposal.hostGroupId)?.push(proposal)
   }
 
-  for (const proposal of ordered) {
-    if (!cluster) {
-      cluster = {
-        coordinateSum: proposal.coordinate,
-        count: 1,
+  for (const groupId of groupOrder) {
+    const groupProposals = proposalsByGroupId.get(groupId) || []
+    const existingLines = [...lines]
+
+    for (const proposal of groupProposals) {
+      const adoptedLine = getClosestSharedGridLine(existingLines, proposal.coordinate)
+      if (adoptedLine) {
+        if (!adoptedLine.ownerGroupIds.includes(proposal.hostGroupId)) {
+          adoptedLine.ownerGroupIds.push(proposal.hostGroupId)
+        }
+        if (!adoptedLine.ownerRoles.includes(proposal.role)) {
+          adoptedLine.ownerRoles.push(proposal.role)
+        }
+        continue
+      }
+
+      lines.push({
+        coordinate: proposal.coordinate,
         ownerGroupIds: [proposal.hostGroupId],
         ownerRoles: [proposal.role],
-      }
-      continue
-    }
-
-    const clusterCoordinate = cluster.coordinateSum / Math.max(cluster.count, 1)
-    const closeEnough = Math.abs(proposal.coordinate - clusterCoordinate) <= GRID_LINE_SNAP_DISTANCE
-
-    if (!closeEnough) {
-      flushCluster()
-      cluster = {
-        coordinateSum: proposal.coordinate,
-        count: 1,
-        ownerGroupIds: [proposal.hostGroupId],
-        ownerRoles: [proposal.role],
-      }
-      continue
-    }
-
-    cluster.coordinateSum += proposal.coordinate
-    cluster.count += 1
-    if (!cluster.ownerGroupIds.includes(proposal.hostGroupId)) {
-      cluster.ownerGroupIds.push(proposal.hostGroupId)
-    }
-    if (!cluster.ownerRoles.includes(proposal.role)) {
-      cluster.ownerRoles.push(proposal.role)
+      })
     }
   }
 
-  flushCluster()
   return lines
 }
 
@@ -227,8 +222,8 @@ export default function HandwritingNormalizationTestCanvas() {
     }
 
     return {
-      verticalLines: collapseSharedGridLines(verticalProposals),
-      horizontalLines: collapseSharedGridLines(horizontalProposals),
+      verticalLines: embraceClosestExistingGridLines(verticalProposals),
+      horizontalLines: embraceClosestExistingGridLines(horizontalProposals),
       interfaces: [],
     }
   }, [analysis.groups, analysis.roles])

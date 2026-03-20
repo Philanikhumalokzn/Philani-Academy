@@ -4,6 +4,8 @@ import { analyzeHandwrittenExpression, createHandwritingIncrementalState, getHan
 import type { HandwritingFixtureName } from '../lib/handwritingNormalization/fixtures'
 
 const VIEWPORT = { width: 760, height: 420, padding: 28 }
+const GRID_LINE_SNAP_DISTANCE = 12
+const GRID_LINE_SPAN_GAP_TOLERANCE = 24
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
@@ -96,6 +98,99 @@ const pushGridCoordinate = (coordinates: number[], value: number) => {
   coordinates.push(value)
 }
 
+type GridLineProposal = {
+  coordinate: number
+  spanStart: number
+  spanEnd: number
+  hostGroupId: string
+  role: string
+}
+
+type SharedGridLine = {
+  coordinate: number
+  ownerGroupIds: string[]
+  ownerRoles: string[]
+}
+
+const spansCanShareGridLine = (leftStart: number, leftEnd: number, rightStart: number, rightEnd: number) => {
+  const overlap = Math.min(leftEnd, rightEnd) - Math.max(leftStart, rightStart)
+  if (overlap >= 0) return true
+  return Math.abs(overlap) <= GRID_LINE_SPAN_GAP_TOLERANCE
+}
+
+const collapseSharedGridLines = (proposals: GridLineProposal[]) => {
+  const ordered = [...proposals].sort((left, right) => left.coordinate - right.coordinate)
+  const lines: SharedGridLine[] = []
+  let cluster: {
+    coordinateSum: number
+    count: number
+    spanStart: number
+    spanEnd: number
+    ownerGroupIds: string[]
+    ownerRoles: string[]
+  } | null = null
+
+  const flushCluster = () => {
+    if (!cluster) return
+    lines.push({
+      coordinate: cluster.coordinateSum / Math.max(cluster.count, 1),
+      ownerGroupIds: cluster.ownerGroupIds,
+      ownerRoles: cluster.ownerRoles,
+    })
+    cluster = null
+  }
+
+  for (const proposal of ordered) {
+    if (!cluster) {
+      cluster = {
+        coordinateSum: proposal.coordinate,
+        count: 1,
+        spanStart: proposal.spanStart,
+        spanEnd: proposal.spanEnd,
+        ownerGroupIds: [proposal.hostGroupId],
+        ownerRoles: [proposal.role],
+      }
+      continue
+    }
+
+    const clusterCoordinate = cluster.coordinateSum / Math.max(cluster.count, 1)
+    const closeEnough = Math.abs(proposal.coordinate - clusterCoordinate) <= GRID_LINE_SNAP_DISTANCE
+    const spanCompatible = spansCanShareGridLine(cluster.spanStart, cluster.spanEnd, proposal.spanStart, proposal.spanEnd)
+
+    if (!closeEnough || !spanCompatible) {
+      flushCluster()
+      cluster = {
+        coordinateSum: proposal.coordinate,
+        count: 1,
+        spanStart: proposal.spanStart,
+        spanEnd: proposal.spanEnd,
+        ownerGroupIds: [proposal.hostGroupId],
+        ownerRoles: [proposal.role],
+      }
+      continue
+    }
+
+    cluster.coordinateSum += proposal.coordinate
+    cluster.count += 1
+    cluster.spanStart = Math.min(cluster.spanStart, proposal.spanStart)
+    cluster.spanEnd = Math.max(cluster.spanEnd, proposal.spanEnd)
+    if (!cluster.ownerGroupIds.includes(proposal.hostGroupId)) {
+      cluster.ownerGroupIds.push(proposal.hostGroupId)
+    }
+    if (!cluster.ownerRoles.includes(proposal.role)) {
+      cluster.ownerRoles.push(proposal.role)
+    }
+  }
+
+  flushCluster()
+  return lines
+}
+
+const getSharedGridLineColor = (ownerRoles: string[]) => {
+  if (ownerRoles.length === 1) return roleColor(ownerRoles[0])
+  return '#dbe8ff'
+}
+
 export default function HandwritingNormalizationTestCanvas() {
   const [strokes, setStrokes] = useState<InkStroke[]>([])
   const [normalizationEnabled, setNormalizationEnabled] = useState(true)
@@ -114,10 +209,11 @@ export default function HandwritingNormalizationTestCanvas() {
   const outputStrokes = normalizationEnabled ? analysis.normalization.strokes : strokes
   const outputBounds = useMemo(() => getGlobalBounds(outputStrokes), [outputStrokes])
   const fieldGrid = useMemo(() => {
-    const overlays = analysis.groups.map((group) => {
-      const fields = analysis.fieldInstances.filter((field) => field.hostGroupId === group.id)
-      if (!fields.length) return null
+    const verticalProposals: GridLineProposal[] = []
+    const horizontalProposals: GridLineProposal[] = []
 
+    for (const group of analysis.groups) {
+      const role = analysis.roles.find((entry) => entry.groupId === group.id)?.role || 'baseline'
       const xCoordinates: number[] = []
       const yCoordinates: number[] = []
       pushGridCoordinate(xCoordinates, group.bounds.left)
@@ -125,20 +221,33 @@ export default function HandwritingNormalizationTestCanvas() {
       pushGridCoordinate(yCoordinates, group.bounds.top)
       pushGridCoordinate(yCoordinates, group.bounds.bottom)
 
-      xCoordinates.sort((left, right) => left - right)
-      yCoordinates.sort((left, right) => left - right)
-
-      return {
-        hostGroupId: group.id,
-        hostBounds: group.bounds,
-        role: analysis.roles.find((role) => role.groupId === group.id)?.role || 'baseline',
-        xCoordinates,
-        yCoordinates,
+      for (const x of xCoordinates) {
+        verticalProposals.push({
+          coordinate: x,
+          spanStart: group.bounds.top,
+          spanEnd: group.bounds.bottom,
+          hostGroupId: group.id,
+          role,
+        })
       }
-    }).filter((overlay): overlay is NonNullable<typeof overlay> => Boolean(overlay))
 
-    return { overlays, interfaces: [] }
-  }, [analysis.fieldInstances, analysis.groups, analysis.roles])
+      for (const y of yCoordinates) {
+        horizontalProposals.push({
+          coordinate: y,
+          spanStart: group.bounds.left,
+          spanEnd: group.bounds.right,
+          hostGroupId: group.id,
+          role,
+        })
+      }
+    }
+
+    return {
+      verticalLines: collapseSharedGridLines(verticalProposals),
+      horizontalLines: collapseSharedGridLines(horizontalProposals),
+      interfaces: [],
+    }
+  }, [analysis.groups, analysis.roles])
 
   useEffect(() => {
     incrementalStateRef.current = createHandwritingIncrementalState(analysis)
@@ -421,43 +530,32 @@ export default function HandwritingNormalizationTestCanvas() {
               onPointerCancel={finishStroke}
             >
               <rect x="0" y="0" width={VIEWPORT.width} height={VIEWPORT.height} fill="transparent" />
-              {showFields && fieldGrid.overlays.map((overlay) => {
-                const gridColor = roleColor(overlay.role)
-                return (
-                  <g key={`grid:${overlay.hostGroupId}`}>
-                    {overlay.xCoordinates.map((x, index) => {
-                      return (
-                        <line
-                          key={`${overlay.hostGroupId}:x:${index}`}
-                          x1={x}
-                          y1={0}
-                          x2={x}
-                          y2={VIEWPORT.height}
-                          stroke={gridColor}
-                          strokeWidth={1.35}
-                          strokeOpacity={0.18}
-                          strokeDasharray="2 6"
-                        />
-                      )
-                    })}
-                    {overlay.yCoordinates.map((y, index) => {
-                      return (
-                        <line
-                          key={`${overlay.hostGroupId}:y:${index}`}
-                          x1={0}
-                          y1={y}
-                          x2={VIEWPORT.width}
-                          y2={y}
-                          stroke={gridColor}
-                          strokeWidth={1.35}
-                          strokeOpacity={0.18}
-                          strokeDasharray="2 6"
-                        />
-                      )
-                    })}
-                  </g>
-                )
-              })}
+              {showFields && fieldGrid.verticalLines.map((line, index) => (
+                <line
+                  key={`grid:v:${index}:${line.ownerGroupIds.join(':')}`}
+                  x1={line.coordinate}
+                  y1={0}
+                  x2={line.coordinate}
+                  y2={VIEWPORT.height}
+                  stroke={getSharedGridLineColor(line.ownerRoles)}
+                  strokeWidth={1.35}
+                  strokeOpacity={Math.min(0.3, 0.14 + line.ownerGroupIds.length * 0.03)}
+                  strokeDasharray="2 6"
+                />
+              ))}
+              {showFields && fieldGrid.horizontalLines.map((line, index) => (
+                <line
+                  key={`grid:h:${index}:${line.ownerGroupIds.join(':')}`}
+                  x1={0}
+                  y1={line.coordinate}
+                  x2={VIEWPORT.width}
+                  y2={line.coordinate}
+                  stroke={getSharedGridLineColor(line.ownerRoles)}
+                  strokeWidth={1.35}
+                  strokeOpacity={Math.min(0.3, 0.14 + line.ownerGroupIds.length * 0.03)}
+                  strokeDasharray="2 6"
+                />
+              ))}
               {showFieldIntersections && fieldGrid.interfaces.map((fieldInterface) => (
                 <g key={fieldInterface.id} />
               ))}

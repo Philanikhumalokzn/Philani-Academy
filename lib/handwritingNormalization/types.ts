@@ -195,6 +195,7 @@ export type LegoFieldClaim = {
   fieldTopology: LegoFieldTopology
   score: number
   overlapRatio: number
+  targetHostedRatio: number
   centerInside: boolean
   distanceScore: number
   dominanceBoost: number

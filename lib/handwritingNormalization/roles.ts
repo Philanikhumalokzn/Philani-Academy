@@ -383,6 +383,7 @@ type FieldClaimSupport = {
   strongestCompetingHostGroupId: string | null
   competitionMargin: number
   closureRatio: number
+  targetHostedRatio: number
   realizationScore: number
   directionalCompatibilityScore: number
   sharedCompatibilityScore: number
@@ -410,6 +411,7 @@ const EMPTY_FIELD_CLAIM_SUPPORT: FieldClaimSupport = {
   strongestCompetingHostGroupId: null,
   competitionMargin: 0,
   closureRatio: 0,
+  targetHostedRatio: 0,
   realizationScore: 0,
   directionalCompatibilityScore: 0,
   sharedCompatibilityScore: 0,
@@ -444,6 +446,7 @@ const getFieldClaimSupport = (
     .sort((left, right) => (
       right.score - left.score
       || right.realizationScore - left.realizationScore
+      || right.targetHostedRatio - left.targetHostedRatio
       || right.sharedCompatibilityScore - left.sharedCompatibilityScore
       || right.overlapRatio - left.overlapRatio
     ))
@@ -462,6 +465,7 @@ const getFieldClaimSupport = (
     strongestCompetingHostGroupId: competingClaim?.hostGroupId || null,
     competitionMargin,
     closureRatio: directClaim?.closureRatio || 0,
+    targetHostedRatio: directClaim?.targetHostedRatio || 0,
     realizationScore: directClaim?.realizationScore || 0,
     directionalCompatibilityScore: directClaim?.directionalCompatibilityScore || 0,
     sharedCompatibilityScore: directClaim?.sharedCompatibilityScore || 0,
@@ -477,6 +481,7 @@ const getFieldClaimSupport = (
       `field-claim-competing=${strongestCompetingScore.toFixed(3)}`,
       `field-claim-margin=${competitionMargin.toFixed(3)}`,
       `field-closure=${(directClaim?.closureRatio || 0).toFixed(3)}`,
+      `field-hosted=${(directClaim?.targetHostedRatio || 0).toFixed(3)}`,
       `field-realization=${(directClaim?.realizationScore || 0).toFixed(3)}`,
       `field-directional=${(directClaim?.directionalCompatibilityScore || 0).toFixed(3)}`,
       `field-shared=${(directClaim?.sharedCompatibilityScore || 0).toFixed(3)}`,

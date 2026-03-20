@@ -105,6 +105,27 @@ const getBoundsIntersection = (left: InkBounds, right: InkBounds): InkBounds | n
   return makeBounds(intersectionLeft, intersectionTop, intersectionRight, intersectionBottom)
 }
 
+const getTargetHostedRatio = (target: StrokeGroup, overlapBounds: InkBounds | null, fieldKind: LegoFieldKind) => {
+  if (!overlapBounds) return 0
+
+  switch (fieldKind) {
+    case 'upperLeftScript':
+    case 'upperRightScript':
+    case 'leftInline':
+    case 'rightInline':
+    case 'lowerLeftScript':
+    case 'lowerRightScript':
+      return clamp(overlapBounds.height / Math.max(1, target.bounds.height), 0, 1)
+    case 'over':
+    case 'under':
+      return clamp(overlapBounds.width / Math.max(1, target.bounds.width), 0, 1)
+    case 'center':
+    case 'interior':
+    default:
+      return clamp(getBoundsArea(overlapBounds) / Math.max(1, getBoundsArea(target.bounds)), 0, 1)
+  }
+}
+
 const isPointInsideBounds = (x: number, y: number, bounds: InkBounds) => (
   x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom
 )
@@ -138,6 +159,19 @@ const COUNTERPART_FIELD_KINDS: Record<LegoFieldKind, LegoFieldKind[]> = {
   lowerRightScript: ['lowerLeftScript'],
   over: [],
   under: [],
+  interior: [],
+}
+
+const OCCUPANCY_COMPETITION_FIELD_KINDS: Record<LegoFieldKind, LegoFieldKind[]> = {
+  center: [],
+  leftInline: ['upperLeftScript', 'leftInline', 'lowerLeftScript'],
+  rightInline: ['upperRightScript', 'rightInline', 'lowerRightScript'],
+  upperLeftScript: ['upperLeftScript', 'leftInline', 'lowerLeftScript'],
+  upperRightScript: ['upperRightScript', 'rightInline', 'lowerRightScript'],
+  lowerLeftScript: ['upperLeftScript', 'leftInline', 'lowerLeftScript'],
+  lowerRightScript: ['upperRightScript', 'rightInline', 'lowerRightScript'],
+  over: ['over', 'under'],
+  under: ['over', 'under'],
   interior: [],
 }
 
@@ -623,6 +657,7 @@ const buildFieldClaims = (
       const overlapBounds = getBoundsIntersection(target.bounds, field.bounds)
       const overlapArea = overlapBounds ? getBoundsArea(overlapBounds) : 0
       const overlapRatio = overlapArea / Math.max(1, Math.min(getBoundsArea(target.bounds), Math.max(getBoundsArea(field.bounds), 1)))
+      const targetHostedRatio = getTargetHostedRatio(target, overlapBounds, field.kind)
       const centerInside = isPointInsideBounds(target.centroid.x, target.centroid.y, field.bounds)
       const distanceScore = getDistanceScoreToBoundsCenter(target.centroid.x, target.centroid.y, field.bounds)
 
@@ -637,6 +672,20 @@ const buildFieldClaims = (
           dominanceBoost = Math.max(dominanceBoost, -targetOverlapRatio * 0.1)
         }
       }
+
+      const occupancyCompetitionFieldKinds = OCCUPANCY_COMPETITION_FIELD_KINDS[field.kind]
+      const strongestSiblingHostedRatio = occupancyCompetitionFieldKinds.length
+        ? (fieldInstancesByHostGroupId.get(field.hostGroupId) || [])
+            .filter((candidate) => candidate.id !== field.id)
+            .filter((candidate) => occupancyCompetitionFieldKinds.includes(candidate.kind))
+            .reduce((strongest, candidate) => {
+              const siblingOverlapBounds = getBoundsIntersection(target.bounds, candidate.bounds)
+              return Math.max(strongest, getTargetHostedRatio(target, siblingOverlapBounds, candidate.kind))
+            }, 0)
+        : 0
+      const occupancyCompetitionMargin = targetHostedRatio - strongestSiblingHostedRatio
+      const occupancyDominanceBoost = clamp(occupancyCompetitionMargin, 0, 1)
+      const occupancyCompetitionPenalty = clamp(-occupancyCompetitionMargin, 0, 1)
 
       const counterpartField = targetFields
         .filter((candidate) => field.counterpartKinds.includes(candidate.kind))
@@ -682,29 +731,35 @@ const buildFieldClaims = (
           ? counterpartField ? 0.04 : 0.16
           : 0
       const realizationScore = clamp(
-        field.closureRatio * 0.22
-          + overlapRatio * 0.16
-          + (centerInside ? 0.1 : 0)
-          + distanceScore * 0.08
-          + directionalCompatibilityScore * 0.22
-          + sharedCompatibilityScore * 0.18
+        field.closureRatio * 0.18
+          + targetHostedRatio * 0.28
+          + overlapRatio * 0.08
+          + (centerInside ? 0.08 : 0)
+          + distanceScore * 0.06
+          + directionalCompatibilityScore * 0.2
+          + sharedCompatibilityScore * 0.14
+          + occupancyDominanceBoost * 0.14
           + lineLikeReceptionBoost
           + (counterpartField ? counterpartField.closureRatio * 0.04 : 0)
+          - occupancyCompetitionPenalty * 0.18
           - latentPenalty
           - radicalHostedSuppression,
         0,
         1,
       )
 
-      const rawScore = field.ownershipStrength * 0.3
-        + overlapRatio * 0.18
-        + (centerInside ? 0.12 : 0)
-        + distanceScore * 0.08
+      const rawScore = field.ownershipStrength * 0.24
+        + targetHostedRatio * 0.28
+        + overlapRatio * 0.08
+        + (centerInside ? 0.1 : 0)
+        + distanceScore * 0.06
         + dominanceBoost
-        + realizationScore * 0.22
-        + directionalCompatibilityScore * 0.08
-        + sharedCompatibilityScore * 0.08
+        + realizationScore * 0.2
+        + directionalCompatibilityScore * 0.06
+        + sharedCompatibilityScore * 0.06
+        + occupancyDominanceBoost * 0.14
         + lineLikeReceptionBoost
+        - occupancyCompetitionPenalty * 0.18
         - latentPenalty
         - radicalHostedSuppression
       const score = clamp(rawScore, 0, 1.4)
@@ -721,6 +776,7 @@ const buildFieldClaims = (
         fieldTopology: field.topology,
         score,
         overlapRatio,
+        targetHostedRatio,
         centerInside,
         distanceScore,
         dominanceBoost,
@@ -739,9 +795,12 @@ const buildFieldClaims = (
           `field-direction=${field.direction}`,
           `field-closure=${field.closureRatio.toFixed(3)}`,
           `overlap-ratio=${overlapRatio.toFixed(3)}`,
+          `target-hosted-ratio=${targetHostedRatio.toFixed(3)}`,
           `center-inside=${centerInside}`,
           `distance-score=${distanceScore.toFixed(3)}`,
           `dominance-boost=${dominanceBoost.toFixed(3)}`,
+          `occupancy-dominance=${occupancyDominanceBoost.toFixed(3)}`,
+          `occupancy-competition=${occupancyCompetitionPenalty.toFixed(3)}`,
           `realization-score=${realizationScore.toFixed(3)}`,
           `directional-compatibility=${directionalCompatibilityScore.toFixed(3)}`,
           `shared-compatibility=${sharedCompatibilityScore.toFixed(3)}`,
@@ -759,6 +818,7 @@ const buildFieldClaims = (
   return claims.sort((left, right) => (
     right.score - left.score
     || right.realizationScore - left.realizationScore
+    || right.targetHostedRatio - left.targetHostedRatio
     || right.sharedCompatibilityScore - left.sharedCompatibilityScore
     || right.overlapRatio - left.overlapRatio
     || left.targetGroupId.localeCompare(right.targetGroupId)

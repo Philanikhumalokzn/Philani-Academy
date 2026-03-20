@@ -1016,6 +1016,51 @@ test.describe('handwriting normalization fixtures', () => {
     expect((normalizedById.get('num-right')?.bounds.bottom || 0)).toBeLessThan((normalizedById.get('bar')?.bounds.top || 0) - 12)
   })
 
+  test('hosted horizontal baseline members realign to the local fraction row during normalization', async () => {
+    const groups = [
+      makeGroup('num-left', { left: 120, top: 150, right: 154, bottom: 194, width: 34, height: 44, centerX: 137, centerY: 172 }),
+      makeGroup('num-minus', { left: 176, top: 204, right: 236, bottom: 204, width: 60, height: 0, centerX: 206, centerY: 204 }),
+      makeGroup('num-right', { left: 248, top: 148, right: 286, bottom: 196, width: 38, height: 48, centerX: 267, centerY: 172 }),
+      makeGroup('bar', { left: 112, top: 232, right: 292, bottom: 238, width: 180, height: 6, centerX: 202, centerY: 235 }),
+      makeGroup('den', { left: 182, top: 278, right: 218, bottom: 320, width: 36, height: 42, centerX: 200, centerY: 299 }),
+    ]
+    const roles = [
+      {
+        groupId: 'num-left', role: 'baseline', descriptor: getRoleDescriptor('baseline'), score: 0.8, depth: 0, parentGroupId: null, associationContextId: 'context:numerator:num-left', normalizationAnchorGroupIds: ['bar', 'num-left'], containerGroupIds: [], evidence: [],
+      },
+      {
+        groupId: 'num-minus', role: 'baseline', descriptor: getRoleDescriptor('baseline'), score: 0.78, depth: 0, parentGroupId: null, associationContextId: 'context:numerator:num-left', normalizationAnchorGroupIds: ['bar', 'num-left'], containerGroupIds: [], evidence: [],
+      },
+      {
+        groupId: 'num-right', role: 'baseline', descriptor: getRoleDescriptor('baseline'), score: 0.8, depth: 0, parentGroupId: null, associationContextId: 'context:numerator:num-left', normalizationAnchorGroupIds: ['bar', 'num-left'], containerGroupIds: [], evidence: [],
+      },
+      {
+        groupId: 'bar', role: 'fractionBar', descriptor: getRoleDescriptor('fractionBar'), score: 0.92, depth: 0, parentGroupId: null, associationContextId: 'context:root', normalizationAnchorGroupIds: ['bar'], containerGroupIds: [], evidence: [],
+      },
+      {
+        groupId: 'den', role: 'baseline', descriptor: getRoleDescriptor('baseline'), score: 0.82, depth: 0, parentGroupId: null, associationContextId: 'context:denominator:den', normalizationAnchorGroupIds: ['bar', 'den'], containerGroupIds: [], evidence: [],
+      },
+    ] as const
+    const contexts = [
+      { id: 'context:root', kind: 'root', parentContextId: null, semanticRootGroupId: null, anchorGroupIds: ['bar'], memberGroupIds: groups.map((group) => group.id) },
+      { id: 'context:fraction:bar', kind: 'fraction', parentContextId: 'context:root', semanticRootGroupId: 'bar', anchorGroupIds: ['bar', 'num-left', 'den'], memberGroupIds: groups.map((group) => group.id) },
+      { id: 'context:numerator:num-left', kind: 'numerator', parentContextId: 'context:fraction:bar', semanticRootGroupId: 'num-left', anchorGroupIds: ['bar', 'num-left'], memberGroupIds: ['num-left', 'num-minus', 'num-right'] },
+      { id: 'context:denominator:den', kind: 'denominator', parentContextId: 'context:fraction:bar', semanticRootGroupId: 'den', anchorGroupIds: ['bar', 'den'], memberGroupIds: ['den'] },
+    ] as const
+    const normalization = normalizeInkLayout(groups, [...roles], [...contexts])
+    const normalizedById = new Map(normalization.groups.map((group) => [group.id, group]))
+    const normalizedMinus = normalizedById.get('num-minus') || null
+    const normalizedLeft = normalizedById.get('num-left') || null
+    const normalizedRight = normalizedById.get('num-right') || null
+    const normalizedBar = normalizedById.get('bar') || null
+    const referenceCenterY = ((normalizedLeft?.bounds.centerY || 0) + (normalizedRight?.bounds.centerY || 0)) / 2
+
+    expect(normalizedMinus).toBeTruthy()
+    expect(normalizedBar).toBeTruthy()
+    expect(Math.abs((normalizedMinus?.bounds.centerY || 0) - referenceCenterY)).toBeLessThan(6)
+    expect((normalizedMinus?.bounds.bottom || 0)).toBeLessThan((normalizedBar?.bounds.top || 0) - 12)
+  })
+
   test('composite v-plus-v numerator stays a shared block in real analysis and normalization', async () => {
     const fixture = getHandwritingFixture('fractionCompositeNumerator')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)

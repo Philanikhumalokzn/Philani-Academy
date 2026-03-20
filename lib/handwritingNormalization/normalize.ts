@@ -17,6 +17,12 @@ const isBaselineLikeRole = (roleName: StructuralRole['role']) => {
   return roleName === 'baseline' || roleName === 'radical' || roleName === 'enclosureOpen' || roleName === 'enclosureClose'
 }
 
+const isHorizontalLineLikeBaseline = (group: StrokeGroup, role: StructuralRole | null | undefined) => {
+  return role?.role === 'baseline'
+    && group.strokeCount === 1
+    && group.bounds.width >= Math.max(24, group.bounds.height * 2.4)
+}
+
 const getScriptAnchorBounds = (
   role: StructuralRole,
   groupMap: Map<string, StrokeGroup>,
@@ -70,6 +76,7 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
   const scaledBoundsByGroupId = new Map<string, ReturnType<typeof mergeBounds>>()
   const localTranslationsByGroupId = new Map<string, { dx: number, dy: number }>()
   const contextTranslationsByContextId = new Map<string, { dx: number, dy: number }>()
+  const hostedLineAdjustmentsByGroupId = new Map<string, { dx: number, dy: number }>()
   const enclosureTransformsByContextId = new Map<string, { scale: number, centerX: number, centerY: number, dx: number, dy: number, memberGroupIds: string[] }>()
   const radicalContextTranslationsByContextId = new Map<string, { dx: number, dy: number }>()
 
@@ -190,6 +197,30 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     }
   }
 
+  for (const context of fractionMemberContexts) {
+    const referenceMembers = context.memberGroupIds
+      .map((groupId) => ({
+        groupId,
+        role: roleMap.get(groupId) || null,
+        group: groupMap.get(groupId) || null,
+        bounds: transformedBounds.get(groupId) || null,
+      }))
+      .filter((entry) => entry.group && entry.bounds && entry.role?.role === 'baseline')
+
+    const nonLineReferenceMembers = referenceMembers.filter((entry) => !isHorizontalLineLikeBaseline(entry.group as StrokeGroup, entry.role))
+    if (!nonLineReferenceMembers.length) continue
+
+    const targetCenterY = nonLineReferenceMembers.reduce((sum, entry) => sum + (entry.bounds?.centerY || 0), 0) / nonLineReferenceMembers.length
+
+    for (const entry of referenceMembers) {
+      if (!entry.group || !entry.bounds || !isHorizontalLineLikeBaseline(entry.group, entry.role)) continue
+      const dy = targetCenterY - entry.bounds.centerY
+      if (Math.abs(dy) < 1) continue
+      hostedLineAdjustmentsByGroupId.set(entry.groupId, { dx: 0, dy })
+      transformedBounds.set(entry.groupId, getTranslatedBounds(entry.bounds, 0, dy))
+    }
+  }
+
   for (const context of radicalMemberContexts) {
     const radicalContext = context.parentContextId ? contextMap.get(context.parentContextId) || null : null
     const radicalGroupId = radicalContext?.kind === 'radical' ? radicalContext.semanticRootGroupId || null : null
@@ -279,14 +310,15 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     if (!role || !scaledStrokes || !scaledBounds || !localTranslation || typeof scale !== 'number') continue
     const fractionMemberContextId = fractionMemberContextIdByGroupId.get(group.id) || null
     const contextTranslation = fractionMemberContextId ? contextTranslationsByContextId.get(fractionMemberContextId) || { dx: 0, dy: 0 } : { dx: 0, dy: 0 }
+    const hostedLineAdjustment = hostedLineAdjustmentsByGroupId.get(group.id) || { dx: 0, dy: 0 }
     const radicalMemberContextId = radicalMemberContextIdByGroupId.get(group.id) || null
     const radicalTranslation = radicalMemberContextId ? radicalContextTranslationsByContextId.get(radicalMemberContextId) || { dx: 0, dy: 0 } : { dx: 0, dy: 0 }
     let finalStrokes = scaledStrokes.map((stroke) => ({
       ...stroke,
       points: stroke.points.map((point) => ({
         ...point,
-        x: point.x + localTranslation.dx + contextTranslation.dx + radicalTranslation.dx,
-        y: point.y + localTranslation.dy + contextTranslation.dy + radicalTranslation.dy,
+        x: point.x + localTranslation.dx + contextTranslation.dx + hostedLineAdjustment.dx + radicalTranslation.dx,
+        y: point.y + localTranslation.dy + contextTranslation.dy + hostedLineAdjustment.dy + radicalTranslation.dy,
       })),
     }))
 

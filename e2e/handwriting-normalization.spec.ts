@@ -1054,10 +1054,16 @@ test.describe('handwriting normalization fixtures', () => {
     const normalizedRight = normalizedById.get('num-right') || null
     const normalizedBar = normalizedById.get('bar') || null
     const referenceCenterY = ((normalizedLeft?.bounds.centerY || 0) + (normalizedRight?.bounds.centerY || 0)) / 2
+    const targetGapCenterX = ((normalizedLeft?.bounds.right || 0) + (normalizedRight?.bounds.left || 0)) / 2
 
     expect(normalizedMinus).toBeTruthy()
+    expect(normalizedLeft).toBeTruthy()
+    expect(normalizedRight).toBeTruthy()
     expect(normalizedBar).toBeTruthy()
+    expect(Math.abs((normalizedLeft?.bounds.centerY || 0) - referenceCenterY)).toBeLessThan(6)
     expect(Math.abs((normalizedMinus?.bounds.centerY || 0) - referenceCenterY)).toBeLessThan(6)
+    expect(Math.abs((normalizedRight?.bounds.centerY || 0) - referenceCenterY)).toBeLessThan(6)
+    expect(Math.abs((normalizedMinus?.bounds.centerX || 0) - targetGapCenterX)).toBeLessThan(6)
     expect((normalizedMinus?.bounds.bottom || 0)).toBeLessThan((normalizedBar?.bounds.top || 0) - 12)
   })
 

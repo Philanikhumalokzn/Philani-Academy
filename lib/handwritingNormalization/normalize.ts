@@ -23,6 +23,11 @@ const isHorizontalLineLikeBaseline = (group: StrokeGroup, role: StructuralRole |
     && group.bounds.width >= Math.max(24, group.bounds.height * 2.4)
 }
 
+type CoBaselineCohort = {
+  id: string
+  memberGroupIds: string[]
+}
+
 const getScriptAnchorBounds = (
   role: StructuralRole,
   groupMap: Map<string, StrokeGroup>,
@@ -76,7 +81,7 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
   const scaledBoundsByGroupId = new Map<string, ReturnType<typeof mergeBounds>>()
   const localTranslationsByGroupId = new Map<string, { dx: number, dy: number }>()
   const contextTranslationsByContextId = new Map<string, { dx: number, dy: number }>()
-  const hostedLineAdjustmentsByGroupId = new Map<string, { dx: number, dy: number }>()
+  const coBaselineAdjustmentsByGroupId = new Map<string, { dx: number, dy: number }>()
   const enclosureTransformsByContextId = new Map<string, { scale: number, centerX: number, centerY: number, dx: number, dy: number, memberGroupIds: string[] }>()
   const radicalContextTranslationsByContextId = new Map<string, { dx: number, dy: number }>()
 
@@ -197,8 +202,25 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     }
   }
 
-  for (const context of fractionMemberContexts) {
-    const referenceMembers = context.memberGroupIds
+  const coBaselineCohorts: CoBaselineCohort[] = contexts
+    .filter((context) => (
+      context.kind === 'sequence'
+      || context.kind === 'numerator'
+      || context.kind === 'denominator'
+      || context.kind === 'radicand'
+      || context.kind === 'radicalIndex'
+    ))
+    .map((context) => ({
+      id: context.id,
+      memberGroupIds: context.memberGroupIds
+        .filter((groupId) => roleMap.get(groupId)?.role === 'baseline' && !(roleMap.get(groupId)?.parentGroupId))
+        .sort((left, right) => (transformedBounds.get(left)?.left || 0) - (transformedBounds.get(right)?.left || 0)),
+    }))
+    .filter((cohort) => cohort.memberGroupIds.length >= 2)
+    .sort((left, right) => left.memberGroupIds.length - right.memberGroupIds.length || left.id.localeCompare(right.id))
+
+  for (const cohort of coBaselineCohorts) {
+    const entries = cohort.memberGroupIds
       .map((groupId) => ({
         groupId,
         role: roleMap.get(groupId) || null,
@@ -207,17 +229,37 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
       }))
       .filter((entry) => entry.group && entry.bounds && entry.role?.role === 'baseline')
 
-    const nonLineReferenceMembers = referenceMembers.filter((entry) => !isHorizontalLineLikeBaseline(entry.group as StrokeGroup, entry.role))
-    if (!nonLineReferenceMembers.length) continue
+    if (entries.length < 2) continue
 
-    const targetCenterY = nonLineReferenceMembers.reduce((sum, entry) => sum + (entry.bounds?.centerY || 0), 0) / nonLineReferenceMembers.length
+    const centroidReferenceEntries = entries.filter((entry) => !isHorizontalLineLikeBaseline(entry.group as StrokeGroup, entry.role))
+    const centroidEntries = centroidReferenceEntries.length ? centroidReferenceEntries : entries
+    const targetCenterY = centroidEntries.reduce((sum, entry) => sum + (entry.bounds?.centerY || 0), 0) / centroidEntries.length
 
-    for (const entry of referenceMembers) {
-      if (!entry.group || !entry.bounds || !isHorizontalLineLikeBaseline(entry.group, entry.role)) continue
-      const dy = targetCenterY - entry.bounds.centerY
-      if (Math.abs(dy) < 1) continue
-      hostedLineAdjustmentsByGroupId.set(entry.groupId, { dx: 0, dy })
-      transformedBounds.set(entry.groupId, getTranslatedBounds(entry.bounds, 0, dy))
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index]
+      if (!entry.group || !entry.bounds) continue
+      const existingAdjustment = coBaselineAdjustmentsByGroupId.get(entry.groupId) || { dx: 0, dy: 0 }
+      let dx = existingAdjustment.dx
+      let dy = existingAdjustment.dy
+
+      if (Math.abs(targetCenterY - entry.bounds.centerY) >= 1) {
+        dy = targetCenterY - entry.bounds.centerY
+      }
+
+      if (isHorizontalLineLikeBaseline(entry.group, entry.role) && index > 0 && index < entries.length - 1) {
+        const leftNeighbor = entries[index - 1]?.bounds || null
+        const rightNeighbor = entries[index + 1]?.bounds || null
+        if (leftNeighbor && rightNeighbor) {
+          const targetCenterX = (leftNeighbor.right + rightNeighbor.left) / 2
+          if (Math.abs(targetCenterX - entry.bounds.centerX) >= 1) {
+            dx = targetCenterX - entry.bounds.centerX
+          }
+        }
+      }
+
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue
+      coBaselineAdjustmentsByGroupId.set(entry.groupId, { dx, dy })
+      transformedBounds.set(entry.groupId, getTranslatedBounds(entry.bounds, dx, dy))
     }
   }
 
@@ -310,15 +352,15 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     if (!role || !scaledStrokes || !scaledBounds || !localTranslation || typeof scale !== 'number') continue
     const fractionMemberContextId = fractionMemberContextIdByGroupId.get(group.id) || null
     const contextTranslation = fractionMemberContextId ? contextTranslationsByContextId.get(fractionMemberContextId) || { dx: 0, dy: 0 } : { dx: 0, dy: 0 }
-    const hostedLineAdjustment = hostedLineAdjustmentsByGroupId.get(group.id) || { dx: 0, dy: 0 }
+    const coBaselineAdjustment = coBaselineAdjustmentsByGroupId.get(group.id) || { dx: 0, dy: 0 }
     const radicalMemberContextId = radicalMemberContextIdByGroupId.get(group.id) || null
     const radicalTranslation = radicalMemberContextId ? radicalContextTranslationsByContextId.get(radicalMemberContextId) || { dx: 0, dy: 0 } : { dx: 0, dy: 0 }
     let finalStrokes = scaledStrokes.map((stroke) => ({
       ...stroke,
       points: stroke.points.map((point) => ({
         ...point,
-        x: point.x + localTranslation.dx + contextTranslation.dx + hostedLineAdjustment.dx + radicalTranslation.dx,
-        y: point.y + localTranslation.dy + contextTranslation.dy + hostedLineAdjustment.dy + radicalTranslation.dy,
+        x: point.x + localTranslation.dx + contextTranslation.dx + coBaselineAdjustment.dx + radicalTranslation.dx,
+        y: point.y + localTranslation.dy + contextTranslation.dy + coBaselineAdjustment.dy + radicalTranslation.dy,
       })),
     }))
 

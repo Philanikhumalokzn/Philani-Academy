@@ -74,9 +74,69 @@ const addAdjustment = (
 
 const buildRoleMap = (roles: StructuralRole[]) => new Map(roles.map((role) => [role.groupId, role]))
 
+const roleEvidenceIncludes = (role: StructuralRole, needle: string) => role.evidence.some((entry) => entry.includes(needle))
+
+const getInlineBaselineNeighborSupport = (
+  role: StructuralRole,
+  roleMap: Map<string, StructuralRole>,
+  groupMap: Map<string, StrokeGroup>,
+) => {
+  const group = groupMap.get(role.groupId)
+  if (!group) return 0
+
+  const scoreNeighbor = (candidate: StrokeGroup) => {
+    const verticalAlignment = clamp(
+      1 - Math.abs(candidate.bounds.centerY - group.bounds.centerY) / Math.max(24, Math.max(candidate.bounds.height, group.bounds.height) * 0.6),
+      0,
+      1,
+    )
+    const horizontalGap = candidate.bounds.centerX < group.bounds.centerX
+      ? Math.max(0, group.bounds.left - candidate.bounds.right)
+      : Math.max(0, candidate.bounds.left - group.bounds.right)
+    const gapCloseness = clamp(1 - horizontalGap / Math.max(36, group.bounds.width * 0.7), 0, 1)
+    return verticalAlignment * 0.58 + gapCloseness * 0.42
+  }
+
+  const candidates = analysisCandidateRoles(roleMap, group.id)
+    .map((candidateRole) => groupMap.get(candidateRole.groupId) || null)
+    .filter(Boolean) as StrokeGroup[]
+
+  const leftNeighbor = candidates
+    .filter((candidate) => candidate.bounds.centerX < group.bounds.centerX)
+    .map((candidate) => ({ candidate, score: scoreNeighbor(candidate) }))
+    .sort((left, right) => right.score - left.score || right.candidate.bounds.centerX - left.candidate.bounds.centerX)[0] || null
+
+  const rightNeighbor = candidates
+    .filter((candidate) => candidate.bounds.centerX > group.bounds.centerX)
+    .map((candidate) => ({ candidate, score: scoreNeighbor(candidate) }))
+    .sort((left, right) => right.score - left.score || left.candidate.bounds.centerX - right.candidate.bounds.centerX)[0] || null
+
+  if (!leftNeighbor && !rightNeighbor) return 0
+  if (leftNeighbor && rightNeighbor) {
+    return clamp(leftNeighbor.score * 0.5 + rightNeighbor.score * 0.5, 0, 1)
+  }
+  return (leftNeighbor?.score || rightNeighbor?.score || 0) * 0.72
+}
+
+const analysisCandidateRoles = (roleMap: Map<string, StructuralRole>, excludedGroupId: string) => {
+  return Array.from(roleMap.values()).filter((candidateRole) => {
+    if (candidateRole.groupId === excludedGroupId) return false
+    if (candidateRole.parentGroupId) return false
+    return candidateRole.role === 'baseline' || candidateRole.role === 'numerator' || candidateRole.role === 'denominator'
+  })
+}
+
+const isReleasedFractionLikeBaseline = (role: StructuralRole) => {
+  if (role.role !== 'baseline') return false
+  return roleEvidenceIncludes(role, 'pairing=fractionBar-vs-baseline')
+    || roleEvidenceIncludes(role, 'pairing=provisionalFractionBar-vs-baseline')
+    || roleEvidenceIncludes(role, 'unvindicated fraction candidate defaulted to minus-like baseline operator')
+}
+
 const deriveBrickFamilyAdjustments = (analysis: AnalysisPass) => {
   const adjustmentMap = new Map<string, Map<LegoBrickFamilyKind, number>>()
   const roleMap = buildRoleMap(analysis.roles)
+  const groupMap = new Map(analysis.groups.map((group) => [group.id, group]))
   const childRolesByParentId = new Map<string, StructuralRole[]>()
 
   for (const role of analysis.roles) {
@@ -88,6 +148,14 @@ const deriveBrickFamilyAdjustments = (analysis: AnalysisPass) => {
 
   for (const role of analysis.roles) {
     const scriptChildren = childRolesByParentId.get(role.groupId) || []
+    const inlineNeighborSupport = getInlineBaselineNeighborSupport(role, roleMap, groupMap)
+    const releasedFractionLikeBaseline = isReleasedFractionLikeBaseline(role)
+    const inlineContextBackedBaseline = roleEvidenceIncludes(role, 'inline sequence fallback')
+      || roleEvidenceIncludes(role, 'inline-field-pair=')
+      || inlineNeighborSupport >= 0.72
+      || releasedFractionLikeBaseline
+    const operatorBaseline = role.recognizedSymbol?.category === 'operator' && !scriptChildren.length && inlineContextBackedBaseline
+    const minusBaseline = role.recognizedSymbol?.value === '-' && !scriptChildren.length && inlineContextBackedBaseline
 
     switch (role.role) {
       case 'baseline': {
@@ -97,8 +165,19 @@ const deriveBrickFamilyAdjustments = (analysis: AnalysisPass) => {
           addAdjustment(adjustmentMap, role.groupId, 'radicalBrick', -0.1)
           addAdjustment(adjustmentMap, role.groupId, 'fractionBarBrick', -0.12)
         }
-        if (role.recognizedSymbol?.category === 'operator' && !scriptChildren.length) {
-          addAdjustment(adjustmentMap, role.groupId, 'operatorBrick', 0.06)
+        if (operatorBaseline) {
+          addAdjustment(adjustmentMap, role.groupId, 'ordinaryBaselineSymbolBrick', 0.08)
+          addAdjustment(adjustmentMap, role.groupId, 'operatorBrick', 0.14)
+          addAdjustment(adjustmentMap, role.groupId, 'fractionBarBrick', -0.18)
+        }
+        if (minusBaseline) {
+          addAdjustment(adjustmentMap, role.groupId, 'ordinaryBaselineSymbolBrick', 0.06)
+          addAdjustment(adjustmentMap, role.groupId, 'fractionBarBrick', -0.1)
+        }
+        if (releasedFractionLikeBaseline) {
+          addAdjustment(adjustmentMap, role.groupId, 'ordinaryBaselineSymbolBrick', 0.16)
+          addAdjustment(adjustmentMap, role.groupId, 'operatorBrick', 0.08)
+          addAdjustment(adjustmentMap, role.groupId, 'fractionBarBrick', -0.24)
         }
         break
       }

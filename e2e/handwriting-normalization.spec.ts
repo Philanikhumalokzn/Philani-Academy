@@ -722,12 +722,15 @@ test.describe('handwriting normalization fixtures', () => {
     ]
     const analysis = analyzeHandwrittenExpression(strokes)
     const minusRole = analysis.roles.find((role) => role.recognizedSymbol?.value === '-') || null
+    const minusTopBrick = minusRole ? getTopBrickHypothesis(analysis, minusRole.groupId) : null
 
     expect(analysis.groups).toHaveLength(3)
     expect(analysis.roles.some((role) => role.role === 'fractionBar' || role.role === 'provisionalFractionBar')).toBe(false)
     expect(analysis.roles.filter((role) => role.role === 'baseline')).toHaveLength(3)
     expect(minusRole?.role).toBe('baseline')
     expect(minusRole?.recognizedSymbol?.value).toBe('-')
+    expect(minusTopBrick?.family).not.toBe('fractionBarBrick')
+    expect(['operatorBrick', 'ordinaryBaselineSymbolBrick']).toContain(minusTopBrick?.family || '')
   })
 
   test('a global fraction bar suppresses standalone minus lines from claiming competing fraction-bar roles', async () => {

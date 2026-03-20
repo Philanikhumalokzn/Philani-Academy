@@ -110,6 +110,17 @@ type SharedGridLine = {
   ownerRoles: string[]
 }
 
+const getGroupArrivalRank = (strokeIndexById: Map<string, number>, strokeIds: string[]) => {
+  let earliestStrokeIndex = Number.POSITIVE_INFINITY
+  for (const strokeId of strokeIds) {
+    const strokeIndex = strokeIndexById.get(strokeId)
+    if (strokeIndex !== undefined && strokeIndex < earliestStrokeIndex) {
+      earliestStrokeIndex = strokeIndex
+    }
+  }
+  return earliestStrokeIndex
+}
+
 const getClosestSharedGridLine = (lines: SharedGridLine[], coordinate: number) => {
   let closest: SharedGridLine | null = null
   let closestDistance = Number.POSITIVE_INFINITY
@@ -123,6 +134,19 @@ const getClosestSharedGridLine = (lines: SharedGridLine[], coordinate: number) =
   }
 
   return closest
+}
+
+const getClosestSharedGridLineOnPreferredSide = (
+  lines: SharedGridLine[],
+  coordinate: number,
+  side: 'start' | 'end',
+) => {
+  const candidates = lines.filter((line) => (
+    side === 'start' ? line.coordinate <= coordinate : line.coordinate >= coordinate
+  ))
+
+  if (!candidates.length) return null
+  return getClosestSharedGridLine(candidates, coordinate)
 }
 
 const embraceClosestExistingGridLines = (proposals: GridLineProposal[]) => {
@@ -139,11 +163,13 @@ const embraceClosestExistingGridLines = (proposals: GridLineProposal[]) => {
   }
 
   for (const groupId of groupOrder) {
-    const groupProposals = proposalsByGroupId.get(groupId) || []
+    const groupProposals = [...(proposalsByGroupId.get(groupId) || [])].sort((left, right) => left.coordinate - right.coordinate)
     const existingLines = [...lines]
 
-    for (const proposal of groupProposals) {
-      const adoptedLine = getClosestSharedGridLine(existingLines, proposal.coordinate)
+    for (let index = 0; index < groupProposals.length; index += 1) {
+      const proposal = groupProposals[index]
+      const preferredSide = index === 0 ? 'start' : 'end'
+      const adoptedLine = getClosestSharedGridLineOnPreferredSide(existingLines, proposal.coordinate, preferredSide)
       if (adoptedLine) {
         if (!adoptedLine.ownerGroupIds.includes(proposal.hostGroupId)) {
           adoptedLine.ownerGroupIds.push(proposal.hostGroupId)
@@ -188,10 +214,19 @@ export default function HandwritingNormalizationTestCanvas() {
   const outputStrokes = normalizationEnabled ? analysis.normalization.strokes : strokes
   const outputBounds = useMemo(() => getGlobalBounds(outputStrokes), [outputStrokes])
   const fieldGrid = useMemo(() => {
+    const strokeIndexById = new Map(strokes.map((stroke, index) => [stroke.id, index]))
+    const orderedGroups = [...analysis.groups].sort((left, right) => {
+      const leftRank = getGroupArrivalRank(strokeIndexById, left.strokeIds)
+      const rightRank = getGroupArrivalRank(strokeIndexById, right.strokeIds)
+      if (leftRank !== rightRank) return leftRank - rightRank
+      if (left.bounds.left !== right.bounds.left) return left.bounds.left - right.bounds.left
+      if (left.bounds.top !== right.bounds.top) return left.bounds.top - right.bounds.top
+      return left.id.localeCompare(right.id)
+    })
     const verticalProposals: GridLineProposal[] = []
     const horizontalProposals: GridLineProposal[] = []
 
-    for (const group of analysis.groups) {
+    for (const group of orderedGroups) {
       const role = analysis.roles.find((entry) => entry.groupId === group.id)?.role || 'baseline'
       const xCoordinates: number[] = []
       const yCoordinates: number[] = []
@@ -226,7 +261,7 @@ export default function HandwritingNormalizationTestCanvas() {
       horizontalLines: embraceClosestExistingGridLines(horizontalProposals),
       interfaces: [],
     }
-  }, [analysis.groups, analysis.roles])
+  }, [analysis.groups, analysis.roles, strokes])
 
   useEffect(() => {
     incrementalStateRef.current = createHandwritingIncrementalState(analysis)

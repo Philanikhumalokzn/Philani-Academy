@@ -138,6 +138,14 @@ const deriveBrickFamilyAdjustments = (analysis: AnalysisPass) => {
   const roleMap = buildRoleMap(analysis.roles)
   const groupMap = new Map(analysis.groups.map((group) => [group.id, group]))
   const childRolesByParentId = new Map<string, StructuralRole[]>()
+  const fractionHostedFieldCountsByHostId = new Map<string, { over: number, under: number }>()
+
+  for (const occupancy of analysis.brickOccupancies) {
+    if (!occupancy.hostGroupId || (occupancy.field !== 'over' && occupancy.field !== 'under')) continue
+    const current = fractionHostedFieldCountsByHostId.get(occupancy.hostGroupId) || { over: 0, under: 0 }
+    current[occupancy.field] += 1
+    fractionHostedFieldCountsByHostId.set(occupancy.hostGroupId, current)
+  }
 
   for (const role of analysis.roles) {
     if (!role.parentGroupId) continue
@@ -150,6 +158,10 @@ const deriveBrickFamilyAdjustments = (analysis: AnalysisPass) => {
     const scriptChildren = childRolesByParentId.get(role.groupId) || []
     const inlineNeighborSupport = getInlineBaselineNeighborSupport(role, roleMap, groupMap)
     const releasedFractionLikeBaseline = isReleasedFractionLikeBaseline(role)
+    const fractionHostedFieldCounts = fractionHostedFieldCountsByHostId.get(role.groupId) || { over: 0, under: 0 }
+    const hasConfirmedFractionHostedEvidence = fractionHostedFieldCounts.over > 0 && fractionHostedFieldCounts.under > 0
+    const missingAnyFractionHostedSide = !hasConfirmedFractionHostedEvidence
+    const missingBothFractionHostedSides = fractionHostedFieldCounts.over === 0 && fractionHostedFieldCounts.under === 0
     const inlineContextBackedBaseline = roleEvidenceIncludes(role, 'inline sequence fallback')
       || roleEvidenceIncludes(role, 'inline-field-pair=')
       || inlineNeighborSupport >= 0.6
@@ -160,6 +172,13 @@ const deriveBrickFamilyAdjustments = (analysis: AnalysisPass) => {
     switch (role.role) {
       case 'baseline': {
         addAdjustment(adjustmentMap, role.groupId, 'ordinaryBaselineSymbolBrick', scriptChildren.length ? 0.1 : 0.06)
+        if (missingAnyFractionHostedSide) {
+          addAdjustment(adjustmentMap, role.groupId, 'fractionBarBrick', missingBothFractionHostedSides ? -0.3 : -0.18)
+          addAdjustment(adjustmentMap, role.groupId, 'ordinaryBaselineSymbolBrick', missingBothFractionHostedSides ? 0.04 : 0.02)
+          if (role.recognizedSymbol?.category === 'operator' && missingBothFractionHostedSides) {
+            addAdjustment(adjustmentMap, role.groupId, 'operatorBrick', 0.06)
+          }
+        }
         if (scriptChildren.length) {
           addAdjustment(adjustmentMap, role.groupId, 'operatorBrick', -0.08)
           addAdjustment(adjustmentMap, role.groupId, 'radicalBrick', -0.1)
@@ -192,14 +211,26 @@ const deriveBrickFamilyAdjustments = (analysis: AnalysisPass) => {
         break
       }
       case 'fractionBar': {
-        addAdjustment(adjustmentMap, role.groupId, 'fractionBarBrick', 0.22)
-        addAdjustment(adjustmentMap, role.groupId, 'ordinaryBaselineSymbolBrick', -0.12)
-        addAdjustment(adjustmentMap, role.groupId, 'operatorBrick', -0.08)
+        if (hasConfirmedFractionHostedEvidence) {
+          addAdjustment(adjustmentMap, role.groupId, 'fractionBarBrick', 0.22)
+          addAdjustment(adjustmentMap, role.groupId, 'ordinaryBaselineSymbolBrick', -0.12)
+          addAdjustment(adjustmentMap, role.groupId, 'operatorBrick', -0.08)
+        } else {
+          addAdjustment(adjustmentMap, role.groupId, 'fractionBarBrick', missingBothFractionHostedSides ? -0.34 : -0.18)
+          addAdjustment(adjustmentMap, role.groupId, 'ordinaryBaselineSymbolBrick', 0.06)
+          addAdjustment(adjustmentMap, role.groupId, 'operatorBrick', 0.08)
+        }
         break
       }
       case 'provisionalFractionBar': {
-        addAdjustment(adjustmentMap, role.groupId, 'fractionBarBrick', 0.12)
-        addAdjustment(adjustmentMap, role.groupId, 'ordinaryBaselineSymbolBrick', -0.05)
+        if (hasConfirmedFractionHostedEvidence) {
+          addAdjustment(adjustmentMap, role.groupId, 'fractionBarBrick', 0.12)
+          addAdjustment(adjustmentMap, role.groupId, 'ordinaryBaselineSymbolBrick', -0.05)
+        } else {
+          addAdjustment(adjustmentMap, role.groupId, 'fractionBarBrick', missingBothFractionHostedSides ? -0.34 : -0.22)
+          addAdjustment(adjustmentMap, role.groupId, 'ordinaryBaselineSymbolBrick', 0.06)
+          addAdjustment(adjustmentMap, role.groupId, 'operatorBrick', 0.08)
+        }
         break
       }
       case 'radical': {

@@ -657,7 +657,8 @@ test.describe('handwriting normalization fixtures', () => {
     expect((strongSequence?.metrics.inlineAffordanceScore || 0)).toBeGreaterThan(0.6)
     expect(weakSequence?.score || 0).toBeLessThan(strongSequence?.score || 0)
     expect((weakSequence?.metrics.inlineAffordanceScore || 0)).toBeLessThan((strongSequence?.metrics.inlineAffordanceScore || 0))
-    expect(weakBarBrick?.family).toBe('fractionBarBrick')
+    expect(weakBarBrick?.family).not.toBe('fractionBarBrick')
+    expect(['operatorBrick', 'ordinaryBaselineSymbolBrick']).toContain(weakBarBrick?.family || '')
   })
 
   test('lego-aware sequence contexts only materialize for inline-compatible pairs', async () => {
@@ -672,7 +673,7 @@ test.describe('handwriting normalization fixtures', () => {
     expect(weakSequenceContext).toBeFalsy()
   })
 
-  test('a lone horizontal line defaults to a baseline symbol while retaining silent structural candidacy', async () => {
+  test('a lone horizontal line defaults to a baseline symbol and does not keep fraction-bar family dominance without hosted members', async () => {
     const strokes: InkStroke[] = [{
       ...makeStroke('line-only'),
       width: 6,
@@ -689,7 +690,8 @@ test.describe('handwriting normalization fixtures', () => {
     expect(analysis.roles.some((role) => role.role === 'fractionBar' || role.role === 'provisionalFractionBar')).toBe(false)
     expect(baselineLine?.role).toBe('baseline')
     expect(baselineLine?.recognizedSymbol?.value).toBe('-')
-    expect(topBrick?.family).toBe('fractionBarBrick')
+    expect(topBrick?.family).not.toBe('fractionBarBrick')
+    expect(['operatorBrick', 'ordinaryBaselineSymbolBrick']).toContain(topBrick?.family || '')
     expect(analysis.roles.some((role) => role.role === 'unsupportedSymbol')).toBe(false)
   })
 

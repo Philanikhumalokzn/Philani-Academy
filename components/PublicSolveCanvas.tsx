@@ -481,8 +481,10 @@ export function PublicSolveCanvasViewer({
 }) {
   const normalizedScene = useMemo(() => normalizePublicSolveScene(scene), [scene])
   const viewerScene = useMemo(
-    () => clampSceneViewportToVisibleContent(normalizedScene, PUBLIC_SOLVE_VIEWER_HEIGHT_PX),
-    [normalizedScene]
+    () => (onViewportChange
+      ? normalizedScene
+      : clampSceneViewportToVisibleContent(normalizedScene, PUBLIC_SOLVE_VIEWER_HEIGHT_PX)),
+    [normalizedScene, onViewportChange]
   )
   const excalidrawApiRef = useRef<any>(null)
   const lastViewportSignatureRef = useRef<string | null>(null)
@@ -493,22 +495,11 @@ export function PublicSolveCanvasViewer({
 
   const handleViewerChange = useCallback((_elements: any[], appState: any) => {
     if (!onViewportChange) return
-    const rawScene = mergeViewportAppStateIntoScene(viewerScene, appState)
-    const clampedScene = clampSceneViewportToVisibleContent(rawScene, PUBLIC_SOLVE_VIEWER_HEIGHT_PX) || rawScene
-    const rawSignature = serializePublicSolveViewportSnapshot(appState)
-    const nextSignature = serializePublicSolveViewportSnapshot(clampedScene.appState)
+    const nextScene = mergeViewportAppStateIntoScene(viewerScene, appState)
+    const nextSignature = serializePublicSolveViewportSnapshot(nextScene.appState)
     if (lastViewportSignatureRef.current === nextSignature) return
     lastViewportSignatureRef.current = nextSignature
-    if (rawSignature !== nextSignature) {
-      excalidrawApiRef.current?.updateScene?.({
-        appState: {
-          scrollX: Number(clampedScene.appState?.scrollX || 0),
-          scrollY: Number(clampedScene.appState?.scrollY || 0),
-          zoom: Number(clampedScene.appState?.zoom || 1),
-        },
-      })
-    }
-    onViewportChange(clampedScene)
+    onViewportChange(nextScene)
   }, [onViewportChange, viewerScene])
 
   if (!publicSolveSceneHasContent(viewerScene)) {

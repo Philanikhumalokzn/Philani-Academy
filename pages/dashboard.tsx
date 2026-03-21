@@ -12283,7 +12283,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             panelSize="full"
             position="absolute"
             frameClassName="absolute inset-0 flex items-stretch justify-center p-0"
-            panelClassName="!max-w-none !rounded-none border-none bg-white"
+            panelClassName="!max-w-none !rounded-none border-none bg-white !mt-[calc(var(--app-safe-top)+4px)] !h-[calc(100dvh-var(--app-safe-top)-4px)] !max-h-[calc(100dvh-var(--app-safe-top)-4px)] sm:!mt-0 sm:!h-[100dvh] sm:!max-h-[100dvh]"
             className="[&>.philani-overlay-backdrop]:!bg-white [&>.philani-overlay-backdrop]:!backdrop-blur-none"
             contentClassName="p-0 flex flex-col overflow-hidden"
           >

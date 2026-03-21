@@ -1224,6 +1224,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [myPostsError, setMyPostsError] = useState<string | null>(null)
   const [myPostsExpanded, setMyPostsExpanded] = useState(false)
   const [myPostsContentMaxHeightPx, setMyPostsContentMaxHeightPx] = useState<number | null>(null)
+  const [myPostsShouldLockPageScroll, setMyPostsShouldLockPageScroll] = useState(false)
   const myPostsHeaderRef = useRef<HTMLButtonElement | null>(null)
   const myPostsScrollRef = useRef<HTMLDivElement | null>(null)
   const myPostsTouchStartYRef = useRef<number | null>(null)
@@ -1700,15 +1701,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   useEffect(() => {
     if (!myPostsExpanded) {
       setMyPostsContentMaxHeightPx(null)
+      setMyPostsShouldLockPageScroll(false)
       return
     }
 
-    if (typeof window === 'undefined' || typeof document === 'undefined') return
-
-    const prevHtmlOverflow = document.documentElement.style.overflow
-    const prevBodyOverflow = document.body.style.overflow
-    document.documentElement.style.overflow = 'hidden'
-    document.body.style.overflow = 'hidden'
+    if (typeof window === 'undefined') return
 
     const updateScrollableHeight = () => {
       const headerBottom = myPostsHeaderRef.current?.getBoundingClientRect()?.bottom
@@ -1716,20 +1713,42 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0
       const available = Math.max(180, Math.floor(viewportHeight - headerBottom - 12))
       setMyPostsContentMaxHeightPx(available)
+      window.requestAnimationFrame(() => {
+        const el = myPostsScrollRef.current
+        if (!el) {
+          setMyPostsShouldLockPageScroll(false)
+          return
+        }
+        const needsInternalScroll = el.scrollHeight > available + 1
+        setMyPostsShouldLockPageScroll(needsInternalScroll)
+      })
     }
 
     updateScrollableHeight()
     window.addEventListener('resize', updateScrollableHeight)
 
     return () => {
-      document.documentElement.style.overflow = prevHtmlOverflow
-      document.body.style.overflow = prevBodyOverflow
       window.removeEventListener('resize', updateScrollableHeight)
     }
-  }, [myPostsExpanded])
+  }, [myPostsExpanded, myPosts.length, myPostsLoading, myPostsError])
 
   useEffect(() => {
-    if (!myPostsExpanded) {
+    if (!myPostsExpanded || !myPostsShouldLockPageScroll) return
+    if (typeof document === 'undefined') return
+
+    const prevHtmlOverflow = document.documentElement.style.overflow
+    const prevBodyOverflow = document.body.style.overflow
+    document.documentElement.style.overflow = 'hidden'
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.documentElement.style.overflow = prevHtmlOverflow
+      document.body.style.overflow = prevBodyOverflow
+    }
+  }, [myPostsExpanded, myPostsShouldLockPageScroll])
+
+  useEffect(() => {
+    if (!myPostsExpanded || !myPostsShouldLockPageScroll) {
       myPostsTouchStartYRef.current = null
       return
     }
@@ -1772,7 +1791,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       el.removeEventListener('touchend', handleTouchEnd)
       el.removeEventListener('touchcancel', handleTouchEnd)
     }
-  }, [myPostsExpanded])
+  }, [myPostsExpanded, myPostsShouldLockPageScroll])
 
   const offlineDocsKey = useMemo(() => makeOfflineCacheKey('offline-docs'), [makeOfflineCacheKey])
 

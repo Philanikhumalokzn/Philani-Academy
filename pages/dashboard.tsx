@@ -4657,7 +4657,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <button
                 type="button"
                 className="min-w-0 flex-1 py-2 text-left text-[14px] text-[#65676b]"
-                onClick={() => setCreateOverlayOpen(true)}
+                onClick={() => {
+                  setCreateKind('post')
+                  setCreateOverlayOpen(true)
+                }}
               >
                 What's on your mind, {String(learnerName || 'learner').split(' ')[0]}?
               </button>

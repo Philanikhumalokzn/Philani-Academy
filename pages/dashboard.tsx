@@ -1225,6 +1225,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [myPostsExpanded, setMyPostsExpanded] = useState(false)
   const [myPostsContentMaxHeightPx, setMyPostsContentMaxHeightPx] = useState<number | null>(null)
   const myPostsHeaderRef = useRef<HTMLButtonElement | null>(null)
+  const myPostsScrollRef = useRef<HTMLDivElement | null>(null)
+  const myPostsTouchStartYRef = useRef<number | null>(null)
   const [socialLikedItems, setSocialLikedItems] = useState<Record<string, boolean>>({})
   const [lastSharedSocialItemKey, setLastSharedSocialItemKey] = useState<string | null>(null)
   const [interactiveViewportSavingByResponseId, setInteractiveViewportSavingByResponseId] = useState<Record<string, boolean>>({})
@@ -1723,6 +1725,52 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       document.documentElement.style.overflow = prevHtmlOverflow
       document.body.style.overflow = prevBodyOverflow
       window.removeEventListener('resize', updateScrollableHeight)
+    }
+  }, [myPostsExpanded])
+
+  useEffect(() => {
+    if (!myPostsExpanded) {
+      myPostsTouchStartYRef.current = null
+      return
+    }
+
+    const el = myPostsScrollRef.current
+    if (!el) return
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) return
+      myPostsTouchStartYRef.current = event.touches[0].clientY
+    }
+
+    const handleTouchMove = (event: TouchEvent) => {
+      if (event.touches.length !== 1) return
+      const startY = myPostsTouchStartYRef.current
+      if (typeof startY !== 'number') return
+
+      const currentY = event.touches[0].clientY
+      const deltaY = currentY - startY
+      const atTop = el.scrollTop <= 0
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1
+
+      if ((deltaY > 0 && atTop) || (deltaY < 0 && atBottom)) {
+        event.preventDefault()
+      }
+    }
+
+    const handleTouchEnd = () => {
+      myPostsTouchStartYRef.current = null
+    }
+
+    el.addEventListener('touchstart', handleTouchStart, { passive: true })
+    el.addEventListener('touchmove', handleTouchMove, { passive: false })
+    el.addEventListener('touchend', handleTouchEnd, { passive: true })
+    el.addEventListener('touchcancel', handleTouchEnd, { passive: true })
+
+    return () => {
+      el.removeEventListener('touchstart', handleTouchStart)
+      el.removeEventListener('touchmove', handleTouchMove)
+      el.removeEventListener('touchend', handleTouchEnd)
+      el.removeEventListener('touchcancel', handleTouchEnd)
     }
   }, [myPostsExpanded])
 
@@ -4743,6 +4791,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </button>
           {myPostsExpanded && (
             <div
+              ref={myPostsScrollRef}
               id="dashboard-my-posts-section"
               className="overflow-y-auto overscroll-contain"
               style={myPostsContentMaxHeightPx ? { maxHeight: `${myPostsContentMaxHeightPx}px` } : undefined}

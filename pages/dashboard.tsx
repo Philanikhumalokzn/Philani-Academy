@@ -12297,7 +12297,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 onChange={(e) => void onChallengeFilePicked(e)}
               />
 
-              <div className="px-4 py-4 sm:px-6 sm:py-5">
+              <div className="px-2 py-4 sm:px-3 sm:py-5">
                 <div className="flex items-start gap-3">
                   {learnerAvatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -12365,7 +12365,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
 
               <div className="flex flex-col gap-0 flex-1 min-h-0">
-                <div className="rounded-none border-t border-black/10 bg-white px-4 py-4 sm:px-6 sm:py-5 flex flex-col flex-1 min-h-0 overflow-hidden">
+                <div className="rounded-none border-t border-black/10 bg-white px-2 py-4 sm:px-3 sm:py-5 flex flex-col flex-1 min-h-0 overflow-hidden">
                   <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto">
                     <textarea
                       className="w-full min-h-[160px] resize-none bg-transparent text-[15px] leading-relaxed text-[#1c1e21] placeholder:text-slate-500 focus:outline-none"
@@ -12402,13 +12402,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </div>
 
                 {challengeParsedOpen && challengeParsedJsonText ? (
-                  <div className="rounded-none border-t border-black/10 bg-[#eef2f7] px-4 py-3 sm:px-6 sm:py-4">
+                  <div className="rounded-none border-t border-black/10 bg-[#eef2f7] px-2 py-3 sm:px-3 sm:py-4">
                     <pre className="whitespace-pre-wrap text-xs text-slate-700">{challengeParsedJsonText}</pre>
                   </div>
                 ) : null}
               </div>
 
-              <div className="border-t border-black/10 px-4 py-3 sm:px-6 sm:py-4 flex items-center justify-between gap-3 min-w-0 bg-white">
+              <div className="border-t border-black/10 px-2 py-3 sm:px-3 sm:py-4 flex items-center justify-between gap-3 min-w-0 bg-white">
                 <div className="flex items-center gap-2 min-w-0 overflow-x-auto">
                   <button
                     type="button"

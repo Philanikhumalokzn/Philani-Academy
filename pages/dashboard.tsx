@@ -12283,11 +12283,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             panelSize="full"
             position="absolute"
             frameClassName="absolute inset-0 flex items-stretch justify-center p-0"
-            panelClassName="!max-w-none !rounded-none border-none bg-[#f0f2f5]"
-            className="[&>.philani-overlay-backdrop]:!bg-[#f0f2f5] [&>.philani-overlay-backdrop]:!backdrop-blur-none"
+            panelClassName="!max-w-none !rounded-none border-none bg-white"
+            className="[&>.philani-overlay-backdrop]:!bg-white [&>.philani-overlay-backdrop]:!backdrop-blur-none"
             contentClassName="p-0 flex flex-col overflow-hidden"
           >
-            <div className="p-0 overflow-hidden flex flex-col flex-1 min-h-0 bg-[#f0f2f5] text-[#1c1e21]">
+            <div className="p-0 overflow-hidden flex flex-col flex-1 min-h-0 bg-white text-[#1c1e21]">
               <input
                 ref={challengeUploadInputRef}
                 type="file"

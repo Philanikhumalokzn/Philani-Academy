@@ -1738,12 +1738,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     const prevHtmlOverflow = document.documentElement.style.overflow
     const prevBodyOverflow = document.body.style.overflow
+    const prevHtmlOverscrollBehaviorY = document.documentElement.style.overscrollBehaviorY
+    const prevBodyOverscrollBehaviorY = document.body.style.overscrollBehaviorY
     document.documentElement.style.overflow = 'hidden'
     document.body.style.overflow = 'hidden'
+    document.documentElement.style.overscrollBehaviorY = 'none'
+    document.body.style.overscrollBehaviorY = 'none'
 
     return () => {
       document.documentElement.style.overflow = prevHtmlOverflow
       document.body.style.overflow = prevBodyOverflow
+      document.documentElement.style.overscrollBehaviorY = prevHtmlOverscrollBehaviorY
+      document.body.style.overscrollBehaviorY = prevBodyOverscrollBehaviorY
     }
   }, [myPostsExpanded, myPostsShouldLockPageScroll])
 

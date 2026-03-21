@@ -12282,6 +12282,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             variant="light"
             panelSize="full"
             position="absolute"
+            forceHeaderSafeTop
             frameClassName="absolute inset-0 flex items-stretch justify-center p-0"
             panelClassName="!h-full !max-h-none !max-w-none !rounded-none border-none bg-white"
             className="[&>.philani-overlay-backdrop]:!bg-white [&>.philani-overlay-backdrop]:!backdrop-blur-none"

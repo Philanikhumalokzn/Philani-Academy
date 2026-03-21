@@ -24,6 +24,7 @@ export type FullScreenGlassOverlayProps = {
   position?: 'fixed' | 'absolute'
   showCloseButton?: boolean
   hideHeader?: boolean
+  forceHeaderSafeTop?: boolean
 
   leftActions?: React.ReactNode
   rightActions?: React.ReactNode
@@ -50,6 +51,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     panelSize,
     showCloseButton: _showCloseButton,
     hideHeader = false,
+    forceHeaderSafeTop = false,
     leftActions,
     rightActions,
     className,
@@ -138,7 +140,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     ? 'p-3 sm:p-4 border-b border-slate-200/60 flex items-start justify-between gap-3 bg-white/70'
     : 'p-3 sm:p-4 border-b border-white/10 flex items-start justify-between gap-3'
 
-  const headerSafeTopClassName = panelSizing === 'full' && rootPosition === 'fixed'
+  const headerSafeTopClassName = (panelSizing === 'full' && rootPosition === 'fixed') || forceHeaderSafeTop
     ? 'pt-[calc(0.75rem+var(--app-safe-top))] sm:pt-[calc(1rem+var(--app-safe-top))]'
     : ''
 

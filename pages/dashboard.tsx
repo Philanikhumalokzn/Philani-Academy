@@ -1777,7 +1777,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       const atTop = el.scrollTop <= 0
       const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1
 
-      if ((deltaY > 0 && atTop) || (deltaY < 0 && atBottom)) {
+      // Prevent pull-to-refresh at top (downward drag) and overscroll at bottom (any vertical motion)
+      if ((deltaY > 0 && atTop) || atBottom) {
         event.preventDefault()
       }
     }

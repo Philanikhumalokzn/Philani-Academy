@@ -9,6 +9,11 @@ const MAX_IMAGE_URL_LENGTH = 2000
 
 const AUDIENCES = new Set(['public', 'grade', 'private'])
 
+function isMissingSocialPostsTableError(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err || '')
+  return /socialpost/i.test(message) && /(does not exist|not exist|no such table|relation)/i.test(message)
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const userId = await getUserIdFromReq(req)
   if (!userId) return res.status(401).json({ message: 'Unauthorized' })
@@ -71,6 +76,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       return res.status(200).json(created)
     } catch (err: any) {
+      if (isMissingSocialPostsTableError(err)) {
+        return res.status(503).json({ message: 'Posts are unavailable until the SocialPost database migration is applied.' })
+      }
       console.error('Failed to create post', err)
       return res.status(500).json({ message: err?.message || 'Failed to create post' })
     }

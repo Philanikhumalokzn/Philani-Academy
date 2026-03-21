@@ -13,6 +13,11 @@ function clampAudience(audience: unknown) {
   return 'public'
 }
 
+function isMissingSocialPostsTableError(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err || '')
+  return /socialpost/i.test(message) && /(does not exist|not exist|no such table|relation)/i.test(message)
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const requesterId = await getUserIdFromReq(req)
   if (!requesterId) return res.status(401).json({ message: 'Unauthorized' })
@@ -29,33 +34,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const isPrivileged = role === 'admin' || role === 'teacher'
   const socialPost = (prisma as any).socialPost as typeof prisma extends { socialPost: infer T } ? T : any
 
-  let post = await socialPost.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      title: true,
-      prompt: true,
-      imageUrl: true,
-      grade: true,
-      audience: true,
-      createdAt: true,
-      updatedAt: true,
-      createdById: true,
-      createdBy: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          grade: true,
-          avatar: true,
-          statusBio: true,
-          schoolName: true,
-          profileVisibility: true,
+  let post: any = null
+  try {
+    post = await socialPost.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        title: true,
+        prompt: true,
+        imageUrl: true,
+        grade: true,
+        audience: true,
+        createdAt: true,
+        updatedAt: true,
+        createdById: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            grade: true,
+            avatar: true,
+            statusBio: true,
+            schoolName: true,
+            profileVisibility: true,
+          },
         },
       },
-    },
-  })
+    })
+  } catch (err) {
+    if (isMissingSocialPostsTableError(err)) {
+      return res.status(503).json({ message: 'Posts are unavailable until the SocialPost database migration is applied.' })
+    }
+    throw err
+  }
 
   if (!post) return res.status(404).json({ message: 'Post not found' })
 
@@ -72,6 +85,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ])
       return res.status(200).json({ ok: true })
     } catch (err: any) {
+      if (isMissingSocialPostsTableError(err)) {
+        return res.status(503).json({ message: 'Posts are unavailable until the SocialPost database migration is applied.' })
+      }
       console.error('Failed to delete post', err)
       return res.status(500).json({ message: err?.message || 'Failed to delete post' })
     }
@@ -114,6 +130,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const updated = await socialPost.update({ where: { id }, data: updateData })
       return res.status(200).json(updated)
     } catch (err: any) {
+      if (isMissingSocialPostsTableError(err)) {
+        return res.status(503).json({ message: 'Posts are unavailable until the SocialPost database migration is applied.' })
+      }
       console.error('Failed to update post', err)
       return res.status(500).json({ message: err?.message || 'Failed to update post' })
     }

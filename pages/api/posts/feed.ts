@@ -7,6 +7,11 @@ function asString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function isMissingSocialPostsTableError(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err || '')
+  return /socialpost/i.test(message) && /(does not exist|not exist|no such table|relation)/i.test(message)
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const requesterId = await getUserIdFromReq(req)
   if (!requesterId) return res.status(401).json({ message: 'Unauthorized' })
@@ -67,30 +72,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ]
   }
 
-  const items = await socialPost.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-    take: 60,
-    select: {
-      id: true,
-      title: true,
-      prompt: true,
-      imageUrl: true,
-      grade: true,
-      audience: true,
-      createdAt: true,
-      createdById: true,
-      createdBy: {
-        select: {
-          id: true,
-          name: true,
-          avatar: true,
-          grade: true,
-          role: true,
+  let items: any[] = []
+  try {
+    items = await socialPost.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 60,
+      select: {
+        id: true,
+        title: true,
+        prompt: true,
+        imageUrl: true,
+        grade: true,
+        audience: true,
+        createdAt: true,
+        createdById: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            avatar: true,
+            grade: true,
+            role: true,
+          },
         },
       },
-    },
-  })
+    })
+  } catch (err) {
+    if (isMissingSocialPostsTableError(err)) {
+      return res.status(200).json({ posts: [] })
+    }
+    throw err
+  }
 
   const learnerResponse = (prisma as any).learnerResponse as typeof prisma extends { learnerResponse: infer T } ? T : any
   const postKeys = items.map((item) => `post:${item.id}`)

@@ -3,6 +3,11 @@ import prisma from '../../../../../lib/prisma'
 import { getUserGrade, getUserIdFromReq, getUserRole } from '../../../../../lib/auth'
 import { normalizeGradeInput } from '../../../../../lib/grades'
 
+function isMissingSocialPostsTableError(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err || '')
+  return /socialpost/i.test(message) && /(does not exist|not exist|no such table|relation)/i.test(message)
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', ['GET'])
@@ -35,21 +40,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     where.OR = or
   }
 
-  const items = await socialPost.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-    take: 60,
-    select: {
-      id: true,
-      title: true,
-      prompt: true,
-      imageUrl: true,
-      grade: true,
-      audience: true,
-      createdAt: true,
-      createdById: true,
-    },
-  })
+  let items: any[] = []
+  try {
+    items = await socialPost.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 60,
+      select: {
+        id: true,
+        title: true,
+        prompt: true,
+        imageUrl: true,
+        grade: true,
+        audience: true,
+        createdAt: true,
+        createdById: true,
+      },
+    })
+  } catch (err) {
+    if (isMissingSocialPostsTableError(err)) {
+      return res.status(200).json({ posts: [] })
+    }
+    throw err
+  }
 
   const ownResponseByKey = new Map<string, any>()
   if (requesterId && items.length > 0) {

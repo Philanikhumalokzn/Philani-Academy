@@ -4684,7 +4684,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         <section className="border-b border-black/10 bg-white">
           <button
             type="button"
-            className="flex w-full items-center justify-between px-4 py-3 text-left"
+            className={`flex w-full items-center justify-between px-4 py-3 text-left bg-white ${myPostsExpanded ? 'sticky top-0 z-20 border-b border-black/10 shadow-[0_6px_12px_rgba(15,23,42,0.06)]' : ''}`}
             onClick={() => setMyPostsExpanded(prev => !prev)}
             aria-expanded={myPostsExpanded}
             aria-controls="dashboard-my-posts-section"

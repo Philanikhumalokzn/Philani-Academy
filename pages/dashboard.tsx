@@ -1223,6 +1223,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [myPostsLoading, setMyPostsLoading] = useState(false)
   const [myPostsError, setMyPostsError] = useState<string | null>(null)
   const [myPostsExpanded, setMyPostsExpanded] = useState(false)
+  const [myPostsHeaderPinned, setMyPostsHeaderPinned] = useState(false)
+  const myPostsHeaderRef = useRef<HTMLButtonElement | null>(null)
   const [socialLikedItems, setSocialLikedItems] = useState<Record<string, boolean>>({})
   const [lastSharedSocialItemKey, setLastSharedSocialItemKey] = useState<string | null>(null)
   const [interactiveViewportSavingByResponseId, setInteractiveViewportSavingByResponseId] = useState<Record<string, boolean>>({})
@@ -1692,6 +1694,28 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       cancelled = true
     }
   }, [currentViewerId, hydrateOwnPostFeedItem, status])
+
+  useEffect(() => {
+    if (!myPostsExpanded) {
+      setMyPostsHeaderPinned(false)
+      return
+    }
+
+    const updatePinnedState = () => {
+      const top = myPostsHeaderRef.current?.getBoundingClientRect()?.top
+      if (typeof top !== 'number') return
+      setMyPostsHeaderPinned(top <= 0)
+    }
+
+    updatePinnedState()
+    window.addEventListener('scroll', updatePinnedState, { passive: true })
+    window.addEventListener('resize', updatePinnedState)
+
+    return () => {
+      window.removeEventListener('scroll', updatePinnedState)
+      window.removeEventListener('resize', updatePinnedState)
+    }
+  }, [myPostsExpanded])
 
   const offlineDocsKey = useMemo(() => makeOfflineCacheKey('offline-docs'), [makeOfflineCacheKey])
 
@@ -4683,8 +4707,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
         <section className="border-b border-black/10 bg-white">
           <button
+            ref={myPostsHeaderRef}
             type="button"
-            className={`flex w-full items-center justify-between px-4 py-3 text-left bg-white ${myPostsExpanded ? 'sticky top-0 z-20 border-b border-black/10 shadow-[0_6px_12px_rgba(15,23,42,0.06)]' : ''}`}
+            className={`flex w-full items-center justify-between px-4 py-3 text-left bg-white ${myPostsExpanded ? 'sticky top-0 z-20' : ''} ${myPostsExpanded && myPostsHeaderPinned ? 'border-b border-black/10 shadow-[0_6px_12px_rgba(15,23,42,0.06)]' : ''}`}
             onClick={() => setMyPostsExpanded(prev => !prev)}
             aria-expanded={myPostsExpanded}
             aria-controls="dashboard-my-posts-section"

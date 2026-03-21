@@ -1223,8 +1223,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [myPostsLoading, setMyPostsLoading] = useState(false)
   const [myPostsError, setMyPostsError] = useState<string | null>(null)
   const [myPostsExpanded, setMyPostsExpanded] = useState(false)
-  const [myPostsHeaderPinned, setMyPostsHeaderPinned] = useState(false)
-  const [myPostsStickyTopPx, setMyPostsStickyTopPx] = useState(0)
+  const [myPostsContentMaxHeightPx, setMyPostsContentMaxHeightPx] = useState<number | null>(null)
   const myPostsHeaderRef = useRef<HTMLButtonElement | null>(null)
   const [socialLikedItems, setSocialLikedItems] = useState<Record<string, boolean>>({})
   const [lastSharedSocialItemKey, setLastSharedSocialItemKey] = useState<string | null>(null)
@@ -1698,35 +1697,32 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   useEffect(() => {
     if (!myPostsExpanded) {
-      setMyPostsHeaderPinned(false)
-      setMyPostsStickyTopPx(0)
+      setMyPostsContentMaxHeightPx(null)
       return
     }
 
-    const getStickyTopPx = () => {
-      if (typeof document === 'undefined') return 0
-      const topHeader = document.querySelector('.mobile-safe-header-row') as HTMLElement | null
-      if (!topHeader) return 0
-      const rect = topHeader.getBoundingClientRect()
-      if (!Number.isFinite(rect.bottom)) return 0
-      return Math.max(0, Math.round(rect.bottom))
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+
+    const prevHtmlOverflow = document.documentElement.style.overflow
+    const prevBodyOverflow = document.body.style.overflow
+    document.documentElement.style.overflow = 'hidden'
+    document.body.style.overflow = 'hidden'
+
+    const updateScrollableHeight = () => {
+      const headerBottom = myPostsHeaderRef.current?.getBoundingClientRect()?.bottom
+      if (typeof headerBottom !== 'number') return
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0
+      const available = Math.max(180, Math.floor(viewportHeight - headerBottom - 12))
+      setMyPostsContentMaxHeightPx(available)
     }
 
-    const updatePinnedState = () => {
-      const top = myPostsHeaderRef.current?.getBoundingClientRect()?.top
-      if (typeof top !== 'number') return
-      const stickyTop = getStickyTopPx()
-      setMyPostsStickyTopPx(stickyTop)
-      setMyPostsHeaderPinned(top <= stickyTop + 1)
-    }
-
-    updatePinnedState()
-    window.addEventListener('scroll', updatePinnedState, { passive: true })
-    window.addEventListener('resize', updatePinnedState)
+    updateScrollableHeight()
+    window.addEventListener('resize', updateScrollableHeight)
 
     return () => {
-      window.removeEventListener('scroll', updatePinnedState)
-      window.removeEventListener('resize', updatePinnedState)
+      document.documentElement.style.overflow = prevHtmlOverflow
+      document.body.style.overflow = prevBodyOverflow
+      window.removeEventListener('resize', updateScrollableHeight)
     }
   }, [myPostsExpanded])
 
@@ -4722,8 +4718,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           <button
             ref={myPostsHeaderRef}
             type="button"
-            className={`flex w-full items-center justify-between px-4 py-3 text-left bg-white ${myPostsExpanded ? 'sticky z-20' : ''} ${myPostsExpanded && myPostsHeaderPinned ? 'border-b border-black/10 shadow-[0_6px_12px_rgba(15,23,42,0.06)]' : ''}`}
-            style={myPostsExpanded ? { top: `${myPostsStickyTopPx}px` } : undefined}
+            className={`flex w-full items-center justify-between px-4 py-3 text-left bg-white ${myPostsExpanded ? 'border-b border-black/10 shadow-[0_6px_12px_rgba(15,23,42,0.06)]' : ''}`}
             onClick={() => setMyPostsExpanded(prev => !prev)}
             aria-expanded={myPostsExpanded}
             aria-controls="dashboard-my-posts-section"
@@ -4747,7 +4742,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </div>
           </button>
           {myPostsExpanded && (
-            <div id="dashboard-my-posts-section">
+            <div
+              id="dashboard-my-posts-section"
+              className="overflow-y-auto overscroll-contain"
+              style={myPostsContentMaxHeightPx ? { maxHeight: `${myPostsContentMaxHeightPx}px` } : undefined}
+            >
               {myPostsLoading ? (
                 <div className="px-4 py-6 text-sm text-[#65676b]">Loading...</div>
               ) : myPostsError ? (

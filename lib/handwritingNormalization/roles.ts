@@ -1932,7 +1932,12 @@ const collectStableAttachments = (
     resolved.push(attachment)
   }
 
-  return resolved
+  const attachmentByChildId = new Map(resolved.map((attachment) => [attachment.childId, attachment]))
+  return resolved.filter((attachment) => {
+    const parentAttachment = attachmentByChildId.get(attachment.parentId) || null
+    if (!parentAttachment) return true
+    return parentAttachment.role === attachment.role
+  })
 }
 
 const buildLocalSubexpressions = (groups: StrokeGroup[], attachments: StableAttachment[], blockedGroupIds: Set<string>) => {

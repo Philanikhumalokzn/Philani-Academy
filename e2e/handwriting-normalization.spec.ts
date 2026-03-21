@@ -1649,10 +1649,15 @@ test.describe('handwriting normalization fixtures', () => {
     expect(roleAllowsChildRole('fractionBar', 'superscript')).toBe(false)
     expect(roleAllowsChildRole('fractionBar', 'subscript')).toBe(false)
     expect(roleAllowsChildRole('fractionBar', 'numerator')).toBe(true)
+    expect(roleAllowsChildRole('superscript', 'superscript')).toBe(true)
+    expect(roleAllowsChildRole('superscript', 'subscript')).toBe(false)
+    expect(roleAllowsChildRole('subscript', 'subscript')).toBe(true)
+    expect(roleAllowsChildRole('subscript', 'superscript')).toBe(false)
     expect(superscript.operatorKind).toBe('unaryReference')
     expect(superscript.operandReferenceMode).toBe('parent')
     expect(superscript.requiresOperandReference).toBe(true)
-    expect(superscript.allowedOperandRoles).toEqual(expect.arrayContaining(['baseline', 'superscript', 'subscript']))
+    expect(superscript.allowedOperandRoles).toEqual(expect.arrayContaining(['baseline', 'superscript']))
+    expect(superscript.allowedOperandRoles).not.toContain('subscript')
     expect(fractionBar.operatorKind).toBe('binaryStructure')
     expect(fractionBar.operandReferenceMode).toBe('children')
     expect(fractionBar.requiresOperandReference).toBe(true)
@@ -1662,6 +1667,32 @@ test.describe('handwriting normalization fixtures', () => {
     expect(enclosureOpen.structuralBarrier).toBe(true)
     expect(numerator.peerRoles).toContain('denominator')
     expect(baseline.allowedChildRoles).toEqual(expect.arrayContaining(['superscript', 'subscript']))
+  })
+
+  test('opposite nested scripts are blocked while same-direction nesting can remain', async () => {
+    const base = makeGroup('base', { left: 100, top: 220, right: 144, bottom: 270, width: 44, height: 50, centerX: 122, centerY: 245 })
+    const upper = makeGroup('upper', { left: 164, top: 160, right: 196, bottom: 198, width: 32, height: 38, centerX: 180, centerY: 179 })
+    const lower = makeGroup('lower', { left: 210, top: 188, right: 240, bottom: 224, width: 30, height: 36, centerX: 225, centerY: 206 })
+
+    const roles = inferStructuralRoles(
+      [base, upper, lower],
+      [
+        makeEdge('base', 'upper', 'superscriptCandidate', 0.82, { dx: 58, dy: -56, sizeRatio: 0.76 }),
+        makeEdge('upper', 'lower', 'subscriptCandidate', 0.84, { dx: 45, dy: 27, belowRightScore: 0.88, directlyBelowScore: 0.64, sizeRatio: 0.78 }),
+      ],
+      [
+        makeBrickHypothesis('base', 'ordinaryBaselineSymbolBrick'),
+        makeBrickHypothesis('upper', 'ordinaryBaselineSymbolBrick'),
+        makeBrickHypothesis('lower', 'ordinaryBaselineSymbolBrick'),
+      ],
+    )
+
+    const upperRole = roles.roles.find((role) => role.groupId === 'upper') || null
+    const lowerRole = roles.roles.find((role) => role.groupId === 'lower') || null
+
+    expect(upperRole?.role).toBe('superscript')
+    expect(lowerRole?.role).not.toBe('subscript')
+    expect(lowerRole?.parentGroupId).not.toBe('upper')
   })
 
   test('all unary script roles keep a required parent operand reference', async () => {

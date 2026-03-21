@@ -1224,6 +1224,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [myPostsError, setMyPostsError] = useState<string | null>(null)
   const [myPostsExpanded, setMyPostsExpanded] = useState(false)
   const [myPostsHeaderPinned, setMyPostsHeaderPinned] = useState(false)
+  const [myPostsStickyTopPx, setMyPostsStickyTopPx] = useState(0)
   const myPostsHeaderRef = useRef<HTMLButtonElement | null>(null)
   const [socialLikedItems, setSocialLikedItems] = useState<Record<string, boolean>>({})
   const [lastSharedSocialItemKey, setLastSharedSocialItemKey] = useState<string | null>(null)
@@ -1698,13 +1699,25 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   useEffect(() => {
     if (!myPostsExpanded) {
       setMyPostsHeaderPinned(false)
+      setMyPostsStickyTopPx(0)
       return
+    }
+
+    const getStickyTopPx = () => {
+      if (typeof document === 'undefined') return 0
+      const topHeader = document.querySelector('.mobile-safe-header-row') as HTMLElement | null
+      if (!topHeader) return 0
+      const rect = topHeader.getBoundingClientRect()
+      if (!Number.isFinite(rect.bottom)) return 0
+      return Math.max(0, Math.round(rect.bottom))
     }
 
     const updatePinnedState = () => {
       const top = myPostsHeaderRef.current?.getBoundingClientRect()?.top
       if (typeof top !== 'number') return
-      setMyPostsHeaderPinned(top <= 0)
+      const stickyTop = getStickyTopPx()
+      setMyPostsStickyTopPx(stickyTop)
+      setMyPostsHeaderPinned(top <= stickyTop + 1)
     }
 
     updatePinnedState()
@@ -4709,7 +4722,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           <button
             ref={myPostsHeaderRef}
             type="button"
-            className={`flex w-full items-center justify-between px-4 py-3 text-left bg-white ${myPostsExpanded ? 'sticky top-0 z-20' : ''} ${myPostsExpanded && myPostsHeaderPinned ? 'border-b border-black/10 shadow-[0_6px_12px_rgba(15,23,42,0.06)]' : ''}`}
+            className={`flex w-full items-center justify-between px-4 py-3 text-left bg-white ${myPostsExpanded ? 'sticky z-20' : ''} ${myPostsExpanded && myPostsHeaderPinned ? 'border-b border-black/10 shadow-[0_6px_12px_rgba(15,23,42,0.06)]' : ''}`}
+            style={myPostsExpanded ? { top: `${myPostsStickyTopPx}px` } : undefined}
             onClick={() => setMyPostsExpanded(prev => !prev)}
             aria-expanded={myPostsExpanded}
             aria-controls="dashboard-my-posts-section"

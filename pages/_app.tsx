@@ -469,6 +469,31 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
     setClientError(null)
   }, [router.asPath])
 
+  useEffect(() => {
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const [{ Capacitor }, { StatusBar, Style }] = await Promise.all([
+          import('@capacitor/core'),
+          import('@capacitor/status-bar'),
+        ])
+
+        if (cancelled || !Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+          return
+        }
+
+        await StatusBar.setStyle({ style: Style.Light })
+      } catch {
+        // ignore native status bar failures outside Capacitor shells
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   if (clientError) {
     return (
       <SessionProvider session={session}>

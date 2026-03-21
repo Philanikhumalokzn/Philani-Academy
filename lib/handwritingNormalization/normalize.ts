@@ -84,6 +84,20 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
   const coBaselineAdjustmentsByGroupId = new Map<string, { dx: number, dy: number }>()
   const enclosureTransformsByContextId = new Map<string, { scale: number, centerX: number, centerY: number, dx: number, dy: number, memberGroupIds: string[] }>()
   const radicalContextTranslationsByContextId = new Map<string, { dx: number, dy: number }>()
+  const scriptSequenceAdjustmentsByGroupId = new Map<string, { dx: number, dy: number }>()
+  const scriptSequenceContexts = contexts.filter((context) => {
+    if (context.kind !== 'sequence' || !context.semanticRootGroupId) return false
+    const rootRole = roleMap.get(context.semanticRootGroupId) || null
+    return rootRole?.role === 'superscript' || rootRole?.role === 'subscript'
+  })
+  const scriptSequenceContextByGroupId = new Map<string, ExpressionContext>()
+  for (const context of scriptSequenceContexts) {
+    for (const groupId of context.memberGroupIds) {
+      if (!scriptSequenceContextByGroupId.has(groupId)) {
+        scriptSequenceContextByGroupId.set(groupId, context)
+      }
+    }
+  }
 
   const fractionMemberContexts = contexts.filter((context) => {
     if (context.kind !== 'numerator' && context.kind !== 'denominator') return false
@@ -137,7 +151,11 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     const fractionMemberContextId = fractionMemberContextIdByGroupId.get(group.id) || null
     const hostedRadicalContextKind = radicalContextKindByGroupId.get(group.id) || null
     const inFractionMemberContext = Boolean(fractionMemberContextId)
-    const scale = getRoleScale(role, inFractionMemberContext, hostedRadicalContextKind)
+    const scriptSequenceContext = scriptSequenceContextByGroupId.get(group.id) || null
+    const scriptSequenceRootRole = scriptSequenceContext?.semanticRootGroupId ? roleMap.get(scriptSequenceContext.semanticRootGroupId) || null : null
+    const scale = role.role === 'baseline' && scriptSequenceRootRole
+      ? Math.max(0.42, getRoleScale(scriptSequenceRootRole, inFractionMemberContext, hostedRadicalContextKind) * 0.98)
+      : getRoleScale(role, inFractionMemberContext, hostedRadicalContextKind)
     scalesByGroupId.set(group.id, scale)
     const anchor = { x: group.bounds.centerX, y: group.bounds.centerY }
     const scaledStrokes = group.strokes.map((stroke) => transformStroke(stroke, scale, anchor, 0, 0))
@@ -147,7 +165,7 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     let dx = 0
     let dy = 0
 
-    if (isBaselineLikeRole(role.role) && !inFractionMemberContext) {
+    if (isBaselineLikeRole(role.role) && !inFractionMemberContext && !scriptSequenceRootRole) {
       dy = baselineY - scaledBounds.bottom
       const targetHeight = baselineHeight
       const heightAdjust = targetHeight - scaledBounds.height
@@ -173,6 +191,30 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     const locallyTranslatedBounds = mergeBounds(scaledStrokes.map(getStrokeBounds).map((bounds) => getTranslatedBounds(bounds, dx, dy)))
 
     transformedBounds.set(group.id, locallyTranslatedBounds)
+  }
+
+  for (const context of scriptSequenceContexts) {
+    const scriptRootId = context.semanticRootGroupId || null
+    const scriptRootBounds = scriptRootId ? transformedBounds.get(scriptRootId) || null : null
+    if (!scriptRootId || !scriptRootBounds) continue
+
+    let previousBounds = scriptRootBounds
+    const orderedMemberIds = context.memberGroupIds
+      .filter((groupId) => roleMap.get(groupId)?.role === 'baseline')
+      .sort((left, right) => (transformedBounds.get(left)?.left || 0) - (transformedBounds.get(right)?.left || 0))
+
+    for (const groupId of orderedMemberIds) {
+      const memberBounds = transformedBounds.get(groupId)
+      if (!memberBounds) continue
+      const minimumGap = Math.max(8, previousBounds.width * 0.08)
+      const desiredLeft = Math.max(memberBounds.left, previousBounds.right + minimumGap)
+      const dx = desiredLeft - memberBounds.left
+      const dy = scriptRootBounds.centerY - memberBounds.centerY
+      scriptSequenceAdjustmentsByGroupId.set(groupId, { dx, dy })
+      const adjustedBounds = getTranslatedBounds(memberBounds, dx, dy)
+      transformedBounds.set(groupId, adjustedBounds)
+      previousBounds = adjustedBounds
+    }
   }
 
   for (const context of fractionMemberContexts) {
@@ -213,7 +255,12 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     .map((context) => ({
       id: context.id,
       memberGroupIds: context.memberGroupIds
-        .filter((groupId) => roleMap.get(groupId)?.role === 'baseline' && !(roleMap.get(groupId)?.parentGroupId))
+        .filter((groupId) => {
+          const role = roleMap.get(groupId) || null
+          if (role?.role !== 'baseline' || role.parentGroupId) return false
+          const scriptSequenceContext = scriptSequenceContextByGroupId.get(groupId) || null
+          return !scriptSequenceContext || scriptSequenceContext.id === context.id
+        })
         .sort((left, right) => (transformedBounds.get(left)?.left || 0) - (transformedBounds.get(right)?.left || 0)),
     }))
     .filter((cohort) => cohort.memberGroupIds.length >= 2)
@@ -353,14 +400,15 @@ export const normalizeInkLayout = (groups: StrokeGroup[], roles: StructuralRole[
     const fractionMemberContextId = fractionMemberContextIdByGroupId.get(group.id) || null
     const contextTranslation = fractionMemberContextId ? contextTranslationsByContextId.get(fractionMemberContextId) || { dx: 0, dy: 0 } : { dx: 0, dy: 0 }
     const coBaselineAdjustment = coBaselineAdjustmentsByGroupId.get(group.id) || { dx: 0, dy: 0 }
+    const scriptSequenceAdjustment = scriptSequenceAdjustmentsByGroupId.get(group.id) || { dx: 0, dy: 0 }
     const radicalMemberContextId = radicalMemberContextIdByGroupId.get(group.id) || null
     const radicalTranslation = radicalMemberContextId ? radicalContextTranslationsByContextId.get(radicalMemberContextId) || { dx: 0, dy: 0 } : { dx: 0, dy: 0 }
     let finalStrokes = scaledStrokes.map((stroke) => ({
       ...stroke,
       points: stroke.points.map((point) => ({
         ...point,
-        x: point.x + localTranslation.dx + contextTranslation.dx + coBaselineAdjustment.dx + radicalTranslation.dx,
-        y: point.y + localTranslation.dy + contextTranslation.dy + coBaselineAdjustment.dy + radicalTranslation.dy,
+        x: point.x + localTranslation.dx + contextTranslation.dx + scriptSequenceAdjustment.dx + coBaselineAdjustment.dx + radicalTranslation.dx,
+        y: point.y + localTranslation.dy + contextTranslation.dy + scriptSequenceAdjustment.dy + coBaselineAdjustment.dy + radicalTranslation.dy,
       })),
     }))
 

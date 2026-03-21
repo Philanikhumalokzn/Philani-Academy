@@ -1550,14 +1550,34 @@ const appendRadicalWideScriptAmbiguities = (roles: StructuralRole[], groups: Str
   return nextAmbiguities
 }
 
-const promoteSequenceWideScripts = (roles: StructuralRole[], contexts: ExpressionContext[], groups: StrokeGroup[], edges: LayoutEdge[], topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>) => {
+const promoteSequenceWideScripts = (
+  roles: StructuralRole[],
+  contexts: ExpressionContext[],
+  subexpressions: LocalSubexpression[],
+  groups: StrokeGroup[],
+  edges: LayoutEdge[],
+  brickHypothesesByGroupId: Map<string, LegoBrickHypothesis[]>,
+  topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
+) => {
   const groupMap = new Map(groups.map((group) => [group.id, group]))
   const roleMap = new Map(roles.map((role) => [role.groupId, role]))
   const fieldClaimsByTargetGroupId = buildFieldClaimMap(buildConcreteLegoFieldLayer(groups, Array.from(topBrickHypothesisByGroupId.values())).fieldClaims)
   const sequenceContexts = contexts.filter((context) => context.kind === 'sequence')
+  const scriptContinuationContexts = buildScriptContinuationSequenceContexts(
+    roles,
+    subexpressions,
+    groupMap,
+    contexts,
+    brickHypothesesByGroupId,
+    topBrickHypothesisByGroupId,
+  )
+  const consumedScriptContinuationMemberIds = new Set(
+    scriptContinuationContexts.flatMap((context) => context.memberGroupIds),
+  )
 
   return roles.map((role) => {
     if (role.role !== 'baseline' || role.parentGroupId) return role
+    if (consumedScriptContinuationMemberIds.has(role.groupId)) return role
     const roleGroup = groupMap.get(role.groupId) || null
     const lineLikeChild = roleGroup ? getMinusBaselineClaimScore(roleGroup) >= 0.85 : false
     if (isDisallowedScriptChildFamily(topBrickHypothesisByGroupId.get(role.groupId)?.family || null, lineLikeChild)) return role
@@ -2592,6 +2612,95 @@ const buildSequenceContexts = (
       memberGroupIds: uniqueIds(cluster.flatMap((entry) => entry.subexpression.memberGroupIds)),
     }
   })
+}
+
+const buildScriptContinuationSequenceContexts = (
+  roles: StructuralRole[],
+  subexpressions: LocalSubexpression[],
+  groupMap: Map<string, StrokeGroup>,
+  contexts: ExpressionContext[],
+  brickHypothesesByGroupId: Map<string, LegoBrickHypothesis[]>,
+  topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
+) => {
+  const roleMap = new Map(roles.map((role) => [role.groupId, role]))
+  const subexpressionsByRootId = new Map(subexpressions.map((subexpression) => [subexpression.rootGroupId, subexpression]))
+  const usedRootIds = new Set<string>()
+  const enclosureContexts = contexts.filter((context) => context.kind === 'enclosure')
+  const hostedMemberContexts = contexts.filter((context) => (
+    context.kind === 'numerator'
+    || context.kind === 'denominator'
+    || context.kind === 'radicand'
+    || context.kind === 'radicalIndex'
+  ))
+
+  const baselineCandidates = subexpressions
+    .map((subexpression) => ({
+      subexpression,
+      role: roleMap.get(subexpression.rootGroupId) || null,
+      bounds: getSubexpressionBounds(subexpression, groupMap),
+    }))
+    .filter(({ role }) => role?.role === 'baseline' && role.parentGroupId == null)
+
+  return roles
+    .filter((role) => (role.role === 'superscript' || role.role === 'subscript') && role.parentGroupId)
+    .flatMap((role) => {
+      const scriptGroup = groupMap.get(role.groupId)
+      if (!scriptGroup) return []
+
+      const continuationRootIds: string[] = []
+      let previousGroupId = role.groupId
+      let previousBounds = scriptGroup.bounds
+
+      const compatibleCandidates = baselineCandidates
+        .filter(({ subexpression, role: candidateRole }) => {
+          if (!candidateRole) return false
+          if (usedRootIds.has(subexpression.rootGroupId)) return false
+          if (!sequenceContextAllowsRoot(topBrickHypothesisByGroupId, subexpression.rootGroupId)) return false
+          if ([...(candidateRole.containerGroupIds || [])].sort().join(',') !== [...role.containerGroupIds].sort().join(',')) return false
+          if (hostedMemberContexts.some((context) => context.memberGroupIds.includes(subexpression.rootGroupId))) return false
+          return true
+        })
+        .filter(({ bounds }) => bounds.left >= scriptGroup.bounds.left)
+        .sort((left, right) => left.bounds.left - right.bounds.left)
+
+      for (const candidate of compatibleCandidates) {
+        const horizontalGap = candidate.bounds.left - previousBounds.right
+        const bandReferenceY = continuationRootIds.length ? previousBounds.centerY : scriptGroup.bounds.centerY
+        const verticalOffset = Math.abs(candidate.bounds.centerY - bandReferenceY)
+        const inlineSupport = getInlineAffordanceScore(brickHypothesesByGroupId, previousGroupId, candidate.subexpression.rootGroupId)
+        const compatibleGap = horizontalGap >= -8 && horizontalGap <= Math.max(56, Math.max(previousBounds.right - previousBounds.left, candidate.bounds.right - candidate.bounds.left) * 1.1)
+        const compatibleBand = verticalOffset <= Math.max(40, Math.max(scriptGroup.bounds.height, candidate.bounds.bottom - candidate.bounds.top) * 1.1)
+
+        if (!compatibleGap || !compatibleBand || !inlineSupport.supported) {
+          if (continuationRootIds.length) break
+          continue
+        }
+
+        continuationRootIds.push(candidate.subexpression.rootGroupId)
+        usedRootIds.add(candidate.subexpression.rootGroupId)
+        previousGroupId = candidate.subexpression.rootGroupId
+        previousBounds = {
+          ...candidate.bounds,
+          width: candidate.bounds.right - candidate.bounds.left,
+          height: candidate.bounds.bottom - candidate.bounds.top,
+        }
+      }
+
+      if (!continuationRootIds.length) return []
+
+      const parentContextId = role.containerGroupIds.length
+        ? enclosureContexts.find((context) => role.containerGroupIds.every((groupId) => context.anchorGroupIds.includes(groupId)))?.id || 'context:root'
+        : 'context:root'
+
+      return [{
+        id: `context:sequence:script:${role.groupId}:${continuationRootIds.join(':')}`,
+        kind: 'sequence' as const,
+        parentContextId,
+        semanticRootGroupId: role.groupId,
+        anchorGroupIds: uniqueIds([role.groupId, ...continuationRootIds]),
+        memberGroupIds: uniqueIds(continuationRootIds.flatMap((rootId) => subexpressionsByRootId.get(rootId)?.memberGroupIds || [rootId])),
+      }]
+    })
 }
 
 const getSequenceContextBounds = (context: ExpressionContext, groupMap: Map<string, StrokeGroup>) => {
@@ -3899,11 +4008,21 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
     denominatorRootIds: binding.indexRootIds,
   })), groups)
   const contexts = buildExpressionContexts(groups, radicalSemanticRootSafeRoles, subexpressions, enclosures, fractionBindings, radicalBindings, edges, brickHypothesesByGroupId, topBrickHypothesisByGroupId)
-  const sequencePromotedRoles = promoteSequenceWideScripts(radicalSemanticRootSafeRoles, contexts, groups, edges, topBrickHypothesisByGroupId)
+  const sequencePromotedRoles = promoteSequenceWideScripts(
+    radicalSemanticRootSafeRoles,
+    contexts,
+    subexpressions,
+    groups,
+    edges,
+    brickHypothesesByGroupId,
+    topBrickHypothesisByGroupId,
+  )
   const promotedContexts = buildExpressionContexts(groups, sequencePromotedRoles, subexpressions, enclosures, fractionBindings, radicalBindings, edges, brickHypothesesByGroupId, topBrickHypothesisByGroupId)
-  const annotatedRoles = annotateRolesWithContexts(sequencePromotedRoles, promotedContexts, groups)
-  const enclosurePromotedRoles = promoteEnclosureWideScripts(annotatedRoles, promotedContexts, groups)
-  const radicalPromotedRoles = promoteRadicalWideScripts(enclosurePromotedRoles, promotedContexts, groups)
+  const scriptContinuationContexts = buildScriptContinuationSequenceContexts(sequencePromotedRoles, subexpressions, groupMap, promotedContexts, brickHypothesesByGroupId, topBrickHypothesisByGroupId)
+  const allContexts = [...promotedContexts, ...scriptContinuationContexts]
+  const annotatedRoles = annotateRolesWithContexts(sequencePromotedRoles, allContexts, groups)
+  const enclosurePromotedRoles = promoteEnclosureWideScripts(annotatedRoles, allContexts, groups)
+  const radicalPromotedRoles = promoteRadicalWideScripts(enclosurePromotedRoles, allContexts, groups)
   const annotatedRoleMap = new Map(radicalPromotedRoles.map((role) => [role.groupId, role]))
   const contextualizedRoles = radicalPromotedRoles.map((role) => ({
     ...role,
@@ -3911,16 +4030,16 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
   }))
   const identityAwareRoles = annotateRolesWithRecognizedSymbols(contextualizedRoles, groups)
   const finalRadicalWideRoles = forcePromoteRadicalWideScripts(identityAwareRoles, radicalBindings, groups)
-  const fractionAwareAmbiguities = appendFractionWideScriptAmbiguities(finalRadicalWideRoles, groups, promotedContexts, ambiguities)
-  const radicalAwareAmbiguities = appendRadicalWideScriptAmbiguities(finalRadicalWideRoles, groups, promotedContexts, fractionAwareAmbiguities)
-  const contextualizedAmbiguities = appendEnclosureWideScriptAmbiguities(finalRadicalWideRoles, promotedContexts, radicalAwareAmbiguities)
+  const fractionAwareAmbiguities = appendFractionWideScriptAmbiguities(finalRadicalWideRoles, groups, allContexts, ambiguities)
+  const radicalAwareAmbiguities = appendRadicalWideScriptAmbiguities(finalRadicalWideRoles, groups, allContexts, fractionAwareAmbiguities)
+  const contextualizedAmbiguities = appendEnclosureWideScriptAmbiguities(finalRadicalWideRoles, allContexts, radicalAwareAmbiguities)
 
   return {
     roles: finalRadicalWideRoles,
     flags: [...semanticFlags, ...operandFlags, ...flags],
     subexpressions,
     enclosures,
-    contexts: promotedContexts,
+    contexts: allContexts,
     ambiguities: contextualizedAmbiguities,
   }
 }

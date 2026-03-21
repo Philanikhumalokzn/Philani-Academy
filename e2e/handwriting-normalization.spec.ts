@@ -1185,6 +1185,97 @@ test.describe('handwriting normalization fixtures', () => {
     expect(outerScriptParseNode?.childNodeIds).toEqual([sequenceParseRoot?.rootNodeId || ''])
   })
 
+  test('unbracketed 2^(3+4) keeps the exponent span in the script band instead of stealing the trailing 4 as a subscript', async () => {
+    const strokes: InkStroke[] = [
+      {
+        ...makeStroke('base-two'),
+        points: [
+          { x: 112, y: 236, t: 0 },
+          { x: 142, y: 218, t: 16 },
+          { x: 166, y: 224, t: 32 },
+          { x: 160, y: 246, t: 48 },
+          { x: 126, y: 260, t: 64 },
+          { x: 168, y: 261, t: 80 },
+        ],
+      },
+      {
+        ...makeStroke('exp-three'),
+        points: [
+          { x: 188, y: 178, t: 0 },
+          { x: 208, y: 164, t: 16 },
+          { x: 226, y: 168, t: 32 },
+          { x: 220, y: 184, t: 48 },
+          { x: 196, y: 194, t: 64 },
+          { x: 226, y: 195, t: 80 },
+        ],
+      },
+      {
+        ...makeStroke('plus-v'),
+        points: [
+          { x: 264, y: 164, t: 0 },
+          { x: 264, y: 208, t: 16 },
+        ],
+      },
+      {
+        ...makeStroke('plus-h'),
+        points: [
+          { x: 242, y: 186, t: 0 },
+          { x: 286, y: 186, t: 16 },
+        ],
+      },
+      {
+        ...makeStroke('four-l'),
+        points: [
+          { x: 328, y: 208, t: 0 },
+          { x: 352, y: 180, t: 16 },
+          { x: 352, y: 226, t: 32 },
+        ],
+      },
+      {
+        ...makeStroke('four-v'),
+        points: [
+          { x: 338, y: 178, t: 0 },
+          { x: 338, y: 228, t: 16 },
+        ],
+      },
+    ]
+
+    const analysis = analyzeHandwrittenExpression(strokes)
+    const base = analysis.roles.find((role) => role.recognizedSymbol?.value === '2' && role.role === 'baseline') || null
+    const exponentRoot = analysis.roles.find((role) => role.groupId !== base?.groupId && role.role === 'superscript') || null
+    const plusRole = analysis.roles.find((role) => role.recognizedSymbol?.value === '+') || null
+    const fourRole = analysis.roles.find((role) => role.recognizedSymbol?.value === '4') || null
+    const scriptSequenceContext = analysis.contexts.find((context) => (
+      context.kind === 'sequence'
+      && context.semanticRootGroupId === exponentRoot?.groupId
+      && plusRole
+      && fourRole
+      && context.memberGroupIds.includes(plusRole.groupId)
+      && context.memberGroupIds.includes(fourRole.groupId)
+    )) || null
+
+    const normalizedById = new Map(analysis.normalization.groups.map((group) => [group.id, group]))
+    const normalizedBase = base ? normalizedById.get(base.groupId) || null : null
+    const normalizedExponent = exponentRoot ? normalizedById.get(exponentRoot.groupId) || null : null
+    const normalizedPlus = plusRole ? normalizedById.get(plusRole.groupId) || null : null
+    const normalizedFour = fourRole ? normalizedById.get(fourRole.groupId) || null : null
+
+    expect(base?.role).toBe('baseline')
+    expect(exponentRoot?.role).toBe('superscript')
+    expect(plusRole?.role).toBe('baseline')
+    expect(fourRole?.role).toBe('baseline')
+    expect(fourRole?.parentGroupId).toBeNull()
+    expect(scriptSequenceContext).toBeTruthy()
+    expect(normalizedBase).toBeTruthy()
+    expect(normalizedExponent).toBeTruthy()
+    expect(normalizedPlus).toBeTruthy()
+    expect(normalizedFour).toBeTruthy()
+    expect((normalizedPlus?.bounds.centerY || 0)).toBeLessThan((normalizedBase?.bounds.centerY || 0) - 18)
+    expect((normalizedFour?.bounds.centerY || 0)).toBeLessThan((normalizedBase?.bounds.centerY || 0) - 12)
+    expect(Math.abs((normalizedPlus?.bounds.centerY || 0) - (normalizedExponent?.bounds.centerY || 0))).toBeLessThan(18)
+    expect(Math.abs((normalizedFour?.bounds.centerY || 0) - (normalizedExponent?.bounds.centerY || 0))).toBeLessThan(24)
+  })
+
   test('co-baseline trailing digits do not get reinterpreted as fake whole-sequence subscripts', async () => {
     const makeTrailingTwoRun = (count: number): InkStroke[] => Array.from({ length: count }, (_, index) => {
       const xOffset = index * 106
@@ -1693,6 +1784,90 @@ test.describe('handwriting normalization fixtures', () => {
     expect(upperRole?.role).toBe('superscript')
     expect(lowerRole?.role).not.toBe('subscript')
     expect(lowerRole?.parentGroupId).not.toBe('upper')
+  })
+
+  test('unbracketed exponent continuation keeps trailing inline terms in the superscript band', async () => {
+    const strokes: InkStroke[] = [
+      {
+        ...makeStroke('base-two'),
+        points: [
+          { x: 112, y: 236, t: 0 },
+          { x: 142, y: 218, t: 16 },
+          { x: 166, y: 224, t: 32 },
+          { x: 160, y: 246, t: 48 },
+          { x: 126, y: 260, t: 64 },
+          { x: 168, y: 261, t: 80 },
+        ],
+      },
+      {
+        ...makeStroke('exp-three'),
+        points: [
+          { x: 188, y: 178, t: 0 },
+          { x: 208, y: 164, t: 16 },
+          { x: 226, y: 168, t: 32 },
+          { x: 220, y: 184, t: 48 },
+          { x: 196, y: 194, t: 64 },
+          { x: 226, y: 195, t: 80 },
+        ],
+      },
+      {
+        ...makeStroke('plus-v'),
+        points: [
+          { x: 264, y: 164, t: 0 },
+          { x: 264, y: 208, t: 16 },
+        ],
+      },
+      {
+        ...makeStroke('plus-h'),
+        points: [
+          { x: 242, y: 186, t: 0 },
+          { x: 286, y: 186, t: 16 },
+        ],
+      },
+      {
+        ...makeStroke('four-l'),
+        points: [
+          { x: 328, y: 208, t: 0 },
+          { x: 352, y: 180, t: 16 },
+          { x: 352, y: 226, t: 32 },
+        ],
+      },
+      {
+        ...makeStroke('four-v'),
+        points: [
+          { x: 338, y: 178, t: 0 },
+          { x: 338, y: 228, t: 16 },
+        ],
+      },
+    ]
+
+    const analysis = analyzeHandwrittenExpression(strokes)
+    const baseRole = analysis.roles.find((role) => role.role === 'baseline' && role.recognizedSymbol?.value === '2') || null
+    const superscript = analysis.roles.find((role) => role.role === 'superscript') || null
+    const plusRole = analysis.roles.find((role) => role.recognizedSymbol?.value === '+') || null
+    const fourRole = analysis.roles.find((role) => role.recognizedSymbol?.value === '4') || null
+    const scriptSequenceContext = analysis.contexts.find((context) => context.kind === 'sequence' && context.semanticRootGroupId === superscript?.groupId) || null
+    const normalizedById = new Map(analysis.normalization.groups.map((group) => [group.id, group]))
+    const normalizedBase = baseRole ? normalizedById.get(baseRole.groupId) || null : null
+    const normalizedSuperscript = superscript ? normalizedById.get(superscript.groupId) || null : null
+    const normalizedPlus = plusRole ? normalizedById.get(plusRole.groupId) || null : null
+    const normalizedFour = fourRole ? normalizedById.get(fourRole.groupId) || null : null
+
+    expect(analysis.groups).toHaveLength(4)
+    expect(baseRole).toBeTruthy()
+    expect(superscript).toBeTruthy()
+    expect(superscript?.groupId).not.toBe(baseRole?.groupId)
+    expect(plusRole?.recognizedSymbol?.category).toBe('operator')
+    expect(fourRole?.recognizedSymbol?.value).toBe('4')
+    expect(scriptSequenceContext?.memberGroupIds).toEqual(expect.arrayContaining([plusRole?.groupId || '', fourRole?.groupId || '']))
+    expect(normalizedBase).toBeTruthy()
+    expect(normalizedSuperscript).toBeTruthy()
+    expect(normalizedPlus).toBeTruthy()
+    expect(normalizedFour).toBeTruthy()
+    expect((normalizedPlus?.bounds.centerY || 0)).toBeLessThan((normalizedBase?.bounds.centerY || 0) - 18)
+    expect((normalizedFour?.bounds.centerY || 0)).toBeLessThan((normalizedBase?.bounds.centerY || 0) - 18)
+    expect(Math.abs((normalizedPlus?.bounds.centerY || 0) - (normalizedSuperscript?.bounds.centerY || 0))).toBeLessThan(14)
+    expect(Math.abs((normalizedFour?.bounds.centerY || 0) - (normalizedSuperscript?.bounds.centerY || 0))).toBeLessThan(14)
   })
 
   test('all unary script roles keep a required parent operand reference', async () => {

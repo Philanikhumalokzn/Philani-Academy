@@ -12281,6 +12281,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             zIndexClassName="z-[70]"
             variant="light"
             panelSize="full"
+            position="absolute"
             frameClassName="absolute inset-0 flex items-stretch justify-center p-0"
             panelClassName="!max-w-none !rounded-none border-none bg-[#f0f2f5]"
             className="[&>.philani-overlay-backdrop]:!bg-[#f0f2f5] [&>.philani-overlay-backdrop]:!backdrop-blur-none"

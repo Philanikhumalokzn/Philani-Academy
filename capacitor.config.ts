@@ -6,6 +6,13 @@ const config: CapacitorConfig = {
   webDir: 'out',
   server: {
     url: 'https://philaniacademy.org'
+  },
+  plugins: {
+    StatusBar: {
+      style: 'DARK',
+      backgroundColor: '#ffffffff',
+      overlaysWebView: true,
+    },
   }
 };
 

@@ -845,7 +845,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         setTimelineChallenges((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
         setStudentFeedPosts((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
         if (!isQuiz) {
-          setMyPosts((prev: any[]) => sortDashboardItemsByCreatedAt([hydrateOwnPostFeedItem(createdItem), ...(Array.isArray(prev) ? prev.filter((x: any) => getDashboardItemKey(x) !== getDashboardItemKey(createdItem)) : [])]))
+          const hydratedItem = {
+            ...(createdItem || {}),
+            kind: 'post' as const,
+            createdById: String((createdItem as any)?.createdById || (session as any)?.user?.id || viewerId || ''),
+            createdBy: {
+              id: String((session as any)?.user?.id || viewerId || ''),
+              name: String(session?.user?.name || session?.user?.email || 'You'),
+              avatar: String((session as any)?.user?.avatar || ''),
+              role: String((session as any)?.user?.role || ''),
+              grade: selectedGrade || null,
+            },
+          }
+          setMyPosts((prev: any[]) => sortDashboardItemsByCreatedAt([hydratedItem, ...(Array.isArray(prev) ? prev.filter((x: any) => getDashboardItemKey(x) !== getDashboardItemKey(createdItem)) : [])]))
         }
       }
 
@@ -866,7 +878,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setChallengePosting(false)
     }
-  }, [status, createKind, challengeTitleDraft, challengePromptDraft, challengeAudienceDraft, challengeImageUrl, selectedGrade, session, challengeMaxAttempts, editingChallengeId, editingPostId, closeCreateOverlay, discardRestore, viewerId, hydrateOwnPostFeedItem])
+  }, [status, createKind, challengeTitleDraft, challengePromptDraft, challengeAudienceDraft, challengeImageUrl, selectedGrade, session, challengeMaxAttempts, editingChallengeId, editingPostId, closeCreateOverlay, discardRestore, viewerId])
 
   const closeChallengeImageEdit = useCallback(() => {
     setChallengeImageEditOpen(false)

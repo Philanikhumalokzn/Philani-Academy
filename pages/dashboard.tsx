@@ -12279,9 +12279,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             onClose={closeCreateOverlay}
             onBackdropClick={closeCreateOverlay}
             zIndexClassName="z-[70]"
+            variant="light"
+            panelSize="full"
+            frameClassName="absolute inset-0 flex items-stretch justify-center p-0"
+            panelClassName="!max-w-none !rounded-none border-none bg-[#f0f2f5]"
+            className="[&>.philani-overlay-backdrop]:!bg-[#f0f2f5] [&>.philani-overlay-backdrop]:!backdrop-blur-none"
             contentClassName="p-0 flex flex-col overflow-hidden"
           >
-            <div className="p-0 overflow-hidden flex flex-col flex-1 min-h-0">
+            <div className="p-0 overflow-hidden flex flex-col flex-1 min-h-0 bg-[#f0f2f5] text-[#1c1e21]">
               <input
                 ref={challengeUploadInputRef}
                 type="file"
@@ -12297,34 +12302,34 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <img
                       src={learnerAvatarUrl}
                       alt=""
-                      className="h-10 w-10 rounded-full object-cover border border-white/10 bg-white/10 shrink-0"
+                      className="h-10 w-10 rounded-full object-cover border border-black/10 bg-white shrink-0"
                     />
                   ) : (
-                    <div className="h-10 w-10 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-sm font-semibold text-white/90 shrink-0">
+                    <div className="h-10 w-10 rounded-full bg-white border border-black/10 flex items-center justify-center text-sm font-semibold text-[#1c1e21] shrink-0">
                       {String(session?.user?.name || session?.user?.email || 'P')[0]?.toUpperCase?.() || 'P'}
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm text-white/90 font-semibold">{createKind === 'post' ? 'Share a post' : 'Post a challenge'}</div>
+                    <div className="text-sm text-slate-700 font-semibold">{createKind === 'post' ? 'Share a post' : 'Post a challenge'}</div>
                   </div>
                 </div>
 
                 <div className="mt-4 flex flex-col gap-3">
                   <input
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-blue-400/30"
+                    className="w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-base text-[#1c1e21] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/25"
                     placeholder="Title (optional)"
                     value={challengeTitleDraft}
                     onChange={(e) => setChallengeTitleDraft(e.target.value)}
                   />
 
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-white/80">
+                    <div className="flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-slate-600">
                         <path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                       </svg>
-                      <span className="text-xs text-white/70">Type</span>
+                      <span className="text-xs text-slate-500">Type</span>
                       <select
-                        className="bg-transparent text-sm text-white focus:outline-none"
+                        className="bg-transparent text-sm text-[#1c1e21] focus:outline-none"
                         value={createKind}
                         onChange={(e) => setCreateKind(e.target.value as any)}
                       >
@@ -12334,13 +12339,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     </div>
 
                     {createKind === 'quiz' ? (
-                    <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-white/80">
+                    <div className="flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-slate-600">
                         <path d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364-2.121 2.121M7.757 16.243l-2.121 2.121m12.728 0-2.121-2.121M7.757 7.757 5.636 5.636" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                       </svg>
-                      <span className="text-xs text-white/70">Max attempts</span>
+                      <span className="text-xs text-slate-500">Max attempts</span>
                       <select
-                        className="bg-transparent text-sm text-white focus:outline-none"
+                        className="bg-transparent text-sm text-[#1c1e21] focus:outline-none"
                         value={challengeMaxAttempts}
                         onChange={(e) => setChallengeMaxAttempts(e.target.value)}
                       >
@@ -12358,10 +12363,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
 
               <div className="px-4 py-4 sm:px-6 sm:py-5 flex flex-col gap-3 flex-1 min-h-0">
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 flex flex-col min-h-[240px] overflow-hidden">
+                <div className="rounded-2xl border border-black/10 bg-white px-4 py-4 flex flex-col min-h-[240px] overflow-hidden">
                   <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto">
                     <textarea
-                      className="w-full min-h-[160px] resize-none bg-transparent text-[15px] leading-relaxed text-white placeholder:text-white/50 focus:outline-none"
+                      className="w-full min-h-[160px] resize-none bg-transparent text-[15px] leading-relaxed text-[#1c1e21] placeholder:text-slate-500 focus:outline-none"
                       placeholder={createKind === 'post' ? 'Share what you are working on, stuck on, or proud of... or attach a screenshot below' : 'Write the question (LaTeX supported)... or attach a screenshot below'}
                       value={challengePromptDraft}
                       onChange={(e) => setChallengePromptDraft(e.target.value)}
@@ -12395,8 +12400,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </div>
 
                 {challengeParsedOpen && challengeParsedJsonText ? (
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-                    <pre className="whitespace-pre-wrap text-xs text-white/90">{challengeParsedJsonText}</pre>
+                  <div className="rounded-2xl border border-black/10 bg-[#eef2f7] p-3">
+                    <pre className="whitespace-pre-wrap text-xs text-slate-700">{challengeParsedJsonText}</pre>
                   </div>
                 ) : null}
               </div>
@@ -12405,7 +12410,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 <div className="flex items-center gap-2 min-w-0 overflow-x-auto">
                   <button
                     type="button"
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/90 hover:bg-white/10 disabled:opacity-50"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                     onClick={() => challengeUploadInputRef.current?.click()}
                     disabled={challengeUploading}
                     aria-label={challengeUploading ? 'Uploading screenshot' : 'Upload screenshot'}
@@ -12417,7 +12422,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     </svg>
                   </button>
 
-                  <label className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90 select-none">
+                  <label className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2 text-sm text-slate-700 select-none">
                     <input
                       type="checkbox"
                       checked={challengeParseOnUpload}
@@ -12428,7 +12433,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                   <button
                     type="button"
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/90 hover:bg-white/10 disabled:opacity-50"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                     onClick={() => setChallengeParsedOpen((v) => !v)}
                     disabled={!challengeParsedJsonText}
                     aria-label={challengeParsedOpen ? 'Hide parsed content' : 'View parsed content'}
@@ -12445,7 +12450,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                   <button
                     type="button"
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/90 hover:bg-white/10 disabled:opacity-50"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                     onClick={() => {
                       setChallengeImageUrl(null)
                       setChallengeImageSourceFile(null)
@@ -12468,7 +12473,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   <div className="relative">
                     <button
                       type="button"
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/90 hover:bg-white/10"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-white text-slate-700 hover:bg-slate-50"
                       onClick={() => setChallengeAudiencePickerOpen((v) => !v)}
                       aria-label="Change audience"
                       title="Change audience"
@@ -12499,16 +12504,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     </button>
 
                     {challengeAudiencePickerOpen ? (
-                      <div className="absolute right-0 bottom-full mb-2 w-48 rounded-2xl border border-white/10 bg-[rgba(2,6,24,0.96)] shadow-[0_25px_70px_rgba(0,0,0,0.55)] overflow-hidden">
+                      <div className="absolute right-0 bottom-full mb-2 w-48 rounded-2xl border border-black/10 bg-white shadow-[0_20px_40px_rgba(15,23,42,0.15)] overflow-hidden">
                         <button
                           type="button"
-                          className={`w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-white/10 ${challengeAudienceDraft === 'public' ? 'bg-white/10' : ''}`}
+                          className={`w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-slate-50 ${challengeAudienceDraft === 'public' ? 'bg-slate-50' : ''}`}
                           onClick={() => {
                             setChallengeAudienceDraft('public')
                             setChallengeAudiencePickerOpen(false)
                           }}
                         >
-                          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/90">
+                          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-black/10 bg-slate-50 text-slate-700">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                               <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z" stroke="currentColor" strokeWidth="2" />
                               <path d="M2 12h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -12516,18 +12521,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               <path d="M12 2c-3.5 3.2-3.5 16.8 0 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                             </svg>
                           </span>
-                          <span className="text-white/90">Public</span>
+                          <span className="text-slate-700">Public</span>
                         </button>
 
                         <button
                           type="button"
-                          className={`w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-white/10 ${challengeAudienceDraft === 'grade' ? 'bg-white/10' : ''}`}
+                          className={`w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-slate-50 ${challengeAudienceDraft === 'grade' ? 'bg-slate-50' : ''}`}
                           onClick={() => {
                             setChallengeAudienceDraft('grade')
                             setChallengeAudiencePickerOpen(false)
                           }}
                         >
-                          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/90">
+                          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-black/10 bg-slate-50 text-slate-700">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                               <path d="M16 11c1.66 0 3-1.34 3-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3Z" stroke="currentColor" strokeWidth="2" />
                               <path d="M8 11c1.66 0 3-1.34 3-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3Z" stroke="currentColor" strokeWidth="2" />
@@ -12537,25 +12542,25 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               <path d="M12 14c-3.31 0-6 2.01-6 4.5V21h12v-2.5c0-2.49-2.69-4.5-6-4.5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
                             </svg>
                           </span>
-                          <span className="text-white/90">My grade</span>
+                          <span className="text-slate-700">My grade</span>
                         </button>
 
                         <button
                           type="button"
-                          className={`w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-white/10 ${challengeAudienceDraft === 'private' ? 'bg-white/10' : ''}`}
+                          className={`w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-slate-50 ${challengeAudienceDraft === 'private' ? 'bg-slate-50' : ''}`}
                           onClick={() => {
                             setChallengeAudienceDraft('private')
                             setChallengeAudiencePickerOpen(false)
                           }}
                         >
-                          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/90">
+                          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-black/10 bg-slate-50 text-slate-700">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                               <path d="M7 11V8a5 5 0 0 1 10 0v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                               <path d="M6 11h12v10H6V11Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
                               <path d="M12 15v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                             </svg>
                           </span>
-                          <span className="text-white/90">Private</span>
+                          <span className="text-slate-700">Private</span>
                         </button>
                       </div>
                     ) : null}

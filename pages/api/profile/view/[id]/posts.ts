@@ -9,6 +9,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).end()
   }
 
+  try {
   const requesterId = await getUserIdFromReq(req)
   const targetId = String(req.query.id || '')
   if (!targetId) return res.status(400).json({ message: 'Missing user id' })
@@ -18,17 +19,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const target = await prisma.user.findUnique({
     where: { id: targetId },
-    select: { id: true, profileVisibility: true, grade: true },
-  })
+    select: { id: true, grade: true },
+  }).catch(() => null)
   if (!target) return res.status(404).json({ message: 'User not found' })
 
   const isSelf = Boolean(requesterId && requesterId === targetId)
-  if (!isPrivileged && !isSelf) {
-    const visibility = String(target.profileVisibility || 'shared')
-    if (visibility === 'private') {
-      return res.status(403).json({ message: 'This profile is private' })
-    }
-  }
 
   const requesterGrade = requesterId ? normalizeGradeInput(await getUserGrade(req)) : null
   const socialPost = (prisma as any).socialPost as typeof prisma extends { socialPost: infer T } ? T : any
@@ -96,4 +91,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       solutionCount: solutionCounts.get(`post:${item.id}`) || 0,
     })),
   })
+  } catch (err: any) {
+    console.error('[/api/profile/view/[id]/posts]', err)
+    return res.status(500).json({ message: err?.message || 'Internal server error' })
+  }
 }

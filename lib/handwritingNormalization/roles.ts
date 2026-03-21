@@ -518,6 +518,44 @@ const shouldSuppressScriptByInlineOccupancy = (
     && scoreAdvantage >= SCRIPT_INLINE_SUPPRESSION_MIN_SCORE_ADVANTAGE
 }
 
+const shouldBlockSequenceWideSubscriptByImmediateInlineClaim = (
+  scriptClaimSupport: FieldClaimSupport,
+  inlineClaimSupport: FieldClaimSupport,
+) => {
+  const hostedAdvantage = inlineClaimSupport.targetHostedRatio - scriptClaimSupport.targetHostedRatio
+  const scoreAdvantage = inlineClaimSupport.score - scriptClaimSupport.score
+
+  return inlineClaimSupport.score >= 0.5
+    && inlineClaimSupport.competitionMargin >= -0.08
+    && (
+      inlineClaimSupport.dominant
+      || hostedAdvantage >= 0.12
+      || scoreAdvantage >= 0.08
+    )
+}
+
+const allowsSequenceWideTrailingScriptPromotion = (
+  groupMap: Map<string, StrokeGroup>,
+  brickHypothesesByGroupId: Map<string, LegoBrickHypothesis[]>,
+  topBrickHypothesisByGroupId: Map<string, LegoBrickHypothesis>,
+  fieldClaimsByTargetGroupId: Map<string, LegoFieldClaim[]>,
+  parentGroupId: string | null | undefined,
+  childGroupId: string,
+  role: 'superscript' | 'subscript',
+) => {
+  if (!isLikelySequenceWideScript(parentGroupId, childGroupId, groupMap, brickHypothesesByGroupId, topBrickHypothesisByGroupId)) {
+    return false
+  }
+
+  if (role !== 'subscript' || !parentGroupId) {
+    return true
+  }
+
+  const scriptClaimSupport = getScriptFieldClaimSupport(fieldClaimsByTargetGroupId, childGroupId, parentGroupId, role)
+  const inlineClaimSupport = getCompetingInlineClaimSupport(fieldClaimsByTargetGroupId, childGroupId, parentGroupId)
+  return !shouldBlockSequenceWideSubscriptByImmediateInlineClaim(scriptClaimSupport, inlineClaimSupport)
+}
+
 const getInlinePairClaimSupport = (
   fieldClaimsByTargetGroupId: Map<string, LegoFieldClaim[]>,
   leftGroupId: string | null | undefined,
@@ -1552,10 +1590,12 @@ const promoteSequenceWideScripts = (roles: StructuralRole[], contexts: Expressio
 
         const hostFieldSupport = hostSupportsScriptField(topBrickHypothesisByGroupId, rightmostAnchorGroupId, scriptRole)
         const claimSupport = getScriptFieldClaimSupport(fieldClaimsByTargetGroupId, role.groupId, rightmostAnchorGroupId, scriptRole)
+        const inlineClaimSupport = getCompetingInlineClaimSupport(fieldClaimsByTargetGroupId, role.groupId, rightmostAnchorGroupId)
         const relaxedSequenceSubscriptHost = scriptRole === 'subscript'
           && effectiveMemberGroupIds.length >= 3
           && effectiveAnchorGroupIds.length >= 2
         if (!hostFieldSupport.supported && !relaxedSequenceSubscriptHost) return null
+        if (scriptRole === 'subscript' && shouldBlockSequenceWideSubscriptByImmediateInlineClaim(claimSupport, inlineClaimSupport)) return null
 
         const localAnchorLocalityScore = getScriptLocalityScoreByKind(scriptRole, rightmostAnchorGroup, scriptGroup)
         const sequenceWideLocalityScore = getSequenceWideScriptLocalityScore(scriptRole, sequenceBounds, scriptGroup)
@@ -3626,7 +3666,15 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
 
     const promotableSequenceWideCandidate = sortedCandidates.find((candidate) => {
       if ((candidate.role !== 'superscript' && candidate.role !== 'subscript') || !candidate.parentGroupId) return false
-      return isLikelySequenceWideScript(candidate.parentGroupId, group.id, groupMap, brickHypothesesByGroupId, topBrickHypothesisByGroupId)
+      return allowsSequenceWideTrailingScriptPromotion(
+        groupMap,
+        brickHypothesesByGroupId,
+        topBrickHypothesisByGroupId,
+        fieldClaimsByTargetGroupId,
+        candidate.parentGroupId,
+        group.id,
+        candidate.role,
+      )
     }) || null
 
     const selectedScriptCandidate = (() => {
@@ -3636,9 +3684,18 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
           : null
         const directPromotedParentGroupId = directRadicalWideBinding?.radicalGroupId || resolvedParentGroupId
         const directPromotedParentRole = roles.get(directPromotedParentGroupId) || parentRole
+        const sequenceWideEligible = allowsSequenceWideTrailingScriptPromotion(
+          groupMap,
+          brickHypothesesByGroupId,
+          topBrickHypothesisByGroupId,
+          fieldClaimsByTargetGroupId,
+          resolvedParentGroupId,
+          group.id,
+          best.role,
+        )
         const minimumScore = (isFractionWideOutsideMember(group.id, parentRole || null, groupMap)
           || isRadicalWideOutsideMember(group.id, resolvedParentGroupId, radicalBindings, groupMap)
-          || isLikelySequenceWideScript(resolvedParentGroupId, group.id, groupMap, brickHypothesesByGroupId, topBrickHypothesisByGroupId))
+          || sequenceWideEligible)
           ? 0.32
           : 0.4
         if (best.score >= minimumScore) {
@@ -3652,7 +3709,7 @@ export const inferStructuralRoles = (groups: StrokeGroup[], edges: LayoutEdge[],
               ? 'fraction'
               : directRadicalWideBinding
                 ? 'radical'
-                : isLikelySequenceWideScript(resolvedParentGroupId, group.id, groupMap, brickHypothesesByGroupId, topBrickHypothesisByGroupId)
+                : sequenceWideEligible
                   ? 'sequence'
                   : null,
           }

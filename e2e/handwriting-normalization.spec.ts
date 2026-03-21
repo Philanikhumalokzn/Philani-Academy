@@ -1185,6 +1185,35 @@ test.describe('handwriting normalization fixtures', () => {
     expect(outerScriptParseNode?.childNodeIds).toEqual([sequenceParseRoot?.rootNodeId || ''])
   })
 
+  test('co-baseline trailing digits do not get reinterpreted as fake whole-sequence subscripts', async () => {
+    const makeTrailingTwoRun = (count: number): InkStroke[] => Array.from({ length: count }, (_, index) => {
+      const xOffset = index * 106
+      const yOffset = index >= 2 ? (index - 1) * 10 : 0
+      return {
+        ...makeStroke(`run-two-${index + 1}`),
+        points: [
+          { x: 122 + xOffset, y: 232 + yOffset, t: 0 },
+          { x: 148 + xOffset, y: 216 + yOffset, t: 16 },
+          { x: 168 + xOffset, y: 222 + yOffset, t: 32 },
+          { x: 164 + xOffset, y: 242 + yOffset, t: 48 },
+          { x: 135 + xOffset, y: 256 + yOffset, t: 64 },
+          { x: 169 + xOffset, y: 257 + yOffset, t: 80 },
+        ],
+      }
+    })
+
+    const tripleAnalysis = analyzeHandwrittenExpression(makeTrailingTwoRun(3))
+    const quadrupleAnalysis = analyzeHandwrittenExpression(makeTrailingTwoRun(4))
+
+    expect(tripleAnalysis.groups).toHaveLength(3)
+    expect(tripleAnalysis.roles.filter((role) => role.role === 'baseline')).toHaveLength(3)
+    expect(tripleAnalysis.roles.some((role) => role.role === 'subscript' || role.role === 'superscript')).toBe(false)
+
+    expect(quadrupleAnalysis.groups).toHaveLength(4)
+    expect(quadrupleAnalysis.roles.filter((role) => role.role === 'baseline')).toHaveLength(4)
+    expect(quadrupleAnalysis.roles.some((role) => role.role === 'subscript' || role.role === 'superscript')).toBe(false)
+  })
+
   test('nested fixture preserves chained local ownership', async () => {
     const fixture = getHandwritingFixture('nested')
     const analysis = analyzeHandwrittenExpression(fixture.strokes)

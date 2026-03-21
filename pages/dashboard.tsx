@@ -826,6 +826,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         }
         setTimelineChallenges((prev: any[]) => (Array.isArray(prev) ? prev.map(p => (getDashboardItemKey(p) === `${isQuiz ? 'challenge' : 'post'}:${id}` ? { ...(p as any), ...patch } : p)) : prev))
         setStudentFeedPosts((prev: any[]) => (Array.isArray(prev) ? prev.map(p => (getDashboardItemKey(p) === `${isQuiz ? 'challenge' : 'post'}:${id}` ? { ...(p as any), ...patch } : p)) : prev))
+        if (!isQuiz) {
+          setMyPosts((prev: any[]) => Array.isArray(prev) ? prev.map(p => (getDashboardItemKey(p) === `post:${id}` ? { ...(p as any), ...patch } : p)) : prev)
+        }
       } else {
         const createdItem = {
           ...(data || {}),
@@ -841,6 +844,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         }
         setTimelineChallenges((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
         setStudentFeedPosts((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
+        if (!isQuiz) {
+          setMyPosts((prev: any[]) => sortDashboardItemsByCreatedAt([hydrateOwnPostFeedItem(createdItem), ...(Array.isArray(prev) ? prev.filter((x: any) => getDashboardItemKey(x) !== getDashboardItemKey(createdItem)) : [])]))
+        }
       }
 
       discardRestore()
@@ -860,7 +866,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setChallengePosting(false)
     }
-  }, [status, createKind, challengeTitleDraft, challengePromptDraft, challengeAudienceDraft, challengeImageUrl, selectedGrade, session, challengeMaxAttempts, editingChallengeId, editingPostId, closeCreateOverlay, discardRestore, viewerId])
+  }, [status, createKind, challengeTitleDraft, challengePromptDraft, challengeAudienceDraft, challengeImageUrl, selectedGrade, session, challengeMaxAttempts, editingChallengeId, editingPostId, closeCreateOverlay, discardRestore, viewerId, hydrateOwnPostFeedItem])
 
   const closeChallengeImageEdit = useCallback(() => {
     setChallengeImageEditOpen(false)
@@ -1201,6 +1207,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [studentFeedPosts, setStudentFeedPosts] = useState<any[]>([])
   const [studentFeedLoading, setStudentFeedLoading] = useState(false)
   const [studentFeedError, setStudentFeedError] = useState<string | null>(null)
+  const [myPosts, setMyPosts] = useState<any[]>([])
+  const [myPostsLoading, setMyPostsLoading] = useState(false)
+  const [myPostsError, setMyPostsError] = useState<string | null>(null)
+  const [myPostsExpanded, setMyPostsExpanded] = useState(false)
   const [socialLikedItems, setSocialLikedItems] = useState<Record<string, boolean>>({})
   const [lastSharedSocialItemKey, setLastSharedSocialItemKey] = useState<string | null>(null)
   const [interactiveViewportSavingByResponseId, setInteractiveViewportSavingByResponseId] = useState<Record<string, boolean>>({})
@@ -1598,6 +1608,26 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const learnerNotesLabelLower = 'notes'
   const effectiveSubscriptionGatingEnabled = subscriptionGatingEnabled ?? true
   const isSubscriptionBlocked = isLearner && effectiveSubscriptionGatingEnabled && subscriptionActive === false
+  const currentViewerId = String(viewerId || (session as any)?.user?.id || '')
+  const currentViewerPostAuthor = useMemo(() => ({
+    id: currentViewerId,
+    name: String(session?.user?.name || session?.user?.email || learnerName || 'You'),
+    avatar: effectiveAvatarUrl,
+    role: String((session as any)?.user?.role || ''),
+    grade: selectedGrade || normalizeGradeInput((session as any)?.user?.grade as string | undefined) || null,
+  }), [currentViewerId, effectiveAvatarUrl, learnerName, selectedGrade, session])
+  const hydrateOwnPostFeedItem = useCallback((item: any) => ({
+    ...(item || {}),
+    kind: 'post',
+    createdById: String(item?.createdById || currentViewerPostAuthor.id || ''),
+    createdBy: {
+      id: String(currentViewerPostAuthor.id || ''),
+      name: currentViewerPostAuthor.name,
+      avatar: currentViewerPostAuthor.avatar,
+      role: currentViewerPostAuthor.role,
+      grade: currentViewerPostAuthor.grade,
+    },
+  }), [currentViewerPostAuthor])
 
   const offlineCachePrefix = useMemo(() => {
     const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
@@ -1607,6 +1637,49 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const makeOfflineCacheKey = useCallback((suffix: string) => {
     return `${offlineCachePrefix}:${suffix}`
   }, [offlineCachePrefix])
+
+  useEffect(() => {
+    if (status !== 'authenticated' || !currentViewerId) {
+      setMyPosts([])
+      setMyPostsError(null)
+      setMyPostsLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setMyPostsLoading(true)
+    setMyPostsError(null)
+
+    void (async () => {
+      try {
+        const res = await fetch(`/api/profile/view/${encodeURIComponent(currentViewerId)}/posts`, { credentials: 'same-origin' })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          if (!cancelled) {
+            setMyPostsError(data?.message || `Unable to load your posts (${res.status})`)
+            setMyPosts([])
+          }
+          return
+        }
+
+        const items = Array.isArray(data?.posts)
+          ? sortDashboardItemsByCreatedAt(data.posts.map((item: any) => hydrateOwnPostFeedItem(item)))
+          : []
+        if (!cancelled) setMyPosts(items)
+      } catch (err: any) {
+        if (!cancelled) {
+          setMyPostsError(err?.message || 'Unable to load your posts')
+          setMyPosts([])
+        }
+      } finally {
+        if (!cancelled) setMyPostsLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [currentViewerId, hydrateOwnPostFeedItem, status])
 
   const offlineDocsKey = useMemo(() => makeOfflineCacheKey('offline-docs'), [makeOfflineCacheKey])
 
@@ -3559,6 +3632,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       setTimelineChallenges(prev => (Array.isArray(prev) ? prev.filter((item: any) => getDashboardItemKey(item) !== `post:${id}`) : prev))
       setStudentFeedPosts(prev => (Array.isArray(prev) ? prev.filter((item: any) => getDashboardItemKey(item) !== `post:${id}`) : prev))
+      setMyPosts(prev => Array.isArray(prev) ? prev.filter((item: any) => getDashboardItemKey(item) !== `post:${id}`) : prev)
       setPostThreadOverlay((prev) => (prev?.postId === id ? null : prev))
       setPostSolveOverlay((prev) => (prev?.postId === id ? null : prev))
       alert('Deleted')
@@ -4590,6 +4664,157 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </svg>
             </button>
           </div>
+        </section>
+
+        <section className="border-b border-black/10 bg-white">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between px-4 py-3 text-left"
+            onClick={() => setMyPostsExpanded(prev => !prev)}
+            aria-expanded={myPostsExpanded}
+            aria-controls="dashboard-my-posts-section"
+          >
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Your posts</div>
+              <div className="mt-0.5 text-[15px] font-semibold text-[#1c1e21]">My posts</div>
+            </div>
+            <div className="flex items-center gap-3">
+              {myPosts.length > 0 && (
+                <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#1877f2] px-1.5 text-[11px] font-semibold text-white">
+                  {myPosts.length}
+                </span>
+              )}
+              <svg
+                width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"
+                className={`transition-transform ${myPostsExpanded ? 'rotate-180' : ''}`}
+              >
+                <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+          </button>
+          {myPostsExpanded && (
+            <div id="dashboard-my-posts-section">
+              {myPostsLoading ? (
+                <div className="px-4 py-6 text-sm text-[#65676b]">Loading...</div>
+              ) : myPostsError ? (
+                <div className="px-4 py-6 text-sm text-red-500">{myPostsError}</div>
+              ) : myPosts.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-[#65676b]">You haven&apos;t posted anything yet.</div>
+              ) : (
+                <ul className="space-y-0">
+                  {myPosts.map((p: any) => {
+                    const mpTitle = (p?.title || '').trim() || 'Post'
+                    const mpCreatedAt = p?.createdAt ? formatFeedPostDate(p.createdAt) : ''
+                    const mpAuthorName = (p?.createdBy?.name || '').trim() || 'You'
+                    const mpAuthorId = p?.createdBy?.id ? String(p.createdBy.id) : null
+                    const mpAuthorAvatar = typeof p?.createdBy?.avatar === 'string' ? p.createdBy.avatar.trim() : ''
+                    const mpPrompt = (p?.prompt || '').trim()
+                    const mpImageUrl = typeof p?.imageUrl === 'string' ? p.imageUrl.trim() : ''
+                    const mpItemId = p?.id ? String(p.id) : ''
+                    const mpSocialKey = mpItemId ? `post:${mpItemId}` : `post:${mpTitle}`
+                    return (
+                      <li
+                        key={getDashboardItemKey(p)}
+                        data-post-id={mpItemId || undefined}
+                        className="border-b border-black/10 bg-white px-4 py-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-3">
+                              <UserLink userId={mpAuthorId} className="shrink-0" title="View profile">
+                                <div className="h-9 w-9 aspect-square rounded-full border border-black/10 bg-[#f0f2f5] overflow-hidden flex items-center justify-center">
+                                  {mpAuthorAvatar ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={mpAuthorAvatar} alt={mpAuthorName} className="h-full w-full object-cover" />
+                                  ) : (
+                                    <span className="text-xs font-semibold text-[#1c1e21]">{mpAuthorName.slice(0, 1).toUpperCase()}</span>
+                                  )}
+                                </div>
+                              </UserLink>
+                              <div className="min-w-0">
+                                <UserLink userId={mpAuthorId} className="truncate text-[15px] font-semibold tracking-[-0.015em] text-[#1c1e21] hover:underline" title="View profile">
+                                  {mpAuthorName}
+                                </UserLink>
+                                {mpCreatedAt ? <div className="mt-0.5 text-[12px] font-medium tracking-[0.01em] text-[#65676b]">{mpCreatedAt}</div> : null}
+                              </div>
+                            </div>
+                            <div className="mt-3 text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{mpTitle}</div>
+                            {mpPrompt ? <div className="mt-1.5 text-[14px] leading-6 text-[#334155] break-words">{mpPrompt.slice(0, 220)}{mpPrompt.length > 220 ? '...' : ''}</div> : null}
+                            {mpImageUrl ? (
+                              <div className="mt-3 overflow-hidden rounded-2xl border border-black/10 bg-[#f8fafc]">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={mpImageUrl} alt="Post screenshot" className="max-h-[420px] w-full object-cover" />
+                              </div>
+                            ) : null}
+                          </div>
+                          {mpItemId ? (
+                            <div className="flex flex-col items-end gap-2 shrink-0">
+                              <button
+                                type="button"
+                                className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
+                                onClick={() => openEditPostComposer(p)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="text-xs font-semibold text-[#65676b] shrink-0"
+                                onClick={() => void deletePost(mpItemId)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="mt-3 border-t border-black/10 pt-2 text-[#65676b]">
+                          <div className="flex items-center gap-1">
+                            {renderSocialActionButton({
+                              label: 'Like',
+                              active: Boolean(socialLikedItems[mpSocialKey]),
+                              onClick: () => toggleSocialLike(mpSocialKey),
+                              icon: (
+                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                                  <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                  <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              ),
+                            })}
+                            {renderSocialActionButton({
+                              label: p?.solutionCount ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solutions',
+                              onClick: () => void openPostThread(p),
+                              disabled: !mpItemId,
+                              icon: (
+                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                                  <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              ),
+                            })}
+                            {renderSocialActionButton({
+                              label: 'Share',
+                              statusLabel: lastSharedSocialItemKey === mpSocialKey ? 'Copied' : undefined,
+                              onClick: () => shareDashboardItem({
+                                itemKey: mpSocialKey,
+                                title: mpTitle,
+                                text: mpPrompt || mpTitle,
+                                path: `/dashboard?postId=${encodeURIComponent(mpItemId)}`,
+                              }),
+                              disabled: !mpItemId,
+                              icon: (
+                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                                  <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                  <path d="M4 19V17C4 13.6863 6.68629 11 10 11H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              ),
+                            })}
+                          </div>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
         </section>
 
         <section

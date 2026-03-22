@@ -3,6 +3,8 @@ import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop'
 import { cropAndRotateImageToFile, rotateImageFile } from '../lib/imageEdit'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 
+const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
+
 type Filters = {
   brightness: number // -100 to 100
   contrast: number // -100 to 100
@@ -189,14 +191,46 @@ export default function ImageCropperModal(props: {
         return
       }
 
-      const scaleX = img.naturalWidth / img.width
-      const scaleY = img.naturalHeight / img.height
+      const displayWidth = img.clientWidth || img.width
+      const displayHeight = img.clientHeight || img.height
+
+      if (!displayWidth || !displayHeight || !img.naturalWidth || !img.naturalHeight) {
+        throw new Error('Image dimensions are unavailable')
+      }
+
+      // ReactCrop selection is over the element box. With object-fit: contain,
+      // the visible bitmap may be letterboxed inside that box, so map via the
+      // actual rendered bitmap rect instead of the full element size.
+      const fitScale = Math.min(displayWidth / img.naturalWidth, displayHeight / img.naturalHeight)
+      const renderedWidth = img.naturalWidth * fitScale
+      const renderedHeight = img.naturalHeight * fitScale
+      const offsetX = (displayWidth - renderedWidth) / 2
+      const offsetY = (displayHeight - renderedHeight) / 2
+
+      const effectiveScale = Math.max(0.0001, scale)
+      const sourceX = (cropArea.x - panX - offsetX) / effectiveScale
+      const sourceY = (cropArea.y - panY - offsetY) / effectiveScale
+      const sourceW = cropArea.width / effectiveScale
+      const sourceH = cropArea.height / effectiveScale
+
+      const naturalScaleX = img.naturalWidth / Math.max(1, renderedWidth)
+      const naturalScaleY = img.naturalHeight / Math.max(1, renderedHeight)
+
+      const rawX = sourceX * naturalScaleX
+      const rawY = sourceY * naturalScaleY
+      const rawW = sourceW * naturalScaleX
+      const rawH = sourceH * naturalScaleY
+
+      const boundedX = clamp(rawX, 0, img.naturalWidth)
+      const boundedY = clamp(rawY, 0, img.naturalHeight)
+      const boundedW = clamp(rawW, 1, img.naturalWidth - boundedX)
+      const boundedH = clamp(rawH, 1, img.naturalHeight - boundedY)
 
       const naturalCrop = {
-        x: Math.max(0, Math.round((cropArea.x - panX) * scaleX)),
-        y: Math.max(0, Math.round((cropArea.y - panY) * scaleY)),
-        width: Math.max(1, Math.round(cropArea.width * scaleX)),
-        height: Math.max(1, Math.round(cropArea.height * scaleY)),
+        x: Math.round(boundedX),
+        y: Math.round(boundedY),
+        width: Math.round(boundedW),
+        height: Math.round(boundedH),
       }
 
       const editedFile = await cropAndRotateImageToFile({
@@ -211,7 +245,7 @@ export default function ImageCropperModal(props: {
       setError(e?.message || 'Failed to process image')
       setSaving(false)
     }
-  }, [completedCropPx, file, objectUrl, onConfirm, onUseOriginal, panX, panY, workingFile])
+  }, [completedCropPx, file, objectUrl, onConfirm, onUseOriginal, panX, panY, scale, workingFile])
 
   const doUseOriginal = useCallback(() => {
     if (!file) return

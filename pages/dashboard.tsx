@@ -2494,23 +2494,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [actionInvites, actionJoinRequests, activityFeed])
 
   const openNotificationsOverlay = useCallback(() => {
-    if (isMobile) {
-      setStudentQuickOverlay('groups')
-      setMobileMenuOpen(false)
-    } else {
+    if (!isMobile) {
       openDashboardOverlay('groups')
     }
 
-    if (!selectedGroupId && myGroups.length > 0) {
-      void loadGroupMembers(myGroups[0].group.id)
-    }
-    void loadNotifications()
-
-    // Backwards-compatible bridge for any legacy listeners.
+    // Primary path: open the rich notifications panel listener.
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('pa:open-notifications'))
     }
-  }, [isMobile, loadGroupMembers, loadNotifications, myGroups, openDashboardOverlay, selectedGroupId])
+  }, [isMobile, openDashboardOverlay])
 
   const mobileHeroBgStorageKey = useMemo(() => {
     const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'

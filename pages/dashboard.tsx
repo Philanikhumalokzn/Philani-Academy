@@ -12247,16 +12247,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <div className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e8f1ff] text-[#1877f2]">
-                {renderStudentSurfaceIcon(id)}
-                {id === 'books' && unreadGradingUpdatesCount > 0 ? (
-                  <span
-                    className={`absolute -top-1 -right-1 z-20 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center ${unattendedGradingUpdatesCount > 0 ? 'animate-pulse' : ''}`}
-                    style={unattendedGradingUpdatesCount > 0 ? { animationDuration: '2.2s' } : undefined}
-                    aria-label={`${unreadGradingUpdatesCount} new grading updates`}
-                  >
-                    {unreadGradingUpdatesCount > 99 ? '99+' : unreadGradingUpdatesCount}
-                  </span>
-                ) : null}
+                <span className="relative inline-flex">
+                  {renderStudentSurfaceIcon(id)}
+                  {id === 'books' && unreadGradingUpdatesCount > 0 ? (
+                    <span
+                      className={`absolute -top-1 -right-1 z-20 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center ${unattendedGradingUpdatesCount > 0 ? 'animate-pulse' : ''}`}
+                      style={unattendedGradingUpdatesCount > 0 ? { animationDuration: '2.2s' } : undefined}
+                      aria-label={`${unreadGradingUpdatesCount} new grading updates`}
+                    >
+                      {unreadGradingUpdatesCount > 99 ? '99+' : unreadGradingUpdatesCount}
+                    </span>
+                  ) : null}
+                </span>
               </div>
               <div className="min-w-0">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">{meta.eyebrow}</div>
@@ -12826,20 +12828,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   aria-label="Library"
                   title="Library"
                 >
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M6 5.5C6 4.67157 6.67157 4 7.5 4H18V19H7.5C6.67157 19 6 19.6716 6 20.5V5.5Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
-                    <path d="M6 20H17.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
-                    <path d="M9 8H14" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
-                  </svg>
-                  {unreadGradingUpdatesCount > 0 ? (
-                    <span
-                      className={`absolute -top-1 -right-1 z-20 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center ${unattendedGradingUpdatesCount > 0 ? 'animate-pulse' : ''}`}
-                      style={unattendedGradingUpdatesCount > 0 ? { animationDuration: '2.2s' } : undefined}
-                      aria-label={`${unreadGradingUpdatesCount} new grading updates`}
-                    >
-                      {unreadGradingUpdatesCount > 99 ? '99+' : unreadGradingUpdatesCount}
-                    </span>
-                  ) : null}
+                  <span className="relative inline-flex">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M6 5.5C6 4.67157 6.67157 4 7.5 4H18V19H7.5C6.67157 19 6 19.6716 6 20.5V5.5Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
+                      <path d="M6 20H17.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                      <path d="M9 8H14" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                    </svg>
+                    {unreadGradingUpdatesCount > 0 ? (
+                      <span
+                        className={`absolute -top-1 -right-1 z-20 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center ${unattendedGradingUpdatesCount > 0 ? 'animate-pulse' : ''}`}
+                        style={unattendedGradingUpdatesCount > 0 ? { animationDuration: '2.2s' } : undefined}
+                        aria-label={`${unreadGradingUpdatesCount} new grading updates`}
+                      >
+                        {unreadGradingUpdatesCount > 99 ? '99+' : unreadGradingUpdatesCount}
+                      </span>
+                    ) : null}
+                  </span>
                 </button>
               </div>
 

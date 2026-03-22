@@ -120,6 +120,32 @@ type LibraryGradeItem = {
   sourceKey: string | null
 }
 
+type ManualAssessmentItem = {
+  id: string
+  title: string
+  grade: GradeValue
+  subject: string | null
+  term: string | null
+  assessmentDate: string | null
+  maxMarks: number | null
+  description: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+type ManualMarksheetRow = {
+  number: number
+  userId: string
+  surname: string
+  givenName: string
+  fullName: string
+  scoreLabel: string
+  percentage: number | null
+  notes: string | null
+  screenshotUrl: string | null
+  gradedAt: string | null
+}
+
 type LatexSave = {
   id: string
   sessionKey: string
@@ -1303,16 +1329,27 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [libraryGrades, setLibraryGrades] = useState<LibraryGradeItem[]>([])
   const [libraryGradesLoading, setLibraryGradesLoading] = useState(false)
   const [libraryGradesError, setLibraryGradesError] = useState<string | null>(null)
-  const [manualGradeLearnerEmail, setManualGradeLearnerEmail] = useState('')
-  const [manualGradeAssessmentTitle, setManualGradeAssessmentTitle] = useState('')
-  const [manualGradeScoreLabel, setManualGradeScoreLabel] = useState('')
-  const [manualGradePercentage, setManualGradePercentage] = useState('')
-  const [manualGradeNotes, setManualGradeNotes] = useState('')
-  const [manualGradeScreenshotUrl, setManualGradeScreenshotUrl] = useState('')
-  const [manualGradeScreenshotUploading, setManualGradeScreenshotUploading] = useState(false)
-  const [manualGradeSaving, setManualGradeSaving] = useState(false)
-  const [manualGradeError, setManualGradeError] = useState<string | null>(null)
-  const [manualGradeSuccess, setManualGradeSuccess] = useState<string | null>(null)
+  const [manualAssessments, setManualAssessments] = useState<ManualAssessmentItem[]>([])
+  const [manualAssessmentsLoading, setManualAssessmentsLoading] = useState(false)
+  const [manualAssessmentsError, setManualAssessmentsError] = useState<string | null>(null)
+  const [selectedManualAssessmentId, setSelectedManualAssessmentId] = useState<string | null>(null)
+  const [manualMarksheetRows, setManualMarksheetRows] = useState<ManualMarksheetRow[]>([])
+  const [manualMarksheetLoading, setManualMarksheetLoading] = useState(false)
+  const [manualMarksheetError, setManualMarksheetError] = useState<string | null>(null)
+  const [manualMarksheetSearch, setManualMarksheetSearch] = useState('')
+  const [manualMarksheetDraftByUserId, setManualMarksheetDraftByUserId] = useState<Record<string, { scoreLabel: string; percentage: string; notes: string; screenshotUrl: string }>>({})
+  const [manualMarksheetSavingUserId, setManualMarksheetSavingUserId] = useState<string | null>(null)
+  const [manualMarksheetScreenshotTargetUserId, setManualMarksheetScreenshotTargetUserId] = useState<string | null>(null)
+  const [manualMarksheetScreenshotUploading, setManualMarksheetScreenshotUploading] = useState(false)
+  const [manualAssessmentTitleDraft, setManualAssessmentTitleDraft] = useState('')
+  const [manualAssessmentSubjectDraft, setManualAssessmentSubjectDraft] = useState('')
+  const [manualAssessmentTermDraft, setManualAssessmentTermDraft] = useState('')
+  const [manualAssessmentDateDraft, setManualAssessmentDateDraft] = useState('')
+  const [manualAssessmentMaxMarksDraft, setManualAssessmentMaxMarksDraft] = useState('')
+  const [manualAssessmentDescriptionDraft, setManualAssessmentDescriptionDraft] = useState('')
+  const [manualAssessmentCreating, setManualAssessmentCreating] = useState(false)
+  const [manualAssessmentCreateError, setManualAssessmentCreateError] = useState<string | null>(null)
+  const [manualAssessmentCreateSuccess, setManualAssessmentCreateSuccess] = useState<string | null>(null)
   const manualGradeScreenshotInputRef = useRef<HTMLInputElement | null>(null)
   const [offlineDocUrls, setOfflineDocUrls] = useState<string[]>([])
   const [offlineDocSavingUrls, setOfflineDocSavingUrls] = useState<string[]>([])
@@ -3263,9 +3300,188 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [makeOfflineCacheKey, status])
 
-  const uploadManualGradeScreenshot = useCallback(async (file: File) => {
-    setManualGradeScreenshotUploading(true)
-    setManualGradeError(null)
+  const fetchManualAssessments = useCallback(async () => {
+    if (!canManageAnnouncements || !selectedGrade) {
+      setManualAssessments([])
+      setSelectedManualAssessmentId(null)
+      return
+    }
+
+    setManualAssessmentsLoading(true)
+    setManualAssessmentsError(null)
+    try {
+      const res = await fetch(`/api/library/manual-assessments?grade=${encodeURIComponent(selectedGrade)}`, {
+        credentials: 'same-origin',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to load assessments (${res.status})`)
+
+      const items = Array.isArray(data?.items) ? data.items : []
+      setManualAssessments(items)
+      if (!selectedManualAssessmentId && items.length > 0) {
+        setSelectedManualAssessmentId(String(items[0].id || ''))
+      }
+      if (selectedManualAssessmentId && !items.some((item: any) => String(item.id) === selectedManualAssessmentId)) {
+        setSelectedManualAssessmentId(items[0] ? String(items[0].id || '') : null)
+      }
+    } catch (err: any) {
+      setManualAssessmentsError(err?.message || 'Failed to load assessments')
+      setManualAssessments([])
+      setSelectedManualAssessmentId(null)
+    } finally {
+      setManualAssessmentsLoading(false)
+    }
+  }, [canManageAnnouncements, selectedGrade, selectedManualAssessmentId])
+
+  const fetchManualMarksheet = useCallback(async (assessmentId: string) => {
+    if (!assessmentId) {
+      setManualMarksheetRows([])
+      setManualMarksheetDraftByUserId({})
+      return
+    }
+
+    setManualMarksheetLoading(true)
+    setManualMarksheetError(null)
+    try {
+      const res = await fetch(`/api/library/manual-assessments?assessmentId=${encodeURIComponent(assessmentId)}`, {
+        credentials: 'same-origin',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to load marksheet (${res.status})`)
+
+      const rows = Array.isArray(data?.rows) ? data.rows : []
+      setManualMarksheetRows(rows)
+
+      const nextDrafts: Record<string, { scoreLabel: string; percentage: string; notes: string; screenshotUrl: string }> = {}
+      for (const row of rows) {
+        const userId = String((row as any)?.userId || '')
+        if (!userId) continue
+        nextDrafts[userId] = {
+          scoreLabel: String((row as any)?.scoreLabel || ''),
+          percentage: typeof (row as any)?.percentage === 'number' ? String((row as any).percentage) : '',
+          notes: String((row as any)?.notes || ''),
+          screenshotUrl: String((row as any)?.screenshotUrl || ''),
+        }
+      }
+      setManualMarksheetDraftByUserId(nextDrafts)
+    } catch (err: any) {
+      setManualMarksheetError(err?.message || 'Failed to load marksheet')
+      setManualMarksheetRows([])
+      setManualMarksheetDraftByUserId({})
+    } finally {
+      setManualMarksheetLoading(false)
+    }
+  }, [])
+
+  const createManualAssessment = useCallback(async () => {
+    if (!selectedGrade) {
+      setManualAssessmentCreateError('Select a grade first.')
+      return
+    }
+
+    const title = manualAssessmentTitleDraft.trim()
+    if (!title) {
+      setManualAssessmentCreateError('Assessment title is required.')
+      return
+    }
+
+    setManualAssessmentCreating(true)
+    setManualAssessmentCreateError(null)
+    setManualAssessmentCreateSuccess(null)
+    try {
+      const res = await fetch('/api/library/manual-assessments', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create',
+          title,
+          grade: selectedGrade,
+          subject: manualAssessmentSubjectDraft.trim(),
+          term: manualAssessmentTermDraft.trim(),
+          assessmentDate: manualAssessmentDateDraft.trim(),
+          maxMarks: manualAssessmentMaxMarksDraft.trim() ? Number(manualAssessmentMaxMarksDraft) : null,
+          description: manualAssessmentDescriptionDraft.trim(),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to create assessment (${res.status})`)
+
+      const item = data?.item
+      if (item?.id) {
+        setManualAssessments((prev) => [item, ...prev.filter((entry) => String(entry.id) !== String(item.id))])
+        setSelectedManualAssessmentId(String(item.id))
+      }
+
+      setManualAssessmentTitleDraft('')
+      setManualAssessmentSubjectDraft('')
+      setManualAssessmentTermDraft('')
+      setManualAssessmentDateDraft('')
+      setManualAssessmentMaxMarksDraft('')
+      setManualAssessmentDescriptionDraft('')
+      setManualAssessmentCreateSuccess('Assessment created.')
+      void fetchManualAssessments()
+    } catch (err: any) {
+      setManualAssessmentCreateError(err?.message || 'Failed to create assessment')
+    } finally {
+      setManualAssessmentCreating(false)
+    }
+  }, [fetchManualAssessments, manualAssessmentDateDraft, manualAssessmentDescriptionDraft, manualAssessmentMaxMarksDraft, manualAssessmentSubjectDraft, manualAssessmentTermDraft, manualAssessmentTitleDraft, selectedGrade])
+
+  const saveManualMarksheetRow = useCallback(async (learnerUserId: string) => {
+    if (!selectedManualAssessmentId) return
+    const draft = manualMarksheetDraftByUserId[learnerUserId]
+    if (!draft) return
+
+    setManualMarksheetSavingUserId(learnerUserId)
+    setManualMarksheetError(null)
+    try {
+      const res = await fetch('/api/library/manual-assessments', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'saveMark',
+          assessmentId: selectedManualAssessmentId,
+          learnerUserId,
+          scoreLabel: draft.scoreLabel,
+          percentage: draft.percentage.trim() ? Number(draft.percentage) : null,
+          notes: draft.notes,
+          screenshotUrl: draft.screenshotUrl,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to save mark (${res.status})`)
+
+      const savedItem = data?.item || null
+      setManualMarksheetRows((prev) => prev.map((row) => {
+        if (String(row.userId) !== learnerUserId) return row
+        return {
+          ...row,
+          scoreLabel: String(savedItem?.scoreLabel || draft.scoreLabel || row.scoreLabel),
+          percentage: typeof savedItem?.percentage === 'number' ? savedItem.percentage : (draft.percentage.trim() ? Number(draft.percentage) : null),
+          notes: draft.notes || null,
+          screenshotUrl: draft.screenshotUrl || null,
+          gradedAt: savedItem?.gradedAt || new Date().toISOString(),
+        }
+      }))
+
+      void fetchLibraryGrades()
+    } catch (err: any) {
+      setManualMarksheetError(err?.message || 'Failed to save mark')
+    } finally {
+      setManualMarksheetSavingUserId(null)
+    }
+  }, [fetchLibraryGrades, manualMarksheetDraftByUserId, selectedManualAssessmentId])
+
+  const onManualGradeScreenshotPicked = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!manualMarksheetScreenshotTargetUserId) return
+
+    setManualMarksheetScreenshotUploading(true)
+    setManualMarksheetError(null)
     try {
       const form = new FormData()
       form.append('file', file)
@@ -3278,75 +3494,34 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       if (!res.ok) throw new Error(data?.message || `Upload failed (${res.status})`)
       const url = typeof data?.url === 'string' ? data.url.trim() : ''
       if (!url) throw new Error('Upload succeeded but returned no URL')
-      setManualGradeScreenshotUrl(url)
+
+      const learnerUserId = manualMarksheetScreenshotTargetUserId
+      setManualMarksheetDraftByUserId((prev) => ({
+        ...prev,
+        [learnerUserId]: {
+          scoreLabel: prev[learnerUserId]?.scoreLabel || '',
+          percentage: prev[learnerUserId]?.percentage || '',
+          notes: prev[learnerUserId]?.notes || '',
+          screenshotUrl: url,
+        },
+      }))
+      await saveManualMarksheetRow(learnerUserId)
     } catch (err: any) {
-      setManualGradeError(err?.message || 'Failed to upload screenshot')
+      setManualMarksheetError(err?.message || 'Failed to upload screenshot')
     } finally {
-      setManualGradeScreenshotUploading(false)
+      setManualMarksheetScreenshotTargetUserId(null)
+      setManualMarksheetScreenshotUploading(false)
     }
-  }, [])
+  }, [manualMarksheetScreenshotTargetUserId, saveManualMarksheetRow])
 
-  const onManualGradeScreenshotPicked = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    await uploadManualGradeScreenshot(file)
-  }, [uploadManualGradeScreenshot])
-
-  const submitManualLibraryGrade = useCallback(async () => {
-    const learnerEmail = manualGradeLearnerEmail.trim()
-    const assessmentTitle = manualGradeAssessmentTitle.trim()
-    const scoreLabel = manualGradeScoreLabel.trim()
-    const notes = manualGradeNotes.trim()
-    const screenshotUrl = manualGradeScreenshotUrl.trim()
-    const percentage = manualGradePercentage.trim()
-
-    if (!learnerEmail) {
-      setManualGradeError('Learner email is required.')
-      return
-    }
-    if (!assessmentTitle) {
-      setManualGradeError('Assessment title is required.')
-      return
-    }
-
-    setManualGradeSaving(true)
-    setManualGradeError(null)
-    setManualGradeSuccess(null)
-    try {
-      const res = await fetch('/api/library/grades', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          learnerEmail,
-          assessmentTitle,
-          scoreLabel,
-          percentage: percentage ? Number(percentage) : null,
-          notes,
-          screenshotUrl,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.message || `Failed to save grade (${res.status})`)
-
-      if (data?.item) {
-        setLibraryGrades((prev) => [data.item, ...prev.filter((item) => item.id !== data.item.id)])
-      }
-
-      setManualGradeAssessmentTitle('')
-      setManualGradeScoreLabel('')
-      setManualGradePercentage('')
-      setManualGradeNotes('')
-      setManualGradeScreenshotUrl('')
-      setManualGradeSuccess(`Saved grade for ${learnerEmail}.`)
-      void fetchLibraryGrades()
-    } catch (err: any) {
-      setManualGradeError(err?.message || 'Failed to save manual grade')
-    } finally {
-      setManualGradeSaving(false)
-    }
-  }, [fetchLibraryGrades, manualGradeAssessmentTitle, manualGradeLearnerEmail, manualGradeNotes, manualGradePercentage, manualGradeScoreLabel, manualGradeScreenshotUrl])
+  const visibleManualMarksheetRows = useMemo(() => {
+    const query = manualMarksheetSearch.trim().toLowerCase()
+    if (!query) return manualMarksheetRows
+    return manualMarksheetRows.filter((row) => {
+      const haystack = `${row.surname} ${row.givenName} ${row.fullName}`.toLowerCase()
+      return haystack.includes(query)
+    })
+  }, [manualMarksheetRows, manualMarksheetSearch])
 
   const fetchBooksForGrade = useCallback(async () => {
     if (status !== 'authenticated') {
@@ -3400,13 +3575,33 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setBooksOverlayOpen(true)
     void fetchBooksForGrade()
     void fetchLibraryGrades()
-  }, [fetchBooksForGrade, fetchLibraryGrades])
+    if (canManageAnnouncements) {
+      void fetchManualAssessments()
+    }
+  }, [canManageAnnouncements, fetchBooksForGrade, fetchLibraryGrades, fetchManualAssessments])
 
   useEffect(() => {
     if (!booksOverlayOpen) return
     const cached = readLocalCache<string[]>(offlineDocsKey)
     setOfflineDocUrls(Array.isArray(cached?.data) ? cached.data : [])
   }, [booksOverlayOpen, offlineDocsKey])
+
+  useEffect(() => {
+    if (!booksOverlayOpen) return
+    if (!canManageAnnouncements) return
+    void fetchManualAssessments()
+  }, [booksOverlayOpen, canManageAnnouncements, fetchManualAssessments, selectedGrade])
+
+  useEffect(() => {
+    if (!booksOverlayOpen) return
+    if (!canManageAnnouncements) return
+    if (!selectedManualAssessmentId) {
+      setManualMarksheetRows([])
+      setManualMarksheetDraftByUserId({})
+      return
+    }
+    void fetchManualMarksheet(selectedManualAssessmentId)
+  }, [booksOverlayOpen, canManageAnnouncements, fetchManualMarksheet, selectedManualAssessmentId])
 
   const setOfflineDocs = useCallback((next: string[]) => {
     setOfflineDocUrls(next)
@@ -12275,10 +12470,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               onClick={() => {
                 void fetchBooksForGrade()
                 void fetchLibraryGrades()
+                if (canManageAnnouncements) {
+                  void fetchManualAssessments()
+                  if (selectedManualAssessmentId) {
+                    void fetchManualMarksheet(selectedManualAssessmentId)
+                  }
+                }
               }}
-              disabled={booksLoading || libraryGradesLoading}
+              disabled={booksLoading || libraryGradesLoading || manualAssessmentsLoading || manualMarksheetLoading}
             >
-              {booksLoading || libraryGradesLoading ? 'Loading...' : 'Refresh'}
+              {booksLoading || libraryGradesLoading || manualAssessmentsLoading || manualMarksheetLoading ? 'Loading...' : 'Refresh'}
             </button>
           }
         >
@@ -12322,61 +12523,164 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                 {canManageAnnouncements ? (
                   <section className="border-b border-black/10 bg-white px-4 py-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Post Manual Grade</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Assessment Marksheet</div>
                     <div className="mt-3 grid gap-2">
-                      <input
-                        className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
-                        placeholder="Learner email"
-                        value={manualGradeLearnerEmail}
-                        onChange={(e) => setManualGradeLearnerEmail(e.target.value)}
-                      />
-                      <input
-                        className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
-                        placeholder="Assessment title"
-                        value={manualGradeAssessmentTitle}
-                        onChange={(e) => setManualGradeAssessmentTitle(e.target.value)}
-                      />
+                      <div className="grid gap-2 rounded-2xl border border-black/10 bg-[#f8fafc] p-3">
+                        <div className="text-xs font-semibold text-[#334155]">Create Assessment ({selectedGrade ? gradeToLabel(selectedGrade) : 'No grade selected'})</div>
+                        <input
+                          className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
+                          placeholder="Assessment name"
+                          value={manualAssessmentTitleDraft}
+                          onChange={(e) => setManualAssessmentTitleDraft(e.target.value)}
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
+                            placeholder="Subject"
+                            value={manualAssessmentSubjectDraft}
+                            onChange={(e) => setManualAssessmentSubjectDraft(e.target.value)}
+                          />
+                          <input
+                            className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
+                            placeholder="Term"
+                            value={manualAssessmentTermDraft}
+                            onChange={(e) => setManualAssessmentTermDraft(e.target.value)}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
+                            placeholder="Date"
+                            value={manualAssessmentDateDraft}
+                            onChange={(e) => setManualAssessmentDateDraft(e.target.value)}
+                          />
+                          <input
+                            className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
+                            placeholder="Max marks"
+                            value={manualAssessmentMaxMarksDraft}
+                            onChange={(e) => setManualAssessmentMaxMarksDraft(e.target.value)}
+                          />
+                        </div>
+                        <textarea
+                          className="min-h-[64px] rounded-xl border border-black/10 bg-white px-3 py-2 text-sm"
+                          placeholder="Optional description"
+                          value={manualAssessmentDescriptionDraft}
+                          onChange={(e) => setManualAssessmentDescriptionDraft(e.target.value)}
+                        />
+                        {manualAssessmentCreateError ? <div className="text-xs text-red-600">{manualAssessmentCreateError}</div> : null}
+                        {manualAssessmentCreateSuccess ? <div className="text-xs text-emerald-700">{manualAssessmentCreateSuccess}</div> : null}
+                        <button
+                          type="button"
+                          className="inline-flex h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
+                          onClick={() => void createManualAssessment()}
+                          disabled={manualAssessmentCreating || !selectedGrade}
+                        >
+                          {manualAssessmentCreating ? 'Creating...' : 'Create assessment'}
+                        </button>
+                      </div>
+
+                      <div className="grid gap-2 rounded-2xl border border-black/10 bg-[#f8fafc] p-3">
+                        <div className="text-xs font-semibold text-[#334155]">Open Marksheet</div>
+                        {manualAssessmentsError ? <div className="text-xs text-red-600">{manualAssessmentsError}</div> : null}
+                        <select
+                          className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
+                          value={selectedManualAssessmentId || ''}
+                          onChange={(e) => setSelectedManualAssessmentId(e.target.value || null)}
+                        >
+                          <option value="">Select assessment</option>
+                          {manualAssessments.map((item) => (
+                            <option key={item.id} value={item.id}>{item.title}</option>
+                          ))}
+                        </select>
+                      </div>
+
                       <div className="grid grid-cols-2 gap-2">
                         <input
                           className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
-                          placeholder="Score (e.g. 42/50)"
-                          value={manualGradeScoreLabel}
-                          onChange={(e) => setManualGradeScoreLabel(e.target.value)}
-                        />
-                        <input
-                          className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
-                          placeholder="Percent"
-                          value={manualGradePercentage}
-                          onChange={(e) => setManualGradePercentage(e.target.value)}
+                          placeholder="Search learner by name"
+                          value={manualMarksheetSearch}
+                          onChange={(e) => setManualMarksheetSearch(e.target.value)}
                         />
                       </div>
-                      <textarea
-                        className="min-h-[84px] rounded-xl border border-black/10 bg-white px-3 py-2 text-sm"
-                        placeholder="Optional notes"
-                        value={manualGradeNotes}
-                        onChange={(e) => setManualGradeNotes(e.target.value)}
-                      />
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          className="inline-flex h-9 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 text-xs font-medium text-[#1c1e21]"
-                          onClick={() => manualGradeScreenshotInputRef.current?.click()}
-                          disabled={manualGradeScreenshotUploading}
-                        >
-                          {manualGradeScreenshotUploading ? 'Uploading...' : (manualGradeScreenshotUrl ? 'Replace screenshot' : 'Attach screenshot')}
-                        </button>
-                        {manualGradeScreenshotUrl ? <span className="text-xs text-[#475569]">Screenshot attached</span> : null}
-                      </div>
-                      {manualGradeError ? <div className="text-xs text-red-600">{manualGradeError}</div> : null}
-                      {manualGradeSuccess ? <div className="text-xs text-emerald-700">{manualGradeSuccess}</div> : null}
-                      <button
-                        type="button"
-                        className="inline-flex h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
-                        onClick={() => void submitManualLibraryGrade()}
-                        disabled={manualGradeSaving || manualGradeScreenshotUploading}
-                      >
-                        {manualGradeSaving ? 'Saving...' : 'Save grade'}
-                      </button>
+                      {manualMarksheetError ? <div className="text-xs text-red-600">{manualMarksheetError}</div> : null}
+                      {manualMarksheetLoading ? <div className="text-sm text-[#64748b]">Loading marksheet...</div> : null}
+                      {selectedManualAssessmentId && !manualMarksheetLoading ? (
+                        <div className="max-h-[380px] space-y-2 overflow-y-auto rounded-2xl border border-black/10 bg-[#f8fafc] p-2">
+                          {visibleManualMarksheetRows.map((row) => {
+                            const draft = manualMarksheetDraftByUserId[row.userId] || {
+                              scoreLabel: row.scoreLabel || '',
+                              percentage: typeof row.percentage === 'number' ? String(row.percentage) : '',
+                              notes: row.notes || '',
+                              screenshotUrl: row.screenshotUrl || '',
+                            }
+                            const isSaving = manualMarksheetSavingUserId === row.userId
+                            const isUploadingRow = manualMarksheetScreenshotUploading && manualMarksheetScreenshotTargetUserId === row.userId
+                            return (
+                              <div key={row.userId} className="rounded-xl border border-black/10 bg-white p-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="text-xs font-semibold text-[#334155]">{row.number}. {row.surname}, {row.givenName || row.fullName}</div>
+                                  <div className="text-[11px] text-[#64748b]">{row.gradedAt ? new Date(row.gradedAt).toLocaleDateString() : 'Not marked'}</div>
+                                </div>
+                                <div className="mt-2 grid grid-cols-2 gap-2">
+                                  <input
+                                    className="h-9 rounded-lg border border-black/10 bg-white px-2 text-sm"
+                                    placeholder="Score"
+                                    value={draft.scoreLabel}
+                                    onChange={(e) => setManualMarksheetDraftByUserId((prev) => ({
+                                      ...prev,
+                                      [row.userId]: { ...draft, scoreLabel: e.target.value },
+                                    }))}
+                                  />
+                                  <input
+                                    className="h-9 rounded-lg border border-black/10 bg-white px-2 text-sm"
+                                    placeholder="%"
+                                    value={draft.percentage}
+                                    onChange={(e) => setManualMarksheetDraftByUserId((prev) => ({
+                                      ...prev,
+                                      [row.userId]: { ...draft, percentage: e.target.value },
+                                    }))}
+                                  />
+                                </div>
+                                <textarea
+                                  className="mt-2 min-h-[56px] w-full rounded-lg border border-black/10 bg-white px-2 py-1 text-sm"
+                                  placeholder="Notes"
+                                  value={draft.notes}
+                                  onChange={(e) => setManualMarksheetDraftByUserId((prev) => ({
+                                    ...prev,
+                                    [row.userId]: { ...draft, notes: e.target.value },
+                                  }))}
+                                />
+                                <div className="mt-2 flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-8 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 text-[11px] font-medium text-[#1c1e21]"
+                                    onClick={() => {
+                                      setManualMarksheetScreenshotTargetUserId(row.userId)
+                                      manualGradeScreenshotInputRef.current?.click()
+                                    }}
+                                    disabled={manualMarksheetScreenshotUploading}
+                                  >
+                                    {isUploadingRow ? 'Uploading...' : (draft.screenshotUrl ? 'Replace screenshot' : 'Attach screenshot')}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="inline-flex h-8 items-center justify-center rounded-full bg-[#1877f2] px-3 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
+                                    onClick={() => void saveManualMarksheetRow(row.userId)}
+                                    disabled={isSaving || manualMarksheetScreenshotUploading}
+                                  >
+                                    {isSaving ? 'Saving...' : 'Save'}
+                                  </button>
+                                </div>
+                                {draft.screenshotUrl ? (
+                                  <div className="mt-2 overflow-hidden rounded-lg border border-black/10 bg-white">
+                                    <img src={draft.screenshotUrl} alt={`${row.fullName} mark evidence`} className="max-h-36 w-full object-contain" />
+                                  </div>
+                                ) : null}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ) : null}
                     </div>
                   </section>
                 ) : null}
@@ -12492,61 +12796,164 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
               {canManageAnnouncements ? (
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                  <div className="text-xs uppercase tracking-wide text-white/70">Post Manual Grade</div>
+                  <div className="text-xs uppercase tracking-wide text-white/70">Assessment Marksheet</div>
                   <div className="mt-3 grid gap-2">
-                    <input
-                      className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
-                      placeholder="Learner email"
-                      value={manualGradeLearnerEmail}
-                      onChange={(e) => setManualGradeLearnerEmail(e.target.value)}
-                    />
-                    <input
-                      className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
-                      placeholder="Assessment title"
-                      value={manualGradeAssessmentTitle}
-                      onChange={(e) => setManualGradeAssessmentTitle(e.target.value)}
-                    />
+                    <div className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-3">
+                      <div className="text-xs font-semibold text-white/80">Create Assessment ({selectedGrade ? gradeToLabel(selectedGrade) : 'No grade selected'})</div>
+                      <input
+                        className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
+                        placeholder="Assessment name"
+                        value={manualAssessmentTitleDraft}
+                        onChange={(e) => setManualAssessmentTitleDraft(e.target.value)}
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
+                          placeholder="Subject"
+                          value={manualAssessmentSubjectDraft}
+                          onChange={(e) => setManualAssessmentSubjectDraft(e.target.value)}
+                        />
+                        <input
+                          className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
+                          placeholder="Term"
+                          value={manualAssessmentTermDraft}
+                          onChange={(e) => setManualAssessmentTermDraft(e.target.value)}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
+                          placeholder="Date"
+                          value={manualAssessmentDateDraft}
+                          onChange={(e) => setManualAssessmentDateDraft(e.target.value)}
+                        />
+                        <input
+                          className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
+                          placeholder="Max marks"
+                          value={manualAssessmentMaxMarksDraft}
+                          onChange={(e) => setManualAssessmentMaxMarksDraft(e.target.value)}
+                        />
+                      </div>
+                      <textarea
+                        className="min-h-[64px] rounded-xl border border-white/20 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-white/45"
+                        placeholder="Optional description"
+                        value={manualAssessmentDescriptionDraft}
+                        onChange={(e) => setManualAssessmentDescriptionDraft(e.target.value)}
+                      />
+                      {manualAssessmentCreateError ? <div className="text-xs text-red-200">{manualAssessmentCreateError}</div> : null}
+                      {manualAssessmentCreateSuccess ? <div className="text-xs text-emerald-200">{manualAssessmentCreateSuccess}</div> : null}
+                      <button
+                        type="button"
+                        className="btn btn-primary text-xs"
+                        onClick={() => void createManualAssessment()}
+                        disabled={manualAssessmentCreating || !selectedGrade}
+                      >
+                        {manualAssessmentCreating ? 'Creating...' : 'Create assessment'}
+                      </button>
+                    </div>
+
+                    <div className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-3">
+                      <div className="text-xs font-semibold text-white/80">Open Marksheet</div>
+                      {manualAssessmentsError ? <div className="text-xs text-red-200">{manualAssessmentsError}</div> : null}
+                      <select
+                        className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white"
+                        value={selectedManualAssessmentId || ''}
+                        onChange={(e) => setSelectedManualAssessmentId(e.target.value || null)}
+                      >
+                        <option value="">Select assessment</option>
+                        {manualAssessments.map((item) => (
+                          <option key={item.id} value={item.id}>{item.title}</option>
+                        ))}
+                      </select>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-2">
                       <input
                         className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
-                        placeholder="Score"
-                        value={manualGradeScoreLabel}
-                        onChange={(e) => setManualGradeScoreLabel(e.target.value)}
-                      />
-                      <input
-                        className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
-                        placeholder="Percent"
-                        value={manualGradePercentage}
-                        onChange={(e) => setManualGradePercentage(e.target.value)}
+                        placeholder="Search learner by name"
+                        value={manualMarksheetSearch}
+                        onChange={(e) => setManualMarksheetSearch(e.target.value)}
                       />
                     </div>
-                    <textarea
-                      className="min-h-[84px] rounded-xl border border-white/20 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-white/45"
-                      placeholder="Optional notes"
-                      value={manualGradeNotes}
-                      onChange={(e) => setManualGradeNotes(e.target.value)}
-                    />
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        className="btn btn-ghost text-xs"
-                        onClick={() => manualGradeScreenshotInputRef.current?.click()}
-                        disabled={manualGradeScreenshotUploading}
-                      >
-                        {manualGradeScreenshotUploading ? 'Uploading...' : (manualGradeScreenshotUrl ? 'Replace screenshot' : 'Attach screenshot')}
-                      </button>
-                      {manualGradeScreenshotUrl ? <span className="text-xs text-white/70">Screenshot attached</span> : null}
-                    </div>
-                    {manualGradeError ? <div className="text-xs text-red-200">{manualGradeError}</div> : null}
-                    {manualGradeSuccess ? <div className="text-xs text-emerald-200">{manualGradeSuccess}</div> : null}
-                    <button
-                      type="button"
-                      className="btn btn-primary text-xs"
-                      onClick={() => void submitManualLibraryGrade()}
-                      disabled={manualGradeSaving || manualGradeScreenshotUploading}
-                    >
-                      {manualGradeSaving ? 'Saving...' : 'Save grade'}
-                    </button>
+                    {manualMarksheetError ? <div className="text-xs text-red-200">{manualMarksheetError}</div> : null}
+                    {manualMarksheetLoading ? <div className="text-sm muted">Loading marksheet...</div> : null}
+                    {selectedManualAssessmentId && !manualMarksheetLoading ? (
+                      <div className="max-h-[420px] space-y-2 overflow-y-auto rounded-2xl border border-white/10 bg-black/20 p-2">
+                        {visibleManualMarksheetRows.map((row) => {
+                          const draft = manualMarksheetDraftByUserId[row.userId] || {
+                            scoreLabel: row.scoreLabel || '',
+                            percentage: typeof row.percentage === 'number' ? String(row.percentage) : '',
+                            notes: row.notes || '',
+                            screenshotUrl: row.screenshotUrl || '',
+                          }
+                          const isSaving = manualMarksheetSavingUserId === row.userId
+                          const isUploadingRow = manualMarksheetScreenshotUploading && manualMarksheetScreenshotTargetUserId === row.userId
+                          return (
+                            <div key={row.userId} className="rounded-xl border border-white/10 bg-white/5 p-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-xs font-semibold text-white/85">{row.number}. {row.surname}, {row.givenName || row.fullName}</div>
+                                <div className="text-[11px] text-white/50">{row.gradedAt ? new Date(row.gradedAt).toLocaleDateString() : 'Not marked'}</div>
+                              </div>
+                              <div className="mt-2 grid grid-cols-2 gap-2">
+                                <input
+                                  className="h-9 rounded-lg border border-white/20 bg-black/20 px-2 text-sm text-white placeholder:text-white/45"
+                                  placeholder="Score"
+                                  value={draft.scoreLabel}
+                                  onChange={(e) => setManualMarksheetDraftByUserId((prev) => ({
+                                    ...prev,
+                                    [row.userId]: { ...draft, scoreLabel: e.target.value },
+                                  }))}
+                                />
+                                <input
+                                  className="h-9 rounded-lg border border-white/20 bg-black/20 px-2 text-sm text-white placeholder:text-white/45"
+                                  placeholder="%"
+                                  value={draft.percentage}
+                                  onChange={(e) => setManualMarksheetDraftByUserId((prev) => ({
+                                    ...prev,
+                                    [row.userId]: { ...draft, percentage: e.target.value },
+                                  }))}
+                                />
+                              </div>
+                              <textarea
+                                className="mt-2 min-h-[56px] w-full rounded-lg border border-white/20 bg-black/20 px-2 py-1 text-sm text-white placeholder:text-white/45"
+                                placeholder="Notes"
+                                value={draft.notes}
+                                onChange={(e) => setManualMarksheetDraftByUserId((prev) => ({
+                                  ...prev,
+                                  [row.userId]: { ...draft, notes: e.target.value },
+                                }))}
+                              />
+                              <div className="mt-2 flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost text-xs"
+                                  onClick={() => {
+                                    setManualMarksheetScreenshotTargetUserId(row.userId)
+                                    manualGradeScreenshotInputRef.current?.click()
+                                  }}
+                                  disabled={manualMarksheetScreenshotUploading}
+                                >
+                                  {isUploadingRow ? 'Uploading...' : (draft.screenshotUrl ? 'Replace screenshot' : 'Attach screenshot')}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary text-xs"
+                                  onClick={() => void saveManualMarksheetRow(row.userId)}
+                                  disabled={isSaving || manualMarksheetScreenshotUploading}
+                                >
+                                  {isSaving ? 'Saving...' : 'Save'}
+                                </button>
+                              </div>
+                              {draft.screenshotUrl ? (
+                                <div className="mt-2 overflow-hidden rounded-lg border border-white/10 bg-black/20">
+                                  <img src={draft.screenshotUrl} alt={`${row.fullName} mark evidence`} className="max-h-40 w-full object-contain" />
+                                </div>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ) : null}

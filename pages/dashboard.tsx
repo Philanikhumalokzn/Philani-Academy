@@ -108,6 +108,18 @@ type ResourceBankItem = {
   tag?: string | null
 }
 
+type LibraryGradeItem = {
+  id: string
+  sourceType: 'assignment' | 'post_solution' | 'challenge_solution' | 'manual'
+  assessmentTitle: string
+  scoreLabel: string
+  percentage: number | null
+  feedback: string | null
+  screenshotUrl: string | null
+  gradedAt: string
+  sourceKey: string | null
+}
+
 type LatexSave = {
   id: string
   sessionKey: string
@@ -1288,6 +1300,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [booksLoading, setBooksLoading] = useState(false)
   const [booksError, setBooksError] = useState<string | null>(null)
   const [booksItems, setBooksItems] = useState<ResourceBankItem[]>([])
+  const [libraryGrades, setLibraryGrades] = useState<LibraryGradeItem[]>([])
+  const [libraryGradesLoading, setLibraryGradesLoading] = useState(false)
+  const [libraryGradesError, setLibraryGradesError] = useState<string | null>(null)
+  const [manualGradeLearnerEmail, setManualGradeLearnerEmail] = useState('')
+  const [manualGradeAssessmentTitle, setManualGradeAssessmentTitle] = useState('')
+  const [manualGradeScoreLabel, setManualGradeScoreLabel] = useState('')
+  const [manualGradePercentage, setManualGradePercentage] = useState('')
+  const [manualGradeNotes, setManualGradeNotes] = useState('')
+  const [manualGradeScreenshotUrl, setManualGradeScreenshotUrl] = useState('')
+  const [manualGradeScreenshotUploading, setManualGradeScreenshotUploading] = useState(false)
+  const [manualGradeSaving, setManualGradeSaving] = useState(false)
+  const [manualGradeError, setManualGradeError] = useState<string | null>(null)
+  const [manualGradeSuccess, setManualGradeSuccess] = useState<string | null>(null)
+  const manualGradeScreenshotInputRef = useRef<HTMLInputElement | null>(null)
   const [offlineDocUrls, setOfflineDocUrls] = useState<string[]>([])
   const [offlineDocSavingUrls, setOfflineDocSavingUrls] = useState<string[]>([])
   const [offlineDocErrorByUrl, setOfflineDocErrorByUrl] = useState<Record<string, string>>({})
@@ -3188,6 +3214,140 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return contentType.includes('application/pdf') || filename.endsWith('.pdf') || url.includes('.pdf')
   }, [])
 
+  const getLibraryGradeSourceLabel = useCallback((sourceType: LibraryGradeItem['sourceType']) => {
+    if (sourceType === 'assignment') return 'Assignment'
+    if (sourceType === 'post_solution') return 'Post solution'
+    if (sourceType === 'challenge_solution') return 'Challenge solution'
+    return 'Manual test'
+  }, [])
+
+  const fetchLibraryGrades = useCallback(async () => {
+    if (status !== 'authenticated') {
+      setLibraryGrades([])
+      setLibraryGradesError('Sign in to view grades.')
+      return
+    }
+
+    const cacheKey = makeOfflineCacheKey('library:grades')
+    const cached = readLocalCache<LibraryGradeItem[]>(cacheKey)
+    if (cached?.data?.length) {
+      setLibraryGrades(cached.data)
+    }
+
+    setLibraryGradesLoading(true)
+    setLibraryGradesError(null)
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      if (cached?.data?.length) {
+        setLibraryGradesError('Offline. Showing last saved grades.')
+      } else {
+        setLibraryGrades([])
+        setLibraryGradesError('Offline. No saved grades yet.')
+      }
+      setLibraryGradesLoading(false)
+      return
+    }
+
+    try {
+      const res = await fetch('/api/library/grades', { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to load grades (${res.status})`)
+      const items = Array.isArray(data?.items) ? data.items : []
+      setLibraryGrades(items)
+      writeLocalCache(cacheKey, items)
+    } catch (err: any) {
+      setLibraryGradesError(err?.message || 'Failed to load grades')
+      if (!cached?.data?.length) setLibraryGrades([])
+    } finally {
+      setLibraryGradesLoading(false)
+    }
+  }, [makeOfflineCacheKey, status])
+
+  const uploadManualGradeScreenshot = useCallback(async (file: File) => {
+    setManualGradeScreenshotUploading(true)
+    setManualGradeError(null)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/challenges/upload', {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: form,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Upload failed (${res.status})`)
+      const url = typeof data?.url === 'string' ? data.url.trim() : ''
+      if (!url) throw new Error('Upload succeeded but returned no URL')
+      setManualGradeScreenshotUrl(url)
+    } catch (err: any) {
+      setManualGradeError(err?.message || 'Failed to upload screenshot')
+    } finally {
+      setManualGradeScreenshotUploading(false)
+    }
+  }, [])
+
+  const onManualGradeScreenshotPicked = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    await uploadManualGradeScreenshot(file)
+  }, [uploadManualGradeScreenshot])
+
+  const submitManualLibraryGrade = useCallback(async () => {
+    const learnerEmail = manualGradeLearnerEmail.trim()
+    const assessmentTitle = manualGradeAssessmentTitle.trim()
+    const scoreLabel = manualGradeScoreLabel.trim()
+    const notes = manualGradeNotes.trim()
+    const screenshotUrl = manualGradeScreenshotUrl.trim()
+    const percentage = manualGradePercentage.trim()
+
+    if (!learnerEmail) {
+      setManualGradeError('Learner email is required.')
+      return
+    }
+    if (!assessmentTitle) {
+      setManualGradeError('Assessment title is required.')
+      return
+    }
+
+    setManualGradeSaving(true)
+    setManualGradeError(null)
+    setManualGradeSuccess(null)
+    try {
+      const res = await fetch('/api/library/grades', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          learnerEmail,
+          assessmentTitle,
+          scoreLabel,
+          percentage: percentage ? Number(percentage) : null,
+          notes,
+          screenshotUrl,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to save grade (${res.status})`)
+
+      if (data?.item) {
+        setLibraryGrades((prev) => [data.item, ...prev.filter((item) => item.id !== data.item.id)])
+      }
+
+      setManualGradeAssessmentTitle('')
+      setManualGradeScoreLabel('')
+      setManualGradePercentage('')
+      setManualGradeNotes('')
+      setManualGradeScreenshotUrl('')
+      setManualGradeSuccess(`Saved grade for ${learnerEmail}.`)
+      void fetchLibraryGrades()
+    } catch (err: any) {
+      setManualGradeError(err?.message || 'Failed to save manual grade')
+    } finally {
+      setManualGradeSaving(false)
+    }
+  }, [fetchLibraryGrades, manualGradeAssessmentTitle, manualGradeLearnerEmail, manualGradeNotes, manualGradePercentage, manualGradeScoreLabel, manualGradeScreenshotUrl])
+
   const fetchBooksForGrade = useCallback(async () => {
     if (status !== 'authenticated') {
       setBooksItems([])
@@ -3239,7 +3399,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const openBooksOverlay = useCallback(() => {
     setBooksOverlayOpen(true)
     void fetchBooksForGrade()
-  }, [fetchBooksForGrade])
+    void fetchLibraryGrades()
+  }, [fetchBooksForGrade, fetchLibraryGrades])
 
   useEffect(() => {
     if (!booksOverlayOpen) return
@@ -12048,6 +12209,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         }}
         style={{ display: 'none' }}
       />
+      <input
+        ref={manualGradeScreenshotInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        onChange={(e) => {
+          void onManualGradeScreenshotPicked(e)
+        }}
+        style={{ display: 'none' }}
+      />
       <div
         className={
           isMobile
@@ -12102,10 +12272,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <button
               type="button"
               className="btn btn-ghost text-xs"
-              onClick={() => void fetchBooksForGrade()}
-              disabled={booksLoading}
+              onClick={() => {
+                void fetchBooksForGrade()
+                void fetchLibraryGrades()
+              }}
+              disabled={booksLoading || libraryGradesLoading}
             >
-              {booksLoading ? 'Loading...' : 'Refresh'}
+              {booksLoading || libraryGradesLoading ? 'Loading...' : 'Refresh'}
             </button>
           }
         >
@@ -12113,6 +12286,101 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             renderStudentSurfaceFrame(
               'books',
               <div>
+                <section className="border-b border-black/10 bg-white px-4 py-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Grades</div>
+                  {libraryGradesError ? <div className="mt-2 text-sm text-red-600">{libraryGradesError}</div> : null}
+                  {libraryGradesLoading ? <div className="mt-2 text-sm text-[#65676b]">Loading grades...</div> : null}
+                  {!libraryGradesLoading && !libraryGradesError && libraryGrades.length === 0 ? (
+                    <div className="mt-2 text-sm text-[#65676b]">No grades posted yet.</div>
+                  ) : null}
+                  {libraryGrades.length > 0 ? (
+                    <ul className="mt-3 space-y-3">
+                      {libraryGrades.map((item) => (
+                        <li key={item.id} className="rounded-2xl border border-black/10 bg-[#f8fafc] p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-[#111827] break-words">{item.assessmentTitle}</div>
+                              <div className="mt-1 text-xs text-[#65676b]">{getLibraryGradeSourceLabel(item.sourceType)}</div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm font-semibold text-[#0f172a]">{item.scoreLabel}</div>
+                              {typeof item.percentage === 'number' ? <div className="text-xs text-[#65676b]">{item.percentage.toFixed(1)}%</div> : null}
+                            </div>
+                          </div>
+                          {item.feedback ? <div className="mt-2 text-xs text-[#475569] whitespace-pre-wrap break-words">{item.feedback}</div> : null}
+                          {item.screenshotUrl ? (
+                            <div className="mt-3 overflow-hidden rounded-xl border border-black/10 bg-white">
+                              <img src={item.screenshotUrl} alt={`${item.assessmentTitle} screenshot`} className="max-h-64 w-full object-contain" />
+                            </div>
+                          ) : null}
+                          <div className="mt-2 text-[11px] text-[#64748b]">{new Date(item.gradedAt).toLocaleString()}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </section>
+
+                {canManageAnnouncements ? (
+                  <section className="border-b border-black/10 bg-white px-4 py-4">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Post Manual Grade</div>
+                    <div className="mt-3 grid gap-2">
+                      <input
+                        className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
+                        placeholder="Learner email"
+                        value={manualGradeLearnerEmail}
+                        onChange={(e) => setManualGradeLearnerEmail(e.target.value)}
+                      />
+                      <input
+                        className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
+                        placeholder="Assessment title"
+                        value={manualGradeAssessmentTitle}
+                        onChange={(e) => setManualGradeAssessmentTitle(e.target.value)}
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
+                          placeholder="Score (e.g. 42/50)"
+                          value={manualGradeScoreLabel}
+                          onChange={(e) => setManualGradeScoreLabel(e.target.value)}
+                        />
+                        <input
+                          className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
+                          placeholder="Percent"
+                          value={manualGradePercentage}
+                          onChange={(e) => setManualGradePercentage(e.target.value)}
+                        />
+                      </div>
+                      <textarea
+                        className="min-h-[84px] rounded-xl border border-black/10 bg-white px-3 py-2 text-sm"
+                        placeholder="Optional notes"
+                        value={manualGradeNotes}
+                        onChange={(e) => setManualGradeNotes(e.target.value)}
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          className="inline-flex h-9 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 text-xs font-medium text-[#1c1e21]"
+                          onClick={() => manualGradeScreenshotInputRef.current?.click()}
+                          disabled={manualGradeScreenshotUploading}
+                        >
+                          {manualGradeScreenshotUploading ? 'Uploading...' : (manualGradeScreenshotUrl ? 'Replace screenshot' : 'Attach screenshot')}
+                        </button>
+                        {manualGradeScreenshotUrl ? <span className="text-xs text-[#475569]">Screenshot attached</span> : null}
+                      </div>
+                      {manualGradeError ? <div className="text-xs text-red-600">{manualGradeError}</div> : null}
+                      {manualGradeSuccess ? <div className="text-xs text-emerald-700">{manualGradeSuccess}</div> : null}
+                      <button
+                        type="button"
+                        className="inline-flex h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
+                        onClick={() => void submitManualLibraryGrade()}
+                        disabled={manualGradeSaving || manualGradeScreenshotUploading}
+                      >
+                        {manualGradeSaving ? 'Saving...' : 'Save grade'}
+                      </button>
+                    </div>
+                  </section>
+                ) : null}
+
                 {booksError ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-red-600">{booksError}</section> : null}
                 {booksLoading ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">Loading...</section> : null}
                 {!booksLoading && !booksError && booksItems.length === 0 ? (
@@ -12188,6 +12456,101 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             )
           ) : (
             <div className="space-y-3">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                <div className="text-xs uppercase tracking-wide text-white/70">Grades</div>
+                {libraryGradesError ? <div className="mt-2 text-sm text-red-200">{libraryGradesError}</div> : null}
+                {libraryGradesLoading ? <div className="mt-2 text-sm muted">Loading grades...</div> : null}
+                {!libraryGradesLoading && !libraryGradesError && libraryGrades.length === 0 ? (
+                  <div className="mt-2 text-sm muted">No grades posted yet.</div>
+                ) : null}
+                {libraryGrades.length > 0 ? (
+                  <ul className="mt-3 space-y-2">
+                    {libraryGrades.map((item) => (
+                      <li key={item.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="font-medium text-white break-words">{item.assessmentTitle}</div>
+                            <div className="text-xs muted">{getLibraryGradeSourceLabel(item.sourceType)}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-semibold text-white">{item.scoreLabel}</div>
+                            {typeof item.percentage === 'number' ? <div className="text-xs muted">{item.percentage.toFixed(1)}%</div> : null}
+                          </div>
+                        </div>
+                        {item.feedback ? <div className="mt-2 text-xs text-white/80 whitespace-pre-wrap break-words">{item.feedback}</div> : null}
+                        {item.screenshotUrl ? (
+                          <div className="mt-3 overflow-hidden rounded-xl border border-white/10 bg-black/20">
+                            <img src={item.screenshotUrl} alt={`${item.assessmentTitle} screenshot`} className="max-h-72 w-full object-contain" />
+                          </div>
+                        ) : null}
+                        <div className="mt-2 text-[11px] text-white/50">{new Date(item.gradedAt).toLocaleString()}</div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+
+              {canManageAnnouncements ? (
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                  <div className="text-xs uppercase tracking-wide text-white/70">Post Manual Grade</div>
+                  <div className="mt-3 grid gap-2">
+                    <input
+                      className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
+                      placeholder="Learner email"
+                      value={manualGradeLearnerEmail}
+                      onChange={(e) => setManualGradeLearnerEmail(e.target.value)}
+                    />
+                    <input
+                      className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
+                      placeholder="Assessment title"
+                      value={manualGradeAssessmentTitle}
+                      onChange={(e) => setManualGradeAssessmentTitle(e.target.value)}
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
+                        placeholder="Score"
+                        value={manualGradeScoreLabel}
+                        onChange={(e) => setManualGradeScoreLabel(e.target.value)}
+                      />
+                      <input
+                        className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
+                        placeholder="Percent"
+                        value={manualGradePercentage}
+                        onChange={(e) => setManualGradePercentage(e.target.value)}
+                      />
+                    </div>
+                    <textarea
+                      className="min-h-[84px] rounded-xl border border-white/20 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-white/45"
+                      placeholder="Optional notes"
+                      value={manualGradeNotes}
+                      onChange={(e) => setManualGradeNotes(e.target.value)}
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-ghost text-xs"
+                        onClick={() => manualGradeScreenshotInputRef.current?.click()}
+                        disabled={manualGradeScreenshotUploading}
+                      >
+                        {manualGradeScreenshotUploading ? 'Uploading...' : (manualGradeScreenshotUrl ? 'Replace screenshot' : 'Attach screenshot')}
+                      </button>
+                      {manualGradeScreenshotUrl ? <span className="text-xs text-white/70">Screenshot attached</span> : null}
+                    </div>
+                    {manualGradeError ? <div className="text-xs text-red-200">{manualGradeError}</div> : null}
+                    {manualGradeSuccess ? <div className="text-xs text-emerald-200">{manualGradeSuccess}</div> : null}
+                    <button
+                      type="button"
+                      className="btn btn-primary text-xs"
+                      onClick={() => void submitManualLibraryGrade()}
+                      disabled={manualGradeSaving || manualGradeScreenshotUploading}
+                    >
+                      {manualGradeSaving ? 'Saving...' : 'Save grade'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
               {booksError ? <div className="text-sm text-red-200">{booksError}</div> : null}
               {booksLoading ? <div className="text-sm muted">Loading...</div> : null}
               {!booksLoading && !booksError && booksItems.length === 0 ? (

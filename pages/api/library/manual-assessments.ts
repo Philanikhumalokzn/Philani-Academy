@@ -568,6 +568,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             select: { id: true, userId: true, latex: true, feedback: true, gradingJson: true, updatedAt: true },
           })
 
+      if (learner.id && learner.id !== requesterId) {
+        try {
+          await prisma.notification.create({
+            data: {
+              userId: learner.id,
+              type: 'manual_assessment_graded',
+              title: 'Manual assessment graded',
+              body: scoreLabel
+                ? `Your mark was updated to ${scoreLabel}.`
+                : 'Your manual assessment mark was updated.',
+              data: {
+                assessmentId: assessment.id,
+                responseId: String(saved?.id || ''),
+                gradedById: requesterId,
+                scoreLabel,
+                percentage: finalPercentage,
+              },
+            },
+          })
+        } catch (notifyErr) {
+          if (process.env.DEBUG === '1') console.error('Failed to create manual assessment graded notification', notifyErr)
+        }
+      }
+
       return res.status(200).json({
         item: {
           id: String(saved?.id || ''),

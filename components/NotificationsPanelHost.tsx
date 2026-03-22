@@ -481,6 +481,12 @@ export default function NotificationsPanelHost() {
       }
     }
 
+    if (type === 'manual_assessment_graded') {
+      closeNotifications()
+      void router.push('/dashboard')
+      return true
+    }
+
     if (type === 'new_follower') {
       if (followerId) {
         closeNotifications()
@@ -555,7 +561,7 @@ export default function NotificationsPanelHost() {
         ),
       }
     }
-    if (type === 'challenge_graded' || type === 'assignment_graded' || type === 'assignment_submitted') {
+    if (type === 'challenge_graded' || type === 'assignment_graded' || type === 'manual_assessment_graded' || type === 'assignment_submitted') {
       return {
         badgeClass: 'bg-amber-500',
         icon: (

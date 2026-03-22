@@ -2493,6 +2493,87 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return actionUnread + activityUnread
   }, [actionInvites, actionJoinRequests, activityFeed])
 
+  const gradingNotificationTypes = useMemo(
+    () => new Set(['assignment_graded', 'challenge_graded', 'manual_assessment_graded']),
+    []
+  )
+
+  const gradingAttentionStorageKey = useMemo(() => {
+    const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
+    return `pa:grading-attended-notifications:v1:${userKey}`
+  }, [session])
+
+  const [attendedGradingNotificationIds, setAttendedGradingNotificationIds] = useState<string[]>([])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const raw = window.localStorage.getItem(gradingAttentionStorageKey)
+      const parsed = raw ? JSON.parse(raw) : []
+      if (Array.isArray(parsed)) {
+        setAttendedGradingNotificationIds(parsed.map(String))
+      } else {
+        setAttendedGradingNotificationIds([])
+      }
+    } catch {
+      setAttendedGradingNotificationIds([])
+    }
+  }, [gradingAttentionStorageKey])
+
+  const attendedGradingNotificationIdSet = useMemo(
+    () => new Set(attendedGradingNotificationIds),
+    [attendedGradingNotificationIds]
+  )
+
+  const unreadGradingUpdatesCount = useMemo(() => {
+    if (!Array.isArray(activityFeed)) return 0
+    return activityFeed.filter((n) => {
+      const type = String(n?.type || '')
+      if (!gradingNotificationTypes.has(type)) return false
+      return !n?.readAt
+    }).length
+  }, [activityFeed, gradingNotificationTypes])
+
+  const unattendedGradingUpdatesCount = useMemo(() => {
+    if (!Array.isArray(activityFeed)) return 0
+    return activityFeed.filter((n) => {
+      const type = String(n?.type || '')
+      if (!gradingNotificationTypes.has(type)) return false
+      if (n?.readAt) return false
+      const id = String(n?.id || '')
+      if (!id) return false
+      return !attendedGradingNotificationIdSet.has(id)
+    }).length
+  }, [activityFeed, attendedGradingNotificationIdSet, gradingNotificationTypes])
+
+  const markGradingUpdatesAttended = useCallback(() => {
+    const unreadIds = Array.isArray(activityFeed)
+      ? activityFeed
+          .filter((n) => {
+            const type = String(n?.type || '')
+            if (!gradingNotificationTypes.has(type)) return false
+            if (n?.readAt) return false
+            const id = String(n?.id || '')
+            return Boolean(id)
+          })
+          .map((n) => String(n.id))
+      : []
+
+    if (!unreadIds.length) return
+
+    setAttendedGradingNotificationIds((prev) => {
+      const next = Array.from(new Set([...prev, ...unreadIds]))
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem(gradingAttentionStorageKey, JSON.stringify(next))
+        } catch {
+          // ignore
+        }
+      }
+      return next
+    })
+  }, [activityFeed, gradingAttentionStorageKey, gradingNotificationTypes])
+
   const openNotificationsOverlay = useCallback(() => {
     if (!isMobile) {
       openDashboardOverlay('groups')
@@ -3884,13 +3965,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [isAdmin, makeOfflineCacheKey, selectedGrade, status])
 
   const openBooksOverlay = useCallback(() => {
+    markGradingUpdatesAttended()
     setBooksOverlayOpen(true)
     void fetchBooksForGrade()
     void fetchLibraryGrades()
     if (canManageAnnouncements) {
       void fetchManualAssessments()
     }
-  }, [canManageAnnouncements, fetchBooksForGrade, fetchLibraryGrades, fetchManualAssessments])
+  }, [canManageAnnouncements, fetchBooksForGrade, fetchLibraryGrades, fetchManualAssessments, markGradingUpdatesAttended])
 
   useEffect(() => {
     if (!booksOverlayOpen) return
@@ -5263,7 +5345,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
         <button
           type="button"
-          className={`${baseBtn} flex-none snap-start`}
+          className={`${baseBtn} relative flex-none snap-start`}
           style={{ width: buttonWidth }}
           onClick={openBooksOverlay}
           aria-label="Books & materials"
@@ -5275,6 +5357,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <path d="M7.5 7h8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
           <span className="text-[10px] leading-none opacity-80 text-white">Books</span>
+          {unreadGradingUpdatesCount > 0 && (
+            <span
+              className={`absolute -top-1 -left-1 min-w-[16px] h-4 px-1 rounded-full bg-[#1877f2] text-[10px] leading-4 text-white text-center ${unattendedGradingUpdatesCount > 0 ? 'animate-pulse' : ''}`}
+              style={unattendedGradingUpdatesCount > 0 ? { animationDuration: '2.2s' } : undefined}
+              aria-label={`${unreadGradingUpdatesCount} new grading updates`}
+            >
+              {unreadGradingUpdatesCount > 99 ? '99+' : unreadGradingUpdatesCount}
+            </span>
+          )}
         </button>
 
         <button
@@ -12125,8 +12216,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         <section className="student-surface-header border-b border-black/10 bg-white px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e8f1ff] text-[#1877f2]">
+              <div className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e8f1ff] text-[#1877f2]">
                 {renderStudentSurfaceIcon(id)}
+                {id === 'books' && unreadGradingUpdatesCount > 0 ? (
+                  <span
+                    className={`absolute -top-1 -left-1 min-w-[16px] h-4 px-1 rounded-full bg-[#1877f2] text-[10px] leading-4 text-white text-center ${unattendedGradingUpdatesCount > 0 ? 'animate-pulse' : ''}`}
+                    style={unattendedGradingUpdatesCount > 0 ? { animationDuration: '2.2s' } : undefined}
+                    aria-label={`${unreadGradingUpdatesCount} new grading updates`}
+                  >
+                    {unreadGradingUpdatesCount > 99 ? '99+' : unreadGradingUpdatesCount}
+                  </span>
+                ) : null}
               </div>
               <div className="min-w-0">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">{meta.eyebrow}</div>
@@ -12701,6 +12801,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <path d="M6 20H17.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
                     <path d="M9 8H14" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
                   </svg>
+                  {unreadGradingUpdatesCount > 0 ? (
+                    <span
+                      className={`absolute -top-0.5 -left-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#1877f2] text-[10px] leading-4 text-white text-center ${unattendedGradingUpdatesCount > 0 ? 'animate-pulse' : ''}`}
+                      style={unattendedGradingUpdatesCount > 0 ? { animationDuration: '2.2s' } : undefined}
+                      aria-label={`${unreadGradingUpdatesCount} new grading updates`}
+                    >
+                      {unreadGradingUpdatesCount > 99 ? '99+' : unreadGradingUpdatesCount}
+                    </span>
+                  ) : null}
                 </button>
               </div>
 

@@ -1202,6 +1202,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [selectedAssignment, setSelectedAssignment] = useState<any | null>(null)
   const [selectedAssignmentLoading, setSelectedAssignmentLoading] = useState(false)
   const [selectedAssignmentError, setSelectedAssignmentError] = useState<string | null>(null)
+  const [assignmentTitleEditMode, setAssignmentTitleEditMode] = useState(false)
+  const [assignmentTitleEditDraft, setAssignmentTitleEditDraft] = useState('')
+  const [assignmentTitleSaving, setAssignmentTitleSaving] = useState(false)
   const [assignmentResponsesByQuestionId, setAssignmentResponsesByQuestionId] = useState<Record<string, any>>({})
   const [assignmentResponsesLoading, setAssignmentResponsesLoading] = useState(false)
   const [assignmentResponsesError, setAssignmentResponsesError] = useState<string | null>(null)
@@ -1373,6 +1376,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [manualAssessmentMaxMarksDraft, setManualAssessmentMaxMarksDraft] = useState('')
   const [manualAssessmentDescriptionDraft, setManualAssessmentDescriptionDraft] = useState('')
   const [manualAssessmentCreating, setManualAssessmentCreating] = useState(false)
+  const [manualAssessmentEditingId, setManualAssessmentEditingId] = useState<string | null>(null)
   const [manualAssessmentCreateError, setManualAssessmentCreateError] = useState<string | null>(null)
   const [manualAssessmentCreateSuccess, setManualAssessmentCreateSuccess] = useState<string | null>(null)
   const [manualAssessmentUpdating, setManualAssessmentUpdating] = useState(false)
@@ -3465,6 +3469,32 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [derivePercentageFromScore, selectedManualAssessment?.maxMarks])
 
+  const beginEditSelectedManualAssessment = useCallback(() => {
+    if (!selectedManualAssessment) return
+    setManualAssessmentEditingId(String(selectedManualAssessment.id))
+    setManualAssessmentTitleDraft(String(selectedManualAssessment.title || ''))
+    setManualAssessmentSubjectDraft(String(selectedManualAssessment.subject || ''))
+    setManualAssessmentTermDraft(String(selectedManualAssessment.term || ''))
+    setManualAssessmentDateDraft(String(selectedManualAssessment.assessmentDate || ''))
+    setManualAssessmentMaxMarksDraft(
+      selectedManualAssessment.maxMarks != null ? String(selectedManualAssessment.maxMarks) : ''
+    )
+    setManualAssessmentDescriptionDraft(String(selectedManualAssessment.description || ''))
+    setManualAssessmentCreateError(null)
+    setManualAssessmentCreateSuccess(null)
+  }, [selectedManualAssessment])
+
+  const cancelManualAssessmentEditing = useCallback(() => {
+    setManualAssessmentEditingId(null)
+    setManualAssessmentTitleDraft('')
+    setManualAssessmentSubjectDraft('')
+    setManualAssessmentTermDraft('')
+    setManualAssessmentDateDraft('')
+    setManualAssessmentMaxMarksDraft('')
+    setManualAssessmentDescriptionDraft('')
+    setManualAssessmentCreateError(null)
+  }, [])
+
   const createManualAssessment = useCallback(async () => {
     if (!selectedGrade) {
       setManualAssessmentCreateError('Select a grade first.')
@@ -3477,7 +3507,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       return
     }
 
+    const maxMarksValue = manualAssessmentMaxMarksDraft.trim()
+    const maxMarksNumber = maxMarksValue ? Number(manualAssessmentMaxMarksDraft) : null
+    if (maxMarksValue && (!Number.isFinite(maxMarksNumber) || Number(maxMarksNumber) <= 0)) {
+      setManualAssessmentCreateError('Test total must be a positive number.')
+      return
+    }
+
+    const isEditing = Boolean(manualAssessmentEditingId)
+
     setManualAssessmentCreating(true)
+    setManualAssessmentUpdating(isEditing)
     setManualAssessmentCreateError(null)
     setManualAssessmentCreateSuccess(null)
     try {
@@ -3486,86 +3526,50 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'create',
+          action: isEditing ? 'updateAssessment' : 'create',
+          assessmentId: manualAssessmentEditingId,
           title,
           grade: selectedGrade,
           subject: manualAssessmentSubjectDraft.trim(),
           term: manualAssessmentTermDraft.trim(),
           assessmentDate: manualAssessmentDateDraft.trim(),
-          maxMarks: manualAssessmentMaxMarksDraft.trim() ? Number(manualAssessmentMaxMarksDraft) : null,
+          maxMarks: maxMarksNumber,
           description: manualAssessmentDescriptionDraft.trim(),
         }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.message || `Failed to create assessment (${res.status})`)
+      if (!res.ok) throw new Error(data?.message || `Failed to ${isEditing ? 'update' : 'create'} assessment (${res.status})`)
 
       const item = data?.item
       if (item?.id) {
-        setManualAssessments((prev) => [item, ...prev.filter((entry) => String(entry.id) !== String(item.id))])
+        setManualAssessments((prev) => {
+          if (isEditing) {
+            return prev.map((entry) => (String(entry.id) === String(item.id) ? { ...entry, ...item } : entry))
+          }
+          return [item, ...prev.filter((entry) => String(entry.id) !== String(item.id))]
+        })
         setSelectedManualAssessmentId(String(item.id))
       }
 
+      setManualAssessmentEditingId(null)
       setManualAssessmentTitleDraft('')
       setManualAssessmentSubjectDraft('')
       setManualAssessmentTermDraft('')
       setManualAssessmentDateDraft('')
       setManualAssessmentMaxMarksDraft('')
       setManualAssessmentDescriptionDraft('')
-      setManualAssessmentCreateSuccess('Assessment created.')
+      setManualAssessmentCreateSuccess(isEditing ? 'Assessment updated.' : 'Assessment created.')
       void fetchManualAssessments()
+      if (selectedManualAssessmentId || item?.id) {
+        void fetchManualMarksheet(String(item?.id || selectedManualAssessmentId || ''))
+      }
     } catch (err: any) {
-      setManualAssessmentCreateError(err?.message || 'Failed to create assessment')
+      setManualAssessmentCreateError(err?.message || `Failed to ${isEditing ? 'update' : 'create'} assessment`)
     } finally {
       setManualAssessmentCreating(false)
-    }
-  }, [fetchManualAssessments, manualAssessmentDateDraft, manualAssessmentDescriptionDraft, manualAssessmentMaxMarksDraft, manualAssessmentSubjectDraft, manualAssessmentTermDraft, manualAssessmentTitleDraft, selectedGrade])
-
-  const updateSelectedManualAssessment = useCallback(async () => {
-    if (!selectedManualAssessmentId || !selectedManualAssessment) return
-    const nextTitle = window.prompt('Edit test title', selectedManualAssessment.title || '')
-    if (nextTitle == null) return
-    const nextTotalRaw = window.prompt('Edit test total marks', selectedManualAssessment.maxMarks != null ? String(selectedManualAssessment.maxMarks) : '')
-    if (nextTotalRaw == null) return
-    const totalTrimmed = nextTotalRaw.trim()
-    const nextMaxMarks = totalTrimmed ? Number(totalTrimmed) : null
-    if (totalTrimmed && (!Number.isFinite(nextMaxMarks) || Number(nextMaxMarks) <= 0)) {
-      setManualMarksheetError('Test total must be a positive number.')
-      return
-    }
-
-    setManualAssessmentUpdating(true)
-    setManualMarksheetError(null)
-    try {
-      const res = await fetch('/api/library/manual-assessments', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'updateAssessment',
-          assessmentId: selectedManualAssessmentId,
-          title: nextTitle.trim() || selectedManualAssessment.title,
-          subject: selectedManualAssessment.subject || '',
-          term: selectedManualAssessment.term || '',
-          assessmentDate: selectedManualAssessment.assessmentDate || '',
-          description: selectedManualAssessment.description || '',
-          maxMarks: nextMaxMarks,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.message || `Failed to update assessment (${res.status})`)
-      const item = data?.item
-      if (item?.id) {
-        setManualAssessments((prev) => prev.map((entry) => String(entry.id) === String(item.id) ? { ...entry, ...item } : entry))
-      }
-      if (selectedManualAssessmentId) {
-        void fetchManualMarksheet(selectedManualAssessmentId)
-      }
-    } catch (err: any) {
-      setManualMarksheetError(err?.message || 'Failed to update assessment')
-    } finally {
       setManualAssessmentUpdating(false)
     }
-  }, [fetchManualMarksheet, selectedManualAssessment, selectedManualAssessmentId])
+  }, [fetchManualAssessments, fetchManualMarksheet, manualAssessmentDateDraft, manualAssessmentDescriptionDraft, manualAssessmentEditingId, manualAssessmentMaxMarksDraft, manualAssessmentSubjectDraft, manualAssessmentTermDraft, manualAssessmentTitleDraft, selectedGrade, selectedManualAssessmentId])
 
   const deleteSelectedManualAssessment = useCallback(async () => {
     if (!selectedManualAssessmentId || !selectedManualAssessment) return
@@ -6881,7 +6885,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }
 
-  async function fetchAssignmentDetails(sessionId: string, assignmentId: string) {
+  async function fetchAssignmentDetails(sessionId: string, assignmentId: string, openTitleEditor = false) {
     setSelectedAssignmentError(null)
     setSelectedAssignmentLoading(true)
     try {
@@ -6892,6 +6896,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
         setSelectedAssignment(data)
+        setAssignmentTitleEditMode(openTitleEditor)
+        setAssignmentTitleEditDraft(String((data as any)?.title || ''))
         setAssignmentMasterGradingPrompt(String((data as any)?.gradingPrompt || ''))
         setAssignmentGradingPromptByQuestionId(() => {
           const map: Record<string, string> = {}
@@ -6970,7 +6976,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }
 
   async function updateAssignmentTitle(sessionId: string, assignmentId: string, nextTitle: string) {
-    if (!nextTitle.trim()) return
+    if (!nextTitle.trim()) return false
     try {
       const res = await fetch(
         `/api/sessions/${encodeURIComponent(sessionId)}/assignments/${encodeURIComponent(assignmentId)}`,
@@ -6985,10 +6991,24 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       if (!res.ok) throw new Error(data?.message || `Failed to update assignment (${res.status})`)
       setAssignments(prev => prev.map(a => (String(a?.id || '') === assignmentId ? { ...a, title: data?.title || nextTitle.trim() } : a)))
       setSelectedAssignment(prev => (prev && String(prev?.id || '') === assignmentId ? { ...prev, title: data?.title || nextTitle.trim() } : prev))
+      return true
     } catch (err: any) {
       setAssignmentsError(err?.message || 'Unable to update assignment')
+      return false
     }
   }
+
+  const saveAssignmentTitleFromView = useCallback(async () => {
+    if (!expandedSessionId || !selectedAssignment?.id) return
+    const nextTitle = assignmentTitleEditDraft.trim()
+    if (!nextTitle) return
+    setAssignmentTitleSaving(true)
+    const ok = await updateAssignmentTitle(expandedSessionId, String(selectedAssignment.id), nextTitle)
+    setAssignmentTitleSaving(false)
+    if (ok) {
+      setAssignmentTitleEditMode(false)
+    }
+  }, [assignmentTitleEditDraft, expandedSessionId, selectedAssignment])
 
   async function deleteAssignment(sessionId: string, assignmentId: string) {
     try {
@@ -9979,21 +9999,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                               },
                                             },
                                             {
-                                              label: 'Edit title',
+                                              label: 'Open to edit',
                                               onClick: () => {
                                                 if (!expandedSessionId) return
-                                                const nextTitle = window.prompt('New assignment title', a.title || 'Assignment')
-                                                if (!nextTitle) return
-                                                void updateAssignmentTitle(expandedSessionId, String(a.id), nextTitle)
-                                              },
-                                            },
-                                            {
-                                              label: 'Delete',
-                                              variant: 'danger',
-                                              onClick: () => {
-                                                if (!expandedSessionId) return
-                                                if (!window.confirm('Delete this assignment? This cannot be undone.')) return
-                                                void deleteAssignment(expandedSessionId, String(a.id))
+                                                setSelectedAssignmentId(String(a.id))
+                                                setSelectedAssignmentQuestionId(null)
+                                                setAssignmentQuestionOverlayOpen(false)
+                                                setAssignmentOverlayOpen(true)
+                                                void fetchAssignmentDetails(expandedSessionId, String(a.id), true)
                                               },
                                             },
                                           ]}
@@ -10299,11 +10312,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               onClose={() => {
                 setAssignmentQuestionOverlayOpen(false)
                 setSelectedAssignmentQuestionId(null)
+                setAssignmentTitleEditMode(false)
                 setAssignmentOverlayOpen(false)
               }}
               onBackdropClick={() => {
                 setAssignmentQuestionOverlayOpen(false)
                 setSelectedAssignmentQuestionId(null)
+                setAssignmentTitleEditMode(false)
                 setAssignmentOverlayOpen(false)
               }}
               zIndexClassName="z-[60]"
@@ -10315,6 +10330,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   onClick={() => {
                     setAssignmentQuestionOverlayOpen(false)
                     setSelectedAssignmentQuestionId(null)
+                    setAssignmentTitleEditMode(false)
                     setAssignmentOverlayOpen(false)
                   }}
                 >
@@ -10332,11 +10348,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <TaskManageMenu
                         actions={[
                           {
-                            label: 'Edit title',
+                            label: 'Edit in this view',
                             onClick: () => {
-                              const nextTitle = window.prompt('New assignment title', selectedAssignment?.title || 'Assignment')
-                              if (!nextTitle) return
-                              void updateAssignmentTitle(expandedSessionId, String(selectedAssignment.id), nextTitle)
+                              setAssignmentTitleEditMode(true)
+                              setAssignmentTitleEditDraft(String(selectedAssignment?.title || ''))
                             },
                           },
                           {
@@ -10360,6 +10375,45 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <div className="text-sm muted">No assignment selected.</div>
                     ) : (
                       <>
+                        {(() => {
+                          const isOwner = viewerId && (String(selectedAssignment?.createdBy || '') === String(viewerId) || String(sessionDetailsSession?.createdBy || '') === String(viewerId))
+                          const canManage = sessionCanOrchestrateLessons && isOwner
+                          if (!canManage) return null
+                          if (!assignmentTitleEditMode) return null
+                          return (
+                            <div className="border border-white/10 rounded bg-white/5 p-3 space-y-2">
+                              <div className="text-xs uppercase tracking-wide text-white/70">Edit Assignment</div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <input
+                                  className="input max-w-md"
+                                  value={assignmentTitleEditDraft}
+                                  onChange={(e) => setAssignmentTitleEditDraft(e.target.value)}
+                                  placeholder="Assignment title"
+                                />
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  disabled={assignmentTitleSaving || !assignmentTitleEditDraft.trim()}
+                                  onClick={() => void saveAssignmentTitleFromView()}
+                                >
+                                  {assignmentTitleSaving ? 'Saving...' : 'Save changes'}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost"
+                                  disabled={assignmentTitleSaving}
+                                  onClick={() => {
+                                    setAssignmentTitleEditMode(false)
+                                    setAssignmentTitleEditDraft(String(selectedAssignment?.title || ''))
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })()}
+
                         {(() => {
                           const qs = Array.isArray(selectedAssignment?.questions) ? selectedAssignment.questions : []
                           if (!qs.length) return <div className="text-sm muted">No questions found.</div>
@@ -12949,7 +13003,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Assessment Marksheet</div>
                     <div className="mt-3 grid gap-2">
                       <div className="grid gap-2 rounded-2xl border border-black/10 bg-[#f8fafc] p-3">
-                        <div className="text-xs font-semibold text-[#334155]">Create Assessment ({selectedGrade ? gradeToLabel(selectedGrade) : 'No grade selected'})</div>
+                        <div className="text-xs font-semibold text-[#334155]">
+                          {manualAssessmentEditingId ? 'Edit Assessment' : 'Create Assessment'} ({selectedGrade ? gradeToLabel(selectedGrade) : 'No grade selected'})
+                        </div>
                         <input
                           className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
                           placeholder="Assessment name"
@@ -12992,14 +13048,28 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         />
                         {manualAssessmentCreateError ? <div className="text-xs text-red-600">{manualAssessmentCreateError}</div> : null}
                         {manualAssessmentCreateSuccess ? <div className="text-xs text-emerald-700">{manualAssessmentCreateSuccess}</div> : null}
-                        <button
-                          type="button"
-                          className="inline-flex h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
-                          onClick={() => void createManualAssessment()}
-                          disabled={manualAssessmentCreating || !selectedGrade}
-                        >
-                          {manualAssessmentCreating ? 'Creating...' : 'Create assessment'}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="inline-flex h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
+                            onClick={() => void createManualAssessment()}
+                            disabled={manualAssessmentCreating || !selectedGrade}
+                          >
+                            {manualAssessmentCreating
+                              ? (manualAssessmentEditingId ? 'Saving...' : 'Creating...')
+                              : (manualAssessmentEditingId ? 'Save changes' : 'Create assessment')}
+                          </button>
+                          {manualAssessmentEditingId ? (
+                            <button
+                              type="button"
+                              className="inline-flex h-10 items-center justify-center rounded-xl border border-black/10 bg-white px-4 text-sm font-semibold text-[#334155]"
+                              onClick={cancelManualAssessmentEditing}
+                              disabled={manualAssessmentCreating}
+                            >
+                              Cancel
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
 
                       <div className="grid gap-2 rounded-2xl border border-black/10 bg-[#f8fafc] p-3">
@@ -13019,7 +13089,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           <button
                             type="button"
                             className="inline-flex h-9 items-center justify-center rounded-xl border border-black/10 bg-white px-3 text-xs font-semibold text-[#111827] disabled:opacity-50"
-                            onClick={() => void updateSelectedManualAssessment()}
+                            onClick={beginEditSelectedManualAssessment}
                             disabled={!selectedManualAssessmentId || manualAssessmentUpdating || manualAssessmentDeleting}
                           >
                             {manualAssessmentUpdating ? 'Updating...' : 'Edit test'}
@@ -13243,7 +13313,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   <div className="text-xs uppercase tracking-wide text-white/70">Assessment Marksheet</div>
                   <div className="mt-3 grid gap-2">
                     <div className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-3">
-                      <div className="text-xs font-semibold text-white/80">Create Assessment ({selectedGrade ? gradeToLabel(selectedGrade) : 'No grade selected'})</div>
+                      <div className="text-xs font-semibold text-white/80">
+                        {manualAssessmentEditingId ? 'Edit Assessment' : 'Create Assessment'} ({selectedGrade ? gradeToLabel(selectedGrade) : 'No grade selected'})
+                      </div>
                       <input
                         className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
                         placeholder="Assessment name"
@@ -13286,14 +13358,28 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       />
                       {manualAssessmentCreateError ? <div className="text-xs text-red-200">{manualAssessmentCreateError}</div> : null}
                       {manualAssessmentCreateSuccess ? <div className="text-xs text-emerald-200">{manualAssessmentCreateSuccess}</div> : null}
-                      <button
-                        type="button"
-                        className="btn btn-primary text-xs"
-                        onClick={() => void createManualAssessment()}
-                        disabled={manualAssessmentCreating || !selectedGrade}
-                      >
-                        {manualAssessmentCreating ? 'Creating...' : 'Create assessment'}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="btn btn-primary text-xs"
+                          onClick={() => void createManualAssessment()}
+                          disabled={manualAssessmentCreating || !selectedGrade}
+                        >
+                          {manualAssessmentCreating
+                            ? (manualAssessmentEditingId ? 'Saving...' : 'Creating...')
+                            : (manualAssessmentEditingId ? 'Save changes' : 'Create assessment')}
+                        </button>
+                        {manualAssessmentEditingId ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost text-xs"
+                            onClick={cancelManualAssessmentEditing}
+                            disabled={manualAssessmentCreating}
+                          >
+                            Cancel
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-3">
@@ -13313,7 +13399,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         <button
                           type="button"
                           className="btn btn-ghost text-xs disabled:opacity-50"
-                          onClick={() => void updateSelectedManualAssessment()}
+                          onClick={beginEditSelectedManualAssessment}
                           disabled={!selectedManualAssessmentId || manualAssessmentUpdating || manualAssessmentDeleting}
                         >
                           {manualAssessmentUpdating ? 'Updating...' : 'Edit test'}

@@ -123,7 +123,7 @@ export default function BottomSheet(props: BottomSheetProps) {
     paddingLeft: 'max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px))',
   }
 
-  const safeTopClearance = 'calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 12px)'
+  const safeTopClearance = 'calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 15rem + 12px)'
   const safeBottomInset = 'max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))'
   const cappedSheetStyle: React.CSSProperties = {
     ...(style || {}),

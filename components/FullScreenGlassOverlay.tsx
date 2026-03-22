@@ -187,7 +187,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
       }
     : undefined
 
-  const panelTopInset = 'max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px))'
+  const panelTopInset = 'calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 15rem)'
   const panelBottomInset = 'max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))'
   const autoPanelMaxHeightStyle: React.CSSProperties | undefined = panelSizing === 'full'
     ? undefined

@@ -1601,6 +1601,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     recognitionEngineRef.current = recognitionEngine
   }, [recognitionEngine])
 
+  // When the keyboard engine is active, seed latexOutput from the display state so the
+  // bottom canvas and top panel start from the same expression.
+  useEffect(() => {
+    if (recognitionEngine !== 'keyboard') return
+    const seed = (latexDisplayState.latex || '').trim() || 'x'
+    setLatexOutput(seed)
+    latexOutputRef.current = seed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recognitionEngine]) // intentionally omits latexDisplayState.latex to avoid overwriting user edits
+
   useEffect(() => {
     rawInkStrokesRef.current = rawInkStrokes
   }, [rawInkStrokes])
@@ -15056,8 +15066,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                             // eslint-disable-next-line react/no-danger
                             dangerouslySetInnerHTML={{
                               __html: (() => {
-                                if (!latexOutput) return '<span style="color:#94a3b8;font-size:14px;font-family:sans-serif">Start with a template on the right →</span>'
-                                try { return renderToString(latexOutput, { displayMode: true, throwOnError: false }) } catch { return '<span style="color:#ef4444;font-size:14px">Invalid LaTeX</span>' }
+                                const src = (latexOutput || '').trim() || 'x'
+                                try { return renderToString(src, { displayMode: true, throwOnError: false }) } catch { return '<span style="color:#ef4444;font-size:14px">Invalid LaTeX</span>' }
                               })()
                             }}
                           />

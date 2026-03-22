@@ -103,6 +103,10 @@ export default function ImageCropperModal(props: {
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     if (!containerRef.current) return
+    const target = e.target as HTMLElement | null
+    if (target?.closest('.ReactCrop__crop-selection, .ReactCrop__drag-handle, .ReactCrop__drag-bar, .ReactCrop__crop-area')) {
+      return
+    }
     const rect = containerRef.current.getBoundingClientRect()
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY

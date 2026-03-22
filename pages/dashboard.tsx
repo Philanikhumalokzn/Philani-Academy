@@ -5362,21 +5362,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           aria-label="Books & materials"
           title="Books & materials"
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H18a2 2 0 0 1 2 2v13.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <path d="M4 5.5V18a3 3 0 0 0 3 3h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <path d="M7.5 7h8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
+          <span className="relative inline-flex">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H18a2 2 0 0 1 2 2v13.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <path d="M4 5.5V18a3 3 0 0 0 3 3h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <path d="M7.5 7h8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            {unreadGradingUpdatesCount > 0 && (
+              <span
+                className={`absolute -top-1 -right-1 z-20 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center ${unattendedGradingUpdatesCount > 0 ? 'animate-pulse' : ''}`}
+                style={unattendedGradingUpdatesCount > 0 ? { animationDuration: '2.2s' } : undefined}
+                aria-label={`${unreadGradingUpdatesCount} new grading updates`}
+              >
+                {unreadGradingUpdatesCount > 99 ? '99+' : unreadGradingUpdatesCount}
+              </span>
+            )}
+          </span>
           <span className="text-[10px] leading-none opacity-80 text-white">Books</span>
-          {unreadGradingUpdatesCount > 0 && (
-            <span
-              className={`absolute -top-1 -left-1 min-w-[16px] h-4 px-1 rounded-full bg-[#1877f2] text-[10px] leading-4 text-white text-center ${unattendedGradingUpdatesCount > 0 ? 'animate-pulse' : ''}`}
-              style={unattendedGradingUpdatesCount > 0 ? { animationDuration: '2.2s' } : undefined}
-              aria-label={`${unreadGradingUpdatesCount} new grading updates`}
-            >
-              {unreadGradingUpdatesCount > 99 ? '99+' : unreadGradingUpdatesCount}
-            </span>
-          )}
         </button>
 
         <button
@@ -12248,7 +12250,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 {renderStudentSurfaceIcon(id)}
                 {id === 'books' && unreadGradingUpdatesCount > 0 ? (
                   <span
-                    className={`absolute -top-1 -left-1 min-w-[16px] h-4 px-1 rounded-full bg-[#1877f2] text-[10px] leading-4 text-white text-center ${unattendedGradingUpdatesCount > 0 ? 'animate-pulse' : ''}`}
+                    className={`absolute -top-1 -right-1 z-20 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center ${unattendedGradingUpdatesCount > 0 ? 'animate-pulse' : ''}`}
                     style={unattendedGradingUpdatesCount > 0 ? { animationDuration: '2.2s' } : undefined}
                     aria-label={`${unreadGradingUpdatesCount} new grading updates`}
                   >
@@ -12831,7 +12833,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   </svg>
                   {unreadGradingUpdatesCount > 0 ? (
                     <span
-                      className={`absolute -top-0.5 -left-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#1877f2] text-[10px] leading-4 text-white text-center ${unattendedGradingUpdatesCount > 0 ? 'animate-pulse' : ''}`}
+                      className={`absolute -top-1 -right-1 z-20 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center ${unattendedGradingUpdatesCount > 0 ? 'animate-pulse' : ''}`}
                       style={unattendedGradingUpdatesCount > 0 ? { animationDuration: '2.2s' } : undefined}
                       aria-label={`${unreadGradingUpdatesCount} new grading updates`}
                     >

@@ -187,6 +187,24 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
       }
     : undefined
 
+  const panelTopInset = 'max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px))'
+  const panelBottomInset = 'max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))'
+  const autoPanelMaxHeightStyle: React.CSSProperties | undefined = panelSizing === 'full'
+    ? undefined
+    : {
+        // Keep mobile overlays below status/notch even with very long content.
+        maxHeight: `calc(100dvh - ${panelTopInset} - ${panelBottomInset} - 12px)`,
+      }
+
+  const panelMotionStyle: React.CSSProperties | undefined = canSwipeDownClose
+    ? {
+        transform: `translateY(${dragOffsetY}px)`,
+        transition: isSettling ? 'transform 170ms ease-out' : 'none',
+        willChange: 'transform',
+        ...(autoPanelMaxHeightStyle || {}),
+      }
+    : autoPanelMaxHeightStyle
+
   const stopDrag = useCallback(() => {
     if (typeof window === 'undefined') return
     window.removeEventListener('pointermove', onDragMove)
@@ -280,13 +298,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
           ref={panelRef}
           className={`overflow-hidden rounded-t-3xl sm:rounded-2xl flex flex-col max-w-5xl ${panelSizeClassName} ${panelTopSafeClassName} ${defaultPanelClassName} ${panelClassName || ''}`}
           onClick={(e) => e.stopPropagation()}
-          style={canSwipeDownClose
-            ? {
-                transform: `translateY(${dragOffsetY}px)`,
-                transition: isSettling ? 'transform 170ms ease-out' : 'none',
-                willChange: 'transform',
-              }
-            : undefined}
+          style={panelMotionStyle}
         >
           {showDragThumb ? (
             <div

@@ -123,8 +123,16 @@ export default function BottomSheet(props: BottomSheetProps) {
     paddingLeft: 'max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px))',
   }
 
+  const safeTopClearance = 'calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 12px)'
+  const safeBottomInset = 'max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))'
+  const cappedSheetStyle: React.CSSProperties = {
+    ...(style || {}),
+    maxHeight: `calc(100dvh - ${safeTopClearance} - ${safeBottomInset} - 8px)`,
+    overflow: 'hidden',
+  }
+
   const sheetInner = (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden max-h-full flex flex-col">
       <div className="flex items-start justify-between gap-3 px-3 py-2 border-b border-slate-200">
         <div className="min-w-0">
           <div className="text-sm text-slate-800 font-medium truncate">{title}</div>
@@ -142,7 +150,7 @@ export default function BottomSheet(props: BottomSheetProps) {
         </div>
       </div>
 
-      <div className="p-2">{children}</div>
+      <div className="p-2 min-h-0 overflow-y-auto">{children}</div>
     </div>
   )
 
@@ -159,7 +167,7 @@ export default function BottomSheet(props: BottomSheetProps) {
         />
         <div
           className={`absolute left-2 right-2 ${className || ''} ${motion.sheet}`}
-          style={style}
+          style={cappedSheetStyle}
           role="dialog"
           aria-modal="true"
           aria-label={title}
@@ -178,7 +186,7 @@ export default function BottomSheet(props: BottomSheetProps) {
     >
       <div
         className={`absolute left-2 right-2 pointer-events-auto ${className || ''} ${motion.sheet}`}
-        style={style}
+        style={cappedSheetStyle}
         role="dialog"
         aria-label={title}
       >

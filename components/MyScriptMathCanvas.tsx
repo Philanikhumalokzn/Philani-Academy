@@ -3022,6 +3022,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const [lessonScriptModuleIndex, setLessonScriptModuleIndex] = useState(-1)
   const VIEW_ONLY_SPLIT_RATIO = 0.8
   const EDITABLE_SPLIT_RATIO = 0.2
+  const KEYBOARD_STACKED_SPLIT_RATIO = 0.42
   const [studentSplitRatio, setStudentSplitRatio] = useState(EDITABLE_SPLIT_RATIO) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(EDITABLE_SPLIT_RATIO)
 
@@ -9553,10 +9554,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   useEffect(() => {
     if (!useStackedStudentLayout) return
-    const next = viewOnlyMode ? VIEW_ONLY_SPLIT_RATIO : EDITABLE_SPLIT_RATIO
+    const next = recognitionEngine === 'keyboard'
+      ? KEYBOARD_STACKED_SPLIT_RATIO
+      : (viewOnlyMode ? VIEW_ONLY_SPLIT_RATIO : EDITABLE_SPLIT_RATIO)
     setStudentSplitRatio(next)
     studentSplitRatioRef.current = next
-  }, [EDITABLE_SPLIT_RATIO, VIEW_ONLY_SPLIT_RATIO, useStackedStudentLayout, viewOnlyMode])
+  }, [EDITABLE_SPLIT_RATIO, KEYBOARD_STACKED_SPLIT_RATIO, VIEW_ONLY_SPLIT_RATIO, recognitionEngine, useStackedStudentLayout, viewOnlyMode])
 
   useEffect(() => {
     if (canOrchestrateLesson) return
@@ -9879,9 +9882,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [canvasOrientation, disableCanvasInput, isFullscreen, useStackedStudentLayout])
 
   const DEFAULT_STACKED_ZOOM = 3.7
+  const stackedDefaultZoom = recognitionEngine === 'keyboard' ? 1 : DEFAULT_STACKED_ZOOM
   // Normalized zoom model: 1 = 1x, making min/max values intuitive.
   const stackedRenderZoomRef = useRef(1)
-  const stackedZoomRef = useRef(DEFAULT_STACKED_ZOOM)
+  const stackedZoomRef = useRef(stackedDefaultZoom)
   const stackedPinchActiveRef = useRef(false)
   const stackedPinchStateRef = useRef<{
     active: boolean
@@ -9894,8 +9898,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     lastDist: number
     lastMidpointX: number
     lastMidpointY: number
-  }>({ active: false, startDist: 0, startZoom: DEFAULT_STACKED_ZOOM, anchorX: 0, anchorY: 0, startScrollLeft: 0, startScrollTop: 0, lastDist: 0, lastMidpointX: 0, lastMidpointY: 0 })
-  const [stackedZoom, setStackedZoom] = useState(DEFAULT_STACKED_ZOOM)
+  }>({ active: false, startDist: 0, startZoom: stackedDefaultZoom, anchorX: 0, anchorY: 0, startScrollLeft: 0, startScrollTop: 0, lastDist: 0, lastMidpointX: 0, lastMidpointY: 0 })
+  const [stackedZoom, setStackedZoom] = useState(stackedDefaultZoom)
   const [stackedZoomHudMounted, setStackedZoomHudMounted] = useState(false)
   const [stackedZoomHudActive, setStackedZoomHudActive] = useState(false)
   const stackedInputScaleRef = useRef(1)
@@ -9992,10 +9996,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   useEffect(() => {
     if (!useStackedStudentLayout) return
-    stackedZoomRef.current = DEFAULT_STACKED_ZOOM
-    setStackedZoom(DEFAULT_STACKED_ZOOM)
+    stackedZoomRef.current = stackedDefaultZoom
+    setStackedZoom(stackedDefaultZoom)
     stackedInitialViewportCenterAppliedRef.current = false
-  }, [useStackedStudentLayout])
+  }, [stackedDefaultZoom, useStackedStudentLayout])
 
   useEffect(() => {
     stackedInputScaleRef.current = useStackedStudentLayout ? stackedLiveScale : 1
@@ -10071,10 +10075,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const inkSurfaceWidthFactor = useMemo(() => {
     if (!useStackedStudentLayout) return 1
     if (!isCompactViewport) return 1
+    if (recognitionEngine === 'keyboard') return 1
     // Intentionally large for narrow portrait phones: gives lots of horizontal room for long expressions.
     // Kept as a factor (not infinite) to avoid extreme memory/perf costs from a gigantic editor surface.
     return 12
-  }, [isCompactViewport, useStackedStudentLayout])
+  }, [isCompactViewport, recognitionEngine, useStackedStudentLayout])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -12866,8 +12871,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     if (typeof editorState.interaction?.splitRatio === 'number' && Number.isFinite(editorState.interaction.splitRatio)) {
-      setStudentSplitRatio(editorState.interaction.splitRatio)
-      studentSplitRatioRef.current = editorState.interaction.splitRatio
+      const nextSplitRatio = recognitionEngineRef.current === 'keyboard'
+        ? KEYBOARD_STACKED_SPLIT_RATIO
+        : editorState.interaction.splitRatio
+      setStudentSplitRatio(nextSplitRatio)
+      studentSplitRatioRef.current = nextSplitRatio
     }
 
     rawInkRedoStackRef.current = Array.isArray(editorState.history?.rawInkRedoStack)

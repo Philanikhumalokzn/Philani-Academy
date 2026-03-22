@@ -13151,7 +13151,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                   <input
                                     className="h-9 rounded-lg border border-black/10 bg-[#f1f5f9] px-2 text-sm"
                                     placeholder="Auto %"
-                                    value={derivePercentageFromScore(draft.scoreLabel, selectedManualAssessment?.maxMarks) || draft.percentage}
+                                    value={(() => {
+                                      const pct = derivePercentageFromScore(draft.scoreLabel, selectedManualAssessment?.maxMarks) || draft.percentage
+                                      return pct ? `${pct}%` : ''
+                                    })()}
                                     readOnly
                                   />
                                 </div>
@@ -13461,7 +13464,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 <input
                                   className="h-9 rounded-lg border border-white/20 bg-black/35 px-2 text-sm text-white placeholder:text-white/45"
                                   placeholder="Auto %"
-                                  value={derivePercentageFromScore(draft.scoreLabel, selectedManualAssessment?.maxMarks) || draft.percentage}
+                                  value={(() => {
+                                    const pct = derivePercentageFromScore(draft.scoreLabel, selectedManualAssessment?.maxMarks) || draft.percentage
+                                    return pct ? `${pct}%` : ''
+                                  })()}
                                   readOnly
                                 />
                               </div>

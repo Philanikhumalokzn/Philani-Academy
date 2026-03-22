@@ -633,8 +633,8 @@ export default function NotificationsPanelHost() {
           zIndexClassName="z-[60] md:hidden"
           className="md:hidden"
           mobileChromeIgnore
-          frameClassName="absolute inset-0 px-2 pt-14 pb-3"
-          panelClassName="rounded-3xl bg-white/5"
+          frameClassName="absolute inset-x-0 bottom-0 flex items-end justify-center px-2 pb-2 pt-0"
+          panelClassName="rounded-t-3xl rounded-b-none bg-white/8 sm:rounded-2xl"
           contentClassName="p-3"
         >
           <div className="space-y-3">

@@ -96,9 +96,27 @@ test.describe('live keyboard verification', () => {
       })
     )
 
+    const viewportMetrics = await page.locator('div.relative.flex-1.min-h-0.overflow-auto').evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const el = node as HTMLElement
+        const rect = el.getBoundingClientRect()
+        return {
+          top: Math.round(rect.top),
+          left: Math.round(rect.left),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          scrollLeft: Math.round(el.scrollLeft),
+          scrollTop: Math.round(el.scrollTop),
+          scrollWidth: Math.round(el.scrollWidth),
+          scrollHeight: Math.round(el.scrollHeight),
+        }
+      })
+    )
+
     console.log('X_TEXTS', JSON.stringify(xTexts, null, 2))
     console.log('KEYBOARD_BUTTONS', JSON.stringify(keyboardButtons, null, 2))
     console.log('CANVAS_PANELS', JSON.stringify(canvasPanels, null, 2))
+    console.log('VIEWPORT_METRICS', JSON.stringify(viewportMetrics, null, 2))
 
     await page.screenshot({ path: 'test-results/keyboard-live-verify.png', fullPage: true })
 

@@ -3564,7 +3564,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const deleteSelectedManualAssessment = useCallback(async () => {
     if (!selectedManualAssessmentId || !selectedManualAssessment) return
-    if (!window.confirm(`Delete test "${selectedManualAssessment.title}" and all marks? This cannot be undone.`)) return
+    if (!window.confirm(
+      `Delete test "${selectedManualAssessment.title}"?\n\nThis will permanently remove:\n- the test\n- all learner marks\n- all screenshots\n- all comments\n\nThis cannot be undone.`
+    )) return
     setManualAssessmentDeleting(true)
     setManualMarksheetError(null)
     try {
@@ -3681,6 +3683,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const deleteGradeComment = useCallback(async (commentId: string) => {
     if (!gradeDetailItem) return
+    if (!window.confirm('Delete this comment permanently? This cannot be undone.')) return
     setGradeCommentBusy(true)
     setGradeDetailError(null)
     try {

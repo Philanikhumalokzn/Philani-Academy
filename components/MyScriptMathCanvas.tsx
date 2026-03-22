@@ -15072,40 +15072,39 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                             }}
                           />
                         )}
+                        {recognitionEngine === 'keyboard' && (
+                          <div className="absolute inset-0 z-10 pointer-events-none">
+                            {(Object.keys(KEYBOARD_RADIAL_OPERATIONS) as KbDirection[]).map((dir) => {
+                              const op = KEYBOARD_RADIAL_OPERATIONS[dir]
+                              const posClass: Record<KbDirection, string> = {
+                                N:  'top-4 left-1/2 -translate-x-1/2',
+                                NE: 'top-8 right-8',
+                                E:  'top-1/2 right-4 -translate-y-1/2',
+                                SE: 'bottom-8 right-8',
+                                S:  'bottom-4 left-1/2 -translate-x-1/2',
+                                SW: 'bottom-8 left-8',
+                                W:  'top-1/2 left-4 -translate-y-1/2',
+                                NW: 'top-8 left-8',
+                              }
+                              const isSelected = selectedKbDirection === dir
+                              return (
+                                <button
+                                  key={dir}
+                                  type="button"
+                                  className={`absolute pointer-events-auto p-2 text-[22px] bg-transparent transition-transform duration-150 ${posClass[dir]} ${isSelected ? 'scale-125 text-blue-600 drop-shadow-[0_0_6px_rgba(37,99,235,0.6)]' : 'text-slate-700 hover:scale-110 hover:text-blue-500'}`}
+                                  title={op.description}
+                                  onClick={() => handleKbOperationSelect(dir)}
+                                  // eslint-disable-next-line react/no-danger
+                                  dangerouslySetInnerHTML={{ __html: (() => { try { return renderToString(op.latex, { throwOnError: false }) } catch { return op.label } })() }}
+                                />
+                              )
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
                 </div>
-
-                {recognitionEngine === 'keyboard' && useStackedStudentLayout && !shouldCollapseStackedView && (
-                  <div className="absolute inset-0 z-10 pointer-events-none">
-                    {(Object.keys(KEYBOARD_RADIAL_OPERATIONS) as KbDirection[]).map((dir) => {
-                      const op = KEYBOARD_RADIAL_OPERATIONS[dir]
-                      const posClass: Record<KbDirection, string> = {
-                        N:  'top-4 left-1/2 -translate-x-1/2',
-                        NE: 'top-8 right-8',
-                        E:  'top-1/2 right-4 -translate-y-1/2',
-                        SE: 'bottom-8 right-8',
-                        S:  'bottom-4 left-1/2 -translate-x-1/2',
-                        SW: 'bottom-8 left-8',
-                        W:  'top-1/2 left-4 -translate-y-1/2',
-                        NW: 'top-8 left-8',
-                      }
-                      const isSelected = selectedKbDirection === dir
-                      return (
-                        <button
-                          key={dir}
-                          type="button"
-                          className={`absolute pointer-events-auto p-2 text-[22px] bg-transparent transition-transform duration-150 ${posClass[dir]} ${isSelected ? 'scale-125 text-blue-600 drop-shadow-[0_0_6px_rgba(37,99,235,0.6)]' : 'text-slate-700 hover:scale-110 hover:text-blue-500'}`}
-                          title={op.description}
-                          onClick={() => handleKbOperationSelect(dir)}
-                          // eslint-disable-next-line react/no-danger
-                          dangerouslySetInnerHTML={{ __html: (() => { try { return renderToString(op.latex, { throwOnError: false }) } catch { return op.label } })() }}
-                        />
-                      )
-                    })}
-                  </div>
-                )}
 
                 {!isRawInkMode && !editorReconnecting && (status === 'loading' || status === 'idle') && (
                   <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
@@ -15200,6 +15199,49 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             style={editorHostStyle}
             data-orientation={canvasOrientation}
           />
+
+          {recognitionEngine === 'keyboard' && (
+            <div
+              className="absolute inset-0 flex items-center justify-center overflow-auto p-6 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(219,234,254,0.45),transparent_55%),linear-gradient(180deg,rgba(248,250,252,0.97),rgba(255,255,255,1))]"
+              // eslint-disable-next-line react/no-danger
+              dangerouslySetInnerHTML={{
+                __html: (() => {
+                  const src = (latexOutput || '').trim() || 'x'
+                  try { return renderToString(src, { displayMode: true, throwOnError: false }) } catch { return '<span style="color:#ef4444;font-size:14px">Invalid LaTeX</span>' }
+                })()
+              }}
+            />
+          )}
+
+          {recognitionEngine === 'keyboard' && (
+            <div className="absolute inset-0 z-10 pointer-events-none">
+              {(Object.keys(KEYBOARD_RADIAL_OPERATIONS) as KbDirection[]).map((dir) => {
+                const op = KEYBOARD_RADIAL_OPERATIONS[dir]
+                const posClass: Record<KbDirection, string> = {
+                  N:  'top-4 left-1/2 -translate-x-1/2',
+                  NE: 'top-8 right-8',
+                  E:  'top-1/2 right-4 -translate-y-1/2',
+                  SE: 'bottom-8 right-8',
+                  S:  'bottom-4 left-1/2 -translate-x-1/2',
+                  SW: 'bottom-8 left-8',
+                  W:  'top-1/2 left-4 -translate-y-1/2',
+                  NW: 'top-8 left-8',
+                }
+                const isSelected = selectedKbDirection === dir
+                return (
+                  <button
+                    key={dir}
+                    type="button"
+                    className={`absolute pointer-events-auto p-2 text-[22px] bg-transparent transition-transform duration-150 ${posClass[dir]} ${isSelected ? 'scale-125 text-blue-600 drop-shadow-[0_0_6px_rgba(37,99,235,0.6)]' : 'text-slate-700 hover:scale-110 hover:text-blue-500'}`}
+                    title={op.description}
+                    onClick={() => handleKbOperationSelect(dir)}
+                    // eslint-disable-next-line react/no-danger
+                    dangerouslySetInnerHTML={{ __html: (() => { try { return renderToString(op.latex, { throwOnError: false }) } catch { return op.label } })() }}
+                  />
+                )
+              })}
+            </div>
+          )}
 
           {ENABLE_EMBEDDED_DIAGRAMS && diagramManagerOpen && hasWriteAccess && (
             <div className="absolute inset-0 z-50 bg-slate-900/30 backdrop-blur-sm" onClick={() => setDiagramManagerOpen(false)}>

@@ -9,7 +9,7 @@ type MathKeyboardOverlayProps = {
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
 export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverlayProps) {
-  const [topRatio, setTopRatio] = useState(0.62)
+  const [topRatio, setTopRatio] = useState(0.2)
   const containerRef = useRef<HTMLDivElement | null>(null)
 
   const updateFromClientY = useCallback((clientY: number) => {
@@ -58,14 +58,15 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
       panelSize="full"
       zIndexClassName="z-[68]"
       frameClassName="absolute inset-0 flex items-stretch justify-center p-0"
-      panelClassName="!h-full !max-h-none !max-w-none !rounded-none border-none bg-[#020617]"
+      panelClassName="!h-full !max-h-none !max-w-none !rounded-none border-none bg-white"
+      className="[&>.philani-overlay-backdrop]:!bg-white [&>.philani-overlay-backdrop]:!backdrop-blur-none"
       contentClassName="p-0"
     >
-      <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-[radial-gradient(circle_at_14%_10%,rgba(56,189,248,0.18),transparent_48%),radial-gradient(circle_at_84%_86%,rgba(14,116,144,0.24),transparent_54%),linear-gradient(180deg,#020617_0%,#0b1325_45%,#0f172a_100%)]">
+      <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-white">
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-3 top-3 z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/30 text-white transition hover:bg-black/45"
+          className="absolute right-3 top-[calc(var(--app-safe-top)+0.75rem)] z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-100"
           aria-label="Close keyboard overlay"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -73,26 +74,46 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
           </svg>
         </button>
 
-        <div className="absolute inset-3 overflow-hidden rounded-[24px] border border-white/12 bg-white/5 shadow-[0_24px_60px_rgba(2,6,23,0.45)] backdrop-blur-[2px]">
-          <div className="flex h-full min-h-0 flex-col">
+        <div className="h-full w-full">
+          <div
+            className="border rounded bg-white p-0 shadow-sm flex flex-col relative"
+            style={{
+              flex: 1,
+              minHeight: '100%',
+              height: '100%',
+              maxHeight: '100%',
+              overflow: 'hidden',
+            }}
+          >
             <div
-              className="min-h-[160px] border-b border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.78),rgba(15,23,42,0.44))]"
-              style={{ height: `${topRatio * 100}%` }}
-            />
+              className="flex flex-col"
+              style={{ flex: Math.max(topRatio, 0.2), minHeight: '200px' }}
+            >
+              <div className="px-3 py-3 flex-1 min-h-[140px]">
+                <div className="h-full bg-white rounded-lg p-3 overflow-visible relative" />
+              </div>
+            </div>
 
             <div
               role="separator"
               aria-label="Resize top and bottom panels"
               aria-orientation="horizontal"
               onPointerDown={handleSeparatorPointerDown}
-              className="relative h-7 shrink-0 cursor-row-resize touch-none border-y border-white/15 bg-[linear-gradient(180deg,rgba(15,23,42,0.95),rgba(2,6,23,0.9))]"
+              className="relative z-20 flex items-center justify-center px-4 py-2 bg-white cursor-row-resize select-none"
+              style={{ touchAction: 'none' }}
             >
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className="h-1.5 w-20 rounded-full bg-white/50" />
-              </div>
+              <div className="w-10 h-1.5 bg-slate-400 rounded-full" />
             </div>
 
-            <div className="min-h-[160px] flex-1 bg-[linear-gradient(180deg,rgba(15,23,42,0.4),rgba(2,6,23,0.88))]" />
+            <div
+              className="px-4 pb-3 flex flex-col min-h-0"
+              style={{
+                flex: Math.max(1 - topRatio, 0.2),
+                minHeight: '220px',
+              }}
+            >
+              <div className="h-full min-h-0 bg-white" />
+            </div>
           </div>
         </div>
       </div>

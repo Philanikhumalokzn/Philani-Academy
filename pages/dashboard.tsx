@@ -31,6 +31,7 @@ import { createLessonRoleProfile, getPlatformRoleDisplayLabel, hasLessonCapabili
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 const ImageCropperModal = dynamic(() => import('../components/ImageCropperModal'), { ssr: false })
+const ZoomableImageOverlay = dynamic(() => import('../components/ZoomableImageOverlay'), { ssr: false })
 
 const MOBILE_HERO_BG_MIN_WIDTH = 1200
 const MOBILE_HERO_BG_MIN_HEIGHT = 600
@@ -1392,6 +1393,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [gradeDetailData, setGradeDetailData] = useState<LibraryGradeDetail | null>(null)
   const [gradeDetailLoading, setGradeDetailLoading] = useState(false)
   const [gradeDetailError, setGradeDetailError] = useState<string | null>(null)
+  const [gradeImageViewer, setGradeImageViewer] = useState<{ url: string; title: string } | null>(null)
   const [gradeCommentDraft, setGradeCommentDraft] = useState('')
   const [gradeCommentBusy, setGradeCommentBusy] = useState(false)
   const [gradeCommentEditId, setGradeCommentEditId] = useState<string | null>(null)
@@ -3749,6 +3751,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setGradeDetailLoading(false)
     }
+  }, [])
+
+  const openGradeScreenshotViewer = useCallback((url: string, title: string) => {
+    if (!url) return
+    setGradeImageViewer({ url, title })
+  }, [])
+
+  const closeGradeScreenshotViewer = useCallback(() => {
+    setGradeImageViewer(null)
   }, [])
 
   const submitGradeComment = useCallback(async () => {
@@ -10357,7 +10368,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
                           {gradeDetailData.screenshotUrls.map((url, idx) => (
                             <div key={`${url}-${idx}`} className="overflow-hidden rounded-xl border border-white/10 bg-black/20">
-                              <img src={url} alt={`Grading screenshot ${idx + 1}`} className="max-h-72 w-full object-contain" />
+                              <button
+                                type="button"
+                                className="block w-full cursor-zoom-in"
+                                onClick={() => openGradeScreenshotViewer(url, `${gradeDetailData.assessmentTitle} screenshot ${idx + 1}`)}
+                              >
+                                <img src={url} alt={`Grading screenshot ${idx + 1}`} className="max-h-72 w-full object-contain" />
+                              </button>
                             </div>
                           ))}
                         </div>
@@ -10458,6 +10475,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </FullScreenGlassOverlay>
           </OverlayPortal>
         )}
+
+        {gradeImageViewer ? (
+          <OverlayPortal>
+            <ZoomableImageOverlay
+              open={Boolean(gradeImageViewer)}
+              imageUrl={gradeImageViewer.url}
+              title={gradeImageViewer.title}
+              onClose={closeGradeScreenshotViewer}
+            />
+          </OverlayPortal>
+        ) : null}
 
         {assignmentOverlayOpen && (
           <OverlayPortal>
@@ -13169,7 +13197,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           {item.feedback ? <div className="mt-2 text-xs text-[#475569] whitespace-pre-wrap break-words">{item.feedback}</div> : null}
                           {item.screenshotUrl ? (
                             <div className="mt-3 overflow-hidden rounded-xl border border-black/10 bg-white">
-                              <img src={item.screenshotUrl} alt={`${item.assessmentTitle} screenshot`} className="max-h-64 w-full object-contain" />
+                              <button
+                                type="button"
+                                className="block w-full cursor-zoom-in"
+                                onClick={() => openGradeScreenshotViewer(item.screenshotUrl || '', `${item.assessmentTitle} screenshot`)}
+                              >
+                                <img src={item.screenshotUrl} alt={`${item.assessmentTitle} screenshot`} className="max-h-64 w-full object-contain" />
+                              </button>
                             </div>
                           ) : null}
                           {item.responseId ? (
@@ -13502,7 +13536,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         {item.feedback ? <div className="mt-2 text-xs text-white/80 whitespace-pre-wrap break-words">{item.feedback}</div> : null}
                         {item.screenshotUrl ? (
                           <div className="mt-3 overflow-hidden rounded-xl border border-white/10 bg-black/20">
-                            <img src={item.screenshotUrl} alt={`${item.assessmentTitle} screenshot`} className="max-h-72 w-full object-contain" />
+                            <button
+                              type="button"
+                              className="block w-full cursor-zoom-in"
+                              onClick={() => openGradeScreenshotViewer(item.screenshotUrl || '', `${item.assessmentTitle} screenshot`)}
+                            >
+                              <img src={item.screenshotUrl} alt={`${item.assessmentTitle} screenshot`} className="max-h-72 w-full object-contain" />
+                            </button>
                           </div>
                         ) : null}
                         {item.responseId ? (

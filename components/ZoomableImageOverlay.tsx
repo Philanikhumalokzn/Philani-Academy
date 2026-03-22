@@ -212,7 +212,7 @@ export default function ZoomableImageOverlay({ open, imageUrl, title, onClose }:
     dragRef.current.active = false
   }, [])
 
-  const getTouchDistance = (touches: TouchList) => {
+  const getTouchDistance = (touches: React.TouchList) => {
     if (touches.length < 2) return 0
     const a = touches[0]
     const b = touches[1]
@@ -221,7 +221,7 @@ export default function ZoomableImageOverlay({ open, imageUrl, title, onClose }:
     return Math.hypot(dx, dy)
   }
 
-  const getTouchMidpoint = (touches: TouchList) => {
+  const getTouchMidpoint = (touches: React.TouchList) => {
     if (touches.length < 2) return { x: 0, y: 0 }
     const a = touches[0]
     const b = touches[1]

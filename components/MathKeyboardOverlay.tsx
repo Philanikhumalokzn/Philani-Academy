@@ -94,6 +94,7 @@ function ZoomableMathCanvas({ latex }: { latex: string }) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const [transform, setTransform] = useState<CanvasTransform>({ scale: 1, offsetX: 0, offsetY: 0 })
+  const transformRef = useRef<CanvasTransform>({ scale: 1, offsetX: 0, offsetY: 0 })
   const panStateRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null)
   const touchStateRef = useRef<
     | {
@@ -117,6 +118,10 @@ function ZoomableMathCanvas({ latex }: { latex: string }) {
   const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null)
 
   useEffect(() => {
+    transformRef.current = transform
+  }, [transform])
+
+  useEffect(() => {
     if (!contentRef.current || !latex) return
     contentRef.current.innerHTML = renderKatexToString(latex, true)
   }, [latex])
@@ -129,15 +134,16 @@ function ZoomableMathCanvas({ latex }: { latex: string }) {
     const localX = clientX - rect.left
     const localY = clientY - rect.top
 
-    setTransform((current) => {
-      const clampedScale = clampScale(nextScale)
-      const ratio = clampedScale / current.scale
-      return {
-        scale: clampedScale,
-        offsetX: localX - (localX - current.offsetX) * ratio,
-        offsetY: localY - (localY - current.offsetY) * ratio,
-      }
-    })
+    const current = transformRef.current
+    const clampedScale = clampScale(nextScale)
+    const ratio = clampedScale / Math.max(current.scale, 0.0001)
+    const nextTransform = {
+      scale: clampedScale,
+      offsetX: localX - (localX - current.offsetX) * ratio,
+      offsetY: localY - (localY - current.offsetY) * ratio,
+    }
+    transformRef.current = nextTransform
+    setTransform(nextTransform)
   }, [])
 
   const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -146,22 +152,25 @@ function ZoomableMathCanvas({ latex }: { latex: string }) {
     const viewport = viewportRef.current
     if (!viewport) return
     viewport.setPointerCapture(event.pointerId)
+    const current = transformRef.current
     panStateRef.current = {
       startX: event.clientX,
       startY: event.clientY,
-      originX: transform.offsetX,
-      originY: transform.offsetY,
+      originX: current.offsetX,
+      originY: current.offsetY,
     }
-  }, [transform.offsetX, transform.offsetY])
+  }, [])
 
   const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const panState = panStateRef.current
     if (!panState || event.pointerType === 'touch') return
-    setTransform((current) => ({
-      ...current,
+    const nextTransform = {
+      ...transformRef.current,
       offsetX: panState.originX + (event.clientX - panState.startX),
       offsetY: panState.originY + (event.clientY - panState.startY),
-    }))
+    }
+    transformRef.current = nextTransform
+    setTransform(nextTransform)
   }, [])
 
   const handlePointerEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -176,8 +185,8 @@ function ZoomableMathCanvas({ latex }: { latex: string }) {
   const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault()
     const delta = event.deltaY < 0 ? 1.12 : 0.9
-    zoomAroundPoint(transform.scale * delta, event.clientX, event.clientY)
-  }, [transform.scale, zoomAroundPoint])
+    zoomAroundPoint(transformRef.current.scale * delta, event.clientX, event.clientY)
+  }, [zoomAroundPoint])
 
   const handleTouchStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
     const touches = event.touches
@@ -191,7 +200,7 @@ function ZoomableMathCanvas({ latex }: { latex: string }) {
         const delta = Math.hypot(touch.clientX - lastTap.x, touch.clientY - lastTap.y)
         if (delta <= 28) {
           event.preventDefault()
-          const zoomTarget = transform.scale > 1.4 ? 1 : Math.min(2.2, transform.scale * 1.45)
+          const zoomTarget = transformRef.current.scale > 1.4 ? 1 : Math.min(2.2, transformRef.current.scale * 1.45)
           zoomAroundPoint(zoomTarget, touch.clientX, touch.clientY)
           lastTapRef.current = null
           touchStateRef.current = null
@@ -204,8 +213,8 @@ function ZoomableMathCanvas({ latex }: { latex: string }) {
         mode: 'pan',
         startX: touch.clientX,
         startY: touch.clientY,
-        originX: transform.offsetX,
-        originY: transform.offsetY,
+        originX: transformRef.current.offsetX,
+        originY: transformRef.current.offsetY,
       }
       return
     }
@@ -218,14 +227,14 @@ function ZoomableMathCanvas({ latex }: { latex: string }) {
       touchStateRef.current = {
         mode: 'pinch',
         startDistance: getTouchDistance(first, second),
-        startScale: transform.scale,
+        startScale: transformRef.current.scale,
         startMidX: midpoint.x,
         startMidY: midpoint.y,
-        originX: transform.offsetX,
-        originY: transform.offsetY,
+        originX: transformRef.current.offsetX,
+        originY: transformRef.current.offsetY,
       }
     }
-  }, [transform.offsetX, transform.offsetY, transform.scale, zoomAroundPoint])
+  }, [zoomAroundPoint])
 
   const handleTouchMove = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
     const state = touchStateRef.current
@@ -233,11 +242,13 @@ function ZoomableMathCanvas({ latex }: { latex: string }) {
 
     if (state.mode === 'pan' && event.touches.length === 1) {
       const touch = event.touches[0]
-      setTransform((current) => ({
-        ...current,
+      const nextTransform = {
+        ...transformRef.current,
         offsetX: state.originX + (touch.clientX - state.startX),
         offsetY: state.originY + (touch.clientY - state.startY),
-      }))
+      }
+      transformRef.current = nextTransform
+      setTransform(nextTransform)
       return
     }
 
@@ -251,24 +262,38 @@ function ZoomableMathCanvas({ latex }: { latex: string }) {
         touchStateRef.current = {
           mode: 'pinch',
           startDistance: getTouchDistance(first, second),
-          startScale: transform.scale,
+          startScale: transformRef.current.scale,
           startMidX: midpoint.x,
           startMidY: midpoint.y,
-          originX: transform.offsetX,
-          originY: transform.offsetY,
+          originX: transformRef.current.offsetX,
+          originY: transformRef.current.offsetY,
         }
         return
       }
 
+      const TWO_FINGER_PAN_GAIN = 0.4
       const nextScale = clampScale(state.startScale * (getTouchDistance(first, second) / Math.max(state.startDistance, 1)))
-      const scaleRatio = nextScale / state.startScale
-      setTransform({
+      const prev = transformRef.current
+      const ratioDelta = nextScale / Math.max(prev.scale, 0.0001)
+      const midpointStepDx = midpoint.x - state.startMidX
+      const midpointStepDy = midpoint.y - state.startMidY
+      const zoomOffsetX = midpoint.x - ratioDelta * (midpoint.x - prev.offsetX)
+      const zoomOffsetY = midpoint.y - ratioDelta * (midpoint.y - prev.offsetY)
+      const nextTransform = {
         scale: nextScale,
-        offsetX: state.originX + (midpoint.x - state.startMidX) - ((midpoint.x - state.originX) * (scaleRatio - 1)),
-        offsetY: state.originY + (midpoint.y - state.startMidY) - ((midpoint.y - state.originY) * (scaleRatio - 1)),
-      })
+        offsetX: zoomOffsetX + (midpointStepDx * TWO_FINGER_PAN_GAIN),
+        offsetY: zoomOffsetY + (midpointStepDy * TWO_FINGER_PAN_GAIN),
+      }
+      transformRef.current = nextTransform
+      setTransform(nextTransform)
+
+      touchStateRef.current = {
+        ...state,
+        startMidX: midpoint.x,
+        startMidY: midpoint.y,
+      }
     }
-  }, [transform.offsetX, transform.offsetY, transform.scale])
+  }, [])
 
   const handleTouchEnd = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
     if (event.touches.length >= 2) {
@@ -278,11 +303,11 @@ function ZoomableMathCanvas({ latex }: { latex: string }) {
       touchStateRef.current = {
         mode: 'pinch',
         startDistance: getTouchDistance(first, second),
-        startScale: transform.scale,
+        startScale: transformRef.current.scale,
         startMidX: midpoint.x,
         startMidY: midpoint.y,
-        originX: transform.offsetX,
-        originY: transform.offsetY,
+        originX: transformRef.current.offsetX,
+        originY: transformRef.current.offsetY,
       }
       return
     }
@@ -293,14 +318,14 @@ function ZoomableMathCanvas({ latex }: { latex: string }) {
         mode: 'pan',
         startX: touch.clientX,
         startY: touch.clientY,
-        originX: transform.offsetX,
-        originY: transform.offsetY,
+        originX: transformRef.current.offsetX,
+        originY: transformRef.current.offsetY,
       }
       return
     }
 
     touchStateRef.current = null
-  }, [transform.offsetX, transform.offsetY, transform.scale])
+  }, [])
 
   return (
     <div

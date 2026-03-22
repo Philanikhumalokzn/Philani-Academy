@@ -104,9 +104,16 @@ export default function ImageCropperModal(props: {
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     if (!containerRef.current) return
     const target = e.target as HTMLElement | null
-    if (target?.closest('.ReactCrop__crop-selection, .ReactCrop__drag-handle, .ReactCrop__drag-bar, .ReactCrop__crop-area')) {
-      return
-    }
+    if (!target) return
+
+    // Pan only when dragging inside crop selection body; edge/corner handles remain crop-only.
+    const onHandle = target.closest('.ReactCrop__drag-handle, .ReactCrop__drag-bar')
+    const onCropBody = target.closest('.ReactCrop__crop-selection')
+    if (onHandle || !onCropBody) return
+
+    e.preventDefault()
+    e.stopPropagation()
+
     const rect = containerRef.current.getBoundingClientRect()
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
@@ -186,8 +193,8 @@ export default function ImageCropperModal(props: {
       const scaleY = img.naturalHeight / img.height
 
       const naturalCrop = {
-        x: Math.max(0, Math.round(cropArea.x * scaleX)),
-        y: Math.max(0, Math.round(cropArea.y * scaleY)),
+        x: Math.max(0, Math.round((cropArea.x - panX) * scaleX)),
+        y: Math.max(0, Math.round((cropArea.y - panY) * scaleY)),
         width: Math.max(1, Math.round(cropArea.width * scaleX)),
         height: Math.max(1, Math.round(cropArea.height * scaleY)),
       }
@@ -204,7 +211,7 @@ export default function ImageCropperModal(props: {
       setError(e?.message || 'Failed to process image')
       setSaving(false)
     }
-  }, [completedCropPx, file, objectUrl, onConfirm, onUseOriginal, workingFile])
+  }, [completedCropPx, file, objectUrl, onConfirm, onUseOriginal, panX, panY, workingFile])
 
   const doUseOriginal = useCallback(() => {
     if (!file) return
@@ -252,12 +259,6 @@ export default function ImageCropperModal(props: {
       <div
         ref={containerRef}
         className="relative flex-1 overflow-hidden bg-black"
-        onMouseDown={handleMouseDown}
-        onTouchStart={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onTouchMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onTouchEnd={handleMouseUp}
       >
         {error ? (
           <div className="absolute left-3 right-3 top-3 z-10 rounded-xl border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
@@ -266,43 +267,40 @@ export default function ImageCropperModal(props: {
         ) : null}
 
         {objectUrl ? (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div
-              className="relative"
-              style={{
-                transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
-                transition: isDragging ? 'none' : 'transform 0.1s ease-out',
-              }}
-            >
-              <ReactCrop
-                crop={crop}
-                onChange={(_, percentCrop) => {
-                  setCrop(percentCrop)
-                }}
-                onComplete={(px) => setCompletedCropPx(px)}
-                keepSelection
-                aspect={aspectRatio}
-                circularCrop={circularCrop}
-              >
-                <img
-                  ref={imgRef}
-                  alt="Crop preview"
-                  src={objectUrl}
-                  style={{
-                    width: '100vmin',
-                    height: '100vmin',
-                    objectFit: 'contain',
-                    display: 'block',
-                    ...getFilterStyle(),
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="relative">
+              <div onMouseDownCapture={handleMouseDown} onTouchStartCapture={handleMouseDown}>
+                <ReactCrop
+                  crop={crop}
+                  onChange={(_, percentCrop) => {
+                    setCrop(percentCrop)
                   }}
-                  onLoad={() => {
-                    setCrop(initialCrop)
-                    setCompletedCropPx(null)
-                  }}
-                  className="pointer-events-none"
-                  draggable="false"
-                />
-              </ReactCrop>
+                  onComplete={(px) => setCompletedCropPx(px)}
+                  keepSelection
+                  aspect={aspectRatio}
+                  circularCrop={circularCrop}
+                >
+                  <img
+                    ref={imgRef}
+                    alt="Crop preview"
+                    src={objectUrl}
+                    style={{
+                      width: '100vmin',
+                      height: '100vmin',
+                      objectFit: 'contain',
+                      display: 'block',
+                      transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
+                      transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+                      ...getFilterStyle(),
+                    }}
+                    onLoad={() => {
+                      setCrop(initialCrop)
+                      setCompletedCropPx(null)
+                    }}
+                    draggable="false"
+                  />
+                </ReactCrop>
+              </div>
             </div>
           </div>
         ) : (

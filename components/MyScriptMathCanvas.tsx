@@ -713,7 +713,7 @@ type CanvasStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 type CanvasMode = 'math' | 'raw-ink'
 
-type RecognitionEngine = 'myscript' | 'mathpix'
+type RecognitionEngine = 'keyboard' | 'myscript' | 'mathpix'
 
 type RawInkPoint = {
   x: number
@@ -968,7 +968,7 @@ const LESSON_SCRIPT_PHASES: Array<{ key: LessonScriptPhaseKey; label: string }> 
 const DEFAULT_BROADCAST_DEBOUNCE_MS = 32
 const ALL_STUDENTS_ID = 'all-students'
 const missingKeyMessage = 'Missing MyScript credentials. Set NEXT_PUBLIC_MYSCRIPT_APPLICATION_KEY and NEXT_PUBLIC_MYSCRIPT_HMAC_KEY.'
-const DEFAULT_RECOGNITION_ENGINE: RecognitionEngine = 'myscript'
+const DEFAULT_RECOGNITION_ENGINE: RecognitionEngine = 'keyboard'
 const DEFAULT_CANVAS_MODE: CanvasMode = 'math'
 const RECOGNITION_ENGINE_STORAGE_KEY = 'philani.math.recognition-engine'
 const DEBUG_PANEL_STORAGE_KEY = 'philani.math.debug-panel-visible'
@@ -976,6 +976,19 @@ const RAW_INK_STROKE_COLOR = '#0f172a'
 const RAW_INK_STROKE_WIDTH = 2.6
 const RAW_INK_VIEWBOX_SIZE = 1000
 const RAW_INK_ERASER_RADIUS = 0.018
+const KEYBOARD_ENGINE_TEMPLATES = ['x', 'y', '=', '+', '-', '\\times', '\\div', '\\frac{}{}', '\\sqrt{}', '()', '[]', '^{}']
+
+const KEYBOARD_RADIAL_OPERATIONS = {
+  N:  { latex: '\\frac{\\square}{\\phantom{a}}', label: 'Fraction',  description: 'x as numerator' },
+  NE: { latex: 'x^{2}',                             label: 'Power',     description: 'x squared' },
+  E:  { latex: '+',                                  label: 'Add',       description: 'addition' },
+  SE: { latex: 'x_{i}',                              label: 'Subscript', description: 'subscript' },
+  S:  { latex: '\\frac{\\phantom{a}}{\\square}',   label: 'Fr. denom', description: 'x as denominator' },
+  SW: { latex: '\\sqrt{x}',                         label: 'Radical',   description: 'square root' },
+  W:  { latex: '-',                                  label: 'Subtract',  description: 'subtraction' },
+  NW: { latex: '\\left(x\\right)',                 label: 'Parens',    description: 'enclosure' },
+} as const
+type KbDirection = keyof typeof KEYBOARD_RADIAL_OPERATIONS
 
 const toDebugJson = (value: unknown, maxChars = 12000) => {
   if (value == null) return null
@@ -1538,6 +1551,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const canvasModeRef = useRef<CanvasMode>(DEFAULT_CANVAS_MODE)
   const [recognitionEngine, setRecognitionEngine] = useState<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
   const recognitionEngineRef = useRef<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
+  const [selectedKbDirection, setSelectedKbDirection] = useState<KbDirection | null>(null)
   const [mathpixError, setMathpixError] = useState<string | null>(null)
   const [mathpixRawResponse, setMathpixRawResponse] = useState<string | null>(null)
   const [mathpixLastProxyPayload, setMathpixLastProxyPayload] = useState<string | null>(null)
@@ -1736,7 +1750,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (typeof window === 'undefined') return
     try {
       const saved = window.localStorage.getItem(RECOGNITION_ENGINE_STORAGE_KEY)
-      if (saved === 'myscript' || saved === 'mathpix') {
+      if (saved === 'keyboard' || saved === 'myscript' || saved === 'mathpix') {
         setRecognitionEngine(saved)
       }
     } catch {}
@@ -5593,7 +5607,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const latexExport = exports['application/x-latex']
     const jiixRaw = exports['application/vnd.myscript.jiix']
     const fallbackLatex = typeof latexExport === 'string' ? latexExport : ''
-    const engineLatex = recognitionEngineRef.current === 'mathpix'
+    const engineLatex = recognitionEngineRef.current !== 'myscript'
       ? (latexOutputRef.current || '')
       : fallbackLatex
 
@@ -7005,6 +7019,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   const exportLatexFromEngine = useCallback(async (options?: { allowConvertFallback?: boolean }) => {
     const allowConvertFallback = options?.allowConvertFallback !== false
+    if (recognitionEngineRef.current === 'keyboard') {
+      return latexOutputRef.current || ''
+    }
     if (recognitionEngineRef.current === 'mathpix') {
       const symbols = extractEditorSymbols()
       setMyScriptLastSymbolsPayload(toDebugJson(symbols))
@@ -7059,7 +7076,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [extractEditorSymbols, hasControllerRights, normalizeStepLatex, requestMathpixLatex])
 
   const getLatexFromEngineModel = useCallback(() => {
-    if (recognitionEngineRef.current === 'mathpix') {
+    if (recognitionEngineRef.current !== 'myscript') {
       return latexOutputRef.current || ''
     }
     return getLatexFromEditorModel()
@@ -7116,7 +7133,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     let latexValue = getLatexFromEngineModel()
     if (recognitionEngineRef.current === 'mathpix') {
       latexValue = await requestMathpixLatex(symbols)
-    } else if (!latexValue || latexValue.trim().length === 0) {
+    } else if (recognitionEngineRef.current === 'myscript' && (!latexValue || latexValue.trim().length === 0)) {
       const exported = await exportLatexFromEngine({ allowConvertFallback: false })
       latexValue = typeof exported === 'string' ? exported : ''
     }
@@ -7523,7 +7540,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           }
         }
         const handleExported = (evt: any) => {
-          if (recognitionEngineRef.current === 'mathpix') return
+          if (recognitionEngineRef.current !== 'myscript') return
           setMyScriptExportedCount((count) => count + 1)
           setMyScriptLastExportedAt(Date.now())
           setMyScriptLastSymbolExtract(Date.now())
@@ -8951,10 +8968,39 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     await loadAdminStepForEditing(nextIndex)
   }
 
+  const handleKbOperationSelect = useCallback((direction: KbDirection) => {
+    setSelectedKbDirection(direction)
+    const prev = latexOutputRef.current || ''
+    let next = prev
+    switch (direction) {
+      case 'N':  next = `\\frac{${prev}}{\\phantom{a}}`; break
+      case 'NE': next = `${prev}^{2}`; break
+      case 'E':  next = `${prev} + \\phantom{a}`; break
+      case 'SE': next = `${prev}_{i}`; break
+      case 'S':  next = `\\frac{\\phantom{a}}{${prev}}`; break
+      case 'SW': next = `\\sqrt{${prev}}`; break
+      case 'W':  next = `${prev} - \\phantom{a}`; break
+      case 'NW': next = `\\left(${prev}\\right)`; break
+    }
+    setLatexOutput(next)
+    if (useAdminStepComposerRef.current && hasControllerRights()) {
+      setAdminDraftLatex(normalizeStepLatex(next))
+    }
+    setTimeout(() => setSelectedKbDirection(null), 300)
+  }, [hasControllerRights, normalizeStepLatex])
+
   const handleConvert = () => {
     if (canvasModeRef.current === 'raw-ink') return
     if (!editorInstanceRef.current) return
     if (lockedOutRef.current) return
+    if (recognitionEngineRef.current === 'keyboard') {
+      const currentLatex = latexOutputRef.current || ''
+      setLatexOutput(currentLatex)
+      if (useAdminStepComposer && hasControllerRights()) {
+        setAdminDraftLatex(normalizeStepLatex(currentLatex))
+      }
+      return
+    }
     if (recognitionEngineRef.current === 'mathpix') {
       setIsConverting(true)
       const symbols = extractEditorSymbols()
@@ -9771,7 +9817,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     [latexRenderOptions.fontScale, latexRenderOptions.textAlign]
   )
 
-  const disableCanvasInput = isViewOnly || (isOverlayMode && overlayControlsVisible)
+  const disableCanvasInput = isViewOnly || recognitionEngine === 'keyboard' || (isOverlayMode && overlayControlsVisible)
   const editorHostClass = isFullscreen ? 'w-full h-full' : 'w-full'
   const editorHostStyle = useMemo<CSSProperties>(() => {
     if (isFullscreen) {
@@ -13521,15 +13567,58 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 const next = e.target.value as RecognitionEngine
                 setRecognitionEngine(next)
                 setMathpixError(null)
+                if (next === 'keyboard') {
+                  const seed = getLatexFromEditorModel() || latexOutputRef.current || ''
+                  setLatexOutput(seed)
+                  if (useAdminStepComposerRef.current && hasControllerRights()) {
+                    setAdminDraftLatex(normalizeStepLatex(seed))
+                  }
+                }
               }}
               disabled={status !== 'ready' || Boolean(fatalError)}
               aria-label="Choose recognition engine"
             >
-              <option value="myscript">MyScript (primary)</option>
+              <option value="keyboard">Keyboard (default)</option>
+              <option value="myscript">MyScript (handwriting)</option>
               <option value="mathpix">Mathpix (backup)</option>
             </select>
             {recognitionEngine === 'mathpix' && mathpixError && (
               <span className="text-[11px] text-red-600">{mathpixError}</span>
+            )}
+            {recognitionEngine === 'keyboard' && (
+              <div className="mt-2 rounded border border-slate-200 bg-white p-2">
+                <textarea
+                  className="input min-h-[90px] w-full"
+                  value={latexOutput}
+                  onChange={e => {
+                    const next = e.target.value
+                    setLatexOutput(next)
+                    if (useAdminStepComposerRef.current && hasControllerRights()) {
+                      setAdminDraftLatex(normalizeStepLatex(next))
+                    }
+                  }}
+                  placeholder="Type LaTeX here, e.g. \\frac{x+1}{2}=y"
+                  aria-label="Keyboard latex input"
+                />
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {KEYBOARD_ENGINE_TEMPLATES.map((token) => (
+                    <button
+                      key={token}
+                      type="button"
+                      className="rounded border border-slate-200 px-2 py-1 text-[11px]"
+                      onClick={() => {
+                        const next = `${latexOutput}${token}`
+                        setLatexOutput(next)
+                        if (useAdminStepComposerRef.current && hasControllerRights()) {
+                          setAdminDraftLatex(normalizeStepLatex(next))
+                        }
+                      }}
+                    >
+                      {token}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -14949,6 +15038,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     <div className="w-full flex items-start justify-center">
                       <div
                         style={{
+                          position: 'relative',
                           backgroundColor: '#ffffff',
                           width: `${Math.max(320, Math.round(stackedSurfaceBaseSize.width * inkSurfaceWidthFactor))}px`,
                           height: `${Math.max(320, stackedSurfaceBaseSize.height)}px`,
@@ -14960,10 +15050,52 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           style={{ ...editorHostStyle, height: '100%' }}
                           data-orientation={canvasOrientation}
                         />
+                        {recognitionEngine === 'keyboard' && (
+                          <div
+                            className="absolute inset-0 flex items-center justify-center overflow-auto p-6 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(219,234,254,0.45),transparent_55%),linear-gradient(180deg,rgba(248,250,252,0.97),rgba(255,255,255,1))]"
+                            // eslint-disable-next-line react/no-danger
+                            dangerouslySetInnerHTML={{
+                              __html: (() => {
+                                if (!latexOutput) return '<span style="color:#94a3b8;font-size:14px;font-family:sans-serif">Start with a template on the right →</span>'
+                                try { return renderToString(latexOutput, { displayMode: true, throwOnError: false }) } catch { return '<span style="color:#ef4444;font-size:14px">Invalid LaTeX</span>' }
+                              })()
+                            }}
+                          />
+                        )}
                       </div>
                     </div>
                   </div>
                 </div>
+
+                {recognitionEngine === 'keyboard' && useStackedStudentLayout && !shouldCollapseStackedView && (
+                  <div className="absolute inset-0 z-10 pointer-events-none">
+                    {(Object.keys(KEYBOARD_RADIAL_OPERATIONS) as KbDirection[]).map((dir) => {
+                      const op = KEYBOARD_RADIAL_OPERATIONS[dir]
+                      const posClass: Record<KbDirection, string> = {
+                        N:  'top-4 left-1/2 -translate-x-1/2',
+                        NE: 'top-8 right-8',
+                        E:  'top-1/2 right-4 -translate-y-1/2',
+                        SE: 'bottom-8 right-8',
+                        S:  'bottom-4 left-1/2 -translate-x-1/2',
+                        SW: 'bottom-8 left-8',
+                        W:  'top-1/2 left-4 -translate-y-1/2',
+                        NW: 'top-8 left-8',
+                      }
+                      const isSelected = selectedKbDirection === dir
+                      return (
+                        <button
+                          key={dir}
+                          type="button"
+                          className={`absolute pointer-events-auto p-2 text-[22px] bg-transparent transition-transform duration-150 ${posClass[dir]} ${isSelected ? 'scale-125 text-blue-600 drop-shadow-[0_0_6px_rgba(37,99,235,0.6)]' : 'text-slate-700 hover:scale-110 hover:text-blue-500'}`}
+                          title={op.description}
+                          onClick={() => handleKbOperationSelect(dir)}
+                          // eslint-disable-next-line react/no-danger
+                          dangerouslySetInnerHTML={{ __html: (() => { try { return renderToString(op.latex, { throwOnError: false }) } catch { return op.label } })() }}
+                        />
+                      )
+                    })}
+                  </div>
+                )}
 
                 {!isRawInkMode && !editorReconnecting && (status === 'loading' || status === 'idle') && (
                   <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
@@ -15992,16 +16124,60 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   const next = e.target.value as RecognitionEngine
                   setRecognitionEngine(next)
                   setMathpixError(null)
+                  if (next === 'keyboard') {
+                    const seed = getLatexFromEditorModel() || latexOutputRef.current || ''
+                    setLatexOutput(seed)
+                    if (useAdminStepComposerRef.current && hasControllerRights()) {
+                      setAdminDraftLatex(normalizeStepLatex(seed))
+                    }
+                  }
                 }}
                 disabled={status !== 'ready' || Boolean(fatalError)}
                 aria-label="Choose recognition engine"
               >
-                <option value="myscript">MyScript (primary)</option>
+                <option value="keyboard">Keyboard (default)</option>
+                <option value="myscript">MyScript (handwriting)</option>
                 <option value="mathpix">Mathpix (backup)</option>
               </select>
             </label>
             {recognitionEngine === 'mathpix' && mathpixError && (
               <span className="text-[11px] text-red-600">{mathpixError}</span>
+            )}
+            {recognitionEngine === 'keyboard' && (
+              <label className="flex flex-col gap-1">
+                <span className="font-semibold">Keyboard input (LaTeX)</span>
+                <textarea
+                  className="canvas-settings-panel__select min-h-[110px]"
+                  value={latexOutput}
+                  onChange={e => {
+                    const next = e.target.value
+                    setLatexOutput(next)
+                    if (useAdminStepComposerRef.current && hasControllerRights()) {
+                      setAdminDraftLatex(normalizeStepLatex(next))
+                    }
+                  }}
+                  placeholder="Type LaTeX here, e.g. \\frac{x+1}{2}=y"
+                  aria-label="Keyboard latex input"
+                />
+                <div className="flex flex-wrap gap-1">
+                  {KEYBOARD_ENGINE_TEMPLATES.map((token) => (
+                    <button
+                      key={token}
+                      type="button"
+                      className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px]"
+                      onClick={() => {
+                        const next = `${latexOutput}${token}`
+                        setLatexOutput(next)
+                        if (useAdminStepComposerRef.current && hasControllerRights()) {
+                          setAdminDraftLatex(normalizeStepLatex(next))
+                        }
+                      }}
+                    >
+                      {token}
+                    </button>
+                  ))}
+                </div>
+              </label>
             )}
             <label className="flex flex-col gap-1">
               <span className="font-semibold">Notes font size</span>

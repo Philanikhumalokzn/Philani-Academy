@@ -1,5 +1,7 @@
 import { useCallback, useRef, useState, useEffect } from 'react'
+import katex from 'katex'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
+import 'katex/dist/katex.min.css'
 
 type MathKeyboardOverlayProps = {
   open: boolean
@@ -13,7 +15,7 @@ type Direction = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW' | null
 
 interface DirectionalOperation {
   direction: Direction
-  symbol: string
+  latex: string
   template: string
   label: string
   description: string
@@ -21,14 +23,14 @@ interface DirectionalOperation {
 
 // Compass direction operations around the central "x"
 const DIRECTIONAL_OPERATIONS: Record<Exclude<Direction, null>, DirectionalOperation> = {
-  N: { direction: 'N', symbol: 'x/', template: 'fraction-num', label: 'Fraction', description: 'x as numerator' },
-  NE: { direction: 'NE', symbol: 'x²', template: 'power', label: 'Power', description: 'x squared' },
-  E: { direction: 'E', symbol: '+', template: 'add', label: 'Add', description: 'addition' },
-  SE: { direction: 'SE', symbol: 'x_i', template: 'subscript', label: 'Subscript', description: 'subscript' },
-  S: { direction: 'S', symbol: '/x', template: 'fraction-denom', label: 'Fraction Denom', description: 'x as denominator' },
-  SW: { direction: 'SW', symbol: '²√x', template: 'radical', label: 'Radical', description: 'square root' },
-  W: { direction: 'W', symbol: '−', template: 'subtract', label: 'Subtract', description: 'subtraction' },
-  NW: { direction: 'NW', symbol: '()', template: 'enclosure', label: 'Parentheses', description: 'enclosure' },
+  N: { direction: 'N', latex: '\\frac{x}{\\phantom{a}}', template: 'fraction-num', label: 'Fraction', description: 'x as numerator' },
+  NE: { direction: 'NE', latex: 'x^{2}', template: 'power', label: 'Power', description: 'x squared' },
+  E: { direction: 'E', latex: '+', template: 'add', label: 'Add', description: 'addition' },
+  SE: { direction: 'SE', latex: 'x_{i}', template: 'subscript', label: 'Subscript', description: 'subscript' },
+  S: { direction: 'S', latex: '\\frac{\\phantom{a}}{x}', template: 'fraction-denom', label: 'Fraction Denom', description: 'x as denominator' },
+  SW: { direction: 'SW', latex: '\\sqrt{x}', template: 'radical', label: 'Radical', description: 'square root' },
+  W: { direction: 'W', latex: '-', template: 'subtract', label: 'Subtract', description: 'subtraction' },
+  NW: { direction: 'NW', latex: '\\left(x\\right)', template: 'enclosure', label: 'Parentheses', description: 'enclosure' },
 }
 
 // Calculate angle from center to point (in degrees, 0 = East, 90 = South)
@@ -56,14 +58,98 @@ const getDirectionFromAngle = (angle: number): Direction => {
   return null
 }
 
-// Render LaTeX-like expression preview
-function LaTeXPreview({ expression }: { expression: string }) {
+// KaTeX Preview component with professional rendering
+function MathPreview({ latex }: { latex: string }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!containerRef.current || !latex) return
+
+    try {
+      const html = katex.renderToString(latex, {
+        throwOnError: true,
+        displayMode: true,
+      })
+      containerRef.current.innerHTML = html
+    } catch (error) {
+      containerRef.current.innerHTML = '<div style="color: red; font-size: 14px;">Invalid LaTeX</div>'
+      console.error('KaTeX rendering error:', error)
+    }
+  }, [latex])
+
   return (
-    <div className="h-full w-full flex items-center justify-center bg-white p-4">
-      <div className="text-4xl font-light text-slate-800 flex items-center justify-center min-h-[100px]">
-        <code className="font-mono text-2xl tracking-wide">{expression || 'x'}</code>
-      </div>
-    </div>
+    <div
+      ref={containerRef}
+      className="h-full w-full flex items-center justify-center bg-white p-4 text-slate-800"
+      style={{ minHeight: '100px' }}
+    />
+  )
+}
+
+// Professional mathematical operation buttons
+function OperationButton({
+  direction,
+  isSelected,
+  onClick,
+}: {
+  direction: Exclude<Direction, null>
+  isSelected: boolean
+  onClick: () => void
+}) {
+  const op = DIRECTIONAL_OPERATIONS[direction]
+
+  // Render each operation with professional LaTeX notation
+  const renderMathButton = () => {
+    try {
+      return katex.renderToString(op.latex, {
+        throwOnError: true,
+        displayMode: false,
+      })
+    } catch (error) {
+      console.error('KaTeX button rendering error:', error)
+      return op.label
+    }
+  }
+
+  const positionClasses: Record<Exclude<Direction, null>, string> = {
+    N: 'top-6 left-1/2 -translate-x-1/2',
+    NE: 'top-12 right-12',
+    E: 'top-1/2 right-6 -translate-y-1/2',
+    SE: 'bottom-12 right-12',
+    S: 'bottom-6 left-1/2 -translate-x-1/2',
+    SW: 'bottom-12 left-12',
+    W: 'top-1/2 left-6 -translate-y-1/2',
+    NW: 'top-12 left-12',
+  }
+
+  const highlightColor = {
+    N: 'blue',
+    NE: 'blue',
+    E: 'green',
+    SE: 'blue',
+    S: 'blue',
+    SW: 'purple',
+    W: 'green',
+    NW: 'blue',
+  }[direction]
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`absolute flex items-center justify-center rounded-lg border shadow-sm hover:shadow-md transition-all w-auto px-3 py-2 h-auto min-w-[60px] ${
+        isSelected
+          ? highlightColor === 'blue'
+            ? 'bg-blue-100 border-blue-400'
+            : highlightColor === 'green'
+              ? 'bg-green-100 border-green-400'
+              : 'bg-purple-100 border-purple-400'
+          : 'border-slate-300 bg-white text-slate-700'
+      } hover:bg-slate-50 transition-colors ${positionClasses[direction]}`}
+      title={op.description}
+      style={{ fontSize: '18px' }}
+      dangerouslySetInnerHTML={{ __html: renderMathButton() }}
+    />
   )
 }
 
@@ -71,14 +157,16 @@ function LaTeXPreview({ expression }: { expression: string }) {
 function RadialKeyboard({
   onOperationSelect,
   centerButtonRef,
+  selectedDirection,
 }: {
   onOperationSelect: (direction: Direction) => void
   centerButtonRef: React.RefObject<HTMLButtonElement>
+  selectedDirection: Direction
 }) {
   const keyboardRef = useRef<HTMLDivElement>(null)
   const [isGestureActive, setIsGestureActive] = useState(false)
-  const [selectedDirection, setSelectedDirection] = useState<Direction>(null)
   const gestureStartRef = useRef<{ x: number; y: number } | null>(null)
+  const [gestureDir, setGestureDir] = useState<Direction>(null)
 
   // Handle center button press (start gesture)
   const handleCenterMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
@@ -108,18 +196,18 @@ function RadialKeyboard({
       // Only activate if gesture distance is significant (at least 40px)
       const distance = Math.hypot(clientX - centerX, clientY - centerY)
       if (distance > 40) {
-        setSelectedDirection(direction)
+        setGestureDir(direction)
       } else {
-        setSelectedDirection(null)
+        setGestureDir(null)
       }
     }
 
-    const handleEnd = (e: MouseEvent | TouchEvent) => {
-      if (selectedDirection) {
-        onOperationSelect(selectedDirection)
+    const handleEnd = () => {
+      if (gestureDir) {
+        onOperationSelect(gestureDir)
       }
       setIsGestureActive(false)
-      setSelectedDirection(null)
+      setGestureDir(null)
       gestureStartRef.current = null
     }
 
@@ -134,9 +222,7 @@ function RadialKeyboard({
       window.removeEventListener('mouseup', handleEnd)
       window.removeEventListener('touchend', handleEnd)
     }
-  }, [isGestureActive, selectedDirection, onOperationSelect])
-
-  const baseButtonClass = 'absolute flex items-center justify-center rounded-lg border border-slate-300 bg-white shadow-sm hover:bg-slate-50 transition-colors font-semibold text-sm w-16 h-16 cursor-pointer'
+  }, [isGestureActive, gestureDir, onOperationSelect])
 
   return (
     <div ref={keyboardRef} className="h-full w-full flex items-center justify-center bg-white relative overflow-hidden p-4">
@@ -152,112 +238,33 @@ function RadialKeyboard({
         x
       </button>
 
-      {/* N - Numerator (above) */}
-      <button
-        type="button"
-        onClick={() => onOperationSelect('N')}
-        className={`${baseButtonClass} top-6 left-1/2 -translate-x-1/2 ${selectedDirection === 'N' ? 'bg-blue-100 border-blue-400' : ''}`}
-        title="Fraction - x as numerator"
-      >
-        <span className="text-center text-xs flex flex-col gap-0.5">
-          <div className="font-bold text-lg">x/</div>
-        </span>
-      </button>
-
-      {/* NE - Power (top-right) */}
-      <button
-        type="button"
-        onClick={() => onOperationSelect('NE')}
-        className={`${baseButtonClass} top-12 right-12 ${selectedDirection === 'NE' ? 'bg-blue-100 border-blue-400' : ''}`}
-        title="Power - x squared"
-      >
-        <span className="text-center text-xs flex flex-col gap-0.5">
-          <div>x<sup className="text-sm">2</sup></div>
-        </span>
-      </button>
-
-      {/* E - Addition (right) */}
-      <button
-        type="button"
-        onClick={() => onOperationSelect('E')}
-        className={`${baseButtonClass} top-1/2 right-6 -translate-y-1/2 ${selectedDirection === 'E' ? 'bg-green-100 border-green-400' : ''}`}
-        title="Addition"
-      >
-        <span className="text-2xl font-light">+</span>
-      </button>
-
-      {/* SE - Subscript (bottom-right) */}
-      <button
-        type="button"
-        onClick={() => onOperationSelect('SE')}
-        className={`${baseButtonClass} bottom-12 right-12 ${selectedDirection === 'SE' ? 'bg-blue-100 border-blue-400' : ''}`}
-        title="Subscript"
-      >
-        <span className="text-center text-xs flex flex-col gap-0.5">
-          <div>x<sub className="text-sm">i</sub></div>
-        </span>
-      </button>
-
-      {/* S - Denominator (below) */}
-      <button
-        type="button"
-        onClick={() => onOperationSelect('S')}
-        className={`${baseButtonClass} bottom-6 left-1/2 -translate-x-1/2 ${selectedDirection === 'S' ? 'bg-blue-100 border-blue-400' : ''}`}
-        title="Fraction - x as denominator"
-      >
-        <span className="text-center text-xs flex flex-col gap-0.5">
-          <div className="font-bold text-lg">/x</div>
-        </span>
-      </button>
-
-      {/* SW - Radical (bottom-left) */}
-      <button
-        type="button"
-        onClick={() => onOperationSelect('SW')}
-        className={`${baseButtonClass} bottom-12 left-12 ${selectedDirection === 'SW' ? 'bg-purple-100 border-purple-400' : ''}`}
-        title="Radical - square root"
-      >
-        <span className="text-center text-xs flex flex-col gap-0.5">
-          <div className="text-lg"><sup className="text-xs">2</sup>√x</div>
-        </span>
-      </button>
-
-      {/* W - Subtraction (left) */}
-      <button
-        type="button"
-        onClick={() => onOperationSelect('W')}
-        className={`${baseButtonClass} top-1/2 left-6 -translate-y-1/2 ${selectedDirection === 'W' ? 'bg-green-100 border-green-400' : ''}`}
-        title="Subtraction"
-      >
-        <span className="text-2xl font-light">−</span>
-      </button>
-
-      {/* NW - Enclosure (top-left) */}
-      <button
-        type="button"
-        onClick={() => onOperationSelect('NW')}
-        className={`${baseButtonClass} top-12 left-12 ${selectedDirection === 'NW' ? 'bg-blue-100 border-blue-400' : ''}`}
-        title="Enclosure - parentheses"
-      >
-        <span className="text-2xl font-light">( )</span>
-      </button>
+      {/* Directional buttons with professional math notation */}
+      <OperationButton direction="N" isSelected={gestureDir === 'N' || selectedDirection === 'N'} onClick={() => onOperationSelect('N')} />
+      <OperationButton direction="NE" isSelected={gestureDir === 'NE' || selectedDirection === 'NE'} onClick={() => onOperationSelect('NE')} />
+      <OperationButton direction="E" isSelected={gestureDir === 'E' || selectedDirection === 'E'} onClick={() => onOperationSelect('E')} />
+      <OperationButton direction="SE" isSelected={gestureDir === 'SE' || selectedDirection === 'SE'} onClick={() => onOperationSelect('SE')} />
+      <OperationButton direction="S" isSelected={gestureDir === 'S' || selectedDirection === 'S'} onClick={() => onOperationSelect('S')} />
+      <OperationButton direction="SW" isSelected={gestureDir === 'SW' || selectedDirection === 'SW'} onClick={() => onOperationSelect('SW')} />
+      <OperationButton direction="W" isSelected={gestureDir === 'W' || selectedDirection === 'W'} onClick={() => onOperationSelect('W')} />
+      <OperationButton direction="NW" isSelected={gestureDir === 'NW' || selectedDirection === 'NW'} onClick={() => onOperationSelect('NW')} />
 
       {/* Gesture indicator */}
-      {isGestureActive && selectedDirection && (
+      {isGestureActive && gestureDir && (
         <div className="absolute top-4 right-4 bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
-          {DIRECTIONAL_OPERATIONS[selectedDirection]?.label}
+          {DIRECTIONAL_OPERATIONS[gestureDir]?.label}
         </div>
       )}
     </div>
   )
 }
 
-// Expression builder and state management
+// Main keyboard component
 export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverlayProps) {
   const [topRatio, setTopRatio] = useState(0.2)
-  const [expression, setExpression] = useState<string[]>(['x'])
+  const [latexExpression, setLatexExpression] = useState<string>('x')
   const containerRef = useRef<HTMLDivElement | null>(null)
   const centerButtonRef = useRef<HTMLButtonElement>(null)
+  const [selectedDirection, setSelectedDirection] = useState<Direction>(null)
 
   const updateFromClientY = useCallback((clientY: number) => {
     const container = containerRef.current
@@ -298,36 +305,36 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
     if (!direction) return
 
     const op = DIRECTIONAL_OPERATIONS[direction]
-    
-    // Build expression as LaTeX-like string
-    setExpression((prev) => {
-      const current = prev[prev.length - 1]
-      let newExpr = [...prev]
+    setSelectedDirection(direction)
+
+    // Build LaTeX expression
+    setLatexExpression((prev) => {
+      let newExpr = prev
 
       switch (direction) {
-        case 'N': // x/y (x as numerator)
-          newExpr.push(`${current}/`)
+        case 'N': // x as numerator
+          newExpr = `\\frac{${prev}}{\\phantom{a}}`
           break
-        case 'NE': // x^n (power)
-          newExpr.push(`${current}^`)
+        case 'NE': // power
+          newExpr = `${prev}^{2}`
           break
-        case 'E': // + (addition)
-          newExpr.push('+')
+        case 'E': // addition
+          newExpr = `${prev} + \\phantom{a}`
           break
-        case 'SE': // x_i (subscript)
-          newExpr.push(`${current}_`)
+        case 'SE': // subscript
+          newExpr = `${prev}_{i}`
           break
-        case 'S': // y/x (x as denominator)
-          newExpr.push(`/${current}`)
+        case 'S': // x as denominator
+          newExpr = `\\frac{\\phantom{a}}{${prev}}`
           break
-        case 'SW': // ^n√x (radical)
-          newExpr.push(`√${current}`)
+        case 'SW': // radical
+          newExpr = `\\sqrt{${prev}}`
           break
-        case 'W': // - (subtraction)
-          newExpr.push('-')
+        case 'W': // subtraction
+          newExpr = `${prev} - \\phantom{a}`
           break
-        case 'NW': // (x) (enclosure)
-          newExpr = [newExpr.map((e) => `(${e})`).join('')]
+        case 'NW': // enclosure
+          newExpr = `\\left(${prev}\\right)`
           break
         default:
           break
@@ -335,9 +342,10 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
 
       return newExpr
     })
-  }, [])
 
-  const expressionString = expression.join(' ')
+    // Clear selection after a delay
+    setTimeout(() => setSelectedDirection(null), 300)
+  }, [])
 
   if (!open) return null
 
@@ -377,14 +385,14 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
               overflow: 'hidden',
             }}
           >
-            {/* Top Preview Panel */}
+            {/* Top Preview Panel with KaTeX rendering */}
             <div
               className="flex flex-col"
               style={{ flex: Math.max(topRatio, 0.2), minHeight: '200px' }}
             >
               <div className="px-3 py-3 flex-1 min-h-[140px]">
-                <div className="h-full bg-white rounded-lg p-3 overflow-hidden relative">
-                  <LaTeXPreview expression={expressionString} />
+                <div className="h-full bg-white rounded-lg p-3 overflow-auto">
+                  <MathPreview latex={latexExpression} />
                 </div>
               </div>
             </div>
@@ -412,6 +420,7 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
               <RadialKeyboard
                 onOperationSelect={handleOperationSelect}
                 centerButtonRef={centerButtonRef}
+                selectedDirection={selectedDirection}
               />
             </div>
           </div>

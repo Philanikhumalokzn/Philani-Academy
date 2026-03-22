@@ -21,6 +21,17 @@ interface DirectionalOperation {
   description: string
 }
 
+type CanvasTransform = {
+  scale: number
+  offsetX: number
+  offsetY: number
+}
+
+type TouchPointLike = {
+  clientX: number
+  clientY: number
+}
+
 // Compass direction operations around the central "x"
 const DIRECTIONAL_OPERATIONS: Record<Exclude<Direction, null>, DirectionalOperation> = {
   N: { direction: 'N', latex: '\\frac{x}{\\phantom{a}}', template: 'fraction-num', label: 'Fraction', description: 'x as numerator' },
@@ -31,6 +42,33 @@ const DIRECTIONAL_OPERATIONS: Record<Exclude<Direction, null>, DirectionalOperat
   SW: { direction: 'SW', latex: '\\sqrt{x}', template: 'radical', label: 'Radical', description: 'square root' },
   W: { direction: 'W', latex: '-', template: 'subtract', label: 'Subtract', description: 'subtraction' },
   NW: { direction: 'NW', latex: '\\left(x\\right)', template: 'enclosure', label: 'Parentheses', description: 'enclosure' },
+}
+
+const MIN_CANVAS_SCALE = 0.65
+const MAX_CANVAS_SCALE = 3.2
+const DOUBLE_TAP_MS = 260
+
+const clampScale = (scale: number) => clamp(scale, MIN_CANVAS_SCALE, MAX_CANVAS_SCALE)
+
+const getTouchDistance = (first: TouchPointLike, second: TouchPointLike) => Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY)
+
+const getTouchMidpoint = (first: TouchPointLike, second: TouchPointLike) => ({
+  x: (first.clientX + second.clientX) / 2,
+  y: (first.clientY + second.clientY) / 2,
+})
+
+const renderKatexToString = (latex: string, displayMode: boolean) => {
+  try {
+    return katex.renderToString(latex, {
+      throwOnError: true,
+      displayMode,
+    })
+  } catch (error) {
+    console.error('KaTeX rendering error:', error)
+    return displayMode
+      ? '<div style="color: red; font-size: 14px;">Invalid LaTeX</div>'
+      : latex
+  }
 }
 
 // Calculate angle from center to point (in degrees, 0 = East, 90 = South)
@@ -65,16 +103,7 @@ function MathPreview({ latex }: { latex: string }) {
   useEffect(() => {
     if (!containerRef.current || !latex) return
 
-    try {
-      const html = katex.renderToString(latex, {
-        throwOnError: true,
-        displayMode: true,
-      })
-      containerRef.current.innerHTML = html
-    } catch (error) {
-      containerRef.current.innerHTML = '<div style="color: red; font-size: 14px;">Invalid LaTeX</div>'
-      console.error('KaTeX rendering error:', error)
-    }
+    containerRef.current.innerHTML = renderKatexToString(latex, true)
   }, [latex])
 
   return (
@@ -83,6 +112,255 @@ function MathPreview({ latex }: { latex: string }) {
       className="h-full w-full flex items-center justify-center bg-white p-4 text-slate-800"
       style={{ minHeight: '100px' }}
     />
+  )
+}
+
+function ZoomableMathCanvas({ latex }: { latex: string }) {
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [transform, setTransform] = useState<CanvasTransform>({ scale: 1, offsetX: 0, offsetY: 0 })
+  const panStateRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null)
+  const touchStateRef = useRef<
+    | {
+        mode: 'pan'
+        startX: number
+        startY: number
+        originX: number
+        originY: number
+      }
+    | {
+        mode: 'pinch'
+        startDistance: number
+        startScale: number
+        startMidX: number
+        startMidY: number
+        originX: number
+        originY: number
+      }
+    | null
+  >(null)
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null)
+
+  useEffect(() => {
+    if (!contentRef.current || !latex) return
+    contentRef.current.innerHTML = renderKatexToString(latex, true)
+  }, [latex])
+
+  const zoomAroundPoint = useCallback((nextScale: number, clientX: number, clientY: number) => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+
+    const rect = viewport.getBoundingClientRect()
+    const localX = clientX - rect.left
+    const localY = clientY - rect.top
+
+    setTransform((current) => {
+      const clampedScale = clampScale(nextScale)
+      const ratio = clampedScale / current.scale
+      return {
+        scale: clampedScale,
+        offsetX: localX - (localX - current.offsetX) * ratio,
+        offsetY: localY - (localY - current.offsetY) * ratio,
+      }
+    })
+  }, [])
+
+  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'touch') return
+    event.preventDefault()
+    const viewport = viewportRef.current
+    if (!viewport) return
+    viewport.setPointerCapture(event.pointerId)
+    panStateRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: transform.offsetX,
+      originY: transform.offsetY,
+    }
+  }, [transform.offsetX, transform.offsetY])
+
+  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const panState = panStateRef.current
+    if (!panState || event.pointerType === 'touch') return
+    setTransform((current) => ({
+      ...current,
+      offsetX: panState.originX + (event.clientX - panState.startX),
+      offsetY: panState.originY + (event.clientY - panState.startY),
+    }))
+  }, [])
+
+  const handlePointerEnd = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'touch') {
+      panStateRef.current = null
+      if (viewportRef.current?.hasPointerCapture(event.pointerId)) {
+        viewportRef.current.releasePointerCapture(event.pointerId)
+      }
+    }
+  }, [])
+
+  const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const delta = event.deltaY < 0 ? 1.12 : 0.9
+    zoomAroundPoint(transform.scale * delta, event.clientX, event.clientY)
+  }, [transform.scale, zoomAroundPoint])
+
+  const handleTouchStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    const touches = event.touches
+    if (!touches.length) return
+
+    if (touches.length === 1) {
+      const touch = touches[0]
+      const now = Date.now()
+      const lastTap = lastTapRef.current
+      if (lastTap && now - lastTap.time <= DOUBLE_TAP_MS) {
+        const delta = Math.hypot(touch.clientX - lastTap.x, touch.clientY - lastTap.y)
+        if (delta <= 28) {
+          event.preventDefault()
+          const zoomTarget = transform.scale > 1.4 ? 1 : Math.min(2.2, transform.scale * 1.45)
+          zoomAroundPoint(zoomTarget, touch.clientX, touch.clientY)
+          lastTapRef.current = null
+          touchStateRef.current = null
+          return
+        }
+      }
+
+      lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY }
+      touchStateRef.current = {
+        mode: 'pan',
+        startX: touch.clientX,
+        startY: touch.clientY,
+        originX: transform.offsetX,
+        originY: transform.offsetY,
+      }
+      return
+    }
+
+    if (touches.length >= 2) {
+      event.preventDefault()
+      const first = touches[0]
+      const second = touches[1]
+      const midpoint = getTouchMidpoint(first, second)
+      touchStateRef.current = {
+        mode: 'pinch',
+        startDistance: getTouchDistance(first, second),
+        startScale: transform.scale,
+        startMidX: midpoint.x,
+        startMidY: midpoint.y,
+        originX: transform.offsetX,
+        originY: transform.offsetY,
+      }
+    }
+  }, [transform.offsetX, transform.offsetY, transform.scale, zoomAroundPoint])
+
+  const handleTouchMove = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    const state = touchStateRef.current
+    if (!state) return
+
+    if (state.mode === 'pan' && event.touches.length === 1) {
+      const touch = event.touches[0]
+      setTransform((current) => ({
+        ...current,
+        offsetX: state.originX + (touch.clientX - state.startX),
+        offsetY: state.originY + (touch.clientY - state.startY),
+      }))
+      return
+    }
+
+    if (event.touches.length >= 2) {
+      event.preventDefault()
+      const first = event.touches[0]
+      const second = event.touches[1]
+      const midpoint = getTouchMidpoint(first, second)
+
+      if (state.mode !== 'pinch') {
+        touchStateRef.current = {
+          mode: 'pinch',
+          startDistance: getTouchDistance(first, second),
+          startScale: transform.scale,
+          startMidX: midpoint.x,
+          startMidY: midpoint.y,
+          originX: transform.offsetX,
+          originY: transform.offsetY,
+        }
+        return
+      }
+
+      const nextScale = clampScale(state.startScale * (getTouchDistance(first, second) / Math.max(state.startDistance, 1)))
+      const scaleRatio = nextScale / state.startScale
+      setTransform({
+        scale: nextScale,
+        offsetX: state.originX + (midpoint.x - state.startMidX) - ((midpoint.x - state.originX) * (scaleRatio - 1)),
+        offsetY: state.originY + (midpoint.y - state.startMidY) - ((midpoint.y - state.originY) * (scaleRatio - 1)),
+      })
+    }
+  }, [transform.offsetX, transform.offsetY, transform.scale])
+
+  const handleTouchEnd = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.touches.length >= 2) {
+      const first = event.touches[0]
+      const second = event.touches[1]
+      const midpoint = getTouchMidpoint(first, second)
+      touchStateRef.current = {
+        mode: 'pinch',
+        startDistance: getTouchDistance(first, second),
+        startScale: transform.scale,
+        startMidX: midpoint.x,
+        startMidY: midpoint.y,
+        originX: transform.offsetX,
+        originY: transform.offsetY,
+      }
+      return
+    }
+
+    if (event.touches.length === 1) {
+      const touch = event.touches[0]
+      touchStateRef.current = {
+        mode: 'pan',
+        startX: touch.clientX,
+        startY: touch.clientY,
+        originX: transform.offsetX,
+        originY: transform.offsetY,
+      }
+      return
+    }
+
+    touchStateRef.current = null
+  }, [transform.offsetX, transform.offsetY, transform.scale])
+
+  return (
+    <div
+      ref={viewportRef}
+      className="absolute inset-0 overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_top,_rgba(219,234,254,0.55),_transparent_50%),linear-gradient(180deg,_rgba(248,250,252,0.96),_rgba(255,255,255,1))]"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerEnd}
+      onPointerCancel={handlePointerEnd}
+      onWheel={handleWheel}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+      style={{ touchAction: 'none' }}
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(transparent_31px,rgba(148,163,184,0.12)_32px),linear-gradient(90deg,transparent_31px,rgba(148,163,184,0.12)_32px)] bg-[length:32px_32px] opacity-70" />
+      <div className="absolute left-3 top-3 z-[1] rounded-full border border-slate-200/90 bg-white/85 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 shadow-sm backdrop-blur-sm">
+        Pan 1 finger • Pan/zoom 2 fingers • Double tap to zoom
+      </div>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div
+          className="will-change-transform"
+          style={{
+            transform: `translate(${transform.offsetX}px, ${transform.offsetY}px) scale(${transform.scale})`,
+            transformOrigin: 'center center',
+          }}
+        >
+          <div
+            ref={contentRef}
+            className="min-w-[280px] max-w-[min(76vw,880px)] rounded-[24px] border border-slate-200/90 bg-white/88 px-8 py-7 text-slate-900 shadow-[0_24px_60px_rgba(15,23,42,0.12)] backdrop-blur-sm"
+          />
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -100,15 +378,8 @@ function OperationButton({
 
   // Render each operation with professional LaTeX notation
   const renderMathButton = () => {
-    try {
-      return katex.renderToString(op.latex, {
-        throwOnError: true,
-        displayMode: false,
-      })
-    } catch (error) {
-      console.error('KaTeX button rendering error:', error)
-      return op.label
-    }
+    const rendered = renderKatexToString(op.latex, false)
+    return rendered === op.latex ? op.label : rendered
   }
 
   const positionClasses: Record<Exclude<Direction, null>, string> = {
@@ -158,10 +429,12 @@ function RadialKeyboard({
   onOperationSelect,
   centerButtonRef,
   selectedDirection,
+  latexExpression,
 }: {
   onOperationSelect: (direction: Direction) => void
   centerButtonRef: React.RefObject<HTMLButtonElement>
   selectedDirection: Direction
+  latexExpression: string
 }) {
   const keyboardRef = useRef<HTMLDivElement>(null)
   const [isGestureActive, setIsGestureActive] = useState(false)
@@ -225,17 +498,19 @@ function RadialKeyboard({
   }, [isGestureActive, gestureDir, onOperationSelect])
 
   return (
-    <div ref={keyboardRef} className="h-full w-full flex items-center justify-center bg-white relative overflow-hidden p-4">
+    <div ref={keyboardRef} className="h-full w-full relative overflow-hidden rounded-[28px] bg-white p-4">
+      <ZoomableMathCanvas latex={latexExpression} />
+      <div className="absolute inset-0 z-[2] rounded-[28px] bg-[radial-gradient(circle_at_center,_transparent_0,_transparent_88px,rgba(255,255,255,0.18)_89px,rgba(255,255,255,0.18)_160px,transparent_161px)]" />
       {/* Center button (x) */}
       <button
         ref={centerButtonRef}
         type="button"
         onMouseDown={handleCenterMouseDown}
         onTouchStart={handleCenterMouseDown}
-        className="absolute w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg flex items-center justify-center font-bold text-4xl hover:shadow-xl transition-shadow cursor-grab active:cursor-grabbing z-10"
+        className="absolute left-1/2 top-1/2 z-10 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-4xl font-bold text-white shadow-lg transition-shadow hover:shadow-xl cursor-grab active:cursor-grabbing"
         aria-label="Center button - hold and swipe to apply operations"
       >
-        x
+        ◉
       </button>
 
       {/* Directional buttons with professional math notation */}
@@ -250,7 +525,7 @@ function RadialKeyboard({
 
       {/* Gesture indicator */}
       {isGestureActive && gestureDir && (
-        <div className="absolute top-4 right-4 bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
+        <div className="absolute right-4 top-4 z-10 rounded-full bg-blue-500 px-3 py-1 text-xs font-semibold text-white">
           {DIRECTIONAL_OPERATIONS[gestureDir]?.label}
         </div>
       )}
@@ -421,6 +696,7 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
                 onOperationSelect={handleOperationSelect}
                 centerButtonRef={centerButtonRef}
                 selectedDirection={selectedDirection}
+                latexExpression={latexExpression}
               />
             </div>
           </div>

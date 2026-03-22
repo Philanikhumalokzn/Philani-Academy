@@ -3293,6 +3293,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return 'Manual test'
   }, [])
 
+  const formatPercentageLabel = useCallback((value: number | null | undefined) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) return null
+    return `${Math.round(Math.max(0, Math.min(100, value)))}%`
+  }, [])
+
   const fetchLibraryGrades = useCallback(async () => {
     if (status !== 'authenticated') {
       setLibraryGrades([])
@@ -10173,7 +10178,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         </div>
                         <div className="text-right shrink-0">
                           <div className="text-sm font-semibold">{gradeDetailData.scoreLabel}</div>
-                          {typeof gradeDetailData.percentage === 'number' ? <div className="text-xs muted">{Math.round(gradeDetailData.percentage)}%</div> : null}
+                          {formatPercentageLabel(gradeDetailData.percentage) ? <div className="text-xs muted">{formatPercentageLabel(gradeDetailData.percentage)}</div> : null}
                         </div>
                       </div>
                       {gradeDetailData.feedback ? (
@@ -12912,7 +12917,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             </div>
                             <div className="text-right">
                               <div className="text-sm font-semibold text-[#0f172a]">{item.scoreLabel}</div>
-                              {typeof item.percentage === 'number' ? <div className="text-xs text-[#65676b]">{item.percentage.toFixed(1)}%</div> : null}
+                              {formatPercentageLabel(item.percentage) ? <div className="text-xs text-[#65676b]">{formatPercentageLabel(item.percentage)}</div> : null}
                             </div>
                           </div>
                           {item.feedback ? <div className="mt-2 text-xs text-[#475569] whitespace-pre-wrap break-words">{item.feedback}</div> : null}
@@ -13206,7 +13211,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           </div>
                           <div className="text-right">
                             <div className="font-semibold text-white">{item.scoreLabel}</div>
-                            {typeof item.percentage === 'number' ? <div className="text-xs muted">{item.percentage.toFixed(1)}%</div> : null}
+                            {formatPercentageLabel(item.percentage) ? <div className="text-xs muted">{formatPercentageLabel(item.percentage)}</div> : null}
                           </div>
                         </div>
                         {item.feedback ? <div className="mt-2 text-xs text-white/80 whitespace-pre-wrap break-words">{item.feedback}</div> : null}

@@ -11,6 +11,7 @@ import TextOverlayModule from '../components/TextOverlayModule'
 import AssignmentSubmissionOverlay from '../components/AssignmentSubmissionOverlay'
 import AppFooter from '../components/AppFooter'
 import HandwritingNormalizationOverlay from '../components/HandwritingNormalizationOverlay'
+import MathKeyboardOverlay from '../components/MathKeyboardOverlay'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import { PublicSolveCanvasViewer, PublicSolveComposer, normalizePublicSolveScene, type PublicSolveScene } from '../components/PublicSolveCanvas'
 import TaskManageMenu from '../components/TaskManageMenu'
@@ -1081,6 +1082,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [activeSection, setActiveSection] = useState<SectionId>('overview')
   const [dashboardSectionOverlay, setDashboardSectionOverlay] = useState<OverlaySectionId | null>(null)
   const [handwritingNormalizationOverlayOpen, setHandwritingNormalizationOverlayOpen] = useState(false)
+  const [mathKeyboardOverlayOpen, setMathKeyboardOverlayOpen] = useState(false)
   const [accountSnapshotOverlayOpen, setAccountSnapshotOverlayOpen] = useState(false)
     useEffect(() => {
       if (!router.isReady) return
@@ -12367,6 +12369,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         showAdminAction={isAdmin}
         adminActionLabel="Normalization Lab"
         onAdminAction={() => setHandwritingNormalizationOverlayOpen(true)}
+        secondaryAdminActionLabel="Keyboard"
+        onSecondaryAdminAction={() => setMathKeyboardOverlayOpen(true)}
       />
     )
   }
@@ -13871,6 +13875,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       <HandwritingNormalizationOverlay
         open={handwritingNormalizationOverlayOpen && isAdmin}
         onClose={() => setHandwritingNormalizationOverlayOpen(false)}
+      />
+
+      <MathKeyboardOverlay
+        open={mathKeyboardOverlayOpen && isAdmin}
+        onClose={() => setMathKeyboardOverlayOpen(false)}
       />
 
       {createOverlayOpen && (

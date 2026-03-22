@@ -6,6 +6,8 @@ type AppFooterProps = {
   respectSafeBottom?: boolean
   adminActionLabel?: string
   onAdminAction?: () => void
+  secondaryAdminActionLabel?: string
+  onSecondaryAdminAction?: () => void
   showAdminAction?: boolean
 }
 
@@ -15,6 +17,8 @@ export default function AppFooter({
   respectSafeBottom = false,
   adminActionLabel = 'Normalization Lab',
   onAdminAction,
+  secondaryAdminActionLabel,
+  onSecondaryAdminAction,
   showAdminAction = false,
 }: AppFooterProps) {
   const currentYear = new Date().getFullYear()
@@ -38,14 +42,27 @@ export default function AppFooter({
         <Link href="/terms" className={linkClass}>Terms</Link>
         <Link href="/help" className={linkClass}>Help</Link>
         <a href="mailto:support@philaniacademy.org" className={linkClass}>Contact</a>
-        {showAdminAction && onAdminAction ? (
-          <button
-            type="button"
-            onClick={onAdminAction}
-            className={`rounded-full border px-3 py-1 text-[12px] font-semibold transition ${isDark ? 'border-[#78b8ff]/35 bg-[#0d2748] text-[#dbeafe] hover:bg-[#14345b]' : 'border-[#c9dbfb] bg-[#eef4ff] text-[#16345e] hover:bg-[#dfeafb]'}`}
-          >
-            {adminActionLabel}
-          </button>
+        {showAdminAction && (onAdminAction || onSecondaryAdminAction) ? (
+          <div className="flex flex-col gap-2">
+            {onAdminAction ? (
+              <button
+                type="button"
+                onClick={onAdminAction}
+                className={`rounded-full border px-3 py-1 text-[12px] font-semibold transition ${isDark ? 'border-[#78b8ff]/35 bg-[#0d2748] text-[#dbeafe] hover:bg-[#14345b]' : 'border-[#c9dbfb] bg-[#eef4ff] text-[#16345e] hover:bg-[#dfeafb]'}`}
+              >
+                {adminActionLabel}
+              </button>
+            ) : null}
+            {onSecondaryAdminAction ? (
+              <button
+                type="button"
+                onClick={onSecondaryAdminAction}
+                className={`rounded-full border px-3 py-1 text-[12px] font-semibold transition ${isDark ? 'border-[#78b8ff]/35 bg-[#0d2748] text-[#dbeafe] hover:bg-[#14345b]' : 'border-[#c9dbfb] bg-[#eef4ff] text-[#16345e] hover:bg-[#dfeafb]'}`}
+              >
+                {secondaryAdminActionLabel || 'Keyboard'}
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
       <div className={`mt-3 text-[12px] leading-5 ${metaClass}`}>

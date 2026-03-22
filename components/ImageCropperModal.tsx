@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop'
 import { cropAndRotateImageToFile, rotateImageFile } from '../lib/imageEdit'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
-import { useTapToPeek } from '../lib/useTapToPeek'
 
 type Filters = {
   brightness: number // -100 to 100
@@ -58,11 +57,7 @@ export default function ImageCropperModal(props: {
   const [rotating, setRotating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { visible: controlsVisible, peek: peekControls, clearTimer: clearControlsTimer } = useTapToPeek({
-    autoHideMs: 2500,
-    defaultVisible: true,
-    disabled: !open,
-  })
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   const objectUrl = useMemo(() => {
     if (!open) return null
@@ -96,6 +91,7 @@ export default function ImageCropperModal(props: {
     setScale(1)
     setSaving(false)
     setError(null)
+    setFiltersOpen(false)
     setFilters({
       brightness: 0,
       contrast: 0,
@@ -104,10 +100,6 @@ export default function ImageCropperModal(props: {
       hue: 0,
     })
   }, [open, file, initialCrop])
-
-  useEffect(() => {
-    if (!open) clearControlsTimer()
-  }, [clearControlsTimer, open])
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     if (!containerRef.current) return
@@ -119,8 +111,7 @@ export default function ImageCropperModal(props: {
       x: clientX - rect.left - panX,
       y: clientY - rect.top - panY,
     })
-    peekControls()
-  }, [panX, panY, peekControls])
+  }, [panX, panY])
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     if (!isDragging || !dragStart || !containerRef.current) return
@@ -149,10 +140,6 @@ export default function ImageCropperModal(props: {
       window.removeEventListener('touchend', handleMouseUp)
     }
   }, [isDragging, handleMouseMove, handleMouseUp])
-
-  const handleCropSurfaceInteraction = useCallback(() => {
-    peekControls()
-  }, [peekControls])
 
   const rotateBy = useCallback(async (deltaDeg: number) => {
     if (!workingFile) return
@@ -287,7 +274,6 @@ export default function ImageCropperModal(props: {
                 crop={crop}
                 onChange={(_, percentCrop) => {
                   setCrop(percentCrop)
-                  peekControls()
                 }}
                 onComplete={(px) => setCompletedCropPx(px)}
                 keepSelection
@@ -321,7 +307,7 @@ export default function ImageCropperModal(props: {
 
         {/* Top controls (floating) */}
         <div
-          className={`absolute inset-x-0 top-0 z-20 transition-opacity duration-200 pointer-events-none ${controlsVisible ? 'opacity-100' : 'opacity-0'}`}
+          className="absolute inset-x-0 top-0 z-20 pointer-events-none"
           style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 6px)' }}
         >
           <div className="px-3 pb-3 sm:px-5 bg-gradient-to-b from-black/70 via-black/35 to-transparent">
@@ -347,7 +333,7 @@ export default function ImageCropperModal(props: {
 
         {/* Right side rotate buttons (floating) */}
         <div
-          className={`absolute right-0 top-1/2 z-20 -translate-y-1/2 transition-opacity duration-200 pointer-events-none ${controlsVisible ? 'opacity-100' : 'opacity-0'}`}
+          className="absolute right-0 top-1/2 z-20 -translate-y-1/2 pointer-events-none"
           style={{ right: 'calc(env(safe-area-inset-right, 0px) + 8px)' }}
         >
           <div className="flex flex-col items-center gap-2 px-2">
@@ -384,12 +370,14 @@ export default function ImageCropperModal(props: {
         </div>
       </div>
 
-      {/* Bottom panel with filters and actions */}
+      {/* Bottom overlays: transparent filters drawer + action bar */}
       <div
-        className={`transition-all duration-200 border-t border-white/10 bg-gradient-to-t from-black via-black/90 to-black/50 ${controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', maxHeight: '65vh', overflowY: 'auto' }}
+        className="absolute inset-x-0 bottom-0 z-30"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
-        <div className="px-3 py-4 sm:px-5 space-y-4">
+        {filtersOpen ? (
+          <div className="max-h-[55vh] overflow-y-auto px-3 py-3 sm:px-5 pointer-events-auto bg-transparent">
+            <div className="space-y-4">
           {/* Filter sliders */}
           <div className="space-y-3">
             <div className="text-xs font-semibold text-white/80 uppercase tracking-wider">Adjust</div>
@@ -407,7 +395,6 @@ export default function ImageCropperModal(props: {
                 value={filters.brightness}
                 onChange={(e) => setFilters((prev) => ({ ...prev, brightness: Number(e.target.value) }))}
                 className="w-full h-1.5 bg-white/20 rounded-full appearance-none cursor-pointer"
-                onPointerDown={() => peekControls()}
               />
             </div>
 
@@ -424,7 +411,6 @@ export default function ImageCropperModal(props: {
                 value={filters.contrast}
                 onChange={(e) => setFilters((prev) => ({ ...prev, contrast: Number(e.target.value) }))}
                 className="w-full h-1.5 bg-white/20 rounded-full appearance-none cursor-pointer"
-                onPointerDown={() => peekControls()}
               />
             </div>
 
@@ -441,7 +427,6 @@ export default function ImageCropperModal(props: {
                 value={filters.saturation}
                 onChange={(e) => setFilters((prev) => ({ ...prev, saturation: Number(e.target.value) }))}
                 className="w-full h-1.5 bg-white/20 rounded-full appearance-none cursor-pointer"
-                onPointerDown={() => peekControls()}
               />
             </div>
 
@@ -458,7 +443,6 @@ export default function ImageCropperModal(props: {
                 value={filters.temperature}
                 onChange={(e) => setFilters((prev) => ({ ...prev, temperature: Number(e.target.value) }))}
                 className="w-full h-1.5 bg-gradient-to-r from-blue-500 via-white/30 to-orange-500 rounded-full appearance-none cursor-pointer"
-                onPointerDown={() => peekControls()}
               />
             </div>
 
@@ -475,7 +459,6 @@ export default function ImageCropperModal(props: {
                 value={filters.hue}
                 onChange={(e) => setFilters((prev) => ({ ...prev, hue: Number(e.target.value) }))}
                 className="w-full h-1.5 bg-gradient-to-r from-red-500 via-yellow-500 via-green-500 via-blue-500 to-red-500 rounded-full appearance-none cursor-pointer"
-                onPointerDown={() => peekControls()}
               />
             </div>
           </div>
@@ -501,10 +484,28 @@ export default function ImageCropperModal(props: {
             >
               Reset crop
             </button>
+            <button
+              type="button"
+              className="text-xs font-medium px-3 py-1.5 rounded-full border border-white/30 bg-white/10 text-white hover:bg-white/15 transition"
+              onClick={() => setFiltersOpen(false)}
+            >
+              Close filters
+            </button>
           </div>
+            </div>
+          </div>
+        ) : null}
 
-          {/* Action buttons */}
-          <div className="grid grid-cols-3 gap-2 pt-2">
+        <div className="px-3 pb-3 sm:px-5 pt-2 pointer-events-auto bg-transparent">
+          <div className="grid grid-cols-4 gap-2">
+            <button
+              type="button"
+              className="text-xs font-medium px-3 py-2.5 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/15 transition disabled:opacity-50"
+              onClick={() => setFiltersOpen((prev) => !prev)}
+              disabled={saving || rotating}
+            >
+              {filtersOpen ? 'Hide filters' : 'Filters'}
+            </button>
             <button
               type="button"
               className="text-xs font-medium px-3 py-2.5 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/15 transition disabled:opacity-50"

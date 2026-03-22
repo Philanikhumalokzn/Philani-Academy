@@ -15057,12 +15057,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                         <div
                           ref={editorHostRef}
                           className={editorHostClass}
-                          style={{ ...editorHostStyle, height: '100%' }}
+                          style={{
+                            ...editorHostStyle,
+                            height: '100%',
+                            opacity: recognitionEngine === 'keyboard' ? 0 : 1,
+                            pointerEvents: recognitionEngine === 'keyboard' ? 'none' : editorHostStyle.pointerEvents,
+                          }}
                           data-orientation={canvasOrientation}
                         />
                         {recognitionEngine === 'keyboard' && (
                           <div
-                            className="absolute inset-0 flex items-center justify-center overflow-auto p-6 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(219,234,254,0.45),transparent_55%),linear-gradient(180deg,rgba(248,250,252,0.97),rgba(255,255,255,1))]"
+                            className="absolute inset-0 z-20 flex items-center justify-center overflow-auto p-6 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(219,234,254,0.45),transparent_55%),linear-gradient(180deg,rgba(248,250,252,0.97),rgba(255,255,255,1))]"
                             // eslint-disable-next-line react/no-danger
                             dangerouslySetInnerHTML={{
                               __html: (() => {
@@ -15073,7 +15078,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           />
                         )}
                         {recognitionEngine === 'keyboard' && (
-                          <div className="absolute inset-0 z-10 pointer-events-none">
+                          <div className="absolute inset-0 z-30 pointer-events-none">
                             {(Object.keys(KEYBOARD_RADIAL_OPERATIONS) as KbDirection[]).map((dir) => {
                               const op = KEYBOARD_RADIAL_OPERATIONS[dir]
                               const posClass: Record<KbDirection, string> = {
@@ -15196,13 +15201,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           <div
             ref={editorHostRef}
             className={editorHostClass}
-            style={editorHostStyle}
+            style={{
+              ...editorHostStyle,
+              opacity: recognitionEngine === 'keyboard' ? 0 : 1,
+              pointerEvents: recognitionEngine === 'keyboard' ? 'none' : editorHostStyle.pointerEvents,
+            }}
             data-orientation={canvasOrientation}
           />
 
           {recognitionEngine === 'keyboard' && (
             <div
-              className="absolute inset-0 flex items-center justify-center overflow-auto p-6 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(219,234,254,0.45),transparent_55%),linear-gradient(180deg,rgba(248,250,252,0.97),rgba(255,255,255,1))]"
+              className="absolute inset-0 z-20 flex items-center justify-center overflow-auto p-6 pointer-events-none bg-[radial-gradient(circle_at_top,rgba(219,234,254,0.45),transparent_55%),linear-gradient(180deg,rgba(248,250,252,0.97),rgba(255,255,255,1))]"
               // eslint-disable-next-line react/no-danger
               dangerouslySetInnerHTML={{
                 __html: (() => {
@@ -15214,7 +15223,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           )}
 
           {recognitionEngine === 'keyboard' && (
-            <div className="absolute inset-0 z-10 pointer-events-none">
+            <div className="absolute inset-0 z-30 pointer-events-none">
               {(Object.keys(KEYBOARD_RADIAL_OPERATIONS) as KbDirection[]).map((dir) => {
                 const op = KEYBOARD_RADIAL_OPERATIONS[dir]
                 const posClass: Record<KbDirection, string> = {

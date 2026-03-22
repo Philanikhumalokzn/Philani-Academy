@@ -212,6 +212,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const grading = markRow?.gradingJson && typeof markRow.gradingJson === 'object' ? markRow.gradingJson : {}
       const percentage = parseNumber((grading as any)?.percentage)
       const screenshotUrl = clampText((grading as any)?.screenshotUrl, 1024)
+      const screenshotUrlsRaw = (grading as any)?.screenshotUrls
+      const screenshotUrls: string[] = Array.isArray(screenshotUrlsRaw)
+        ? screenshotUrlsRaw.map((u: unknown) => (typeof u === 'string' ? u.trim() : '')).filter(Boolean)
+        : (screenshotUrl ? [screenshotUrl] : [])
       const notes = clampText((grading as any)?.notes || markRow?.feedback || '', 1200)
 
       return {
@@ -224,6 +228,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         percentage: percentage != null ? Math.max(0, Math.min(100, percentage)) : null,
         notes: notes || null,
         screenshotUrl: screenshotUrl || null,
+        screenshotUrls,
         gradedAt: markRow?.updatedAt || markRow?.createdAt || null,
       }
     })
@@ -311,7 +316,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const learnerUserId = clampText(req.body?.learnerUserId, 120)
       const scoreLabel = normalizeScoreLabel(req.body?.scoreLabel)
       const notes = clampText(req.body?.notes, 1200)
-      const screenshotUrl = clampText(req.body?.screenshotUrl, 1024)
+      const screenshotUrlSingle = clampText(req.body?.screenshotUrl, 1024)
+      // Support array of screenshot URLs for multi-page scripts
+      const screenshotUrlsRaw: unknown = req.body?.screenshotUrls
+      const screenshotUrls: string[] = Array.isArray(screenshotUrlsRaw)
+        ? screenshotUrlsRaw
+            .map((u: unknown) => (typeof u === 'string' ? u.trim() : ''))
+            .filter(Boolean)
+            .slice(0, 20)
+        : (screenshotUrlSingle ? [screenshotUrlSingle] : [])
+      // First URL kept in screenshotUrl for backward compat
+      const screenshotUrl = screenshotUrls[0] || ''
       const percentageRaw = parseNumber(req.body?.percentage)
       const percentage = percentageRaw != null ? Math.max(0, Math.min(100, percentageRaw)) : null
 
@@ -357,6 +372,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         percentage,
         notes,
         screenshotUrl,
+        screenshotUrls,
         gradedAt: new Date().toISOString(),
         gradedById: requesterId,
       }
@@ -397,6 +413,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           percentage,
           notes: notes || null,
           screenshotUrl: screenshotUrl || null,
+          screenshotUrls,
           gradedAt: saved?.updatedAt || new Date().toISOString(),
         },
       })

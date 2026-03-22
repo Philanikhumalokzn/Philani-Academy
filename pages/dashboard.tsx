@@ -15,6 +15,7 @@ import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import { PublicSolveCanvasViewer, PublicSolveComposer, normalizePublicSolveScene, type PublicSolveScene } from '../components/PublicSolveCanvas'
 import TaskManageMenu from '../components/TaskManageMenu'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
+import ScriptPhotosEditor from '../components/ScriptPhotosEditor'
 import BottomSheet from '../components/BottomSheet'
 import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -143,6 +144,7 @@ type ManualMarksheetRow = {
   percentage: number | null
   notes: string | null
   screenshotUrl: string | null
+  screenshotUrls: string[]
   gradedAt: string | null
 }
 
@@ -1337,10 +1339,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [manualMarksheetLoading, setManualMarksheetLoading] = useState(false)
   const [manualMarksheetError, setManualMarksheetError] = useState<string | null>(null)
   const [manualMarksheetSearch, setManualMarksheetSearch] = useState('')
-  const [manualMarksheetDraftByUserId, setManualMarksheetDraftByUserId] = useState<Record<string, { scoreLabel: string; percentage: string; notes: string; screenshotUrl: string }>>({})
+  const [manualMarksheetDraftByUserId, setManualMarksheetDraftByUserId] = useState<Record<string, { scoreLabel: string; percentage: string; notes: string; screenshotUrls: string[] }>>({})
   const [manualMarksheetSavingUserId, setManualMarksheetSavingUserId] = useState<string | null>(null)
-  const [manualMarksheetScreenshotTargetUserId, setManualMarksheetScreenshotTargetUserId] = useState<string | null>(null)
-  const [manualMarksheetScreenshotUploading, setManualMarksheetScreenshotUploading] = useState(false)
   const [manualAssessmentTitleDraft, setManualAssessmentTitleDraft] = useState('')
   const [manualAssessmentSubjectDraft, setManualAssessmentSubjectDraft] = useState('')
   const [manualAssessmentTermDraft, setManualAssessmentTermDraft] = useState('')
@@ -1350,7 +1350,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [manualAssessmentCreating, setManualAssessmentCreating] = useState(false)
   const [manualAssessmentCreateError, setManualAssessmentCreateError] = useState<string | null>(null)
   const [manualAssessmentCreateSuccess, setManualAssessmentCreateSuccess] = useState<string | null>(null)
-  const manualGradeScreenshotInputRef = useRef<HTMLInputElement | null>(null)
   const [offlineDocUrls, setOfflineDocUrls] = useState<string[]>([])
   const [offlineDocSavingUrls, setOfflineDocSavingUrls] = useState<string[]>([])
   const [offlineDocErrorByUrl, setOfflineDocErrorByUrl] = useState<Record<string, string>>({})
@@ -3352,15 +3351,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       const rows = Array.isArray(data?.rows) ? data.rows : []
       setManualMarksheetRows(rows)
 
-      const nextDrafts: Record<string, { scoreLabel: string; percentage: string; notes: string; screenshotUrl: string }> = {}
+      const nextDrafts: Record<string, { scoreLabel: string; percentage: string; notes: string; screenshotUrls: string[] }> = {}
       for (const row of rows) {
         const userId = String((row as any)?.userId || '')
         if (!userId) continue
+        const existingUrls: string[] = Array.isArray((row as any)?.screenshotUrls)
+          ? (row as any).screenshotUrls.filter((u: any) => typeof u === 'string' && u)
+          : ((row as any)?.screenshotUrl ? [String((row as any).screenshotUrl)] : [])
         nextDrafts[userId] = {
           scoreLabel: String((row as any)?.scoreLabel || ''),
           percentage: typeof (row as any)?.percentage === 'number' ? String((row as any).percentage) : '',
           notes: String((row as any)?.notes || ''),
-          screenshotUrl: String((row as any)?.screenshotUrl || ''),
+          screenshotUrls: existingUrls,
         }
       }
       setManualMarksheetDraftByUserId(nextDrafts)
@@ -3447,7 +3449,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           scoreLabel: draft.scoreLabel,
           percentage: draft.percentage.trim() ? Number(draft.percentage) : null,
           notes: draft.notes,
-          screenshotUrl: draft.screenshotUrl,
+          screenshotUrls: draft.screenshotUrls,
+          screenshotUrl: draft.screenshotUrls[0] || '',
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -3461,7 +3464,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           scoreLabel: String(savedItem?.scoreLabel || draft.scoreLabel || row.scoreLabel),
           percentage: typeof savedItem?.percentage === 'number' ? savedItem.percentage : (draft.percentage.trim() ? Number(draft.percentage) : null),
           notes: draft.notes || null,
-          screenshotUrl: draft.screenshotUrl || null,
+          screenshotUrl: draft.screenshotUrls[0] || null,
+          screenshotUrls: draft.screenshotUrls,
           gradedAt: savedItem?.gradedAt || new Date().toISOString(),
         }
       }))
@@ -3474,45 +3478,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [fetchLibraryGrades, manualMarksheetDraftByUserId, selectedManualAssessmentId])
 
-  const onManualGradeScreenshotPicked = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    if (!manualMarksheetScreenshotTargetUserId) return
-
-    setManualMarksheetScreenshotUploading(true)
-    setManualMarksheetError(null)
-    try {
-      const form = new FormData()
-      form.append('file', file)
-      const res = await fetch('/api/challenges/upload', {
-        method: 'POST',
-        credentials: 'same-origin',
-        body: form,
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.message || `Upload failed (${res.status})`)
-      const url = typeof data?.url === 'string' ? data.url.trim() : ''
-      if (!url) throw new Error('Upload succeeded but returned no URL')
-
-      const learnerUserId = manualMarksheetScreenshotTargetUserId
-      setManualMarksheetDraftByUserId((prev) => ({
-        ...prev,
-        [learnerUserId]: {
-          scoreLabel: prev[learnerUserId]?.scoreLabel || '',
-          percentage: prev[learnerUserId]?.percentage || '',
-          notes: prev[learnerUserId]?.notes || '',
-          screenshotUrl: url,
-        },
-      }))
-      await saveManualMarksheetRow(learnerUserId)
-    } catch (err: any) {
-      setManualMarksheetError(err?.message || 'Failed to upload screenshot')
-    } finally {
-      setManualMarksheetScreenshotTargetUserId(null)
-      setManualMarksheetScreenshotUploading(false)
-    }
-  }, [manualMarksheetScreenshotTargetUserId, saveManualMarksheetRow])
+  // ScriptPhotosEditor onChange handler factory — one per row
+  const makeManualMarksheetPhotosChange = useCallback((learnerUserId: string) => (newUrls: string[]) => {
+    setManualMarksheetDraftByUserId((prev) => ({
+      ...prev,
+      [learnerUserId]: { ...prev[learnerUserId], screenshotUrls: newUrls },
+    }))
+  }, [])
 
   const visibleManualMarksheetRows = useMemo(() => {
     const query = manualMarksheetSearch.trim().toLowerCase()
@@ -12404,15 +12376,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         }}
         style={{ display: 'none' }}
       />
-      <input
-        ref={manualGradeScreenshotInputRef}
-        type="file"
-        accept="image/png,image/jpeg,image/webp"
-        onChange={(e) => {
-          void onManualGradeScreenshotPicked(e)
-        }}
-        style={{ display: 'none' }}
-      />
       <div
         className={
           isMobile
@@ -12611,10 +12574,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               scoreLabel: row.scoreLabel || '',
                               percentage: typeof row.percentage === 'number' ? String(row.percentage) : '',
                               notes: row.notes || '',
-                              screenshotUrl: row.screenshotUrl || '',
+                              screenshotUrls: row.screenshotUrls?.length ? row.screenshotUrls : (row.screenshotUrl ? [row.screenshotUrl] : []),
                             }
                             const isSaving = manualMarksheetSavingUserId === row.userId
-                            const isUploadingRow = manualMarksheetScreenshotUploading && manualMarksheetScreenshotTargetUserId === row.userId
                             return (
                               <div key={row.userId} className="rounded-xl border border-black/10 bg-white p-2">
                                 <div className="flex items-center justify-between gap-2">
@@ -12651,31 +12613,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                   }))}
                                 />
                                 <div className="mt-2 flex items-center gap-2">
+                                  <ScriptPhotosEditor
+                                    urls={draft.screenshotUrls}
+                                    onChange={makeManualMarksheetPhotosChange(row.userId)}
+                                    disabled={isSaving}
+                                  />
                                   <button
                                     type="button"
-                                    className="inline-flex h-8 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 text-[11px] font-medium text-[#1c1e21]"
-                                    onClick={() => {
-                                      setManualMarksheetScreenshotTargetUserId(row.userId)
-                                      manualGradeScreenshotInputRef.current?.click()
-                                    }}
-                                    disabled={manualMarksheetScreenshotUploading}
-                                  >
-                                    {isUploadingRow ? 'Uploading...' : (draft.screenshotUrl ? 'Replace screenshot' : 'Attach screenshot')}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="inline-flex h-8 items-center justify-center rounded-full bg-[#1877f2] px-3 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
+                                    className="ml-auto inline-flex h-8 items-center justify-center rounded-full bg-[#1877f2] px-3 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
                                     onClick={() => void saveManualMarksheetRow(row.userId)}
-                                    disabled={isSaving || manualMarksheetScreenshotUploading}
+                                    disabled={isSaving}
                                   >
                                     {isSaving ? 'Saving...' : 'Save'}
                                   </button>
                                 </div>
-                                {draft.screenshotUrl ? (
-                                  <div className="mt-2 overflow-hidden rounded-lg border border-black/10 bg-white">
-                                    <img src={draft.screenshotUrl} alt={`${row.fullName} mark evidence`} className="max-h-36 w-full object-contain" />
-                                  </div>
-                                ) : null}
                               </div>
                             )
                           })}
@@ -12884,10 +12835,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             scoreLabel: row.scoreLabel || '',
                             percentage: typeof row.percentage === 'number' ? String(row.percentage) : '',
                             notes: row.notes || '',
-                            screenshotUrl: row.screenshotUrl || '',
+                            screenshotUrls: row.screenshotUrls?.length ? row.screenshotUrls : (row.screenshotUrl ? [row.screenshotUrl] : []),
                           }
                           const isSaving = manualMarksheetSavingUserId === row.userId
-                          const isUploadingRow = manualMarksheetScreenshotUploading && manualMarksheetScreenshotTargetUserId === row.userId
                           return (
                             <div key={row.userId} className="rounded-xl border border-white/10 bg-white/5 p-2">
                               <div className="flex items-center justify-between gap-2">
@@ -12924,31 +12874,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 }))}
                               />
                               <div className="mt-2 flex items-center gap-2">
+                                <ScriptPhotosEditor
+                                  urls={draft.screenshotUrls}
+                                  onChange={makeManualMarksheetPhotosChange(row.userId)}
+                                  disabled={isSaving}
+                                  darkMode
+                                />
                                 <button
                                   type="button"
-                                  className="btn btn-ghost text-xs"
-                                  onClick={() => {
-                                    setManualMarksheetScreenshotTargetUserId(row.userId)
-                                    manualGradeScreenshotInputRef.current?.click()
-                                  }}
-                                  disabled={manualMarksheetScreenshotUploading}
-                                >
-                                  {isUploadingRow ? 'Uploading...' : (draft.screenshotUrl ? 'Replace screenshot' : 'Attach screenshot')}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-primary text-xs"
+                                  className="ml-auto inline-flex h-8 items-center justify-center rounded-full bg-[#1877f2] px-3 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
                                   onClick={() => void saveManualMarksheetRow(row.userId)}
-                                  disabled={isSaving || manualMarksheetScreenshotUploading}
+                                  disabled={isSaving}
                                 >
                                   {isSaving ? 'Saving...' : 'Save'}
                                 </button>
                               </div>
-                              {draft.screenshotUrl ? (
-                                <div className="mt-2 overflow-hidden rounded-lg border border-white/10 bg-black/20">
-                                  <img src={draft.screenshotUrl} alt={`${row.fullName} mark evidence`} className="max-h-40 w-full object-contain" />
-                                </div>
-                              ) : null}
                             </div>
                           )
                         })}

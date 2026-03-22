@@ -4,6 +4,14 @@ import { cropAndRotateImageToFile, rotateImageFile } from '../lib/imageEdit'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import { useTapToPeek } from '../lib/useTapToPeek'
 
+type Filters = {
+  brightness: number // -100 to 100
+  contrast: number // -100 to 100
+  saturation: number // -100 to 100
+  temperature: number // -50 to 50 (warm to cool)
+  hue: number // 0 to 360
+}
+
 export default function ImageCropperModal(props: {
   open: boolean
   file: File | null
@@ -18,8 +26,23 @@ export default function ImageCropperModal(props: {
   const { open, file, title, aspectRatio, circularCrop = false, onCancel, onUseOriginal, onConfirm, confirmLabel } = props
 
   const imgRef = useRef<HTMLImageElement | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
 
   const [workingFile, setWorkingFile] = useState<File | null>(null)
+  const [rotation, setRotation] = useState(0)
+  const [panX, setPanX] = useState(0)
+  const [panY, setPanY] = useState(0)
+  const [scale, setScale] = useState(1)
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null)
+
+  const [filters, setFilters] = useState<Filters>({
+    brightness: 0,
+    contrast: 0,
+    saturation: 0,
+    temperature: 0,
+    hue: 0,
+  })
 
   const initialCrop = useMemo(() => {
     const baseWidth = 80
@@ -36,8 +59,8 @@ export default function ImageCropperModal(props: {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { visible: controlsVisible, peek: peekControls, clearTimer: clearControlsTimer } = useTapToPeek({
-    autoHideMs: 1800,
-    defaultVisible: false,
+    autoHideMs: 2500,
+    defaultVisible: true,
     disabled: !open,
   })
 
@@ -67,14 +90,65 @@ export default function ImageCropperModal(props: {
     setWorkingFile(file)
     setCrop(initialCrop)
     setCompletedCropPx(null)
-    setRotating(false)
+    setRotation(0)
+    setPanX(0)
+    setPanY(0)
+    setScale(1)
     setSaving(false)
     setError(null)
+    setFilters({
+      brightness: 0,
+      contrast: 0,
+      saturation: 0,
+      temperature: 0,
+      hue: 0,
+    })
   }, [open, file, initialCrop])
 
   useEffect(() => {
     if (!open) clearControlsTimer()
   }, [clearControlsTimer, open])
+
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+    if (!containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    setIsDragging(true)
+    setDragStart({
+      x: clientX - rect.left - panX,
+      y: clientY - rect.top - panY,
+    })
+    peekControls()
+  }, [panX, panY, peekControls])
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+    if (!isDragging || !dragStart || !containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    setPanX(clientX - rect.left - dragStart.x)
+    setPanY(clientY - rect.top - dragStart.y)
+  }, [isDragging, dragStart])
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false)
+    setDragStart(null)
+  }, [])
+
+  useEffect(() => {
+    if (!isDragging) return
+    window.addEventListener('mousemove', handleMouseMove as any)
+    window.addEventListener('touchmove', handleMouseMove as any)
+    window.addEventListener('mouseup', handleMouseUp)
+    window.addEventListener('touchend', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove as any)
+      window.removeEventListener('touchmove', handleMouseMove as any)
+      window.removeEventListener('mouseup', handleMouseUp)
+      window.removeEventListener('touchend', handleMouseUp)
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp])
 
   const handleCropSurfaceInteraction = useCallback(() => {
     peekControls()
@@ -87,8 +161,12 @@ export default function ImageCropperModal(props: {
     try {
       const rotated = await rotateImageFile({ file: workingFile, rotation: deltaDeg })
       setWorkingFile(rotated)
+      setRotation((prev) => prev + deltaDeg)
       setCrop(initialCrop)
       setCompletedCropPx(null)
+      setPanX(0)
+      setPanY(0)
+      setScale(1)
     } catch (e: any) {
       setError(e?.message || 'Failed to rotate image')
     } finally {
@@ -142,28 +220,53 @@ export default function ImageCropperModal(props: {
     onUseOriginal(file)
   }, [file, onUseOriginal])
 
+  const getFilterStyle = (): React.CSSProperties => {
+    const brightness = Math.max(0, 100 + filters.brightness)
+    const contrast = Math.max(0, 100 + filters.contrast)
+    const saturation = Math.max(0, 100 + filters.saturation)
+    const hue = filters.hue
+
+    // Temperature: cool (blue) to warm (yellow)
+    let tempFilter = ''
+    if (filters.temperature < 0) {
+      // Cool (blue)
+      tempFilter = `hue-rotate(${Math.abs(filters.temperature) * 1.8}deg)`
+    } else if (filters.temperature > 0) {
+      // Warm (yellow/orange)
+      tempFilter = `hue-rotate(${filters.temperature * 1.5}deg)`
+    }
+
+    return {
+      filter: `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) hue-rotate(${hue}deg) ${tempFilter}`,
+    }
+  }
+
   if (!open) return null
 
   return (
     <FullScreenGlassOverlay
-      title={title || 'Edit screenshot'}
-      subtitle="Crop and rotate before uploading."
+      title={title || 'Enhance & crop'}
+      subtitle="Adjust, pan, crop. Tap image to pan."
       onClose={onCancel}
       onBackdropClick={onCancel}
       closeDisabled={saving}
       zIndexClassName="z-[90]"
       panelSize="full"
       hideHeader
-      frameClassName="absolute inset-0 flex items-end justify-center p-0"
+      frameClassName="absolute inset-0 flex flex-col justify-end p-0"
       panelClassName="!rounded-none"
-      contentClassName="relative p-0 overflow-hidden"
+      contentClassName="relative p-0 overflow-hidden flex flex-col h-full"
     >
+      {/* Main editing area */}
       <div
-        className="relative h-full w-full bg-black"
-        onPointerDown={handleCropSurfaceInteraction}
-        onPointerMove={handleCropSurfaceInteraction}
-        onTouchStart={handleCropSurfaceInteraction}
-        onTouchMove={handleCropSurfaceInteraction}
+        ref={containerRef}
+        className="relative flex-1 overflow-hidden bg-black"
+        onMouseDown={handleMouseDown}
+        onTouchStart={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onTouchMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onTouchEnd={handleMouseUp}
       >
         {error ? (
           <div className="absolute left-3 right-3 top-3 z-10 rounded-xl border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
@@ -171,42 +274,15 @@ export default function ImageCropperModal(props: {
           </div>
         ) : null}
 
-        <div
-          className={`absolute inset-x-0 top-0 z-20 transition-opacity duration-200 ${controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 6px)' }}
-        >
-          <div className="px-3 pb-3 sm:px-5 bg-gradient-to-b from-black/70 via-black/35 to-transparent">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-white text-[clamp(1.45rem,5.4vw,2.05rem)] font-semibold leading-tight">{title || 'Edit screenshot'}</div>
-                <div className="text-white/80 text-[clamp(0.85rem,3.8vw,1rem)] leading-snug">Crop and rotate before uploading.</div>
-              </div>
-              <button
-                type="button"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white hover:bg-black/60 disabled:opacity-50"
-                onClick={onCancel}
-                disabled={saving}
-                aria-label="Close"
-                title="Close"
-              >
-                <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
-                  <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div
-          className="absolute inset-x-0 top-0"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 82px)' }}
-          onPointerDown={handleCropSurfaceInteraction}
-          onPointerMove={handleCropSurfaceInteraction}
-          onTouchStart={handleCropSurfaceInteraction}
-          onTouchMove={handleCropSurfaceInteraction}
-        >
-          {objectUrl ? (
-            <div className="absolute inset-0 flex items-center justify-center">
+        {objectUrl ? (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div
+              className="relative"
+              style={{
+                transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
+                transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+              }}
+            >
               <ReactCrop
                 crop={crop}
                 onChange={(_, percentCrop) => {
@@ -218,104 +294,241 @@ export default function ImageCropperModal(props: {
                 aspect={aspectRatio}
                 circularCrop={circularCrop}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   ref={imgRef}
                   alt="Crop preview"
                   src={objectUrl}
-                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  style={{
+                    width: '100vmin',
+                    height: '100vmin',
+                    objectFit: 'contain',
+                    display: 'block',
+                    ...getFilterStyle(),
+                  }}
                   onLoad={() => {
                     setCrop(initialCrop)
                     setCompletedCropPx(null)
                   }}
+                  className="pointer-events-none"
+                  draggable="false"
                 />
               </ReactCrop>
             </div>
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-sm text-white/70">No image</div>
-          )}
+          </div>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-sm text-white/70">Loading image…</div>
+        )}
+
+        {/* Top controls (floating) */}
+        <div
+          className={`absolute inset-x-0 top-0 z-20 transition-opacity duration-200 pointer-events-none ${controlsVisible ? 'opacity-100' : 'opacity-0'}`}
+          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 6px)' }}
+        >
+          <div className="px-3 pb-3 sm:px-5 bg-gradient-to-b from-black/70 via-black/35 to-transparent">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-white text-base font-semibold">{title || 'Enhance & crop'}</div>
+                <div className="text-white/70 text-xs">Tap image to pan • Drag handles to crop</div>
+              </div>
+              <button
+                type="button"
+                className="pointer-events-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20 transition disabled:opacity-50"
+                onClick={onCancel}
+                disabled={saving}
+                aria-label="Close"
+              >
+                <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
+                  <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
 
+        {/* Right side rotate buttons (floating) */}
         <div
-          className={`absolute z-10 flex flex-col items-center gap-3 transition-opacity duration-200 ${controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-          style={{
-            right: 'calc(env(safe-area-inset-right, 0px) + 12px)',
-            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 76px)',
-          }}
+          className={`absolute right-0 top-1/2 z-20 -translate-y-1/2 transition-opacity duration-200 pointer-events-none ${controlsVisible ? 'opacity-100' : 'opacity-0'}`}
+          style={{ right: 'calc(env(safe-area-inset-right, 0px) + 8px)' }}
         >
-          <button
-            type="button"
-            className="btn btn-ghost h-11 w-11 !px-0"
-            onClick={() => void rotateBy(-90)}
-            disabled={saving || rotating || !workingFile}
-            aria-label="Rotate left"
-            title="Rotate left"
-          >
-            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" aria-hidden="true">
-              <path d="M7 7H4v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M4 10a8 8 0 1 0 3-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </button>
+          <div className="flex flex-col items-center gap-2 px-2">
+            <button
+              type="button"
+              className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-black hover:bg-white shadow-lg backdrop-blur-sm transition disabled:opacity-50"
+              onClick={() => void rotateBy(-90)}
+              disabled={saving || rotating}
+              aria-label="Rotate counterclockwise"
+              title="Rotate ↶"
+            >
+              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" aria-hidden="true">
+                <path d="M7 7H4v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M4 10a8 8 0 1 0 3-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
 
-          <button
-            type="button"
-            className="btn btn-ghost h-11 w-11 !px-0"
-            onClick={() => void rotateBy(90)}
-            disabled={saving || rotating || !workingFile}
-            aria-label="Rotate right"
-            title="Rotate right"
-          >
-            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" aria-hidden="true">
-              <path d="M17 7h3v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M20 10a8 8 0 1 1-3-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </button>
+            <button
+              type="button"
+              className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-black hover:bg-white shadow-lg backdrop-blur-sm transition disabled:opacity-50"
+              onClick={() => void rotateBy(90)}
+              disabled={saving || rotating}
+              aria-label="Rotate clockwise"
+              title="Rotate ↷"
+            >
+              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" aria-hidden="true">
+                <path d="M17 7h3v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M20 10a8 8 0 1 1-3-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
 
-          {rotating ? <div className="text-[11px] text-white/80">Rotating…</div> : null}
+            {rotating ? <div className="text-[10px] text-white font-medium">…</div> : null}
+          </div>
         </div>
+      </div>
 
-        <div
-          className={`absolute inset-x-0 z-10 transition-opacity duration-200 ${controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-          style={{ bottom: 'env(safe-area-inset-bottom, 0px)' }}
-        >
-          <div className="px-3 pb-1 pt-8 sm:px-5 sm:pb-2 sm:pt-9 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="btn btn-ghost h-9 w-9 !px-0"
-                  onClick={() => {
-                    setCrop(initialCrop)
-                    setCompletedCropPx(null)
-                  }}
-                  disabled={saving || rotating}
-                  aria-label="Reset crop"
-                  title="Reset crop"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" aria-hidden="true">
-                    <path d="M4 12a8 8 0 1 0 2.343-5.657" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    <path d="M4 4v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
+      {/* Bottom panel with filters and actions */}
+      <div
+        className={`transition-all duration-200 border-t border-white/10 bg-gradient-to-t from-black via-black/90 to-black/50 ${controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', maxHeight: '65vh', overflowY: 'auto' }}
+      >
+        <div className="px-3 py-4 sm:px-5 space-y-4">
+          {/* Filter sliders */}
+          <div className="space-y-3">
+            <div className="text-xs font-semibold text-white/80 uppercase tracking-wider">Adjust</div>
 
+            {/* Brightness */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-white">Brightness</label>
+                <span className="text-xs text-white/60">{filters.brightness > 0 ? '+' : ''}{filters.brightness}%</span>
               </div>
-
-              <div className="flex items-center gap-2">
-                <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={saving}>
-                  Cancel
-                </button>
-                <button type="button" className="btn" onClick={doUseOriginal} disabled={saving || !file}>
-                  Upload original
-                </button>
-                <button type="button" className="btn btn-primary" onClick={() => void doConfirm()} disabled={saving || !file || !objectUrl}>
-                  {saving ? 'Processing…' : (confirmLabel || 'Upload edited')}
-                </button>
-              </div>
+              <input
+                type="range"
+                min="-100"
+                max="100"
+                value={filters.brightness}
+                onChange={(e) => setFilters((prev) => ({ ...prev, brightness: Number(e.target.value) }))}
+                className="w-full h-1.5 bg-white/20 rounded-full appearance-none cursor-pointer"
+                onPointerDown={() => peekControls()}
+              />
             </div>
 
-            <div className="mt-2 text-[11px] text-white/70">
-              Drag to move. Drag handles to zoom.
+            {/* Contrast */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-white">Contrast</label>
+                <span className="text-xs text-white/60">{filters.contrast > 0 ? '+' : ''}{filters.contrast}%</span>
+              </div>
+              <input
+                type="range"
+                min="-100"
+                max="100"
+                value={filters.contrast}
+                onChange={(e) => setFilters((prev) => ({ ...prev, contrast: Number(e.target.value) }))}
+                className="w-full h-1.5 bg-white/20 rounded-full appearance-none cursor-pointer"
+                onPointerDown={() => peekControls()}
+              />
             </div>
+
+            {/* Saturation */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-white">Saturation</label>
+                <span className="text-xs text-white/60">{filters.saturation > 0 ? '+' : ''}{filters.saturation}%</span>
+              </div>
+              <input
+                type="range"
+                min="-100"
+                max="100"
+                value={filters.saturation}
+                onChange={(e) => setFilters((prev) => ({ ...prev, saturation: Number(e.target.value) }))}
+                className="w-full h-1.5 bg-white/20 rounded-full appearance-none cursor-pointer"
+                onPointerDown={() => peekControls()}
+              />
+            </div>
+
+            {/* Temperature */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-white">Temperature</label>
+                <span className="text-xs text-white/60">{filters.temperature > 0 ? 'Warm' : filters.temperature < 0 ? 'Cool' : 'Neutral'}</span>
+              </div>
+              <input
+                type="range"
+                min="-50"
+                max="50"
+                value={filters.temperature}
+                onChange={(e) => setFilters((prev) => ({ ...prev, temperature: Number(e.target.value) }))}
+                className="w-full h-1.5 bg-gradient-to-r from-blue-500 via-white/30 to-orange-500 rounded-full appearance-none cursor-pointer"
+                onPointerDown={() => peekControls()}
+              />
+            </div>
+
+            {/* Hue */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-white">Hue</label>
+                <span className="text-xs text-white/60">{filters.hue}°</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="360"
+                value={filters.hue}
+                onChange={(e) => setFilters((prev) => ({ ...prev, hue: Number(e.target.value) }))}
+                className="w-full h-1.5 bg-gradient-to-r from-red-500 via-yellow-500 via-green-500 via-blue-500 to-red-500 rounded-full appearance-none cursor-pointer"
+                onPointerDown={() => peekControls()}
+              />
+            </div>
+          </div>
+
+          {/* Quick actions */}
+          <div className="flex flex-wrap items-center gap-2 pt-2">
+            <button
+              type="button"
+              className="text-xs font-medium px-3 py-1.5 rounded-full border border-white/30 bg-white/10 text-white hover:bg-white/15 transition disabled:opacity-50"
+              onClick={() => setFilters({ brightness: 0, contrast: 0, saturation: 0, temperature: 0, hue: 0 })}
+              disabled={saving || rotating}
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              className="text-xs font-medium px-3 py-1.5 rounded-full border border-white/30 bg-white/10 text-white hover:bg-white/15 transition disabled:opacity-50"
+              onClick={() => {
+                setCrop(initialCrop)
+                setCompletedCropPx(null)
+              }}
+              disabled={saving || rotating}
+            >
+              Reset crop
+            </button>
+          </div>
+
+          {/* Action buttons */}
+          <div className="grid grid-cols-3 gap-2 pt-2">
+            <button
+              type="button"
+              className="text-xs font-medium px-3 py-2.5 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/15 transition disabled:opacity-50"
+              onClick={onCancel}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="text-xs font-medium px-3 py-2.5 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/15 transition disabled:opacity-50"
+              onClick={doUseOriginal}
+              disabled={saving}
+            >
+              Use original
+            </button>
+            <button
+              type="button"
+              className="text-xs font-medium px-3 py-2.5 rounded-xl bg-blue-500 text-white hover:bg-blue-600 transition disabled:opacity-50 shadow-lg"
+              onClick={() => void doConfirm()}
+              disabled={saving}
+            >
+              {saving ? 'Processing…' : confirmLabel || 'Upload'}
+            </button>
           </div>
         </div>
       </div>

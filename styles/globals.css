@@ -1,6 +1,122 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
 @import 'react-image-crop/dist/ReactCrop.css';
 
+/* Modern crop styling - hide default dotted lines, use clean corner borders */
+.ReactCrop__crop-area {
+  /* Hide the dotted border grid */
+  border: none !important;
+  background: none !important;
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.6) !important;
+}
+
+/* Remove the grid lines */
+.ReactCrop__crop-area::before,
+.ReactCrop__crop-area::after {
+  display: none !important;
+}
+
+/* Hide default edge guides (the grid lines) */
+.ReactCrop__crop-area--fixed-aspect::after {
+  display: none !important;
+}
+
+/* Custom corner indicators - draw clean borders only at corners */
+.ReactCrop__drag-bar {
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+}
+
+/* Style the drag bars to be invisible but still functional */
+.ReactCrop__drag-bar--ord-n,
+.ReactCrop__drag-bar--ord-s,
+.ReactCrop__drag-bar--ord-e,
+.ReactCrop__drag-bar--ord-w,
+.ReactCrop__drag-bar--ord-nw,
+.ReactCrop__drag-bar--ord-ne,
+.ReactCrop__drag-bar--ord-se,
+.ReactCrop__drag-bar--ord-sw {
+  background: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+/* Modern handle styling - clean, small circles at corners and sides */
+.ReactCrop__drag-handle {
+  width: 12px !important;
+  height: 12px !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  border: 2px solid rgba(255, 255, 255, 1) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(0, 0, 0, 0.2) !important;
+  outline: none !important;
+  opacity: 1 !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+/* Hover state for handles */
+.ReactCrop__drag-handle:hover {
+  transform: scale(1.25) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Active/dragging state */
+.ReactCrop__drag-handle:active {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), inset 0 0 0 2px rgba(255, 255, 255, 0.8) !important;
+}
+
+/* Corner-specific styling */
+.ReactCrop__drag-handle--ord-nw,
+.ReactCrop__drag-handle--ord-ne,
+.ReactCrop__drag-handle--ord-se,
+.ReactCrop__drag-handle--ord-sw {
+  background: rgba(33, 150, 243, 0.85) !important;
+  border-color: rgba(255, 255, 255, 1) !important;
+}
+
+/* Side handle styling (middle of each side) - slightly different color */
+.ReactCrop__drag-handle--ord-n,
+.ReactCrop__drag-handle--ord-s,
+.ReactCrop__drag-handle--ord-e,
+.ReactCrop__drag-handle--ord-w {
+  background: rgba(255, 255, 255, 0.75) !important;
+  border-color: rgba(255, 255, 255, 0.95) !important;
+  width: 10px !important;
+  height: 10px !important;
+}
+
+/* Add corner bracket indicators for visual feedback */
+@supports (box-shadow: inset 0 0 0 100px rgba(255,255,255,0.1)) {
+  .ReactCrop__crop-area::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    pointer-events: none;
+    background: 
+      linear-gradient(90deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 4px),
+      linear-gradient(180deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 4px),
+      linear-gradient(90deg, rgba(255,255,255,0) calc(100% - 4px), rgba(255,255,255,0.5) 100%),
+      linear-gradient(180deg, rgba(255,255,255,0) calc(100% - 4px), rgba(255,255,255,0.5) 100%),
+      linear-gradient(90deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 4px),
+      linear-gradient(180deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 4px),
+      linear-gradient(90deg, rgba(255,255,255,0) calc(100% - 4px), rgba(255,255,255,0.5) 100%),
+      linear-gradient(180deg, rgba(255,255,255,0) calc(100% - 4px), rgba(255,255,255,0.5) 100%);
+    background-size: 20px 20px, 20px 20px, 20px 20px, 20px 20px, 20px 20px, 20px 20px, 20px 20px, 20px 20px;
+    background-position: 
+      0 0,
+      0 0,
+      right 0,
+      right 0,
+      0 bottom,
+      0 bottom,
+      right bottom,
+      right bottom;
+    background-repeat: no-repeat;
+    display: block !important;
+  }
+}
+
 .app-shell{
   min-height:100vh;
   background:var(--bg-gradient);

@@ -1,10 +1,7 @@
 import { useRouter } from 'next/router'
 import { useSession } from 'next-auth/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useTapToPeek } from '../lib/useTapToPeek'
-import { createPortal } from 'react-dom'
 
-import AccountControlOverlay from './AccountControlOverlay'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import UserLink from './UserLink'
 
@@ -41,7 +38,7 @@ type ActivityNotification = {
   actor?: { id: string; name?: string | null; email?: string | null; avatar?: string | null; role?: string | null } | null
 }
 
-const useMobileTopChromeVisible = (pathname: string | undefined, authenticated: boolean) => {
+const useNotificationsPanelVisible = (pathname: string | undefined, authenticated: boolean) => {
   if (!authenticated) return false
   if (!pathname) return false
 
@@ -54,21 +51,14 @@ const useMobileTopChromeVisible = (pathname: string | undefined, authenticated: 
   return true
 }
 
-export default function MobileTopChrome() {
+export default function NotificationsPanelHost() {
   const router = useRouter()
   const { data: session, status } = useSession()
-  const isVisible = useMobileTopChromeVisible(router.pathname, status === 'authenticated')
+  const isVisible = useNotificationsPanelVisible(router.pathname, status === 'authenticated')
 
   const [notificationsOpen, setNotificationsOpen] = useState(false)
-  const [accountControlOpen, setAccountControlOpen] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const { visible: chromeOpen, peek: showChrome, setVisible: setChromeVisible, clearTimer: clearChromeTimer } = useTapToPeek({
-    autoHideMs: 2500,
-    defaultVisible: false,
-    lockVisible: notificationsOpen || accountControlOpen,
-  })
 
-  const [unreadCount, setUnreadCount] = useState(0)
   const [announcements, setAnnouncements] = useState<AnnouncementLike[]>([])
   const [readIds, setReadIds] = useState<string[]>([])
   const fetchAbortRef = useRef<AbortController | null>(null)
@@ -295,7 +285,7 @@ export default function MobileTopChrome() {
     const announcementUnread = computeUnread(announcements, readSet)
     const actionUnread = (actionInvites?.length || 0) + (actionJoinRequests?.length || 0)
     const activityUnread = activityFeed.filter((n) => !n?.readAt).length
-    setUnreadCount(announcementUnread + actionUnread + activityUnread)
+    void (announcementUnread + actionUnread + activityUnread)
   }, [actionInvites, actionJoinRequests, activityFeed, announcements, computeUnread, isVisible, readSet])
 
   useEffect(() => {
@@ -364,15 +354,6 @@ export default function MobileTopChrome() {
     setNewNotificationIds(nextNew)
   }, [actionInvites, actionJoinRequests, activityFeed, announcements, claimedNotificationKey, isVisible, readSet, seenNotificationKey])
 
-  useEffect(() => {
-    const handleRoute = () => {
-      clearChromeTimer()
-      setChromeVisible(false)
-    }
-    router.events.on('routeChangeStart', handleRoute)
-    return () => router.events.off('routeChangeStart', handleRoute)
-  }, [router.events, clearChromeTimer, setChromeVisible])
-
   if (!isVisible) return null
 
   const acknowledgeNewNotifications = () => {
@@ -400,7 +381,6 @@ export default function MobileTopChrome() {
 
   const openNotifications = () => {
     setNotificationsOpen(true)
-    showChrome()
     acknowledgeNewNotifications()
     void loadActionNotifications()
   }
@@ -618,10 +598,6 @@ export default function MobileTopChrome() {
     }
   }
 
-  const closeAccountControl = () => {
-    setAccountControlOpen(false)
-  }
-
   const toggleAnnouncement = (idRaw: string | number | null | undefined) => {
     const id = idRaw == null ? '' : String(idRaw)
     if (!id) return
@@ -643,56 +619,6 @@ export default function MobileTopChrome() {
 
   return (
     <>
-      {null}
-      <div
-        data-mobile-top-chrome
-        className={`fixed top-2 left-2 right-2 z-50 md:hidden transition-opacity duration-200 ${chromeOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-      >
-        <div className="mx-auto w-fit max-w-full rounded-2xl border border-white/15 bg-white/10 backdrop-blur px-2 py-2">
-          <div className="flex items-center justify-center gap-2">
-            <button
-              type="button"
-              aria-label="Home"
-              className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
-              onClick={() => router.push('/dashboard')}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1V10.5Z" fill="currentColor" />
-              </svg>
-            </button>
-
-            <button
-              type="button"
-              aria-label="Sessions"
-              className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
-              onClick={() => router.push({ pathname: '/dashboard', query: { panel: 'sessions' } })}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M7 2v2H5a2 2 0 0 0-2 2v2h18V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7Zm14 8H3v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V10Zm-13 3h4v4H8v-4Z" fill="currentColor" />
-              </svg>
-            </button>
-
-            {null}
-
-            <button
-              type="button"
-              aria-label="Settings"
-              className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-white/15 bg-white/5"
-              onClick={() => {
-                closeNotifications()
-                setAccountControlOpen(true)
-                showChrome()
-                clearChromeTimer()
-              }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 12.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.12.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L1.71 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.6.22l2.39-.96c.51.4 1.05.71 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.12-.54 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM11 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" fill="currentColor" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
-
       {notificationsOpen && (
         <FullScreenGlassOverlay
           title="Notifications"
@@ -930,13 +856,6 @@ export default function MobileTopChrome() {
                 ) : null}
           </div>
         </FullScreenGlassOverlay>
-      )}
-
-      {accountControlOpen && typeof window !== 'undefined' && (
-        createPortal(
-          <AccountControlOverlay onRequestClose={closeAccountControl} />,
-          document.body
-        )
       )}
     </>
   )

@@ -74,6 +74,28 @@ const inferGivenName = (user: any) => {
   return ''
 }
 
+const inferGraderSignature = (user: any) => {
+  const first = clampText(user?.firstName, 80)
+  const last = clampText(user?.lastName, 80)
+  const full = clampText(user?.name, 140)
+
+  if (first || last) {
+    const initial = first ? `${first.charAt(0).toUpperCase()}. ` : ''
+    const surname = last || first
+    return `Mr ${initial}${surname}`.trim()
+  }
+
+  if (full) {
+    const parts = full.split(/\s+/).filter(Boolean)
+    if (parts.length > 1) {
+      return `Mr ${parts[0].charAt(0).toUpperCase()}. ${parts[parts.length - 1]}`
+    }
+    return `Mr ${parts[0]}`
+  }
+
+  return 'Mr P. Khumalo'
+}
+
 const normalizeScoreLabel = (value: unknown) => {
   const label = clampText(value, 64)
   return label || 'Not marked'
@@ -487,6 +509,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ? Math.max(0, Math.min(100, Math.round((parsedScore.earnedMarks / totalMarks) * 100)))
         : null
       const finalPercentage = percentage != null ? percentage : autoPercentage
+      const grader = await prisma.user.findUnique({
+        where: { id: requesterId },
+        select: { id: true, name: true, firstName: true, lastName: true },
+      }).catch(() => null)
+      const gradedByName = clampText(grader?.name, 140) || `${clampText(grader?.firstName, 80)} ${clampText(grader?.lastName, 80)}`.trim()
+      const graderSignature = inferGraderSignature(grader)
 
       const existing = await (prisma as any).learnerResponse.findFirst({
         where: {
@@ -508,6 +536,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         screenshotUrls,
         gradedAt: new Date().toISOString(),
         gradedById: requesterId,
+        gradedByName: gradedByName || null,
+        graderSignature,
       }
 
       const saved = existing

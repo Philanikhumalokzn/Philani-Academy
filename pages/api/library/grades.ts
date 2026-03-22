@@ -8,10 +8,13 @@ type LibraryGradeItem = {
   sourceType: 'assignment' | 'post_solution' | 'challenge_solution' | 'manual'
   assessmentTitle: string
   scoreLabel: string
+  earnedMarks: number | null
+  totalMarks: number | null
   percentage: number | null
   feedback: string | null
   screenshotUrl: string | null
   screenshotUrls: string[]
+  graderSignature: string | null
   gradedAt: string
   sourceKey: string | null
   responseId: string | null
@@ -70,6 +73,10 @@ const buildManualItem = (record: any): LibraryGradeItem => {
   const grading = record?.gradingJson && typeof record.gradingJson === 'object' ? record.gradingJson : {}
   const assessmentTitle = clampText((grading as any)?.assessmentTitle || record?.quizLabel || record?.prompt || 'Manual assessment', 140) || 'Manual assessment'
   const scoreLabel = clampText((grading as any)?.scoreLabel || record?.latex || 'Graded', 64) || 'Graded'
+  const earnedMarksRaw = Number((grading as any)?.earnedMarks)
+  const totalMarksRaw = Number((grading as any)?.totalMarks)
+  const earnedMarks = Number.isFinite(earnedMarksRaw) ? Math.max(0, earnedMarksRaw) : null
+  const totalMarks = Number.isFinite(totalMarksRaw) && totalMarksRaw > 0 ? totalMarksRaw : null
   const screenshotUrl = clampText((grading as any)?.screenshotUrl || '', 1024) || null
   const screenshotUrlsRaw = (grading as any)?.screenshotUrls
   const screenshotUrls = Array.isArray(screenshotUrlsRaw)
@@ -81,10 +88,13 @@ const buildManualItem = (record: any): LibraryGradeItem => {
     sourceType: 'manual',
     assessmentTitle,
     scoreLabel,
+    earnedMarks,
+    totalMarks,
     percentage: parsePercentage((grading as any)?.percentage),
     feedback: clampText((grading as any)?.notes || record?.feedback || '', 1200) || null,
     screenshotUrl,
     screenshotUrls,
+    graderSignature: clampText((grading as any)?.graderSignature || '', 120) || null,
     gradedAt: toIsoString((grading as any)?.gradedAt || record?.updatedAt || record?.createdAt),
     sourceKey: String(record?.sessionKey || '') || null,
     responseId: String(record?.id || '') || null,
@@ -161,10 +171,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           sourceType: detailSourceType,
           assessmentTitle: clampText((grading as any)?.assessmentTitle || row?.quizLabel || row?.prompt || 'Grade details', 140) || 'Grade details',
           scoreLabel: clampText((grading as any)?.scoreLabel || row?.latex || 'Graded', 64) || 'Graded',
+          earnedMarks: Number.isFinite(Number((grading as any)?.earnedMarks)) ? Math.max(0, Number((grading as any)?.earnedMarks)) : null,
+          totalMarks: Number.isFinite(Number((grading as any)?.totalMarks)) && Number((grading as any)?.totalMarks) > 0
+            ? Number((grading as any)?.totalMarks)
+            : null,
           percentage: parsePercentage((grading as any)?.percentage),
           feedback: clampText((grading as any)?.notes || row?.feedback || '', 1200) || null,
           screenshotUrl,
           screenshotUrls,
+          graderSignature: clampText((grading as any)?.graderSignature || '', 120) || null,
           gradedAt: toIsoString((grading as any)?.gradedAt || row?.updatedAt || row?.createdAt),
           comments,
           canComment: true,
@@ -282,10 +297,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         sourceType: 'assignment',
         assessmentTitle: assignmentTitle,
         scoreLabel: `${Math.max(0, Math.trunc(earnedPoints))}/${Math.max(1, Math.trunc(totalPoints))}`,
+        earnedMarks: Math.max(0, Math.trunc(earnedPoints)),
+        totalMarks: Math.max(1, Math.trunc(totalPoints)),
         percentage: Number.isFinite(percentage) ? Math.max(0, Math.min(100, percentage)) : null,
         feedback: sessionTitle ? `Session: ${sessionTitle}` : null,
         screenshotUrl: null,
         screenshotUrls: [],
+        graderSignature: null,
         gradedAt: toIsoString(grade?.gradedAt || grade?.createdAt),
         sourceKey: String(grade?.assignmentId || '') || null,
         responseId: null,
@@ -310,10 +328,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           sourceType: 'post_solution',
           assessmentTitle: postTitleById.get(postId) || 'Post solution',
           scoreLabel: toPostOrChallengeScoreLabel(row),
+          earnedMarks: Number.isFinite(Number((grading as any)?.earnedMarks)) ? Math.max(0, Number((grading as any)?.earnedMarks)) : null,
+          totalMarks: Number.isFinite(Number((grading as any)?.totalMarks)) && Number((grading as any)?.totalMarks) > 0
+            ? Number((grading as any)?.totalMarks)
+            : null,
           percentage: parsePercentage((grading as any)?.percentage),
           feedback: clampText((row?.feedback || '').trim(), 1200) || null,
           screenshotUrl: clampText((grading as any)?.screenshotUrl || '', 1024) || null,
           screenshotUrls: [],
+          graderSignature: clampText((grading as any)?.graderSignature || '', 120) || null,
           gradedAt: toIsoString((grading as any)?.gradedAt || row?.updatedAt || row?.createdAt),
           sourceKey: sessionKey,
           responseId: String(row?.id || '') || null,
@@ -329,10 +352,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           sourceType: 'challenge_solution',
           assessmentTitle: challengeTitleById.get(challengeId) || 'Challenge solution',
           scoreLabel: toPostOrChallengeScoreLabel(row),
+          earnedMarks: Number.isFinite(Number((grading as any)?.earnedMarks)) ? Math.max(0, Number((grading as any)?.earnedMarks)) : null,
+          totalMarks: Number.isFinite(Number((grading as any)?.totalMarks)) && Number((grading as any)?.totalMarks) > 0
+            ? Number((grading as any)?.totalMarks)
+            : null,
           percentage: parsePercentage((grading as any)?.percentage),
           feedback: clampText((row?.feedback || '').trim(), 1200) || null,
           screenshotUrl: clampText((grading as any)?.screenshotUrl || '', 1024) || null,
           screenshotUrls: [],
+          graderSignature: clampText((grading as any)?.graderSignature || '', 120) || null,
           gradedAt: toIsoString((grading as any)?.gradedAt || row?.updatedAt || row?.createdAt),
           sourceKey: sessionKey,
           responseId: String(row?.id || '') || null,

@@ -114,10 +114,13 @@ type LibraryGradeItem = {
   sourceType: 'assignment' | 'post_solution' | 'challenge_solution' | 'manual'
   assessmentTitle: string
   scoreLabel: string
+  earnedMarks?: number | null
+  totalMarks?: number | null
   percentage: number | null
   feedback: string | null
   screenshotUrl: string | null
   screenshotUrls?: string[]
+  graderSignature?: string | null
   gradedAt: string
   sourceKey: string | null
   responseId?: string | null
@@ -137,10 +140,13 @@ type LibraryGradeDetail = {
   sourceType: string
   assessmentTitle: string
   scoreLabel: string
+  earnedMarks?: number | null
+  totalMarks?: number | null
   percentage: number | null
   feedback: string | null
   screenshotUrl: string | null
   screenshotUrls: string[]
+  graderSignature?: string | null
   gradedAt: string
   comments: GradeChatComment[]
   canComment: boolean
@@ -3300,6 +3306,33 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const formatPercentageLabel = useCallback((value: number | null | undefined) => {
     if (typeof value !== 'number' || Number.isNaN(value)) return null
     return `${Math.round(Math.max(0, Math.min(100, value)))}%`
+  }, [])
+
+  const parseScoreFraction = useCallback((item: Pick<LibraryGradeItem, 'scoreLabel' | 'earnedMarks' | 'totalMarks'>) => {
+    if (typeof item.earnedMarks === 'number' && typeof item.totalMarks === 'number' && item.totalMarks > 0) {
+      return {
+        top: Math.round(Math.max(0, item.earnedMarks)),
+        bottom: Math.round(Math.max(1, item.totalMarks)),
+      }
+    }
+
+    const label = String(item.scoreLabel || '').trim()
+    const ratioMatch = label.match(/(-?\d+(?:\.\d+)?)\s*\/\s*(-?\d+(?:\.\d+)?)/)
+    if (!ratioMatch) return null
+
+    const top = Number(ratioMatch[1])
+    const bottom = Number(ratioMatch[2])
+    if (!Number.isFinite(top) || !Number.isFinite(bottom) || bottom <= 0) return null
+
+    return {
+      top: Math.round(Math.max(0, top)),
+      bottom: Math.round(Math.max(1, bottom)),
+    }
+  }, [])
+
+  const getGradeSignature = useCallback((signature?: string | null) => {
+    const safe = String(signature || '').trim()
+    return safe || 'Mr P. Khumalo'
   }, [])
 
   const fetchLibraryGrades = useCallback(async () => {
@@ -10190,8 +10223,32 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           <div className="text-xs muted">{new Date(gradeDetailData.gradedAt).toLocaleString()}</div>
                         </div>
                         <div className="text-right shrink-0">
-                          <div className="text-sm font-semibold">{gradeDetailData.scoreLabel}</div>
-                          {formatPercentageLabel(gradeDetailData.percentage) ? <div className="text-xs muted">{formatPercentageLabel(gradeDetailData.percentage)}</div> : null}
+                          {(() => {
+                            const fraction = parseScoreFraction({
+                              scoreLabel: gradeDetailData.scoreLabel,
+                              earnedMarks: gradeDetailData.earnedMarks,
+                              totalMarks: gradeDetailData.totalMarks,
+                            })
+                            if (!fraction) {
+                              return (
+                                <>
+                                  <div className="text-sm font-semibold">{gradeDetailData.scoreLabel}</div>
+                                  {formatPercentageLabel(gradeDetailData.percentage) ? <div className="text-xs muted">{formatPercentageLabel(gradeDetailData.percentage)}</div> : null}
+                                </>
+                              )
+                            }
+                            return (
+                              <div className="flex flex-col items-center">
+                                <div className="h-20 w-20 rounded-full border-2 border-[#9cc1ff]/55 bg-black/20 shadow-sm flex flex-col items-center justify-center">
+                                  <div className="text-[18px] font-bold leading-none text-white">{fraction.top}</div>
+                                  <div className="my-1 h-px w-8 bg-white/70" />
+                                  <div className="text-[14px] font-semibold leading-none text-white/90">{fraction.bottom}</div>
+                                </div>
+                                <div className="mt-1 text-[10px] font-medium text-white/70">{getGradeSignature(gradeDetailData.graderSignature)}</div>
+                                {formatPercentageLabel(gradeDetailData.percentage) ? <div className="text-[11px] text-white/60">{formatPercentageLabel(gradeDetailData.percentage)}</div> : null}
+                              </div>
+                            )
+                          })()}
                         </div>
                       </div>
                       {gradeDetailData.feedback ? (
@@ -12969,9 +13026,29 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               <div className="text-sm font-semibold text-[#111827] break-words">{item.assessmentTitle}</div>
                               <div className="mt-1 text-xs text-[#65676b]">{getLibraryGradeSourceLabel(item.sourceType)}</div>
                             </div>
-                            <div className="text-right">
-                              <div className="text-sm font-semibold text-[#0f172a]">{item.scoreLabel}</div>
-                              {formatPercentageLabel(item.percentage) ? <div className="text-xs text-[#65676b]">{formatPercentageLabel(item.percentage)}</div> : null}
+                            <div className="text-right shrink-0">
+                              {(() => {
+                                const fraction = parseScoreFraction(item)
+                                if (!fraction) {
+                                  return (
+                                    <>
+                                      <div className="text-sm font-semibold text-[#0f172a]">{item.scoreLabel}</div>
+                                      {formatPercentageLabel(item.percentage) ? <div className="text-xs text-[#65676b]">{formatPercentageLabel(item.percentage)}</div> : null}
+                                    </>
+                                  )
+                                }
+                                return (
+                                  <div className="flex flex-col items-center">
+                                    <div className="h-20 w-20 rounded-full border-2 border-[#1d4ed8]/55 bg-white shadow-sm flex flex-col items-center justify-center">
+                                      <div className="text-[18px] font-bold leading-none text-[#0f172a]">{fraction.top}</div>
+                                      <div className="my-1 h-px w-8 bg-[#334155]/70" />
+                                      <div className="text-[14px] font-semibold leading-none text-[#334155]">{fraction.bottom}</div>
+                                    </div>
+                                    <div className="mt-1 text-[10px] font-medium text-[#475569]">{getGradeSignature(item.graderSignature)}</div>
+                                    {formatPercentageLabel(item.percentage) ? <div className="text-[11px] text-[#64748b]">{formatPercentageLabel(item.percentage)}</div> : null}
+                                  </div>
+                                )
+                              })()}
                             </div>
                           </div>
                           {item.feedback ? <div className="mt-2 text-xs text-[#475569] whitespace-pre-wrap break-words">{item.feedback}</div> : null}
@@ -13282,9 +13359,29 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             <div className="font-medium text-white break-words">{item.assessmentTitle}</div>
                             <div className="text-xs muted">{getLibraryGradeSourceLabel(item.sourceType)}</div>
                           </div>
-                          <div className="text-right">
-                            <div className="font-semibold text-white">{item.scoreLabel}</div>
-                            {formatPercentageLabel(item.percentage) ? <div className="text-xs muted">{formatPercentageLabel(item.percentage)}</div> : null}
+                          <div className="text-right shrink-0">
+                            {(() => {
+                              const fraction = parseScoreFraction(item)
+                              if (!fraction) {
+                                return (
+                                  <>
+                                    <div className="font-semibold text-white">{item.scoreLabel}</div>
+                                    {formatPercentageLabel(item.percentage) ? <div className="text-xs muted">{formatPercentageLabel(item.percentage)}</div> : null}
+                                  </>
+                                )
+                              }
+                              return (
+                                <div className="flex flex-col items-center">
+                                  <div className="h-20 w-20 rounded-full border-2 border-[#9cc1ff]/55 bg-black/25 shadow-sm flex flex-col items-center justify-center">
+                                    <div className="text-[18px] font-bold leading-none text-white">{fraction.top}</div>
+                                    <div className="my-1 h-px w-8 bg-white/70" />
+                                    <div className="text-[14px] font-semibold leading-none text-white/90">{fraction.bottom}</div>
+                                  </div>
+                                  <div className="mt-1 text-[10px] font-medium text-white/75">{getGradeSignature(item.graderSignature)}</div>
+                                  {formatPercentageLabel(item.percentage) ? <div className="text-[11px] text-white/70">{formatPercentageLabel(item.percentage)}</div> : null}
+                                </div>
+                              )
+                            })()}
                           </div>
                         </div>
                         {item.feedback ? <div className="mt-2 text-xs text-white/80 whitespace-pre-wrap break-words">{item.feedback}</div> : null}

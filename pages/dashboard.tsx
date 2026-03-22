@@ -117,8 +117,33 @@ type LibraryGradeItem = {
   percentage: number | null
   feedback: string | null
   screenshotUrl: string | null
+  screenshotUrls?: string[]
   gradedAt: string
   sourceKey: string | null
+  responseId?: string | null
+}
+
+type GradeChatComment = {
+  id: string
+  authorId: string
+  authorRole: 'teacher' | 'learner'
+  text: string
+  createdAt: string
+  updatedAt: string
+}
+
+type LibraryGradeDetail = {
+  id: string
+  sourceType: string
+  assessmentTitle: string
+  scoreLabel: string
+  percentage: number | null
+  feedback: string | null
+  screenshotUrl: string | null
+  screenshotUrls: string[]
+  gradedAt: string
+  comments: GradeChatComment[]
+  canComment: boolean
 }
 
 type ManualAssessmentItem = {
@@ -1350,6 +1375,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [manualAssessmentCreating, setManualAssessmentCreating] = useState(false)
   const [manualAssessmentCreateError, setManualAssessmentCreateError] = useState<string | null>(null)
   const [manualAssessmentCreateSuccess, setManualAssessmentCreateSuccess] = useState<string | null>(null)
+  const [manualAssessmentUpdating, setManualAssessmentUpdating] = useState(false)
+  const [manualAssessmentDeleting, setManualAssessmentDeleting] = useState(false)
+  const [gradeDetailOpen, setGradeDetailOpen] = useState(false)
+  const [gradeDetailItem, setGradeDetailItem] = useState<LibraryGradeItem | null>(null)
+  const [gradeDetailData, setGradeDetailData] = useState<LibraryGradeDetail | null>(null)
+  const [gradeDetailLoading, setGradeDetailLoading] = useState(false)
+  const [gradeDetailError, setGradeDetailError] = useState<string | null>(null)
+  const [gradeCommentDraft, setGradeCommentDraft] = useState('')
+  const [gradeCommentBusy, setGradeCommentBusy] = useState(false)
+  const [gradeCommentEditId, setGradeCommentEditId] = useState<string | null>(null)
+  const [gradeCommentEditDraft, setGradeCommentEditDraft] = useState('')
   const [offlineDocUrls, setOfflineDocUrls] = useState<string[]>([])
   const [offlineDocSavingUrls, setOfflineDocSavingUrls] = useState<string[]>([])
   const [offlineDocErrorByUrl, setOfflineDocErrorByUrl] = useState<Record<string, string>>({})
@@ -3299,6 +3335,33 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [makeOfflineCacheKey, status])
 
+  const selectedManualAssessment = useMemo(() => {
+    if (!selectedManualAssessmentId) return null
+    return manualAssessments.find((item) => String(item.id) === String(selectedManualAssessmentId)) || null
+  }, [manualAssessments, selectedManualAssessmentId])
+
+  const derivePercentageFromScore = useCallback((scoreLabel: string, totalMarksHint?: number | null): string => {
+    const label = String(scoreLabel || '').trim()
+    if (!label) return ''
+
+    const ratioMatch = label.match(/(-?\d+(?:\.\d+)?)\s*\/\s*(-?\d+(?:\.\d+)?)/)
+    if (ratioMatch) {
+      const earned = Number(ratioMatch[1])
+      const total = Number(ratioMatch[2])
+      if (Number.isFinite(earned) && Number.isFinite(total) && total > 0) {
+        return String(Math.max(0, Math.min(100, Math.round((earned / total) * 100))))
+      }
+    }
+
+    const numMatch = label.match(/-?\d+(?:\.\d+)?/)
+    const earned = numMatch ? Number(numMatch[0]) : NaN
+    const total = Number(totalMarksHint)
+    if (Number.isFinite(earned) && Number.isFinite(total) && total > 0) {
+      return String(Math.max(0, Math.min(100, Math.round((Math.max(0, earned) / total) * 100))))
+    }
+    return ''
+  }, [])
+
   const fetchManualAssessments = useCallback(async () => {
     if (!canManageAnnouncements || !selectedGrade) {
       setManualAssessments([])
@@ -3348,6 +3411,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.message || `Failed to load marksheet (${res.status})`)
 
+      const assessmentMeta = data?.assessment && typeof data.assessment === 'object' ? data.assessment : null
+      if (assessmentMeta?.id) {
+        setManualAssessments((prev) => prev.map((item) => {
+          if (String(item.id) !== String(assessmentMeta.id)) return item
+          return {
+            ...item,
+            title: String(assessmentMeta.title || item.title || ''),
+            subject: assessmentMeta.subject ?? item.subject,
+            term: assessmentMeta.term ?? item.term,
+            assessmentDate: assessmentMeta.assessmentDate ?? item.assessmentDate,
+            maxMarks: typeof assessmentMeta.maxMarks === 'number' ? assessmentMeta.maxMarks : item.maxMarks,
+            description: assessmentMeta.description ?? item.description,
+            updatedAt: String(assessmentMeta.updatedAt || item.updatedAt || ''),
+          }
+        }))
+      }
+
       const rows = Array.isArray(data?.rows) ? data.rows : []
       setManualMarksheetRows(rows)
 
@@ -3360,7 +3440,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           : ((row as any)?.screenshotUrl ? [String((row as any).screenshotUrl)] : [])
         nextDrafts[userId] = {
           scoreLabel: String((row as any)?.scoreLabel || ''),
-          percentage: typeof (row as any)?.percentage === 'number' ? String((row as any).percentage) : '',
+          percentage: typeof (row as any)?.percentage === 'number'
+            ? String(Math.round((row as any).percentage))
+            : derivePercentageFromScore(
+                String((row as any)?.scoreLabel || ''),
+                typeof assessmentMeta?.maxMarks === 'number' ? assessmentMeta.maxMarks : selectedManualAssessment?.maxMarks
+              ),
           notes: String((row as any)?.notes || ''),
           screenshotUrls: existingUrls,
         }
@@ -3373,7 +3458,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setManualMarksheetLoading(false)
     }
-  }, [])
+  }, [derivePercentageFromScore, selectedManualAssessment?.maxMarks])
 
   const createManualAssessment = useCallback(async () => {
     if (!selectedGrade) {
@@ -3430,10 +3515,202 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [fetchManualAssessments, manualAssessmentDateDraft, manualAssessmentDescriptionDraft, manualAssessmentMaxMarksDraft, manualAssessmentSubjectDraft, manualAssessmentTermDraft, manualAssessmentTitleDraft, selectedGrade])
 
+  const updateSelectedManualAssessment = useCallback(async () => {
+    if (!selectedManualAssessmentId || !selectedManualAssessment) return
+    const nextTitle = window.prompt('Edit test title', selectedManualAssessment.title || '')
+    if (nextTitle == null) return
+    const nextTotalRaw = window.prompt('Edit test total marks', selectedManualAssessment.maxMarks != null ? String(selectedManualAssessment.maxMarks) : '')
+    if (nextTotalRaw == null) return
+    const totalTrimmed = nextTotalRaw.trim()
+    const nextMaxMarks = totalTrimmed ? Number(totalTrimmed) : null
+    if (totalTrimmed && (!Number.isFinite(nextMaxMarks) || Number(nextMaxMarks) <= 0)) {
+      setManualMarksheetError('Test total must be a positive number.')
+      return
+    }
+
+    setManualAssessmentUpdating(true)
+    setManualMarksheetError(null)
+    try {
+      const res = await fetch('/api/library/manual-assessments', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'updateAssessment',
+          assessmentId: selectedManualAssessmentId,
+          title: nextTitle.trim() || selectedManualAssessment.title,
+          subject: selectedManualAssessment.subject || '',
+          term: selectedManualAssessment.term || '',
+          assessmentDate: selectedManualAssessment.assessmentDate || '',
+          description: selectedManualAssessment.description || '',
+          maxMarks: nextMaxMarks,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to update assessment (${res.status})`)
+      const item = data?.item
+      if (item?.id) {
+        setManualAssessments((prev) => prev.map((entry) => String(entry.id) === String(item.id) ? { ...entry, ...item } : entry))
+      }
+      if (selectedManualAssessmentId) {
+        void fetchManualMarksheet(selectedManualAssessmentId)
+      }
+    } catch (err: any) {
+      setManualMarksheetError(err?.message || 'Failed to update assessment')
+    } finally {
+      setManualAssessmentUpdating(false)
+    }
+  }, [fetchManualMarksheet, selectedManualAssessment, selectedManualAssessmentId])
+
+  const deleteSelectedManualAssessment = useCallback(async () => {
+    if (!selectedManualAssessmentId || !selectedManualAssessment) return
+    if (!window.confirm(`Delete test "${selectedManualAssessment.title}" and all marks? This cannot be undone.`)) return
+    setManualAssessmentDeleting(true)
+    setManualMarksheetError(null)
+    try {
+      const res = await fetch('/api/library/manual-assessments', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deleteAssessment', assessmentId: selectedManualAssessmentId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to delete assessment (${res.status})`)
+      setManualAssessments((prev) => prev.filter((entry) => String(entry.id) !== String(selectedManualAssessmentId)))
+      setSelectedManualAssessmentId((prev) => {
+        if (!prev) return null
+        const remaining = manualAssessments.filter((entry) => String(entry.id) !== String(selectedManualAssessmentId))
+        return remaining[0] ? String(remaining[0].id) : null
+      })
+      setManualMarksheetRows([])
+      setManualMarksheetDraftByUserId({})
+    } catch (err: any) {
+      setManualMarksheetError(err?.message || 'Failed to delete assessment')
+    } finally {
+      setManualAssessmentDeleting(false)
+    }
+  }, [manualAssessments, selectedManualAssessment, selectedManualAssessmentId])
+
+  const openGradeDetail = useCallback(async (item: LibraryGradeItem) => {
+    setGradeDetailOpen(true)
+    setGradeDetailItem(item)
+    setGradeDetailData(null)
+    setGradeDetailError(null)
+    setGradeCommentDraft('')
+    setGradeCommentEditId(null)
+    setGradeCommentEditDraft('')
+    setGradeDetailLoading(true)
+    try {
+      const responseId = String(item.responseId || item.id || '')
+      const sourceType = String(item.sourceType || '')
+      if (!responseId || !sourceType) {
+        throw new Error('This grade has no detailed record yet.')
+      }
+      const res = await fetch(`/api/library/grades?detailResponseId=${encodeURIComponent(responseId)}&detailSourceType=${encodeURIComponent(sourceType)}`, {
+        credentials: 'same-origin',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to load grade details (${res.status})`)
+      if (!data?.detail) throw new Error('Grade details unavailable')
+      setGradeDetailData(data.detail)
+    } catch (err: any) {
+      setGradeDetailError(err?.message || 'Failed to load grade details')
+    } finally {
+      setGradeDetailLoading(false)
+    }
+  }, [])
+
+  const submitGradeComment = useCallback(async () => {
+    if (!gradeDetailItem) return
+    const text = gradeCommentDraft.trim()
+    if (!text) return
+    if (text.length > 100) {
+      setGradeDetailError('Comment must be 100 characters or fewer.')
+      return
+    }
+    setGradeCommentBusy(true)
+    setGradeDetailError(null)
+    try {
+      const responseId = String(gradeDetailItem.responseId || gradeDetailItem.id || '')
+      const res = await fetch('/api/library/grades', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'commentCreate', responseId, text }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to post comment (${res.status})`)
+      setGradeDetailData((prev) => prev ? { ...prev, comments: Array.isArray(data?.comments) ? data.comments : prev.comments } : prev)
+      setGradeCommentDraft('')
+    } catch (err: any) {
+      setGradeDetailError(err?.message || 'Failed to post comment')
+    } finally {
+      setGradeCommentBusy(false)
+    }
+  }, [gradeCommentDraft, gradeDetailItem])
+
+  const updateGradeComment = useCallback(async (commentId: string) => {
+    if (!gradeDetailItem) return
+    const text = gradeCommentEditDraft.trim()
+    if (!text) return
+    if (text.length > 100) {
+      setGradeDetailError('Comment must be 100 characters or fewer.')
+      return
+    }
+    setGradeCommentBusy(true)
+    setGradeDetailError(null)
+    try {
+      const responseId = String(gradeDetailItem.responseId || gradeDetailItem.id || '')
+      const res = await fetch('/api/library/grades', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'commentUpdate', responseId, commentId, text }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to update comment (${res.status})`)
+      setGradeDetailData((prev) => prev ? { ...prev, comments: Array.isArray(data?.comments) ? data.comments : prev.comments } : prev)
+      setGradeCommentEditId(null)
+      setGradeCommentEditDraft('')
+    } catch (err: any) {
+      setGradeDetailError(err?.message || 'Failed to update comment')
+    } finally {
+      setGradeCommentBusy(false)
+    }
+  }, [gradeCommentEditDraft, gradeDetailItem])
+
+  const deleteGradeComment = useCallback(async (commentId: string) => {
+    if (!gradeDetailItem) return
+    setGradeCommentBusy(true)
+    setGradeDetailError(null)
+    try {
+      const responseId = String(gradeDetailItem.responseId || gradeDetailItem.id || '')
+      const res = await fetch('/api/library/grades', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'commentDelete', responseId, commentId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to delete comment (${res.status})`)
+      setGradeDetailData((prev) => prev ? { ...prev, comments: Array.isArray(data?.comments) ? data.comments : prev.comments } : prev)
+      if (gradeCommentEditId === commentId) {
+        setGradeCommentEditId(null)
+        setGradeCommentEditDraft('')
+      }
+    } catch (err: any) {
+      setGradeDetailError(err?.message || 'Failed to delete comment')
+    } finally {
+      setGradeCommentBusy(false)
+    }
+  }, [gradeCommentEditId, gradeDetailItem])
+
   const saveManualMarksheetRow = useCallback(async (learnerUserId: string) => {
     if (!selectedManualAssessmentId) return
     const draft = manualMarksheetDraftByUserId[learnerUserId]
     if (!draft) return
+    const autoPercentage = derivePercentageFromScore(draft.scoreLabel, selectedManualAssessment?.maxMarks)
+    const finalPercentage = autoPercentage || draft.percentage.trim()
 
     setManualMarksheetSavingUserId(learnerUserId)
     setManualMarksheetError(null)
@@ -3447,7 +3724,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           assessmentId: selectedManualAssessmentId,
           learnerUserId,
           scoreLabel: draft.scoreLabel,
-          percentage: draft.percentage.trim() ? Number(draft.percentage) : null,
+          percentage: finalPercentage ? Number(finalPercentage) : null,
           notes: draft.notes,
           screenshotUrls: draft.screenshotUrls,
           screenshotUrl: draft.screenshotUrls[0] || '',
@@ -3462,7 +3739,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         return {
           ...row,
           scoreLabel: String(savedItem?.scoreLabel || draft.scoreLabel || row.scoreLabel),
-          percentage: typeof savedItem?.percentage === 'number' ? savedItem.percentage : (draft.percentage.trim() ? Number(draft.percentage) : null),
+          percentage: typeof savedItem?.percentage === 'number'
+            ? savedItem.percentage
+            : (finalPercentage ? Number(finalPercentage) : null),
           notes: draft.notes || null,
           screenshotUrl: draft.screenshotUrls[0] || null,
           screenshotUrls: draft.screenshotUrls,
@@ -3470,13 +3749,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         }
       }))
 
+      if (autoPercentage) {
+        setManualMarksheetDraftByUserId((prev) => ({
+          ...prev,
+          [learnerUserId]: {
+            ...prev[learnerUserId],
+            percentage: autoPercentage,
+          },
+        }))
+      }
+
       void fetchLibraryGrades()
     } catch (err: any) {
       setManualMarksheetError(err?.message || 'Failed to save mark')
     } finally {
       setManualMarksheetSavingUserId(null)
     }
-  }, [fetchLibraryGrades, manualMarksheetDraftByUserId, selectedManualAssessmentId])
+  }, [derivePercentageFromScore, fetchLibraryGrades, manualMarksheetDraftByUserId, selectedManualAssessment?.maxMarks, selectedManualAssessmentId])
 
   // ScriptPhotosEditor onChange handler factory — one per row
   const makeManualMarksheetPhotosChange = useCallback((learnerUserId: string) => (newUrls: string[]) => {
@@ -9843,6 +10132,158 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </OverlayPortal>
         )}
 
+        {gradeDetailOpen && (
+          <OverlayPortal>
+            <FullScreenGlassOverlay
+              title={gradeDetailData?.assessmentTitle || gradeDetailItem?.assessmentTitle || 'Grade details'}
+              subtitle="Expanded grading details"
+              onClose={() => {
+                setGradeDetailOpen(false)
+                setGradeDetailItem(null)
+                setGradeDetailData(null)
+                setGradeDetailError(null)
+                setGradeCommentDraft('')
+                setGradeCommentEditId(null)
+                setGradeCommentEditDraft('')
+              }}
+              onBackdropClick={() => {
+                setGradeDetailOpen(false)
+                setGradeDetailItem(null)
+                setGradeDetailData(null)
+                setGradeDetailError(null)
+                setGradeCommentDraft('')
+                setGradeCommentEditId(null)
+                setGradeCommentEditDraft('')
+              }}
+              zIndexClassName="z-[65]"
+            >
+              <div className="space-y-3">
+                {gradeDetailError ? <div className="text-sm text-red-600">{gradeDetailError}</div> : null}
+                {gradeDetailLoading ? <div className="text-sm muted">Loading details...</div> : null}
+                {!gradeDetailLoading && gradeDetailData ? (
+                  <>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold break-words">{gradeDetailData.assessmentTitle}</div>
+                          <div className="text-xs muted">{new Date(gradeDetailData.gradedAt).toLocaleString()}</div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-sm font-semibold">{gradeDetailData.scoreLabel}</div>
+                          {typeof gradeDetailData.percentage === 'number' ? <div className="text-xs muted">{Math.round(gradeDetailData.percentage)}%</div> : null}
+                        </div>
+                      </div>
+                      {gradeDetailData.feedback ? (
+                        <div className="mt-2 rounded-xl border border-white/10 bg-black/20 p-2 text-sm whitespace-pre-wrap break-words">
+                          {gradeDetailData.feedback}
+                        </div>
+                      ) : null}
+                      {gradeDetailData.screenshotUrls.length > 0 ? (
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          {gradeDetailData.screenshotUrls.map((url, idx) => (
+                            <div key={`${url}-${idx}`} className="overflow-hidden rounded-xl border border-white/10 bg-black/20">
+                              <img src={url} alt={`Grading screenshot ${idx + 1}`} className="max-h-72 w-full object-contain" />
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                      <div className="text-xs uppercase tracking-wide text-white/70">Comments</div>
+                      <div className="mt-3 space-y-2 max-h-[40vh] overflow-y-auto pr-1">
+                        {gradeDetailData.comments.length === 0 ? <div className="text-sm muted">No comments yet.</div> : null}
+                        {gradeDetailData.comments.map((comment) => {
+                          const mine = String(comment.authorId) === String(currentUserId || viewerId || '')
+                          const isEditing = gradeCommentEditId === comment.id
+                          return (
+                            <div
+                              key={comment.id}
+                              className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm ${mine ? 'ml-auto bg-[#1877f2] text-white' : 'bg-black/30 text-white/90 border border-white/10'}`}
+                            >
+                              <div className="text-[11px] opacity-80 mb-1">
+                                {mine ? 'You' : (comment.authorRole === 'teacher' ? 'Teacher' : 'Learner')} • {new Date(comment.updatedAt || comment.createdAt).toLocaleString()}
+                              </div>
+                              {isEditing ? (
+                                <div className="space-y-2">
+                                  <input
+                                    className="h-9 w-full rounded-lg border border-white/30 bg-black/20 px-2 text-sm text-white"
+                                    value={gradeCommentEditDraft}
+                                    maxLength={100}
+                                    onChange={(e) => setGradeCommentEditDraft(e.target.value.slice(0, 100))}
+                                  />
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button type="button" className="btn btn-ghost text-xs" onClick={() => { setGradeCommentEditId(null); setGradeCommentEditDraft('') }}>
+                                      Cancel
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-primary text-xs"
+                                      disabled={gradeCommentBusy || !gradeCommentEditDraft.trim()}
+                                      onClick={() => void updateGradeComment(comment.id)}
+                                    >
+                                      Save
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="whitespace-pre-wrap break-words">{comment.text}</div>
+                                  {(mine || isTeacherOrAdminUser) ? (
+                                    <div className="mt-2 flex items-center justify-end gap-2">
+                                      {mine ? (
+                                        <button
+                                          type="button"
+                                          className="text-[11px] font-semibold underline underline-offset-2"
+                                          onClick={() => { setGradeCommentEditId(comment.id); setGradeCommentEditDraft(comment.text) }}
+                                        >
+                                          Edit
+                                        </button>
+                                      ) : null}
+                                      <button
+                                        type="button"
+                                        className="text-[11px] font-semibold underline underline-offset-2"
+                                        onClick={() => void deleteGradeComment(comment.id)}
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      <div className="mt-3 border-t border-white/10 pt-3">
+                        <div className="flex items-end gap-2">
+                          <textarea
+                            className="min-h-[44px] max-h-[120px] flex-1 rounded-xl border border-white/20 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-white/50"
+                            placeholder="Reply to teacher comment (max 100 chars)"
+                            value={gradeCommentDraft}
+                            maxLength={100}
+                            onChange={(e) => setGradeCommentDraft(e.target.value.slice(0, 100))}
+                          />
+                          <button
+                            type="button"
+                            className="inline-flex h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white disabled:opacity-50"
+                            disabled={gradeCommentBusy || !gradeCommentDraft.trim()}
+                            onClick={() => void submitGradeComment()}
+                          >
+                            Send
+                          </button>
+                        </div>
+                        <div className="mt-1 text-[11px] text-white/60">{gradeCommentDraft.length}/100</div>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </FullScreenGlassOverlay>
+          </OverlayPortal>
+        )}
+
         {assignmentOverlayOpen && (
           <OverlayPortal>
             <FullScreenGlassOverlay
@@ -12477,6 +12918,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               <img src={item.screenshotUrl} alt={`${item.assessmentTitle} screenshot`} className="max-h-64 w-full object-contain" />
                             </div>
                           ) : null}
+                          {item.responseId ? (
+                            <div className="mt-2">
+                              <button
+                                type="button"
+                                className="inline-flex h-8 items-center justify-center rounded-full border border-black/15 bg-white px-3 text-[11px] font-semibold text-[#1d4ed8]"
+                                onClick={() => void openGradeDetail(item)}
+                              >
+                                View details
+                              </button>
+                            </div>
+                          ) : null}
                           <div className="mt-2 text-[11px] text-[#64748b]">{new Date(item.gradedAt).toLocaleString()}</div>
                         </li>
                       ))}
@@ -12555,6 +13007,27 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             <option key={item.id} value={item.id}>{item.title}</option>
                           ))}
                         </select>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="inline-flex h-9 items-center justify-center rounded-xl border border-black/10 bg-white px-3 text-xs font-semibold text-[#111827] disabled:opacity-50"
+                            onClick={() => void updateSelectedManualAssessment()}
+                            disabled={!selectedManualAssessmentId || manualAssessmentUpdating || manualAssessmentDeleting}
+                          >
+                            {manualAssessmentUpdating ? 'Updating...' : 'Edit test'}
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex h-9 items-center justify-center rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700 disabled:opacity-50"
+                            onClick={() => void deleteSelectedManualAssessment()}
+                            disabled={!selectedManualAssessmentId || manualAssessmentUpdating || manualAssessmentDeleting}
+                          >
+                            {manualAssessmentDeleting ? 'Deleting...' : 'Delete test'}
+                          </button>
+                        </div>
+                        {selectedManualAssessment?.maxMarks != null ? (
+                          <div className="text-[11px] text-[#475569]">Total marks: {selectedManualAssessment.maxMarks}</div>
+                        ) : null}
                       </div>
 
                       <div className="grid grid-cols-2 gap-2">
@@ -12590,17 +13063,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                     value={draft.scoreLabel}
                                     onChange={(e) => setManualMarksheetDraftByUserId((prev) => ({
                                       ...prev,
-                                      [row.userId]: { ...draft, scoreLabel: e.target.value },
+                                      [row.userId]: {
+                                        ...draft,
+                                        scoreLabel: e.target.value,
+                                        percentage: derivePercentageFromScore(e.target.value, selectedManualAssessment?.maxMarks),
+                                      },
                                     }))}
                                   />
                                   <input
-                                    className="h-9 rounded-lg border border-black/10 bg-white px-2 text-sm"
-                                    placeholder="%"
-                                    value={draft.percentage}
-                                    onChange={(e) => setManualMarksheetDraftByUserId((prev) => ({
-                                      ...prev,
-                                      [row.userId]: { ...draft, percentage: e.target.value },
-                                    }))}
+                                    className="h-9 rounded-lg border border-black/10 bg-[#f1f5f9] px-2 text-sm"
+                                    placeholder="Auto %"
+                                    value={derivePercentageFromScore(draft.scoreLabel, selectedManualAssessment?.maxMarks) || draft.percentage}
+                                    readOnly
                                   />
                                 </div>
                                 <textarea
@@ -12738,6 +13212,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             <img src={item.screenshotUrl} alt={`${item.assessmentTitle} screenshot`} className="max-h-72 w-full object-contain" />
                           </div>
                         ) : null}
+                        {item.responseId ? (
+                          <div className="mt-2">
+                            <button
+                              type="button"
+                              className="inline-flex h-8 items-center justify-center rounded-full border border-white/20 bg-white/10 px-3 text-[11px] font-semibold text-[#9cc1ff] hover:bg-white/15"
+                              onClick={() => void openGradeDetail(item)}
+                            >
+                              View details
+                            </button>
+                          </div>
+                        ) : null}
                         <div className="mt-2 text-[11px] text-white/50">{new Date(item.gradedAt).toLocaleString()}</div>
                       </li>
                     ))}
@@ -12816,6 +13301,27 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           <option key={item.id} value={item.id}>{item.title}</option>
                         ))}
                       </select>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="btn btn-ghost text-xs disabled:opacity-50"
+                          onClick={() => void updateSelectedManualAssessment()}
+                          disabled={!selectedManualAssessmentId || manualAssessmentUpdating || manualAssessmentDeleting}
+                        >
+                          {manualAssessmentUpdating ? 'Updating...' : 'Edit test'}
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs font-semibold rounded-xl border border-red-300/50 bg-red-500/10 text-red-200 px-3 h-9 disabled:opacity-50"
+                          onClick={() => void deleteSelectedManualAssessment()}
+                          disabled={!selectedManualAssessmentId || manualAssessmentUpdating || manualAssessmentDeleting}
+                        >
+                          {manualAssessmentDeleting ? 'Deleting...' : 'Delete test'}
+                        </button>
+                      </div>
+                      {selectedManualAssessment?.maxMarks != null ? (
+                        <div className="text-[11px] text-white/60">Total marks: {selectedManualAssessment.maxMarks}</div>
+                      ) : null}
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
@@ -12851,17 +13357,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                   value={draft.scoreLabel}
                                   onChange={(e) => setManualMarksheetDraftByUserId((prev) => ({
                                     ...prev,
-                                    [row.userId]: { ...draft, scoreLabel: e.target.value },
+                                    [row.userId]: {
+                                      ...draft,
+                                      scoreLabel: e.target.value,
+                                      percentage: derivePercentageFromScore(e.target.value, selectedManualAssessment?.maxMarks),
+                                    },
                                   }))}
                                 />
                                 <input
-                                  className="h-9 rounded-lg border border-white/20 bg-black/20 px-2 text-sm text-white placeholder:text-white/45"
-                                  placeholder="%"
-                                  value={draft.percentage}
-                                  onChange={(e) => setManualMarksheetDraftByUserId((prev) => ({
-                                    ...prev,
-                                    [row.userId]: { ...draft, percentage: e.target.value },
-                                  }))}
+                                  className="h-9 rounded-lg border border-white/20 bg-black/35 px-2 text-sm text-white placeholder:text-white/45"
+                                  placeholder="Auto %"
+                                  value={derivePercentageFromScore(draft.scoreLabel, selectedManualAssessment?.maxMarks) || draft.percentage}
+                                  readOnly
                                 />
                               </div>
                               <textarea

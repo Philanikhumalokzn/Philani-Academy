@@ -14,6 +14,31 @@ const parseNumber = (value: unknown): number | null => {
   return Number.isFinite(n) ? n : null
 }
 
+const parseScoreFromLabel = (value: unknown) => {
+  const scoreLabel = clampText(value, 64)
+  if (!scoreLabel) return { scoreLabel: '', earnedMarks: null as number | null, totalMarksFromLabel: null as number | null }
+
+  const ratioMatch = scoreLabel.match(/(-?\d+(?:\.\d+)?)\s*\/\s*(-?\d+(?:\.\d+)?)/)
+  if (ratioMatch) {
+    const earned = Number(ratioMatch[1])
+    const total = Number(ratioMatch[2])
+    return {
+      scoreLabel,
+      earnedMarks: Number.isFinite(earned) ? Math.max(0, earned) : null,
+      totalMarksFromLabel: Number.isFinite(total) && total > 0 ? total : null,
+    }
+  }
+
+  const numericMatch = scoreLabel.match(/-?\d+(?:\.\d+)?/)
+  if (!numericMatch) return { scoreLabel, earnedMarks: null, totalMarksFromLabel: null }
+  const earned = Number(numericMatch[0])
+  return {
+    scoreLabel,
+    earnedMarks: Number.isFinite(earned) ? Math.max(0, earned) : null,
+    totalMarksFromLabel: null,
+  }
+}
+
 const inferSurname = (user: any) => {
   const explicit = clampText(user?.lastName, 80)
   if (explicit) return explicit
@@ -56,6 +81,7 @@ const normalizeScoreLabel = (value: unknown) => {
 
 const parseAssessmentPayload = (payload: any) => {
   const safe = payload && typeof payload === 'object' ? payload : {}
+  const maxMarksRaw = parseNumber(safe?.maxMarks ?? safe?.testTotal)
   return {
     kind: clampText(safe?.kind, 40) || 'manual-assessment-v1',
     grade: normalizeGradeInput(safe?.grade),
@@ -63,7 +89,7 @@ const parseAssessmentPayload = (payload: any) => {
     term: clampText(safe?.term, 40),
     description: clampText(safe?.description, 500),
     assessmentDate: clampText(safe?.assessmentDate, 40),
-    maxMarks: parseNumber(safe?.maxMarks),
+    maxMarks: maxMarksRaw != null ? Math.max(1, Math.min(1000, Math.trunc(maxMarksRaw))) : null,
   }
 }
 
@@ -311,10 +337,107 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })
     }
 
+    if (action === 'updateAssessment') {
+      const assessmentId = clampText(req.body?.assessmentId, 120)
+      if (!assessmentId) return res.status(400).json({ message: 'Assessment id is required' })
+
+      const assessment = await prisma.latexSave.findUnique({
+        where: { id: assessmentId },
+        select: { id: true, sessionKey: true, payload: true },
+      })
+      if (!assessment || !String(assessment.sessionKey || '').startsWith('manual-assessment:')) {
+        return res.status(404).json({ message: 'Assessment not found' })
+      }
+
+      const existingPayload = parseAssessmentPayload(assessment.payload)
+      const assessmentGrade = existingPayload.grade || normalizeGradeInput(String(assessment.sessionKey).replace('manual-assessment:', ''))
+      if (!assessmentGrade) return res.status(400).json({ message: 'Assessment grade is missing' })
+      if (role === 'teacher' && requesterGrade && requesterGrade !== assessmentGrade) {
+        return res.status(403).json({ message: 'Teachers can only update assessments for their grade' })
+      }
+
+      const title = clampText(req.body?.title, 140) || 'Untitled assessment'
+      const subject = clampText(req.body?.subject, 80)
+      const term = clampText(req.body?.term, 40)
+      const description = clampText(req.body?.description, 500)
+      const assessmentDate = clampText(req.body?.assessmentDate, 40)
+      const maxMarksRaw = parseNumber(req.body?.maxMarks)
+      const maxMarks = maxMarksRaw != null ? Math.max(1, Math.min(1000, Math.trunc(maxMarksRaw))) : null
+
+      const updated = await prisma.latexSave.update({
+        where: { id: assessmentId },
+        data: {
+          title,
+          payload: {
+            ...existingPayload,
+            kind: 'manual-assessment-v1',
+            grade: assessmentGrade,
+            subject,
+            term,
+            description,
+            assessmentDate,
+            maxMarks,
+          },
+        },
+        select: {
+          id: true,
+          title: true,
+          payload: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      })
+
+      return res.status(200).json({
+        item: {
+          id: String(updated.id),
+          title: clampText(updated.title, 140) || 'Untitled assessment',
+          grade: assessmentGrade,
+          subject: subject || null,
+          term: term || null,
+          description: description || null,
+          assessmentDate: assessmentDate || null,
+          maxMarks,
+          createdAt: updated.createdAt,
+          updatedAt: updated.updatedAt,
+        },
+      })
+    }
+
+    if (action === 'deleteAssessment') {
+      const assessmentId = clampText(req.body?.assessmentId, 120)
+      if (!assessmentId) return res.status(400).json({ message: 'Assessment id is required' })
+
+      const assessment = await prisma.latexSave.findUnique({
+        where: { id: assessmentId },
+        select: { id: true, sessionKey: true, payload: true },
+      })
+      if (!assessment || !String(assessment.sessionKey || '').startsWith('manual-assessment:')) {
+        return res.status(404).json({ message: 'Assessment not found' })
+      }
+
+      const payload = parseAssessmentPayload(assessment.payload)
+      const assessmentGrade = payload.grade || normalizeGradeInput(String(assessment.sessionKey).replace('manual-assessment:', ''))
+      if (!assessmentGrade) return res.status(400).json({ message: 'Assessment grade is missing' })
+      if (role === 'teacher' && requesterGrade && requesterGrade !== assessmentGrade) {
+        return res.status(403).json({ message: 'Teachers can only delete assessments for their grade' })
+      }
+
+      await prisma.$transaction([
+        (prisma as any).learnerResponse.deleteMany({
+          where: { sessionKey: `manual-grade:${assessment.id}` },
+        }),
+        prisma.latexSave.delete({ where: { id: assessment.id } }),
+      ])
+
+      return res.status(200).json({ ok: true })
+    }
+
     if (action === 'saveMark') {
       const assessmentId = clampText(req.body?.assessmentId, 120)
       const learnerUserId = clampText(req.body?.learnerUserId, 120)
-      const scoreLabel = normalizeScoreLabel(req.body?.scoreLabel)
+      const parsedScore = parseScoreFromLabel(req.body?.scoreLabel)
+      const scoreLabel = normalizeScoreLabel(parsedScore.scoreLabel)
       const notes = clampText(req.body?.notes, 1200)
       const screenshotUrlSingle = clampText(req.body?.screenshotUrl, 1024)
       // Support array of screenshot URLs for multi-page scripts
@@ -357,6 +480,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ message: 'Learner is not in the assessment grade' })
       }
 
+      const totalMarks = assessmentPayload.maxMarks != null
+        ? assessmentPayload.maxMarks
+        : parsedScore.totalMarksFromLabel
+      const autoPercentage = (parsedScore.earnedMarks != null && totalMarks != null && totalMarks > 0)
+        ? Math.max(0, Math.min(100, Math.round((parsedScore.earnedMarks / totalMarks) * 100)))
+        : null
+      const finalPercentage = percentage != null ? percentage : autoPercentage
+
       const existing = await (prisma as any).learnerResponse.findFirst({
         where: {
           sessionKey: `manual-grade:${assessment.id}`,
@@ -369,7 +500,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const gradingJson = {
         type: 'manual-assessment-mark-v1',
         scoreLabel,
-        percentage,
+        percentage: finalPercentage,
+        earnedMarks: parsedScore.earnedMarks,
+        totalMarks,
         notes,
         screenshotUrl,
         screenshotUrls,
@@ -410,7 +543,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           id: String(saved?.id || ''),
           userId: String(saved?.userId || ''),
           scoreLabel,
-          percentage,
+          percentage: finalPercentage,
           notes: notes || null,
           screenshotUrl: screenshotUrl || null,
           screenshotUrls,

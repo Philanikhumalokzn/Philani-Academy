@@ -11,8 +11,19 @@ type LibraryGradeItem = {
   percentage: number | null
   feedback: string | null
   screenshotUrl: string | null
+  screenshotUrls: string[]
   gradedAt: string
   sourceKey: string | null
+  responseId: string | null
+}
+
+type GradeComment = {
+  id: string
+  authorId: string
+  authorRole: 'teacher' | 'learner'
+  text: string
+  createdAt: string
+  updatedAt: string
 }
 
 const clampText = (value: unknown, maxLength: number) => {
@@ -59,6 +70,11 @@ const buildManualItem = (record: any): LibraryGradeItem => {
   const grading = record?.gradingJson && typeof record.gradingJson === 'object' ? record.gradingJson : {}
   const assessmentTitle = clampText((grading as any)?.assessmentTitle || record?.quizLabel || record?.prompt || 'Manual assessment', 140) || 'Manual assessment'
   const scoreLabel = clampText((grading as any)?.scoreLabel || record?.latex || 'Graded', 64) || 'Graded'
+  const screenshotUrl = clampText((grading as any)?.screenshotUrl || '', 1024) || null
+  const screenshotUrlsRaw = (grading as any)?.screenshotUrls
+  const screenshotUrls = Array.isArray(screenshotUrlsRaw)
+    ? screenshotUrlsRaw.map((u: unknown) => (typeof u === 'string' ? u.trim() : '')).filter(Boolean)
+    : (screenshotUrl ? [screenshotUrl] : [])
 
   return {
     id: String(record?.id || ''),
@@ -67,10 +83,35 @@ const buildManualItem = (record: any): LibraryGradeItem => {
     scoreLabel,
     percentage: parsePercentage((grading as any)?.percentage),
     feedback: clampText((grading as any)?.notes || record?.feedback || '', 1200) || null,
-    screenshotUrl: clampText((grading as any)?.screenshotUrl || '', 1024) || null,
+    screenshotUrl,
+    screenshotUrls,
     gradedAt: toIsoString((grading as any)?.gradedAt || record?.updatedAt || record?.createdAt),
     sourceKey: String(record?.sessionKey || '') || null,
+    responseId: String(record?.id || '') || null,
   }
+}
+
+const sanitizeComments = (value: unknown): GradeComment[] => {
+  if (!Array.isArray(value)) return []
+  const out: GradeComment[] = []
+  for (const row of value) {
+    if (!row || typeof row !== 'object') continue
+    const id = clampText((row as any)?.id, 64)
+    const authorId = clampText((row as any)?.authorId, 128)
+    const roleRaw = clampText((row as any)?.authorRole, 20)
+    const authorRole: 'teacher' | 'learner' = roleRaw === 'teacher' ? 'teacher' : 'learner'
+    const text = clampText((row as any)?.text, 100)
+    if (!id || !authorId || !text) continue
+    out.push({
+      id,
+      authorId,
+      authorRole,
+      text,
+      createdAt: toIsoString((row as any)?.createdAt),
+      updatedAt: toIsoString((row as any)?.updatedAt || (row as any)?.createdAt),
+    })
+  }
+  return out
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -80,6 +121,57 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!requesterId) return res.status(401).json({ message: 'Unauthorized' })
 
   if (req.method === 'GET') {
+    const detailResponseId = typeof req.query.detailResponseId === 'string' ? req.query.detailResponseId.trim() : ''
+    const detailSourceType = typeof req.query.detailSourceType === 'string' ? req.query.detailSourceType.trim() : ''
+
+    if (detailResponseId && detailSourceType) {
+      const isPrivileged = role === 'admin' || role === 'teacher'
+      const row = await (prisma as any).learnerResponse.findUnique({
+        where: { id: detailResponseId },
+        select: {
+          id: true,
+          userId: true,
+          sessionKey: true,
+          quizLabel: true,
+          prompt: true,
+          latex: true,
+          gradingJson: true,
+          feedback: true,
+          updatedAt: true,
+          createdAt: true,
+        },
+      }).catch(() => null)
+
+      if (!row) return res.status(404).json({ message: 'Grade detail not found' })
+      if (!isPrivileged && String(row.userId || '') !== requesterId) {
+        return res.status(403).json({ message: 'Forbidden' })
+      }
+
+      const grading = row?.gradingJson && typeof row.gradingJson === 'object' ? row.gradingJson : {}
+      const screenshotUrl = clampText((grading as any)?.screenshotUrl || '', 1024) || null
+      const screenshotUrlsRaw = (grading as any)?.screenshotUrls
+      const screenshotUrls = Array.isArray(screenshotUrlsRaw)
+        ? screenshotUrlsRaw.map((u: unknown) => (typeof u === 'string' ? u.trim() : '')).filter(Boolean)
+        : (screenshotUrl ? [screenshotUrl] : [])
+      const comments = sanitizeComments((grading as any)?.comments)
+
+      return res.status(200).json({
+        detail: {
+          id: String(row.id),
+          sourceType: detailSourceType,
+          assessmentTitle: clampText((grading as any)?.assessmentTitle || row?.quizLabel || row?.prompt || 'Grade details', 140) || 'Grade details',
+          scoreLabel: clampText((grading as any)?.scoreLabel || row?.latex || 'Graded', 64) || 'Graded',
+          percentage: parsePercentage((grading as any)?.percentage),
+          feedback: clampText((grading as any)?.notes || row?.feedback || '', 1200) || null,
+          screenshotUrl,
+          screenshotUrls,
+          gradedAt: toIsoString((grading as any)?.gradedAt || row?.updatedAt || row?.createdAt),
+          comments,
+          canComment: true,
+        },
+      })
+    }
+
     const requestedLearnerId = typeof req.query.learnerId === 'string' ? req.query.learnerId.trim() : ''
     const isPrivileged = role === 'admin' || role === 'teacher'
     const learnerUserId = requestedLearnerId || requesterId
@@ -193,8 +285,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         percentage: Number.isFinite(percentage) ? Math.max(0, Math.min(100, percentage)) : null,
         feedback: sessionTitle ? `Session: ${sessionTitle}` : null,
         screenshotUrl: null,
+        screenshotUrls: [],
         gradedAt: toIsoString(grade?.gradedAt || grade?.createdAt),
         sourceKey: String(grade?.assignmentId || '') || null,
+        responseId: null,
       })
     }
 
@@ -219,8 +313,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           percentage: parsePercentage((grading as any)?.percentage),
           feedback: clampText((row?.feedback || '').trim(), 1200) || null,
           screenshotUrl: clampText((grading as any)?.screenshotUrl || '', 1024) || null,
+          screenshotUrls: [],
           gradedAt: toIsoString((grading as any)?.gradedAt || row?.updatedAt || row?.createdAt),
           sourceKey: sessionKey,
+          responseId: String(row?.id || '') || null,
         })
         continue
       }
@@ -236,8 +332,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           percentage: parsePercentage((grading as any)?.percentage),
           feedback: clampText((row?.feedback || '').trim(), 1200) || null,
           screenshotUrl: clampText((grading as any)?.screenshotUrl || '', 1024) || null,
+          screenshotUrls: [],
           gradedAt: toIsoString((grading as any)?.gradedAt || row?.updatedAt || row?.createdAt),
           sourceKey: sessionKey,
+          responseId: String(row?.id || '') || null,
         })
       }
     }
@@ -248,6 +346,85 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'POST') {
+    const action = clampText(req.body?.action, 60)
+    if (action === 'commentCreate' || action === 'commentUpdate' || action === 'commentDelete') {
+      const responseId = clampText(req.body?.responseId, 128)
+      if (!responseId) return res.status(400).json({ message: 'Response id is required' })
+
+      const row = await (prisma as any).learnerResponse.findUnique({
+        where: { id: responseId },
+        select: { id: true, userId: true, gradingJson: true, sessionKey: true },
+      }).catch(() => null)
+      if (!row) return res.status(404).json({ message: 'Grade record not found' })
+
+      const isPrivileged = role === 'admin' || role === 'teacher'
+      if (!isPrivileged && String(row.userId || '') !== requesterId) {
+        return res.status(403).json({ message: 'Forbidden' })
+      }
+
+      const grading = row?.gradingJson && typeof row.gradingJson === 'object' ? row.gradingJson : {}
+      const comments = sanitizeComments((grading as any)?.comments)
+      const now = new Date().toISOString()
+
+      if (action === 'commentCreate') {
+        const text = clampText(req.body?.text, 100)
+        if (!text) return res.status(400).json({ message: 'Comment text is required (max 100 chars)' })
+        const comment: GradeComment = {
+          id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
+          authorId: requesterId,
+          authorRole: isPrivileged ? 'teacher' : 'learner',
+          text,
+          createdAt: now,
+          updatedAt: now,
+        }
+        const nextComments = [...comments, comment]
+        await (prisma as any).learnerResponse.update({
+          where: { id: row.id },
+          data: {
+            gradingJson: { ...(grading as any), comments: nextComments },
+          },
+        })
+        return res.status(200).json({ comments: nextComments })
+      }
+
+      if (action === 'commentUpdate') {
+        const commentId = clampText(req.body?.commentId, 64)
+        const text = clampText(req.body?.text, 100)
+        if (!commentId) return res.status(400).json({ message: 'Comment id is required' })
+        if (!text) return res.status(400).json({ message: 'Comment text is required (max 100 chars)' })
+
+        const nextComments = comments.map((comment) => {
+          if (comment.id !== commentId) return comment
+          if (!isPrivileged && comment.authorId !== requesterId) return comment
+          return { ...comment, text, updatedAt: now }
+        })
+
+        await (prisma as any).learnerResponse.update({
+          where: { id: row.id },
+          data: {
+            gradingJson: { ...(grading as any), comments: nextComments },
+          },
+        })
+        return res.status(200).json({ comments: nextComments })
+      }
+
+      if (action === 'commentDelete') {
+        const commentId = clampText(req.body?.commentId, 64)
+        if (!commentId) return res.status(400).json({ message: 'Comment id is required' })
+        const nextComments = comments.filter((comment) => {
+          if (comment.id !== commentId) return true
+          return isPrivileged ? false : comment.authorId !== requesterId
+        })
+        await (prisma as any).learnerResponse.update({
+          where: { id: row.id },
+          data: {
+            gradingJson: { ...(grading as any), comments: nextComments },
+          },
+        })
+        return res.status(200).json({ comments: nextComments })
+      }
+    }
+
     const isPrivileged = role === 'admin' || role === 'teacher'
     if (!isPrivileged) {
       return res.status(403).json({ message: 'Only teachers/admins can create manual grades' })
@@ -284,9 +461,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       scoreLabel,
       percentage,
       screenshotUrl,
+      screenshotUrls: screenshotUrl ? [screenshotUrl] : [],
       notes,
       gradedAt: new Date().toISOString(),
       gradedById: requesterId,
+      comments: [],
     }
 
     const created = await (prisma as any).learnerResponse.create({

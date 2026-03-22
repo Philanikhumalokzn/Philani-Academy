@@ -71,31 +71,6 @@ const renderKatexToString = (latex: string, displayMode: boolean) => {
   }
 }
 
-// Calculate angle from center to point (in degrees, 0 = East, 90 = South)
-const getAngleFromCenter = (centerX: number, centerY: number, pointX: number, pointY: number): number => {
-  const dx = pointX - centerX
-  const dy = pointY - centerY
-  let angle = Math.atan2(dy, dx) * (180 / Math.PI)
-  // Normalize to 0-360
-  angle = (angle + 360) % 360
-  return angle
-}
-
-// Get direction from angle (NE is 45°, E is 0°, SE is -45°, etc.)
-const getDirectionFromAngle = (angle: number): Direction => {
-  // Adjust so that 0° is East, 90° is South, etc.
-  // 22.5° bands for each direction
-  if (angle >= 337.5 || angle < 22.5) return 'E'
-  if (angle >= 22.5 && angle < 67.5) return 'SE'
-  if (angle >= 67.5 && angle < 112.5) return 'S'
-  if (angle >= 112.5 && angle < 157.5) return 'SW'
-  if (angle >= 157.5 && angle < 202.5) return 'W'
-  if (angle >= 202.5 && angle < 247.5) return 'NW'
-  if (angle >= 247.5 && angle < 292.5) return 'N'
-  if (angle >= 292.5 && angle < 337.5) return 'NE'
-  return null
-}
-
 // KaTeX Preview component with professional rendering
 function MathPreview({ latex }: { latex: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -343,9 +318,6 @@ function ZoomableMathCanvas({ latex }: { latex: string }) {
       style={{ touchAction: 'none' }}
     >
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(transparent_31px,rgba(148,163,184,0.12)_32px),linear-gradient(90deg,transparent_31px,rgba(148,163,184,0.12)_32px)] bg-[length:32px_32px] opacity-70" />
-      <div className="absolute left-3 top-3 z-[1] rounded-full border border-slate-200/90 bg-white/85 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500 shadow-sm backdrop-blur-sm">
-        Pan 1 finger • Pan/zoom 2 fingers • Double tap to zoom
-      </div>
       <div className="absolute inset-0 flex items-center justify-center">
         <div
           className="will-change-transform"
@@ -364,7 +336,7 @@ function ZoomableMathCanvas({ latex }: { latex: string }) {
   )
 }
 
-// Professional mathematical operation buttons
+// Bare symbol buttons — no borders or backgrounds; only KaTeX on an absolute position
 function OperationButton({
   direction,
   isSelected,
@@ -376,159 +348,54 @@ function OperationButton({
 }) {
   const op = DIRECTIONAL_OPERATIONS[direction]
 
-  // Render each operation with professional LaTeX notation
-  const renderMathButton = () => {
-    const rendered = renderKatexToString(op.latex, false)
-    return rendered === op.latex ? op.label : rendered
-  }
-
   const positionClasses: Record<Exclude<Direction, null>, string> = {
     N: 'top-6 left-1/2 -translate-x-1/2',
-    NE: 'top-12 right-12',
-    E: 'top-1/2 right-6 -translate-y-1/2',
-    SE: 'bottom-12 right-12',
+    NE: 'top-10 right-10',
+    E: 'top-1/2 right-5 -translate-y-1/2',
+    SE: 'bottom-10 right-10',
     S: 'bottom-6 left-1/2 -translate-x-1/2',
-    SW: 'bottom-12 left-12',
-    W: 'top-1/2 left-6 -translate-y-1/2',
-    NW: 'top-12 left-12',
+    SW: 'bottom-10 left-10',
+    W: 'top-1/2 left-5 -translate-y-1/2',
+    NW: 'top-10 left-10',
   }
-
-  const highlightColor = {
-    N: 'blue',
-    NE: 'blue',
-    E: 'green',
-    SE: 'blue',
-    S: 'blue',
-    SW: 'purple',
-    W: 'green',
-    NW: 'blue',
-  }[direction]
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`absolute flex items-center justify-center rounded-lg border shadow-sm hover:shadow-md transition-all w-auto px-3 py-2 h-auto min-w-[60px] ${
+      className={`absolute z-[3] flex items-center justify-center bg-transparent p-1 transition-transform duration-150 ${positionClasses[direction]} ${
         isSelected
-          ? highlightColor === 'blue'
-            ? 'bg-blue-100 border-blue-400'
-            : highlightColor === 'green'
-              ? 'bg-green-100 border-green-400'
-              : 'bg-purple-100 border-purple-400'
-          : 'border-slate-300 bg-white text-slate-700'
-      } hover:bg-slate-50 transition-colors ${positionClasses[direction]}`}
+          ? 'scale-125 text-blue-600 drop-shadow-[0_0_6px_rgba(37,99,235,0.6)]'
+          : 'text-slate-700 hover:scale-110 hover:text-blue-500'
+      }`}
       title={op.description}
-      style={{ fontSize: '18px' }}
-      dangerouslySetInnerHTML={{ __html: renderMathButton() }}
+      style={{ fontSize: '26px' }}
+      dangerouslySetInnerHTML={{ __html: renderKatexToString(op.latex, false) }}
     />
   )
 }
 
-// Radial keyboard with 8 directional buttons
+// Radial keyboard: expression canvas behind 8 tap-only math buttons
 function RadialKeyboard({
   onOperationSelect,
-  centerButtonRef,
   selectedDirection,
   latexExpression,
 }: {
   onOperationSelect: (direction: Direction) => void
-  centerButtonRef: React.RefObject<HTMLButtonElement>
   selectedDirection: Direction
   latexExpression: string
 }) {
-  const keyboardRef = useRef<HTMLDivElement>(null)
-  const [isGestureActive, setIsGestureActive] = useState(false)
-  const gestureStartRef = useRef<{ x: number; y: number } | null>(null)
-  const [gestureDir, setGestureDir] = useState<Direction>(null)
-
-  // Handle center button press (start gesture)
-  const handleCenterMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault()
-    setIsGestureActive(true)
-    const rect = centerButtonRef.current?.getBoundingClientRect()
-    if (rect) {
-      gestureStartRef.current = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
-    }
-  }
-
-  // Handle gesture movement
-  useEffect(() => {
-    if (!isGestureActive || !gestureStartRef.current || !centerButtonRef.current) return
-
-    const handleMove = (e: MouseEvent | TouchEvent) => {
-      const clientX = 'touches' in e ? e.touches[0]?.clientX : (e as MouseEvent).clientX
-      const clientY = 'touches' in e ? e.touches[0]?.clientY : (e as MouseEvent).clientY
-
-      if (!clientX || !clientY) return
-
-      const centerX = gestureStartRef.current!.x
-      const centerY = gestureStartRef.current!.y
-      const angle = getAngleFromCenter(centerX, centerY, clientX, clientY)
-      const direction = getDirectionFromAngle(angle)
-
-      // Only activate if gesture distance is significant (at least 40px)
-      const distance = Math.hypot(clientX - centerX, clientY - centerY)
-      if (distance > 40) {
-        setGestureDir(direction)
-      } else {
-        setGestureDir(null)
-      }
-    }
-
-    const handleEnd = () => {
-      if (gestureDir) {
-        onOperationSelect(gestureDir)
-      }
-      setIsGestureActive(false)
-      setGestureDir(null)
-      gestureStartRef.current = null
-    }
-
-    window.addEventListener('mousemove', handleMove)
-    window.addEventListener('touchmove', handleMove)
-    window.addEventListener('mouseup', handleEnd)
-    window.addEventListener('touchend', handleEnd)
-
-    return () => {
-      window.removeEventListener('mousemove', handleMove)
-      window.removeEventListener('touchmove', handleMove)
-      window.removeEventListener('mouseup', handleEnd)
-      window.removeEventListener('touchend', handleEnd)
-    }
-  }, [isGestureActive, gestureDir, onOperationSelect])
-
   return (
-    <div ref={keyboardRef} className="h-full w-full relative overflow-hidden rounded-[28px] bg-white p-4">
+    <div className="relative h-full w-full overflow-hidden rounded-[28px]">
       <ZoomableMathCanvas latex={latexExpression} />
-      <div className="absolute inset-0 z-[2] rounded-[28px] bg-[radial-gradient(circle_at_center,_transparent_0,_transparent_88px,rgba(255,255,255,0.18)_89px,rgba(255,255,255,0.18)_160px,transparent_161px)]" />
-      {/* Center button (x) */}
-      <button
-        ref={centerButtonRef}
-        type="button"
-        onMouseDown={handleCenterMouseDown}
-        onTouchStart={handleCenterMouseDown}
-        className="absolute left-1/2 top-1/2 z-10 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-4xl font-bold text-white shadow-lg transition-shadow hover:shadow-xl cursor-grab active:cursor-grabbing"
-        aria-label="Center button - hold and swipe to apply operations"
-      >
-        ◉
-      </button>
-
-      {/* Directional buttons with professional math notation */}
-      <OperationButton direction="N" isSelected={gestureDir === 'N' || selectedDirection === 'N'} onClick={() => onOperationSelect('N')} />
-      <OperationButton direction="NE" isSelected={gestureDir === 'NE' || selectedDirection === 'NE'} onClick={() => onOperationSelect('NE')} />
-      <OperationButton direction="E" isSelected={gestureDir === 'E' || selectedDirection === 'E'} onClick={() => onOperationSelect('E')} />
-      <OperationButton direction="SE" isSelected={gestureDir === 'SE' || selectedDirection === 'SE'} onClick={() => onOperationSelect('SE')} />
-      <OperationButton direction="S" isSelected={gestureDir === 'S' || selectedDirection === 'S'} onClick={() => onOperationSelect('S')} />
-      <OperationButton direction="SW" isSelected={gestureDir === 'SW' || selectedDirection === 'SW'} onClick={() => onOperationSelect('SW')} />
-      <OperationButton direction="W" isSelected={gestureDir === 'W' || selectedDirection === 'W'} onClick={() => onOperationSelect('W')} />
-      <OperationButton direction="NW" isSelected={gestureDir === 'NW' || selectedDirection === 'NW'} onClick={() => onOperationSelect('NW')} />
-
-      {/* Gesture indicator */}
-      {isGestureActive && gestureDir && (
-        <div className="absolute right-4 top-4 z-10 rounded-full bg-blue-500 px-3 py-1 text-xs font-semibold text-white">
-          {DIRECTIONAL_OPERATIONS[gestureDir]?.label}
-        </div>
-      )}
+      <OperationButton direction="N" isSelected={selectedDirection === 'N'} onClick={() => onOperationSelect('N')} />
+      <OperationButton direction="NE" isSelected={selectedDirection === 'NE'} onClick={() => onOperationSelect('NE')} />
+      <OperationButton direction="E" isSelected={selectedDirection === 'E'} onClick={() => onOperationSelect('E')} />
+      <OperationButton direction="SE" isSelected={selectedDirection === 'SE'} onClick={() => onOperationSelect('SE')} />
+      <OperationButton direction="S" isSelected={selectedDirection === 'S'} onClick={() => onOperationSelect('S')} />
+      <OperationButton direction="SW" isSelected={selectedDirection === 'SW'} onClick={() => onOperationSelect('SW')} />
+      <OperationButton direction="W" isSelected={selectedDirection === 'W'} onClick={() => onOperationSelect('W')} />
+      <OperationButton direction="NW" isSelected={selectedDirection === 'NW'} onClick={() => onOperationSelect('NW')} />
     </div>
   )
 }
@@ -538,7 +405,6 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
   const [topRatio, setTopRatio] = useState(0.2)
   const [latexExpression, setLatexExpression] = useState<string>('x')
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const centerButtonRef = useRef<HTMLButtonElement>(null)
   const [selectedDirection, setSelectedDirection] = useState<Direction>(null)
 
   const updateFromClientY = useCallback((clientY: number) => {
@@ -579,7 +445,6 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
   const handleOperationSelect = useCallback((direction: Direction) => {
     if (!direction) return
 
-    const op = DIRECTIONAL_OPERATIONS[direction]
     setSelectedDirection(direction)
 
     // Build LaTeX expression
@@ -694,7 +559,6 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
             >
               <RadialKeyboard
                 onOperationSelect={handleOperationSelect}
-                centerButtonRef={centerButtonRef}
                 selectedDirection={selectedDirection}
                 latexExpression={latexExpression}
               />

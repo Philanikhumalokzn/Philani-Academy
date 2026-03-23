@@ -1,4 +1,4 @@
-import { CSSProperties, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
+import { CSSProperties, Fragment, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
 
 import { createPortal } from 'react-dom'
 import { renderToString } from 'katex'
@@ -1913,7 +1913,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const canvasModeRef = useRef<CanvasMode>(DEFAULT_CANVAS_MODE)
   const [recognitionEngine, setRecognitionEngine] = useState<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
   const recognitionEngineRef = useRef<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
-  const keyboardExpressionInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const keyboardExpressionSurfaceRef = useRef<HTMLDivElement | null>(null)
   const [keyboardSelection, setKeyboardSelection] = useState<KeyboardSelectionState>({ start: 0, end: 0 })
   const keyboardSelectionRef = useRef<KeyboardSelectionState>({ start: 0, end: 0 })
   const [selectedKeyboardKey, setSelectedKeyboardKey] = useState<string | null>(null)
@@ -2046,7 +2046,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setKeyboardPaletteVisible(true)
     if (typeof window !== 'undefined') {
       window.setTimeout(() => {
-        keyboardExpressionInputRef.current?.focus()
+        keyboardExpressionSurfaceRef.current?.focus()
       }, 0)
     }
     scheduleKeyboardFadeOut()
@@ -9476,12 +9476,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
     if (typeof window !== 'undefined') {
       window.setTimeout(() => {
-        const input = keyboardExpressionInputRef.current
-        if (!input) return
-        input.focus()
-        try {
-          input.setSelectionRange(result.selectionStart, result.selectionEnd)
-        } catch {}
+        keyboardExpressionSurfaceRef.current?.focus()
       }, 0)
     }
     closeKeyboardTransientOverlays()
@@ -9598,17 +9593,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         }}
       >
         <div className="absolute inset-0 flex items-center justify-center px-6">
-          <textarea
-            ref={keyboardExpressionInputRef}
-            value={latexOutput}
-            placeholder=""
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
-            autoComplete="off"
-            rows={1}
-            className="min-h-[3.25rem] w-full max-w-[min(82%,32rem)] resize-none overflow-hidden border-0 bg-transparent px-0 py-0 text-center text-[2rem] leading-[1.3] text-slate-900 outline-none"
-            style={{ fieldSizing: 'content' } as CSSProperties}
+          <div
+            ref={keyboardExpressionSurfaceRef}
+            role="textbox"
+            aria-label="Current expression"
+            aria-multiline={false}
+            tabIndex={0}
+            className="flex min-h-[3.25rem] w-full max-w-[min(82%,32rem)] cursor-text items-center justify-center bg-transparent px-0 py-0 text-center text-[2rem] leading-[1.3] text-slate-900 outline-none"
             onPointerDown={(event) => {
               event.stopPropagation()
               revealKeyboardPalette()
@@ -9616,37 +9607,84 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             onFocus={() => {
               revealKeyboardPalette()
             }}
-            onClick={(event) => {
-              event.stopPropagation()
-              const target = event.currentTarget
-              setKeyboardSelection({
-                start: target.selectionStart ?? 0,
-                end: target.selectionEnd ?? 0,
-              })
-            }}
-            onSelect={(event) => {
-              const target = event.currentTarget
-              setKeyboardSelection({
-                start: target.selectionStart ?? 0,
-                end: target.selectionEnd ?? 0,
-              })
-            }}
-            onChange={(event) => {
-              const next = event.currentTarget.value
-              const nextSelection = {
-                start: event.currentTarget.selectionStart ?? next.length,
-                end: event.currentTarget.selectionEnd ?? next.length,
+            onKeyDown={(event) => {
+              const current = keyboardSelectionRef.current
+              if (event.key === 'ArrowLeft') {
+                event.preventDefault()
+                const next = Math.max(0, Math.min(current.start, current.end) - 1)
+                setKeyboardSelection({ start: next, end: next })
+                keyboardSelectionRef.current = { start: next, end: next }
+                scheduleKeyboardFadeOut()
+                return
               }
-              setLatexOutput(next)
-              latexOutputRef.current = next
-              setKeyboardSelection(nextSelection)
-              keyboardSelectionRef.current = nextSelection
-              if (useAdminStepComposerRef.current && hasControllerRights()) {
-                setAdminDraftLatex(normalizeStepLatex(next))
+              if (event.key === 'ArrowRight') {
+                event.preventDefault()
+                const next = Math.min(latexOutputRef.current.length, Math.max(current.start, current.end) + 1)
+                setKeyboardSelection({ start: next, end: next })
+                keyboardSelectionRef.current = { start: next, end: next }
+                scheduleKeyboardFadeOut()
+                return
               }
-              scheduleKeyboardFadeOut()
+              if (event.key === 'Home') {
+                event.preventDefault()
+                setKeyboardSelection({ start: 0, end: 0 })
+                keyboardSelectionRef.current = { start: 0, end: 0 }
+                scheduleKeyboardFadeOut()
+                return
+              }
+              if (event.key === 'End') {
+                event.preventDefault()
+                const next = latexOutputRef.current.length
+                setKeyboardSelection({ start: next, end: next })
+                keyboardSelectionRef.current = { start: next, end: next }
+                scheduleKeyboardFadeOut()
+                return
+              }
+              if (event.key === 'Backspace') {
+                event.preventDefault()
+                applyKeyboardAction('backspace')
+              }
             }}
-          />
+          >
+            <div
+              className="flex min-h-[3.25rem] flex-wrap items-center justify-center gap-y-1 whitespace-pre-wrap break-words text-center select-none"
+              style={{ minWidth: '2ch' } as CSSProperties}
+            >
+              {Array.from({ length: latexOutput.length + 1 }, (_, slotIndex) => {
+                const showCaret = keyboardSelection.start === keyboardSelection.end && keyboardSelection.start === slotIndex
+                const charIndex = slotIndex
+                const char = latexOutput[charIndex]
+                const isSelected = charIndex >= Math.min(keyboardSelection.start, keyboardSelection.end) && charIndex < Math.max(keyboardSelection.start, keyboardSelection.end)
+
+                return (
+                  <Fragment key={`keyboard-expression-slot-${slotIndex}`}>
+                    {showCaret ? (
+                      <span
+                        aria-hidden="true"
+                        className="inline-flex h-[1.1em] w-[2px] self-center rounded-full bg-sky-500 shadow-[0_0_0_1px_rgba(14,165,233,0.08)]"
+                      />
+                    ) : null}
+                    {char !== undefined ? (
+                      <span
+                        className={`inline-flex min-w-[0.6ch] items-center justify-center rounded-[0.2em] px-[0.02em] ${isSelected ? 'bg-sky-100 text-sky-950' : ''}`}
+                        onPointerDown={(event) => {
+                          event.stopPropagation()
+                          const rect = event.currentTarget.getBoundingClientRect()
+                          const midpoint = rect.left + rect.width / 2
+                          const nextCaret = event.clientX <= midpoint ? charIndex : charIndex + 1
+                          setKeyboardSelection({ start: nextCaret, end: nextCaret })
+                          keyboardSelectionRef.current = { start: nextCaret, end: nextCaret }
+                          revealKeyboardPalette()
+                        }}
+                      >
+                        {char === ' ' ? '\u00A0' : char}
+                      </span>
+                    ) : null}
+                  </Fragment>
+                )
+              })}
+            </div>
+          </div>
         </div>
 
         <div

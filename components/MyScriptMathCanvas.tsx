@@ -977,28 +977,47 @@ const RAW_INK_STROKE_WIDTH = 2.6
 const RAW_INK_VIEWBOX_SIZE = 1000
 const RAW_INK_ERASER_RADIUS = 0.018
 const KEYBOARD_ENGINE_TEMPLATES = ['x', 'y', '=', '+', '-', '\\times', '\\div', '\\frac{}{}', '\\sqrt{}', '()', '[]', '^{}']
+const KEYBOARD_IDLE_MS = 3000
+const KEYBOARD_CANVAS_KEYS = [
+  { id: 'x', latex: 'x', description: 'x' },
+  { id: 'plus', latex: '+', description: 'plus' },
+  { id: 'minus', latex: '-', description: 'minus' },
+  { id: 'equals', latex: '=', description: 'equals' },
+  { id: 'times', latex: '\\times', description: 'times' },
+  { id: 'divide', latex: '\\div', description: 'divide' },
+  { id: 'power2', latex: 'x^{2}', description: 'square' },
+  { id: 'sqrt', latex: '\\sqrt{x}', description: 'square root' },
+  { id: 'fraction', latex: '\\frac{x}{\\phantom{a}}', description: 'fraction' },
+  { id: 'paren', latex: '\\left(x\\right)', description: 'parentheses' },
+  { id: 'leq', latex: '\\leq', description: 'less than or equal to' },
+  { id: 'geq', latex: '\\geq', description: 'greater than or equal to' },
+  { id: 'backspace', label: 'Del', description: 'delete' },
+  { id: 'clear', label: 'Clear', description: 'clear' },
+] as const
+type KeyboardCanvasKeyId = (typeof KEYBOARD_CANVAS_KEYS)[number]['id']
+type KeyboardCanvasKey = (typeof KEYBOARD_CANVAS_KEYS)[number]
 
-const KEYBOARD_RADIAL_OPERATIONS = {
-  N:  { latex: '\\frac{\\square}{\\phantom{a}}', label: 'Fraction',  description: 'x as numerator' },
-  NE: { latex: 'x^{2}',                             label: 'Power',     description: 'x squared' },
-  E:  { latex: '+',                                  label: 'Add',       description: 'addition' },
-  SE: { latex: 'x_{i}',                              label: 'Subscript', description: 'subscript' },
-  S:  { latex: '\\frac{\\phantom{a}}{\\square}',   label: 'Fr. denom', description: 'x as denominator' },
-  SW: { latex: '\\sqrt{x}',                         label: 'Radical',   description: 'square root' },
-  W:  { latex: '-',                                  label: 'Subtract',  description: 'subtraction' },
-  NW: { latex: '\\left(x\\right)',                 label: 'Parens',    description: 'enclosure' },
-} as const
-type KbDirection = keyof typeof KEYBOARD_RADIAL_OPERATIONS
-
-const KEYBOARD_RADIAL_LAYOUT: Record<KbDirection, { left: string; top: string }> = {
-  N:  { left: '50%', top: '14%' },
-  NE: { left: '74%', top: '26%' },
-  E:  { left: '84%', top: '50%' },
-  SE: { left: '74%', top: '74%' },
-  S:  { left: '50%', top: '86%' },
-  SW: { left: '26%', top: '74%' },
-  W:  { left: '16%', top: '50%' },
-  NW: { left: '26%', top: '26%' },
+const removeLastKeyboardChunk = (value: string) => {
+  const trimmed = value.trimEnd()
+  if (!trimmed) return ''
+  const patterns = [
+    /\\left\([^)]*\\right\)$/,
+    /\\sqrt\{[^{}]*\}$/,
+    /\\frac\{[^{}]*\}\{\\phantom\{a\}\}$/,
+    /\\leq\s*$/,
+    /\\geq\s*$/,
+    /\\times\s*$/,
+    /\\div\s*$/,
+    /\^\{2\}$/,
+    /[+\-=()]\s*$/,
+    /x\s*$/,
+  ]
+  for (const pattern of patterns) {
+    if (pattern.test(trimmed)) {
+      return trimmed.replace(pattern, '').trimEnd()
+    }
+  }
+  return trimmed.slice(0, -1).trimEnd()
 }
 
 const toDebugJson = (value: unknown, maxChars = 12000) => {
@@ -1552,8 +1571,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }>(null)
   const suppressNextLoadingOverlayRef = useRef(false)
   const editorReconnectingRef = useRef(false)
-  const [latexOutput, setLatexOutput] = useState('x')
-  const latexOutputRef = useRef('x')
+  const [latexOutput, setLatexOutput] = useState('')
+  const latexOutputRef = useRef('')
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
   const [canClear, setCanClear] = useState(false)
@@ -1562,7 +1581,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const canvasModeRef = useRef<CanvasMode>(DEFAULT_CANVAS_MODE)
   const [recognitionEngine, setRecognitionEngine] = useState<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
   const recognitionEngineRef = useRef<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
-  const [selectedKbDirection, setSelectedKbDirection] = useState<KbDirection | null>(null)
+  const [selectedKeyboardKey, setSelectedKeyboardKey] = useState<KeyboardCanvasKeyId | null>(null)
+  const [keyboardPaletteVisible, setKeyboardPaletteVisible] = useState(false)
   const [mathpixError, setMathpixError] = useState<string | null>(null)
   const [mathpixRawResponse, setMathpixRawResponse] = useState<string | null>(null)
   const [mathpixLastProxyPayload, setMathpixLastProxyPayload] = useState<string | null>(null)
@@ -1612,15 +1632,45 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     recognitionEngineRef.current = recognitionEngine
   }, [recognitionEngine])
 
-  // When the keyboard engine is active, seed latexOutput from the display state so the
-  // bottom canvas and top panel start from the same expression.
+  const keyboardIdleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearKeyboardIdleTimeout = useCallback(() => {
+    if (!keyboardIdleTimeoutRef.current) return
+    clearTimeout(keyboardIdleTimeoutRef.current)
+    keyboardIdleTimeoutRef.current = null
+  }, [])
+
+  const scheduleKeyboardFadeOut = useCallback(() => {
+    clearKeyboardIdleTimeout()
+    if (typeof window === 'undefined') return
+    keyboardIdleTimeoutRef.current = setTimeout(() => {
+      setKeyboardPaletteVisible(false)
+      keyboardIdleTimeoutRef.current = null
+    }, KEYBOARD_IDLE_MS)
+  }, [clearKeyboardIdleTimeout])
+
+  const revealKeyboardPalette = useCallback(() => {
+    if (recognitionEngineRef.current !== 'keyboard') return
+    setKeyboardPaletteVisible(true)
+    scheduleKeyboardFadeOut()
+  }, [scheduleKeyboardFadeOut])
+
   useEffect(() => {
-    if (recognitionEngine !== 'keyboard') return
-    const seed = (latexDisplayState.latex || '').trim() || 'x'
+    if (recognitionEngine !== 'keyboard') {
+      setKeyboardPaletteVisible(false)
+      clearKeyboardIdleTimeout()
+      return
+    }
+    const seed = (latexOutputRef.current || '').trim()
     setLatexOutput(seed)
     latexOutputRef.current = seed
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recognitionEngine]) // intentionally omits latexDisplayState.latex to avoid overwriting user edits
+  }, [clearKeyboardIdleTimeout, recognitionEngine])
+
+  useEffect(() => {
+    return () => {
+      clearKeyboardIdleTimeout()
+    }
+  }, [clearKeyboardIdleTimeout])
 
   useEffect(() => {
     rawInkStrokesRef.current = rawInkStrokes
@@ -8990,26 +9040,100 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     await loadAdminStepForEditing(nextIndex)
   }
 
-  const handleKbOperationSelect = useCallback((direction: KbDirection) => {
-    setSelectedKbDirection(direction)
+  const handleKeyboardCanvasKey = useCallback((keyId: KeyboardCanvasKeyId) => {
+    setSelectedKeyboardKey(keyId)
     const prev = latexOutputRef.current || ''
     let next = prev
-    switch (direction) {
-      case 'N':  next = `\\frac{${prev}}{\\phantom{a}}`; break
-      case 'NE': next = `${prev}^{2}`; break
-      case 'E':  next = `${prev} + \\phantom{a}`; break
-      case 'SE': next = `${prev}_{i}`; break
-      case 'S':  next = `\\frac{\\phantom{a}}{${prev}}`; break
-      case 'SW': next = `\\sqrt{${prev}}`; break
-      case 'W':  next = `${prev} - \\phantom{a}`; break
-      case 'NW': next = `\\left(${prev}\\right)`; break
+
+    switch (keyId) {
+      case 'x': next = `${prev}x`; break
+      case 'plus': next = `${prev} + `; break
+      case 'minus': next = `${prev} - `; break
+      case 'equals': next = `${prev} = `; break
+      case 'times': next = `${prev} \\times `; break
+      case 'divide': next = `${prev} \\div `; break
+      case 'power2': next = `${prev || 'x'}^{2}`; break
+      case 'sqrt': next = `${prev}\\sqrt{x}`; break
+      case 'fraction': next = `${prev}\\frac{x}{\\phantom{a}}`; break
+      case 'paren': next = `${prev}\\left(x\\right)`; break
+      case 'leq': next = `${prev} \\leq `; break
+      case 'geq': next = `${prev} \\geq `; break
+      case 'backspace': next = removeLastKeyboardChunk(prev); break
+      case 'clear': next = ''; break
     }
+
     setLatexOutput(next)
+    latexOutputRef.current = next
     if (useAdminStepComposerRef.current && hasControllerRights()) {
       setAdminDraftLatex(normalizeStepLatex(next))
     }
-    setTimeout(() => setSelectedKbDirection(null), 300)
-  }, [hasControllerRights, normalizeStepLatex])
+    scheduleKeyboardFadeOut()
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => setSelectedKeyboardKey(null), 220)
+    } else {
+      setSelectedKeyboardKey(null)
+    }
+  }, [hasControllerRights, normalizeStepLatex, scheduleKeyboardFadeOut])
+
+  const renderKeyboardCanvasSurface = useCallback(() => {
+    const currentExpression = (latexOutput || '').trim()
+    return (
+      <div
+        className="absolute inset-0 z-30 bg-[radial-gradient(circle_at_top,rgba(219,234,254,0.45),transparent_55%),linear-gradient(180deg,rgba(248,250,252,0.97),rgba(255,255,255,1))]"
+        onPointerDown={() => revealKeyboardPalette()}
+      >
+        <div className="absolute inset-0 flex items-center justify-center px-6 pointer-events-none">
+          {currentExpression ? (
+            <div
+              className="rounded-[28px] border border-slate-200 bg-white/96 px-6 py-4 text-slate-900 shadow-[0_18px_40px_rgba(15,23,42,0.14)]"
+              // eslint-disable-next-line react/no-danger
+              dangerouslySetInnerHTML={{
+                __html: (() => {
+                  try { return renderToString(currentExpression, { displayMode: true, throwOnError: false }) } catch { return '<span style="color:#ef4444;font-size:14px">Invalid LaTeX</span>' }
+                })()
+              }}
+            />
+          ) : null}
+        </div>
+
+        <div
+          className={`absolute inset-x-4 bottom-4 z-40 transition-all duration-300 ${keyboardPaletteVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}
+        >
+          <div className="mx-auto max-w-3xl rounded-[28px] border border-slate-200/90 bg-white/95 p-3 shadow-[0_24px_80px_rgba(15,23,42,0.18)] backdrop-blur-xl">
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+              {KEYBOARD_CANVAS_KEYS.map((key) => {
+                const isSelected = selectedKeyboardKey === key.id
+                const content = ('latex' in key)
+                  ? (() => {
+                      try { return renderToString(key.latex, { throwOnError: false }) } catch { return key.description }
+                    })()
+                  : key.label
+                return (
+                  <button
+                    key={key.id}
+                    type="button"
+                    className={`flex min-h-[52px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-50/90 px-3 py-2 text-slate-800 shadow-sm transition-all ${isSelected ? 'scale-[0.98] border-blue-300 bg-blue-50 text-blue-700 shadow-[0_0_0_4px_rgba(191,219,254,0.65)]' : 'hover:border-slate-300 hover:bg-white'}`}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      handleKeyboardCanvasKey(key.id)
+                    }}
+                    title={key.description}
+                  >
+                    {'latex' in key ? (
+                      <span dangerouslySetInnerHTML={{ __html: content }} />
+                    ) : (
+                      <span className="text-sm font-semibold">{content}</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }, [handleKeyboardCanvasKey, keyboardPaletteVisible, latexOutput, revealKeyboardPalette, selectedKeyboardKey])
 
   const handleConvert = () => {
     if (canvasModeRef.current === 'raw-ink') return
@@ -14208,6 +14332,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                               style={topPanelRenderPayload.style}
                               dangerouslySetInnerHTML={{ __html: topPanelRenderPayload.markup }}
                             />
+                          ) : recognitionEngine === 'keyboard' ? (
+                            <div className="w-full h-full" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
                               <p className="text-slate-500 text-sm text-center">Write your answer below to see your LaTeX here.</p>
@@ -14220,6 +14346,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                               style={topPanelRenderPayload.style}
                               dangerouslySetInnerHTML={{ __html: topPanelRenderPayload.markup }}
                         />
+                          ) : recognitionEngine === 'keyboard' ? (
+                            <div className="w-full h-full" />
                       ) : isAssignmentView ? null : (
                         <div className="w-full h-full flex items-center justify-center">
                           <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>
@@ -14233,6 +14361,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                         style={topPanelRenderPayload.style}
                         dangerouslySetInnerHTML={{ __html: topPanelRenderPayload.markup }}
                       />
+                    ) : recognitionEngine === 'keyboard' ? (
+                      <div className="w-full h-full" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>
@@ -15085,49 +15215,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           }}
                           data-orientation={canvasOrientation}
                         />
-                        {recognitionEngine === 'keyboard' && (
-                          <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none bg-[radial-gradient(circle_at_top,rgba(219,234,254,0.45),transparent_55%),linear-gradient(180deg,rgba(248,250,252,0.97),rgba(255,255,255,1))]">
-                            <div
-                              className="relative"
-                              style={{
-                                width: 'min(72vw, 420px)',
-                                height: 'min(72vw, 420px)',
-                                minWidth: '240px',
-                                minHeight: '240px',
-                                maxWidth: '420px',
-                                maxHeight: '420px',
-                              }}
-                            >
-                              <div className="absolute inset-[18%] rounded-full border border-slate-200/80 bg-white/92 shadow-[0_24px_60px_rgba(15,23,42,0.12)]" />
-                              <div
-                                className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-[28px] border border-slate-200 bg-white/96 px-6 py-4 text-slate-900 shadow-[0_18px_40px_rgba(15,23,42,0.14)]"
-                                // eslint-disable-next-line react/no-danger
-                                dangerouslySetInnerHTML={{
-                                  __html: (() => {
-                                    const src = (latexOutput || '').trim() || 'x'
-                                    try { return renderToString(src, { displayMode: true, throwOnError: false }) } catch { return '<span style="color:#ef4444;font-size:14px">Invalid LaTeX</span>' }
-                                  })()
-                                }}
-                              />
-                              {(Object.keys(KEYBOARD_RADIAL_OPERATIONS) as KbDirection[]).map((dir) => {
-                                const op = KEYBOARD_RADIAL_OPERATIONS[dir]
-                                const isSelected = selectedKbDirection === dir
-                                return (
-                                  <button
-                                    key={dir}
-                                    type="button"
-                                    className={`absolute z-20 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200/90 bg-white/96 text-[22px] text-slate-700 shadow-[0_12px_28px_rgba(15,23,42,0.14)] transition-transform duration-150 pointer-events-auto ${isSelected ? 'scale-125 border-blue-300 text-blue-600 shadow-[0_0_0_4px_rgba(191,219,254,0.8),0_16px_30px_rgba(37,99,235,0.25)]' : 'hover:scale-110 hover:text-blue-500'}`}
-                                    style={KEYBOARD_RADIAL_LAYOUT[dir]}
-                                    title={op.description}
-                                    onClick={() => handleKbOperationSelect(dir)}
-                                    // eslint-disable-next-line react/no-danger
-                                    dangerouslySetInnerHTML={{ __html: (() => { try { return renderToString(op.latex, { throwOnError: false }) } catch { return op.label } })() }}
-                                  />
-                                )
-                              })}
-                            </div>
-                          </div>
-                        )}
+                        {recognitionEngine === 'keyboard' && renderKeyboardCanvasSurface()}
                       </div>
                     </div>
                   </div>
@@ -15231,49 +15319,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             data-orientation={canvasOrientation}
           />
 
-          {recognitionEngine === 'keyboard' && (
-            <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none bg-[radial-gradient(circle_at_top,rgba(219,234,254,0.45),transparent_55%),linear-gradient(180deg,rgba(248,250,252,0.97),rgba(255,255,255,1))]">
-              <div
-                className="relative"
-                style={{
-                  width: 'min(72vw, 420px)',
-                  height: 'min(72vw, 420px)',
-                  minWidth: '240px',
-                  minHeight: '240px',
-                  maxWidth: '420px',
-                  maxHeight: '420px',
-                }}
-              >
-                <div className="absolute inset-[18%] rounded-full border border-slate-200/80 bg-white/92 shadow-[0_24px_60px_rgba(15,23,42,0.12)]" />
-                <div
-                  className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-[28px] border border-slate-200 bg-white/96 px-6 py-4 text-slate-900 shadow-[0_18px_40px_rgba(15,23,42,0.14)]"
-                  // eslint-disable-next-line react/no-danger
-                  dangerouslySetInnerHTML={{
-                    __html: (() => {
-                      const src = (latexOutput || '').trim() || 'x'
-                      try { return renderToString(src, { displayMode: true, throwOnError: false }) } catch { return '<span style="color:#ef4444;font-size:14px">Invalid LaTeX</span>' }
-                    })()
-                  }}
-                />
-                {(Object.keys(KEYBOARD_RADIAL_OPERATIONS) as KbDirection[]).map((dir) => {
-                  const op = KEYBOARD_RADIAL_OPERATIONS[dir]
-                  const isSelected = selectedKbDirection === dir
-                  return (
-                    <button
-                      key={dir}
-                      type="button"
-                      className={`absolute z-20 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200/90 bg-white/96 text-[22px] text-slate-700 shadow-[0_12px_28px_rgba(15,23,42,0.14)] transition-transform duration-150 pointer-events-auto ${isSelected ? 'scale-125 border-blue-300 text-blue-600 shadow-[0_0_0_4px_rgba(191,219,254,0.8),0_16px_30px_rgba(37,99,235,0.25)]' : 'hover:scale-110 hover:text-blue-500'}`}
-                      style={KEYBOARD_RADIAL_LAYOUT[dir]}
-                      title={op.description}
-                      onClick={() => handleKbOperationSelect(dir)}
-                      // eslint-disable-next-line react/no-danger
-                      dangerouslySetInnerHTML={{ __html: (() => { try { return renderToString(op.latex, { throwOnError: false }) } catch { return op.label } })() }}
-                    />
-                  )
-                })}
-              </div>
-            </div>
-          )}
+          {recognitionEngine === 'keyboard' && renderKeyboardCanvasSurface()}
 
           {ENABLE_EMBEDDED_DIAGRAMS && diagramManagerOpen && hasWriteAccess && (
             <div className="absolute inset-0 z-50 bg-slate-900/30 backdrop-blur-sm" onClick={() => setDiagramManagerOpen(false)}>

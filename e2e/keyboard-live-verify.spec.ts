@@ -30,7 +30,7 @@ const fillSignIn = async (page: Parameters<typeof test>[0]['page']) => {
 test.describe('live keyboard verification', () => {
   test.setTimeout(180_000)
 
-  test('current lesson opens stacked canvas with visible bottom keyboard', async ({ page }) => {
+  test('current lesson shows a blank canvas, reveals keyboard on tap, and hides it after inactivity', async ({ page }) => {
     test.skip(!baseUrl || !email || !password, 'Set E2E_BASE_URL, E2E_USER_A_EMAIL, E2E_USER_A_PASSWORD')
 
     page.on('dialog', async (dialog) => {
@@ -52,49 +52,58 @@ test.describe('live keyboard verification', () => {
 
     await page.waitForTimeout(8_000)
 
-    const xTexts = await page.getByText(/^x$/).evaluateAll((nodes) =>
-      nodes.map((node) => {
-        const el = node as HTMLElement
-        const rect = el.getBoundingClientRect()
-        return {
-          text: el.innerText,
-          visible: rect.width > 0 && rect.height > 0,
-          top: Math.round(rect.top),
-          left: Math.round(rect.left),
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
-        }
-      })
-    )
+    const panels = page.locator('div.rounded.bg-white.relative.overflow-hidden')
+    await expect(panels.first()).toBeVisible({ timeout: 30_000 })
 
-    const keyboardButtons = await page.locator('button[title]').evaluateAll((nodes) =>
+    const panelCount = await panels.count()
+    const topPanel = panelCount > 1 ? panels.first() : null
+    const bottomPanel = panels.last()
+
+    const readPanelText = async (locator: typeof topPanel) => locator.evaluate((node) => (node.textContent || '').trim())
+
+    const readKeyboardButtons = async () => page.locator('button[title]').evaluateAll((nodes) =>
       nodes.map((node) => {
         const el = node as HTMLButtonElement
         const rect = el.getBoundingClientRect()
         return {
           title: el.getAttribute('title'),
-          visible: rect.width > 0 && rect.height > 0,
+          text: (el.textContent || '').trim(),
+          visible: rect.width > 0 && rect.height > 0 && window.getComputedStyle(el).opacity !== '0',
           top: Math.round(rect.top),
           left: Math.round(rect.left),
           width: Math.round(rect.width),
           height: Math.round(rect.height),
-        }
-      }).filter((entry) => entry.title)
-    )
-
-    const canvasPanels = await page.locator('div.rounded.bg-white.relative.overflow-hidden').evaluateAll((nodes) =>
-      nodes.map((node) => {
-        const el = node as HTMLElement
-        const rect = el.getBoundingClientRect()
-        return {
-          top: Math.round(rect.top),
-          left: Math.round(rect.left),
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
-          text: (el.innerText || '').slice(0, 200),
         }
       })
     )
+
+    const initialTopText = topPanel ? await readPanelText(topPanel) : null
+    const initialBottomText = await readPanelText(bottomPanel)
+    const initialKeyboardButtons = await readKeyboardButtons()
+
+    if (initialTopText != null) {
+      expect(initialTopText).toBe('')
+    }
+    expect(initialBottomText).toBe('')
+    expect(initialKeyboardButtons.some((entry) => entry.visible)).toBeFalsy()
+
+    await bottomPanel.click({ position: { x: 120, y: 120 } })
+
+    await expect(page.locator('button[title="x"]').first()).toBeVisible({ timeout: 10_000 })
+
+    const visibleKeyboardButtons = await readKeyboardButtons()
+    expect(visibleKeyboardButtons.some((entry) => entry.title === 'x' && entry.visible)).toBeTruthy()
+
+    await page.locator('button[title="x"]').first().click()
+
+    await page.waitForTimeout(3400)
+
+    const finalTopText = topPanel ? await readPanelText(topPanel) : null
+    const finalBottomText = await readPanelText(bottomPanel)
+    const fadedKeyboardButtons = await readKeyboardButtons()
+
+    expect(finalBottomText).toContain('x')
+    expect(fadedKeyboardButtons.some((entry) => entry.visible)).toBeFalsy()
 
     const viewportMetrics = await page.locator('div.relative.flex-1.min-h-0.overflow-auto').evaluateAll((nodes) =>
       nodes.map((node) => {
@@ -113,13 +122,15 @@ test.describe('live keyboard verification', () => {
       })
     )
 
-    console.log('X_TEXTS', JSON.stringify(xTexts, null, 2))
-    console.log('KEYBOARD_BUTTONS', JSON.stringify(keyboardButtons, null, 2))
-    console.log('CANVAS_PANELS', JSON.stringify(canvasPanels, null, 2))
+    console.log('INITIAL_TOP_TEXT', JSON.stringify(initialTopText))
+    console.log('INITIAL_BOTTOM_TEXT', JSON.stringify(initialBottomText))
+    console.log('INITIAL_KEYBOARD_BUTTONS', JSON.stringify(initialKeyboardButtons, null, 2))
+    console.log('VISIBLE_KEYBOARD_BUTTONS', JSON.stringify(visibleKeyboardButtons, null, 2))
+    console.log('FINAL_TOP_TEXT', JSON.stringify(finalTopText))
+    console.log('FINAL_BOTTOM_TEXT', JSON.stringify(finalBottomText))
+    console.log('FADED_KEYBOARD_BUTTONS', JSON.stringify(fadedKeyboardButtons, null, 2))
     console.log('VIEWPORT_METRICS', JSON.stringify(viewportMetrics, null, 2))
 
     await page.screenshot({ path: 'test-results/keyboard-live-verify.png', fullPage: true })
-
-    expect(xTexts.some((entry) => entry.visible)).toBeTruthy()
   })
 })

@@ -9792,11 +9792,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           closeKeyboardTransientOverlays()
         }}
       >
-        <div className="flex min-h-full w-full flex-col justify-center gap-px px-px py-px">
+        <div className="flex min-h-full w-full flex-col justify-center gap-[3px] px-0 py-[3px]">
           {KEYBOARD_MOUNTED_ROWS.map((row) => (
             <div key={row.id} className="w-full">
               <div
-                className="grid w-full gap-px"
+                className="grid w-full gap-[2px]"
                 style={row.id === 'qwerty-4'
                   ? ({ gridTemplateColumns: 'repeat(12, minmax(0, 1fr))' } as CSSProperties)
                   : ({ gridTemplateColumns: `repeat(${row.actionIds.length}, minmax(0, 1fr))` } as CSSProperties)}
@@ -9814,14 +9814,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       type="button"
                       data-keyboard-row={row.id}
                       data-keyboard-action={actionId}
-                      className={`flex h-8 min-w-0 items-center justify-center px-0 text-slate-900 transition-colors ${row.id === 'qwerty-4' && isSpaceKey ? 'col-span-9' : row.id === 'qwerty-4' && isClearKey ? 'col-span-3' : ''} ${isSelected ? 'bg-sky-100 text-sky-700' : 'bg-transparent hover:bg-slate-100'}`}
+                      className={`flex h-9 min-w-0 items-center justify-center px-[1px] text-slate-900 transition-colors ${row.id === 'qwerty-4' && isSpaceKey ? 'col-span-9' : row.id === 'qwerty-4' && isClearKey ? 'col-span-3' : ''} ${isSelected ? 'bg-sky-100 text-sky-700' : 'bg-transparent hover:bg-slate-100'}`}
                       onPointerDown={(event) => handleMountedKeyPointerDown(event, actionId)}
                       onPointerUp={(event) => handleMountedKeyPointerUp(event, actionId)}
                       onPointerCancel={handleMountedKeyPointerCancel}
                       onContextMenu={(event) => event.preventDefault()}
                       title={action.title}
                     >
-                      <span className={`${isWideFunctionKey ? 'text-[0.72rem]' : 'text-[0.84rem]'} leading-none`}>{actionId === 'space' ? <span aria-hidden="true" className="block h-px w-full max-w-20 bg-slate-500" /> : renderKeyboardActionContent(actionId)}</span>
+                      <span className={`${isWideFunctionKey ? 'text-[0.76rem]' : 'text-[0.9rem]'} leading-none`}>{actionId === 'space' ? <span aria-hidden="true" className="block h-px w-full max-w-24 bg-slate-500" /> : renderKeyboardActionContent(actionId)}</span>
                     </button>
                   )
                 })}

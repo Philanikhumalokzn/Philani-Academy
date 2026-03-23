@@ -30,7 +30,7 @@ const fillSignIn = async (page: Parameters<typeof test>[0]['page']) => {
 test.describe('live keyboard verification', () => {
   test.setTimeout(180_000)
 
-  test('current lesson shows a blank canvas, reveals keyboard on tap, and hides it after inactivity', async ({ page }) => {
+  test('current lesson shows a blank canvas, reveals representative keys, expands families, and hides the keyboard after inactivity', async ({ page }) => {
     test.skip(!baseUrl || !email || !password, 'Set E2E_BASE_URL, E2E_USER_A_EMAIL, E2E_USER_A_PASSWORD')
 
     page.on('dialog', async (dialog) => {
@@ -90,9 +90,20 @@ test.describe('live keyboard verification', () => {
     await bottomPanel.click({ position: { x: 120, y: 120 } })
 
     await expect(page.locator('button[title="x"]').first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('button[title="plus"]').first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('button[title="equals"]').first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('button[title="delete"]').first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('button[title="fraction"]').first()).toBeHidden()
 
     const visibleKeyboardButtons = await readKeyboardButtons()
     expect(visibleKeyboardButtons.some((entry) => entry.title === 'x' && entry.visible)).toBeTruthy()
+    expect(visibleKeyboardButtons.some((entry) => entry.title === 'plus' && entry.visible)).toBeTruthy()
+    expect(visibleKeyboardButtons.some((entry) => entry.title === 'equals' && entry.visible)).toBeTruthy()
+
+    await page.locator('button[title="x"]').first().dblclick()
+
+    await expect(page.locator('button[title="q"]').first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('button[title="1"]').first()).toBeVisible({ timeout: 10_000 })
 
     await page.locator('button[title="x"]').first().click()
 

@@ -1386,21 +1386,14 @@ const KEYBOARD_ACTION_ROW_MAP = KEYBOARD_MOUNTED_ROWS.reduce<Record<string, stri
   return acc
 }, {})
 
-const buildMountedKeyboardRadialActionIds = (rowActionIds: string[], actionId: string) => {
-  const currentIndex = rowActionIds.indexOf(actionId)
-  const candidates = rowActionIds
-    .map((candidateActionId, index) => ({
-      actionId: candidateActionId,
-      index,
-      distance: currentIndex >= 0 ? Math.abs(index - currentIndex) : index,
-    }))
-    .filter((candidate) => candidate.actionId !== actionId)
-    .sort((left, right) => {
-      if (left.distance !== right.distance) return left.distance - right.distance
-      return left.index - right.index
-    })
+const KEYBOARD_DIRECTIONAL_RADIAL_ACTION_IDS = ['fraction', 'power2', 'plus', 'subscript', 'fraction-denominator', 'sqrt', 'minus', 'paren']
 
-  return candidates.slice(0, 8).map((candidate) => candidate.actionId)
+const deriveKeyboardActionBaseSymbol = (action: KeyboardActionDefinition) => {
+  const trimmedToken = typeof action.token === 'string' ? action.token.trim() : ''
+  if (!trimmedToken) return undefined
+  if (/^[A-Za-z0-9]$/.test(trimmedToken)) return trimmedToken
+  if (/^\\[A-Za-z]+$/.test(trimmedToken)) return trimmedToken
+  return undefined
 }
 
 const buildMountedKeyboardStageTarget = (actionId: string): KeyboardStageTarget | null => {
@@ -1416,10 +1409,10 @@ const buildMountedKeyboardStageTarget = (actionId: string): KeyboardStageTarget 
     representativeKeyId: row.id,
     singleTapActionId: actionId,
     displayActionId: actionId,
-    radialActionIds: buildMountedKeyboardRadialActionIds(row.actionIds, actionId),
+    radialActionIds: KEYBOARD_DIRECTIONAL_RADIAL_ACTION_IDS,
     familyRows: [row.actionIds],
     familyTitle: row.label || action.title,
-    baseSymbol: action.token,
+    baseSymbol: deriveKeyboardActionBaseSymbol(action),
   }
 }
 

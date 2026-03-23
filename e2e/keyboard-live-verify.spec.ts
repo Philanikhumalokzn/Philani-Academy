@@ -53,7 +53,7 @@ const dispatchElementClick = async (locator: Locator) => {
 test.describe('live keyboard verification', () => {
   test.setTimeout(180_000)
 
-  test('current lesson supports single tap, double tap, and long press on representative keys', async ({ page }) => {
+  test('current lesson supports recursive single tap, double tap, and long press on representative keys', async ({ page }) => {
     test.skip(!baseUrl || !email || !password, 'Set E2E_BASE_URL, E2E_USER_A_EMAIL, E2E_USER_A_PASSWORD')
 
     page.on('dialog', async (dialog) => {
@@ -102,6 +102,7 @@ test.describe('live keyboard verification', () => {
     const qKey = page.locator('button[title="q"]').first()
     const oneKey = page.locator('button[title="1"]').first()
     const closeButton = page.getByRole('button', { name: /^close$/i }).first()
+    const familySummary = page.getByText(/Full family for /i).first()
 
     if (!(await xKey.isVisible().catch(() => false))) {
       await editorSurface.click({ position: { x: 120, y: 120 } })
@@ -129,10 +130,27 @@ test.describe('live keyboard verification', () => {
 
     await expect(qKey).toBeVisible({ timeout: 10_000 })
     await expect(oneKey).toBeVisible({ timeout: 10_000 })
+    await expect(familySummary).toContainText('Full family for x')
 
-    await dispatchElementClick(closeButton)
+    await triggerRepresentativeLongPress(page, qKey)
+
+    await expect(fractionKey).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('button[title="fraction"]').first()).toContainText('q')
+
+    await triggerRepresentativeDoubleTap(page, qKey)
+
+    await expect(qKey).toBeVisible({ timeout: 10_000 })
+    await expect(oneKey).toBeVisible({ timeout: 10_000 })
+    await expect(familySummary).toContainText('Full family for q')
+
+    await triggerRepresentativeTap(page, qKey)
+
+    await page.waitForTimeout(350)
     await expect(qKey).toBeHidden()
-    await expect(oneKey).toBeHidden()
+
+    if (!(await xKey.isVisible().catch(() => false))) {
+      await editorSurface.click({ position: { x: 120, y: 120 } })
+    }
 
     await triggerRepresentativeLongPress(page, xKey)
 

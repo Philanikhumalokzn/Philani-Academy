@@ -1,0 +1,491 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - navigation [ref=e4]:
+      - generic [ref=e6]:
+        - generic [ref=e7]:
+          - generic [ref=e8]:
+            - button "Go back" [ref=e9] [cursor=pointer]:
+              - generic [ref=e10]: ←
+              - generic [ref=e11]: Back
+            - button "Go forward" [ref=e12] [cursor=pointer]:
+              - generic [ref=e13]: Forward
+              - generic [ref=e14]: →
+          - generic [ref=e15]: Philani Academy
+        - generic [ref=e17]:
+          - generic [ref=e18]: student
+          - generic [ref=e19]:
+            - button "Edit avatar" [ref=e20] [cursor=pointer]:
+              - img "avatar" [ref=e22]
+            - button "Update avatar":
+              - img
+          - button "Sign out" [ref=e23] [cursor=pointer]
+    - main [ref=e24]:
+      - generic [ref=e26]:
+        - generic [ref=e29]:
+          - generic [ref=e30]:
+            - img "Philani Academy logo" [ref=e32]
+            - button "Search learners, groups, sessions, and shared resources" [ref=e33] [cursor=pointer]:
+              - img [ref=e34]
+              - generic [ref=e37]: Search learners, groups, sessions, and shared resources
+          - generic [ref=e38]:
+            - button "Library" [ref=e39] [cursor=pointer]:
+              - generic [ref=e40]: Library
+            - button "Create" [ref=e41] [cursor=pointer]:
+              - generic [ref=e42]: Create
+            - button "Open notifications" [ref=e43] [cursor=pointer]:
+              - img [ref=e44]
+              - generic [ref=e46]: "21"
+            - link "PHILANI KHUMALO PHILANI KHUMALO" [ref=e47] [cursor=pointer]:
+              - /url: /profile
+              - img "PHILANI KHUMALO" [ref=e49]
+              - generic [ref=e50]: PHILANI KHUMALO
+        - generic [ref=e51]:
+          - complementary [ref=e52]:
+            - generic [ref=e53]:
+              - generic [ref=e54]: Navigation
+              - generic [ref=e55]:
+                - button "Home Feed Your class stream and live activity Live" [ref=e56] [cursor=pointer]:
+                  - generic [ref=e57]:
+                    - generic [ref=e58]: Home Feed
+                    - generic [ref=e59]: Your class stream and live activity
+                  - generic [ref=e60]: Live
+                - button "Live Class Join lessons & board >" [ref=e61] [cursor=pointer]:
+                  - generic [ref=e62]:
+                    - generic [ref=e63]: Live Class
+                    - generic [ref=e64]: Join lessons & board
+                  - generic [ref=e65]: ">"
+                - button "Announcements Communicate updates >" [ref=e66] [cursor=pointer]:
+                  - generic [ref=e67]:
+                    - generic [ref=e68]: Announcements
+                    - generic [ref=e69]: Communicate updates
+                  - generic [ref=e70]: ">"
+                - button "Sessions Schedule classes & materials >" [ref=e71] [cursor=pointer]:
+                  - generic [ref=e72]:
+                    - generic [ref=e73]: Sessions
+                    - generic [ref=e74]: Schedule classes & materials
+                  - generic [ref=e75]: ">"
+                - button "Groups Classmates & groupmates >" [ref=e76] [cursor=pointer]:
+                  - generic [ref=e77]:
+                    - generic [ref=e78]: Groups
+                    - generic [ref=e79]: Classmates & groupmates
+                  - generic [ref=e80]: ">"
+                - button "Discover Find people & join groups >" [ref=e81] [cursor=pointer]:
+                  - generic [ref=e82]:
+                    - generic [ref=e83]: Discover
+                    - generic [ref=e84]: Find people & join groups
+                  - generic [ref=e85]: ">"
+            - generic [ref=e86]:
+              - generic [ref=e87]: Workspace
+              - generic [ref=e88]:
+                - generic [ref=e89]: Grade 12
+                - generic [ref=e90]: Switch sections, open materials, and jump into the live board from here.
+                - generic [ref=e91]:
+                  - button "Books" [ref=e92] [cursor=pointer]
+                  - button "Updates" [ref=e93] [cursor=pointer]
+          - generic [ref=e94]:
+            - generic [ref=e96]:
+              - generic [ref=e97]:
+                - generic [ref=e98]: For You
+                - heading "Welcome back, PHILANI" [level=1] [ref=e99]
+                - paragraph [ref=e100]: A feed-first home for class activity, live lessons, quizzes, announcements, and the work your circle is sharing right now.
+              - generic [ref=e101]:
+                - button "Create Post" [ref=e102] [cursor=pointer]
+                - button "Browse Sessions" [ref=e103] [cursor=pointer]
+            - generic [ref=e105]:
+              - generic [ref=e107]:
+                - img "PHILANI KHUMALO" [ref=e109]
+                - button "What's on your mind, PHILANI?" [ref=e111] [cursor=pointer]
+                - button "Open posts menu" [ref=e112] [cursor=pointer]:
+                  - img [ref=e113]
+              - button "Your posts My posts" [ref=e115] [cursor=pointer]:
+                - generic [ref=e116]:
+                  - generic [ref=e117]: Your posts
+                  - generic [ref=e118]: My posts
+                - img [ref=e120]
+              - generic [ref=e122]:
+                - generic [ref=e123]:
+                  - generic [ref=e124]:
+                    - generic [ref=e125]:
+                      - generic [ref=e126]: Live now
+                      - generic [ref=e127]: Current lesson
+                    - button "Refresh" [ref=e128] [cursor=pointer]
+                  - generic [ref=e129]:
+                    - button "Enter class for Trigonometric Equations" [active] [ref=e130] [cursor=pointer]:
+                      - img "Lesson thumbnail" [ref=e131]
+                    - generic [ref=e132]:
+                      - generic [ref=e133]:
+                        - generic [ref=e134]: A
+                        - generic [ref=e135]:
+                          - generic [ref=e136]: Live now
+                          - generic [ref=e137]:
+                            - generic [ref=e138]: Admin
+                            - generic [ref=e139]: 07 Feb 26
+                          - generic [ref=e140]: Current lesson
+                      - generic [ref=e142]: Trigonometric Equations
+                      - generic [ref=e143]:
+                        - button "Enter class" [ref=e144] [cursor=pointer]
+                        - button "Quizzes" [ref=e145] [cursor=pointer]
+                        - generic [ref=e146]:
+                          - generic [ref=e147]:
+                            - generic [ref=e148]: "Start:"
+                            - generic [ref=e149]: 07 Feb 26, 11:15
+                            - generic [ref=e150]: "End:"
+                            - generic [ref=e151]: 07 Feb 26, 12:15
+                          - button "Assignments" [ref=e152] [cursor=pointer]
+                      - generic [ref=e154]:
+                        - button "Like" [ref=e155] [cursor=pointer]:
+                          - img [ref=e157]
+                          - generic [ref=e160]: Like
+                        - button "Solve" [ref=e161] [cursor=pointer]:
+                          - generic [ref=e163]:
+                            - img [ref=e164]
+                            - img [ref=e166]
+                          - generic [ref=e169]: Solve
+                        - button "Share" [ref=e170] [cursor=pointer]:
+                          - img [ref=e172]
+                          - generic [ref=e175]: Share
+                - generic [ref=e176]:
+                  - generic [ref=e177]:
+                    - generic [ref=e178]:
+                      - generic [ref=e179]: History
+                      - generic [ref=e180]: Past lessons
+                    - button "Open" [ref=e181] [cursor=pointer]
+                  - generic [ref=e182]: 17 past lessons
+              - list [ref=e183]:
+                - listitem [ref=e184]:
+                  - generic [ref=e185]:
+                    - generic [ref=e186]:
+                      - generic [ref=e187]:
+                        - link "Admin User Verified" [ref=e188] [cursor=pointer]:
+                          - /url: /u/cmi8mgqth0000dungvnpx9f0j
+                          - generic [ref=e189]:
+                            - img "Admin User" [ref=e191]
+                            - generic "Verified":
+                              - img
+                        - generic [ref=e192]:
+                          - link "Admin User" [ref=e194] [cursor=pointer]:
+                            - /url: /u/cmi8mgqth0000dungvnpx9f0j
+                          - generic [ref=e195]: 21 Mar 26
+                      - generic [ref=e196]: Test 2
+                      - generic [ref=e197]: Testing again
+                    - link "Solve" [ref=e199] [cursor=pointer]:
+                      - /url: /challenges/cmn0et6ds000004jj4gm4r9cg
+                  - generic [ref=e201]:
+                    - button "Like" [ref=e202] [cursor=pointer]:
+                      - img [ref=e204]
+                      - generic [ref=e207]: Like
+                    - button "Solve" [ref=e208] [cursor=pointer]:
+                      - generic [ref=e210]:
+                        - img [ref=e211]
+                        - img [ref=e213]
+                      - generic [ref=e216]: Solve
+                    - button "Share" [ref=e217] [cursor=pointer]:
+                      - img [ref=e219]
+                      - generic [ref=e222]: Share
+                - listitem [ref=e223]:
+                  - generic [ref=e224]:
+                    - generic [ref=e225]:
+                      - generic [ref=e226]:
+                        - link "Admin User Verified" [ref=e227] [cursor=pointer]:
+                          - /url: /u/cmi8mgqth0000dungvnpx9f0j
+                          - generic [ref=e228]:
+                            - img "Admin User" [ref=e230]
+                            - generic "Verified":
+                              - img
+                        - generic [ref=e231]:
+                          - link "Admin User" [ref=e233] [cursor=pointer]:
+                            - /url: /u/cmi8mgqth0000dungvnpx9f0j
+                          - generic [ref=e234]: 16 Mar 26
+                      - generic [ref=e235]: Testing Posts
+                      - generic [ref=e236]: "Solve: x² - 1 = 0"
+                    - button "Solutions" [ref=e238] [cursor=pointer]
+                  - generic [ref=e240]:
+                    - button "Like" [ref=e241] [cursor=pointer]:
+                      - img [ref=e243]
+                      - generic [ref=e246]: Like
+                    - button "2 Solutions" [ref=e247] [cursor=pointer]:
+                      - generic [ref=e249]:
+                        - img [ref=e250]
+                        - img [ref=e252]
+                      - generic [ref=e255]: 2 Solutions
+                    - button "Share" [ref=e256] [cursor=pointer]:
+                      - img [ref=e258]
+                      - generic [ref=e261]: Share
+                - listitem [ref=e262]:
+                  - generic [ref=e263]:
+                    - generic [ref=e264]:
+                      - generic [ref=e265]:
+                        - link "Admin User Verified" [ref=e266] [cursor=pointer]:
+                          - /url: /u/cmi8mgqth0000dungvnpx9f0j
+                          - generic [ref=e267]:
+                            - img "Admin User" [ref=e269]
+                            - generic "Verified":
+                              - img
+                        - generic [ref=e270]:
+                          - link "Admin User" [ref=e272] [cursor=pointer]:
+                            - /url: /u/cmi8mgqth0000dungvnpx9f0j
+                          - generic [ref=e273]: 28 Jan 26
+                      - generic [ref=e274]: Sequences Challenge!🦾
+                      - generic [ref=e275]: Answer ANY ONE question!
+                      - img "Post screenshot" [ref=e277]
+                    - button "Solutions" [ref=e279] [cursor=pointer]
+                  - generic [ref=e281]:
+                    - button "Like" [ref=e282] [cursor=pointer]:
+                      - img [ref=e284]
+                      - generic [ref=e287]: Like
+                    - button "2 Solutions" [ref=e288] [cursor=pointer]:
+                      - generic [ref=e290]:
+                        - img [ref=e291]
+                        - img [ref=e293]
+                      - generic [ref=e296]: 2 Solutions
+                    - button "Share" [ref=e297] [cursor=pointer]:
+                      - img [ref=e299]
+                      - generic [ref=e302]: Share
+                - listitem [ref=e303]:
+                  - generic [ref=e304]:
+                    - generic [ref=e305]:
+                      - generic [ref=e306]:
+                        - link "Admin User Verified" [ref=e307] [cursor=pointer]:
+                          - /url: /u/cmi8mgqth0000dungvnpx9f0j
+                          - generic [ref=e308]:
+                            - img "Admin User" [ref=e310]
+                            - generic "Verified":
+                              - img
+                        - generic [ref=e311]:
+                          - link "Admin User" [ref=e313] [cursor=pointer]:
+                            - /url: /u/cmi8mgqth0000dungvnpx9f0j
+                          - generic [ref=e314]: 27 Jan 26
+                      - generic [ref=e315]: Sum to infinity challenge!🦾
+                      - generic [ref=e316]: Only submit 2.2.3.
+                      - img "Post screenshot" [ref=e318]
+                    - link "Solve" [ref=e320] [cursor=pointer]:
+                      - /url: /challenges/cmkwc94l70001jx04yjrb79ei
+                  - generic [ref=e322]:
+                    - button "Like" [ref=e323] [cursor=pointer]:
+                      - img [ref=e325]
+                      - generic [ref=e328]: Like
+                    - button "Solve" [ref=e329] [cursor=pointer]:
+                      - generic [ref=e331]:
+                        - img [ref=e332]
+                        - img [ref=e334]
+                      - generic [ref=e337]: Solve
+                    - button "Share" [ref=e338] [cursor=pointer]:
+                      - img [ref=e340]
+                      - generic [ref=e343]: Share
+          - complementary [ref=e344]:
+            - generic [ref=e346]:
+              - generic [ref=e347]:
+                - img "PHILANI KHUMALO" [ref=e350]
+                - generic [ref=e351]:
+                  - generic [ref=e352]: PHILANI KHUMALO
+                  - generic [ref=e353]: Student (Grade 12)
+              - generic [ref=e355]: Humility
+              - generic [ref=e356]:
+                - generic [ref=e357]:
+                  - generic [ref=e358]: Workspace
+                  - generic [ref=e359]: Grade 12
+                - button "Alerts 21 unread" [ref=e360] [cursor=pointer]:
+                  - generic [ref=e361]: Alerts
+                  - generic [ref=e362]: 21 unread
+              - generic [ref=e363]:
+                - link "View Profile" [ref=e364] [cursor=pointer]:
+                  - /url: /profile
+                - button "Snapshot" [ref=e365] [cursor=pointer]
+            - generic [ref=e366]:
+              - generic [ref=e368]:
+                - button "Create" [ref=e369] [cursor=pointer]
+                - button "My posts" [ref=e370] [cursor=pointer]
+              - generic [ref=e371]: Your posted quizzes live on your timeline.
+            - generic [ref=e372]:
+              - heading "Account snapshot" [level=2] [ref=e373]
+              - generic [ref=e374]:
+                - generic [ref=e375]:
+                  - term [ref=e376]: Email
+                  - definition [ref=e377]: philanikhumalo111@gmail.com
+                - generic [ref=e378]:
+                  - term [ref=e379]: Role
+                  - definition [ref=e380]: student
+                - generic [ref=e381]:
+                  - term [ref=e382]: Grade
+                  - definition [ref=e383]: Grade 12
+              - generic [ref=e384]:
+                - link "Update profile" [ref=e385] [cursor=pointer]:
+                  - /url: /profile
+                - link "Manage subscription" [ref=e386] [cursor=pointer]:
+                  - /url: /subscribe
+        - generic [ref=e387]:
+          - generic [ref=e388]:
+            - link "Privacy" [ref=e389] [cursor=pointer]:
+              - /url: /privacy
+            - link "Terms" [ref=e390] [cursor=pointer]:
+              - /url: /terms
+            - link "Help" [ref=e391] [cursor=pointer]:
+              - /url: /help
+            - link "Contact" [ref=e392] [cursor=pointer]:
+              - /url: mailto:support@philaniacademy.org
+          - generic [ref=e393]: Educational platform. Use of the service is subject to platform policies and applicable law.
+          - generic [ref=e394]: © 2026 Philani Academy. All rights reserved.
+    - dialog [ref=e395]:
+      - generic [ref=e397]:
+        - iframe [ref=e401]:
+          - main [ref=f1e2]:
+            - generic [ref=f1e5]:
+              - generic [ref=f1e8]:
+                - button [ref=f1e11] [cursor=pointer]:
+                  - img [ref=f1e13]
+                - generic [ref=f1e17]: Philani Cmlc 3 Ns 6 Y 0000 L 404 Jg 9 Lwgv 9 A 8566757442 D
+                - generic [ref=f1e18]: 00:01
+                - button "Performance settings" [ref=f1e20] [cursor=pointer]:
+                  - img [ref=f1e22]
+                  - generic [ref=f1e25]: Performance settings
+              - generic [ref=f1e26]:
+                - generic [ref=f1e33]: PK
+                - generic [ref=f1e34]:
+                  - heading "Video thumbnails" [level=1] [ref=f1e35]
+                  - generic [ref=f1e40]:
+                    - generic:
+                      - button "PHILANI KHUMALO - Pin"
+                    - generic [ref=f1e44]:
+                      - img "Participant is muted" [ref=f1e49]
+                      - generic [ref=f1e55]: PHILANI KHUMALO
+                    - generic [ref=f1e56]:
+                      - generic:
+                        - generic:
+                          - button
+                    - generic [ref=f1e60]: PK
+              - heading "Toolbar" [level=1] [ref=f1e69]
+              - generic [ref=f1e71]:
+                - generic [ref=f1e74]:
+                  - button "Unmute microphone" [pressed] [ref=f1e75] [cursor=pointer]:
+                    - img [ref=f1e79]
+                  - generic "Audio settings" [ref=f1e84]:
+                    - img [ref=f1e85]
+                - generic [ref=f1e89]:
+                  - button "Start camera" [pressed] [ref=f1e90] [cursor=pointer]:
+                    - img [ref=f1e94]
+                  - generic "Video settings" [ref=f1e98]:
+                    - img [ref=f1e99]
+                - button "Enter tile view" [ref=f1e101] [cursor=pointer]:
+                  - img [ref=f1e105]
+                - button "Leave the meeting" [ref=f1e107] [cursor=pointer]:
+                  - img [ref=f1e111]
+        - generic [ref=e402]:
+          - generic:
+            - generic:
+              - paragraph: Canvas
+              - paragraph: Grade 12
+            - generic:
+              - button "Stop listening to teacher audio":
+                - generic: Teacher audio
+                - img
+              - button "Unmute your microphone":
+                - generic: Your microphone
+                - img
+              - button "Close canvas": ×
+          - generic [ref=e404]:
+            - generic [ref=e406]:
+              - generic [ref=e407]:
+                - img "Philani Academy logo" [ref=e408]
+                - generic [ref=e409]: Philani Academy
+              - generic [ref=e410]: Grade 12
+            - generic [ref=e413]:
+              - generic [ref=e414]:
+                - separator [ref=e420]
+                - generic [ref=e422]:
+                  - generic [ref=e423]:
+                    - generic [ref=e425]:
+                      - button "Open notes" [ref=e426] [cursor=pointer]:
+                        - generic [ref=e427]: Open notes
+                        - img [ref=e428]
+                      - button "Undo" [disabled] [ref=e431]:
+                        - generic [ref=e432]: Undo
+                        - img [ref=e433]
+                      - button "Redo" [disabled] [ref=e436]:
+                        - generic [ref=e437]: Redo
+                        - img [ref=e438]
+                      - button "Clear" [disabled] [ref=e441]:
+                        - generic [ref=e442]: Clear
+                        - img [ref=e443]
+                    - button "Compute" [ref=e447] [cursor=pointer]:
+                      - generic [ref=e448]: Compute
+                      - text: =
+                  - generic [ref=e449]:
+                    - generic [ref=e453]:
+                      - generic:
+                        - generic:
+                          - img
+                          - img
+                      - generic [ref=e454]:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - math:
+                                    - generic:
+                                      - generic:
+                                        - generic: x
+                                - generic:
+                                  - generic: x
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic: Representative keyboard
+                              - generic: Tap to use, hold for radial, double tap for family
+                            - generic:
+                              - generic:
+                                - button "x letters and numbers":
+                                  - generic: x
+                                  - generic: letters and numbers
+                                - button "operator family":
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - math:
+                                            - generic:
+                                              - generic:
+                                                - generic: +
+                                        - generic:
+                                          - generic: +
+                                  - generic: operator family
+                                - button "relation family":
+                                  - generic:
+                                    - generic:
+                                      - generic:
+                                        - generic:
+                                          - math:
+                                            - generic:
+                                              - generic:
+                                                - generic: =
+                                        - generic:
+                                          - generic: =
+                                  - generic: relation family
+                                - button "Del editing controls":
+                                  - generic: Del
+                                  - generic: editing controls
+                    - generic:
+                      - generic:
+                        - paragraph: Canvas controls
+                        - generic:
+                          - generic:
+                            - button "Undo" [disabled]
+                            - button "Redo" [disabled]
+                            - button "Clear" [disabled]
+                            - button "Convert to Notes" [disabled]
+                        - button "Return to drawing"
+              - generic:
+                - generic:
+                  - paragraph: Canvas controls
+                  - generic:
+                    - generic:
+                      - button "Undo" [disabled]
+                      - button "Redo" [disabled]
+                      - button "Clear" [disabled]
+                      - button "Convert to Notes" [disabled]
+                  - button "Return to drawing"
+  - alert [ref=e455]: Philani Academy
+```

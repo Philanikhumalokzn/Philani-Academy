@@ -1023,6 +1023,23 @@ type KeyboardStageTarget = {
   baseSymbol?: string
 }
 
+type KeyboardSelectionState = {
+  start: number
+  end: number
+}
+
+type KeyboardReferenceTarget = {
+  start: number
+  end: number
+  symbol: string
+}
+
+type KeyboardEditResult = {
+  value: string
+  selectionStart: number
+  selectionEnd: number
+}
+
 const KEYBOARD_RADIAL_POSITIONS = [
   { actionIndex: 0, className: 'left-1/2 top-2 -translate-x-1/2' },
   { actionIndex: 1, className: 'right-10 top-8' },
@@ -1195,6 +1212,59 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
 ]
 
 const KEYBOARD_ACTION_MAP = Object.fromEntries(KEYBOARD_ACTIONS.map((action) => [action.id, action])) as Record<string, KeyboardActionDefinition>
+const KEYBOARD_TEXT_ACTION_ID_BY_TOKEN = KEYBOARD_ACTIONS.reduce<Record<string, string>>((acc, action) => {
+  if (action.token) acc[action.token] = action.id
+  return acc
+}, {})
+
+const insertKeyboardTextAtSelection = (value: string, text: string, selection: KeyboardSelectionState): KeyboardEditResult => {
+  const start = Math.max(0, Math.min(selection.start, value.length))
+  const end = Math.max(start, Math.min(selection.end, value.length))
+  const next = `${value.slice(0, start)}${text}${value.slice(end)}`
+  const caret = start + text.length
+  return { value: next, selectionStart: caret, selectionEnd: caret }
+}
+
+const removeKeyboardTextAtSelection = (value: string, selection: KeyboardSelectionState): KeyboardEditResult => {
+  const start = Math.max(0, Math.min(selection.start, value.length))
+  const end = Math.max(start, Math.min(selection.end, value.length))
+  if (start !== end) {
+    const next = `${value.slice(0, start)}${value.slice(end)}`
+    return { value: next, selectionStart: start, selectionEnd: start }
+  }
+  if (start <= 0) {
+    return { value, selectionStart: 0, selectionEnd: 0 }
+  }
+  const next = `${value.slice(0, start - 1)}${value.slice(start)}`
+  const caret = start - 1
+  return { value: next, selectionStart: caret, selectionEnd: caret }
+}
+
+const findKeyboardReferenceTarget = (value: string, selection: KeyboardSelectionState): KeyboardReferenceTarget | null => {
+  const start = Math.max(0, Math.min(selection.start, value.length))
+  const end = Math.max(start, Math.min(selection.end, value.length))
+  if (start !== end) {
+    const symbol = value.slice(start, end)
+    return symbol ? { start, end, symbol } : null
+  }
+  let index = start - 1
+  while (index >= 0 && /\s/.test(value[index])) index -= 1
+  if (index < 0) return null
+  return {
+    start: index,
+    end: index + 1,
+    symbol: value.slice(index, index + 1),
+  }
+}
+
+const replaceKeyboardReferenceTarget = (value: string, target: KeyboardReferenceTarget | null, replacement: string, selection: KeyboardSelectionState): KeyboardEditResult => {
+  if (!target) {
+    return insertKeyboardTextAtSelection(value, replacement, selection)
+  }
+  const next = `${value.slice(0, target.start)}${replacement}${value.slice(target.end)}`
+  const caret = target.start + replacement.length
+  return { value: next, selectionStart: caret, selectionEnd: caret }
+}
 
 const KEYBOARD_REPRESENTATIVE_KEYS: KeyboardRepresentativeKeyDefinition[] = [
   {
@@ -1843,6 +1913,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const canvasModeRef = useRef<CanvasMode>(DEFAULT_CANVAS_MODE)
   const [recognitionEngine, setRecognitionEngine] = useState<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
   const recognitionEngineRef = useRef<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
+  const keyboardExpressionInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const [keyboardSelection, setKeyboardSelection] = useState<KeyboardSelectionState>({ start: 0, end: 0 })
+  const keyboardSelectionRef = useRef<KeyboardSelectionState>({ start: 0, end: 0 })
   const [selectedKeyboardKey, setSelectedKeyboardKey] = useState<string | null>(null)
   const [keyboardPaletteVisible, setKeyboardPaletteVisible] = useState(false)
   const [activeKeyboardRadialTarget, setActiveKeyboardRadialTarget] = useState<KeyboardStageTarget | null>(null)
@@ -1888,6 +1961,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   useEffect(() => {
     latexOutputRef.current = latexOutput
   }, [latexOutput])
+
+  useEffect(() => {
+    const nextLength = latexOutput.length
+    setKeyboardSelection((current) => {
+      const nextSelection = {
+        start: Math.min(current.start, nextLength),
+        end: Math.min(current.end, nextLength),
+      }
+      keyboardSelectionRef.current = nextSelection
+      return nextSelection
+    })
+  }, [latexOutput])
+
+  useEffect(() => {
+    keyboardSelectionRef.current = keyboardSelection
+  }, [keyboardSelection])
 
   useEffect(() => {
     canvasModeRef.current = canvasMode
@@ -1955,6 +2044,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const revealKeyboardPalette = useCallback(() => {
     if (recognitionEngineRef.current !== 'keyboard') return
     setKeyboardPaletteVisible(true)
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => {
+        keyboardExpressionInputRef.current?.focus()
+      }, 0)
+    }
     scheduleKeyboardFadeOut()
   }, [scheduleKeyboardFadeOut])
 
@@ -9354,12 +9448,41 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     setSelectedKeyboardKey(actionId)
     const prev = latexOutputRef.current || ''
-    const next = action.apply(prev, baseSymbol)
+    const selection = keyboardSelectionRef.current
+    const referenceTarget = findKeyboardReferenceTarget(prev, selection)
+    const resolvedBaseSymbol = baseSymbol || referenceTarget?.symbol
 
-    setLatexOutput(next)
-    latexOutputRef.current = next
+    let result: KeyboardEditResult
+    if (actionId === 'backspace') {
+      result = removeKeyboardTextAtSelection(prev, selection)
+    } else if (actionId === 'clear') {
+      result = { value: '', selectionStart: 0, selectionEnd: 0 }
+    } else if (action.token) {
+      result = insertKeyboardTextAtSelection(prev, action.token, selection)
+    } else if (actionId === 'plus' || actionId === 'minus' || actionId === 'equals' || actionId === 'times' || actionId === 'divide' || actionId === 'leq' || actionId === 'geq') {
+      const inserted = action.apply('', resolvedBaseSymbol)
+      result = insertKeyboardTextAtSelection(prev, inserted, selection)
+    } else {
+      const replacement = action.renderLatex?.(resolvedBaseSymbol) ?? action.apply('', resolvedBaseSymbol)
+      result = replaceKeyboardReferenceTarget(prev, referenceTarget, replacement, selection)
+    }
+
+    setLatexOutput(result.value)
+    latexOutputRef.current = result.value
+    setKeyboardSelection({ start: result.selectionStart, end: result.selectionEnd })
+    keyboardSelectionRef.current = { start: result.selectionStart, end: result.selectionEnd }
     if (useAdminStepComposerRef.current && hasControllerRights()) {
-      setAdminDraftLatex(normalizeStepLatex(next))
+      setAdminDraftLatex(normalizeStepLatex(result.value))
+    }
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => {
+        const input = keyboardExpressionInputRef.current
+        if (!input) return
+        input.focus()
+        try {
+          input.setSelectionRange(result.selectionStart, result.selectionEnd)
+        } catch {}
+      }, 0)
     }
     closeKeyboardTransientOverlays()
     scheduleKeyboardFadeOut()
@@ -9371,8 +9494,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [closeKeyboardTransientOverlays, hasControllerRights, normalizeStepLatex, scheduleKeyboardFadeOut])
 
   const openKeyboardRadial = useCallback((target: KeyboardStageTarget, anchor: KeyboardOverlayAnchor) => {
+    const currentValue = latexOutputRef.current || ''
+    const referenceTarget = findKeyboardReferenceTarget(currentValue, keyboardSelectionRef.current)
+    const resolvedBaseSymbol = referenceTarget?.symbol || target.baseSymbol
+    const resolvedDisplayActionId = resolvedBaseSymbol ? (KEYBOARD_TEXT_ACTION_ID_BY_TOKEN[resolvedBaseSymbol] || target.displayActionId) : target.displayActionId
     setActiveKeyboardFamilyTarget(null)
-    setActiveKeyboardRadialTarget(target)
+    setActiveKeyboardRadialTarget({
+      ...target,
+      displayActionId: resolvedDisplayActionId,
+      baseSymbol: resolvedBaseSymbol,
+    })
     setKeyboardOverlayAnchor(anchor)
     scheduleKeyboardFadeOut()
   }, [scheduleKeyboardFadeOut])
@@ -9385,7 +9516,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [scheduleKeyboardFadeOut])
 
   const renderKeyboardCanvasSurface = useCallback(() => {
-    const currentExpression = (latexOutput || '').trim()
     const activeRadialTarget = activeKeyboardRadialTarget
     const activeFamilyTarget = activeKeyboardFamilyTarget
     const renderKeyboardActionContent = (actionId: string, baseSymbol?: string) => {
@@ -9467,18 +9597,56 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           revealKeyboardPalette()
         }}
       >
-        <div className="absolute inset-0 flex items-center justify-center px-6 pointer-events-none">
-          {currentExpression ? (
-            <div
-              className="max-w-[min(82%,32rem)] text-center text-slate-900"
-              // eslint-disable-next-line react/no-danger
-              dangerouslySetInnerHTML={{
-                __html: (() => {
-                  try { return renderToString(currentExpression, { displayMode: true, throwOnError: false }) } catch { return '<span style="color:#ef4444;font-size:14px">Invalid LaTeX</span>' }
-                })()
-              }}
-            />
-          ) : null}
+        <div className="absolute inset-0 flex items-center justify-center px-6">
+          <textarea
+            ref={keyboardExpressionInputRef}
+            value={latexOutput}
+            placeholder=""
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            autoComplete="off"
+            rows={1}
+            className="min-h-[3.25rem] w-full max-w-[min(82%,32rem)] resize-none overflow-hidden border-0 bg-transparent px-0 py-0 text-center text-[2rem] leading-[1.3] text-slate-900 outline-none"
+            style={{ fieldSizing: 'content' } as CSSProperties}
+            onPointerDown={(event) => {
+              event.stopPropagation()
+              revealKeyboardPalette()
+            }}
+            onFocus={() => {
+              revealKeyboardPalette()
+            }}
+            onClick={(event) => {
+              event.stopPropagation()
+              const target = event.currentTarget
+              setKeyboardSelection({
+                start: target.selectionStart ?? 0,
+                end: target.selectionEnd ?? 0,
+              })
+            }}
+            onSelect={(event) => {
+              const target = event.currentTarget
+              setKeyboardSelection({
+                start: target.selectionStart ?? 0,
+                end: target.selectionEnd ?? 0,
+              })
+            }}
+            onChange={(event) => {
+              const next = event.currentTarget.value
+              const nextSelection = {
+                start: event.currentTarget.selectionStart ?? next.length,
+                end: event.currentTarget.selectionEnd ?? next.length,
+              }
+              setLatexOutput(next)
+              latexOutputRef.current = next
+              setKeyboardSelection(nextSelection)
+              keyboardSelectionRef.current = nextSelection
+              if (useAdminStepComposerRef.current && hasControllerRights()) {
+                setAdminDraftLatex(normalizeStepLatex(next))
+              }
+              scheduleKeyboardFadeOut()
+            }}
+          />
         </div>
 
         <div

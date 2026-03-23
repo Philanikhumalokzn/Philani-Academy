@@ -3380,7 +3380,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const [lessonScriptModuleIndex, setLessonScriptModuleIndex] = useState(-1)
   const VIEW_ONLY_SPLIT_RATIO = 0.8
   const EDITABLE_SPLIT_RATIO = 0.2
-  const KEYBOARD_STACKED_SPLIT_RATIO = 0.42
+  const KEYBOARD_STACKED_SPLIT_RATIO = 0.28
   const [studentSplitRatio, setStudentSplitRatio] = useState(EDITABLE_SPLIT_RATIO) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(EDITABLE_SPLIT_RATIO)
 
@@ -9470,7 +9470,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         <div className="absolute inset-0 flex items-center justify-center px-6 pointer-events-none">
           {currentExpression ? (
             <div
-              className="rounded-[28px] border border-slate-200 bg-white/96 px-6 py-4 text-slate-900 shadow-[0_18px_40px_rgba(15,23,42,0.14)]"
+              className="max-w-[min(82%,32rem)] text-center text-slate-900"
               // eslint-disable-next-line react/no-danger
               dangerouslySetInnerHTML={{
                 __html: (() => {
@@ -9482,9 +9482,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         </div>
 
         <div
-          className={`absolute inset-x-4 bottom-4 z-40 transition-all duration-300 ${keyboardPaletteVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}
+          className={`absolute inset-0 z-40 flex items-center justify-center px-4 transition-all duration-300 ${keyboardPaletteVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-[0.985] pointer-events-none'}`}
         >
-          <div className="mx-auto max-w-3xl rounded-[28px] border border-slate-200/90 bg-white/95 p-3 shadow-[0_24px_80px_rgba(15,23,42,0.18)] backdrop-blur-xl">
+          <div className="w-full max-w-3xl rounded-[28px] border border-slate-200/90 bg-white/94 p-3 shadow-[0_24px_80px_rgba(15,23,42,0.18)] backdrop-blur-xl">
             <div className="mb-2 flex items-center justify-between px-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
               <span>Representative keyboard</span>
               <span>Tap to use, hold for radial, double tap for family</span>

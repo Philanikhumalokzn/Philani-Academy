@@ -1040,6 +1040,12 @@ type KeyboardEditResult = {
   selectionEnd: number
 }
 
+type KeyboardMountedRowDefinition = {
+  id: string
+  label: string
+  actionIds: string[]
+}
+
 const KEYBOARD_RADIAL_POSITIONS = [
   { actionIndex: 0, className: 'left-1/2 top-2 -translate-x-1/2' },
   { actionIndex: 1, className: 'right-10 top-8' },
@@ -1103,6 +1109,24 @@ const createAppendLatexKeyboardAction = (
   apply: (prev) => `${prev}${latex}`,
 })
 
+const resolveKeyboardBaseSymbol = (baseSymbol?: string, fallback = 'x') => {
+  const trimmed = typeof baseSymbol === 'string' ? baseSymbol.trim() : ''
+  return trimmed || fallback
+}
+
+const createWrappedLatexKeyboardAction = (
+  id: string,
+  title: string,
+  description: string,
+  render: (baseSymbol: string) => string,
+): KeyboardActionDefinition => ({
+  id,
+  title,
+  description,
+  renderLatex: (baseSymbol) => render(resolveKeyboardBaseSymbol(baseSymbol)),
+  apply: (prev, baseSymbol) => `${prev}${render(resolveKeyboardBaseSymbol(baseSymbol))}`,
+})
+
 const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
   createAppendTextKeyboardAction('x', 'x', 'x', 'x'),
   createAppendTextKeyboardAction('y', 'y', 'y', 'y'),
@@ -1140,11 +1164,23 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
   createAppendTextKeyboardAction('digit-8', '8', '8', '8'),
   createAppendTextKeyboardAction('digit-9', '9', '9', '9'),
   createAppendTextKeyboardAction('digit-0', '0', '0', '0'),
+  createAppendTextKeyboardAction('decimal', '.', 'decimal point', 'decimal point'),
+  createAppendTextKeyboardAction('comma', ',', 'comma', 'comma'),
+  createAppendTextKeyboardAction('space', ' ', 'space', 'space'),
+  createAppendTextKeyboardAction('pi', '\\pi', 'pi', 'pi'),
+  createAppendTextKeyboardAction('theta', '\\theta', 'theta', 'theta'),
+  createAppendTextKeyboardAction('infinity', '\\infty', 'infinity', 'infinity'),
+  createAppendTextKeyboardAction('percent', '\\%', 'percent', 'percent'),
+  createAppendTextKeyboardAction('to', ' \\to ', 'approaches', 'approaches'),
   createAppendLatexKeyboardAction('plus', ' + ', 'plus', 'plus'),
   createAppendLatexKeyboardAction('minus', ' - ', 'minus', 'minus'),
   createAppendLatexKeyboardAction('equals', ' = ', 'equals', 'equals'),
   createAppendLatexKeyboardAction('times', ' \\times ', 'times', 'times'),
   createAppendLatexKeyboardAction('divide', ' \\div ', 'divide', 'divide'),
+  createAppendTextKeyboardAction('lt', ' < ', 'less than', 'less than'),
+  createAppendTextKeyboardAction('gt', ' > ', 'greater than', 'greater than'),
+  createAppendTextKeyboardAction('neq', ' \\neq ', 'not equal to', 'not equal to'),
+  createAppendTextKeyboardAction('approx', ' \\approx ', 'approximately equal to', 'approximately equal to'),
   {
     id: 'power2',
     title: 'square',
@@ -1152,6 +1188,14 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
     latex: 'x^{2}',
     renderLatex: (baseSymbol) => `${baseSymbol || 'x'}^{2}`,
     apply: (prev, baseSymbol) => `${prev || (baseSymbol || 'x')}^{2}`,
+  },
+  {
+    id: 'power3',
+    title: 'cube',
+    description: 'cube',
+    latex: 'x^{3}',
+    renderLatex: (baseSymbol) => `${baseSymbol || 'x'}^{3}`,
+    apply: (prev, baseSymbol) => `${prev || (baseSymbol || 'x')}^{3}`,
   },
   {
     id: 'subscript',
@@ -1168,6 +1212,22 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
     latex: '\\sqrt{x}',
     renderLatex: (baseSymbol) => `\\sqrt{${baseSymbol || 'x'}}`,
     apply: (prev, baseSymbol) => `${prev}\\sqrt{${baseSymbol || 'x'}}`,
+  },
+  {
+    id: 'cuberoot',
+    title: 'cube root',
+    description: 'cube root',
+    latex: '\\sqrt[3]{x}',
+    renderLatex: (baseSymbol) => `\\sqrt[3]{${baseSymbol || 'x'}}`,
+    apply: (prev, baseSymbol) => `${prev}\\sqrt[3]{${baseSymbol || 'x'}}`,
+  },
+  {
+    id: 'nth-root',
+    title: 'nth root',
+    description: 'nth root',
+    latex: '\\sqrt[n]{x}',
+    renderLatex: (baseSymbol) => `\\sqrt[n]{${baseSymbol || 'x'}}`,
+    apply: (prev, baseSymbol) => `${prev}\\sqrt[n]{${baseSymbol || 'x'}}`,
   },
   {
     id: 'fraction',
@@ -1193,6 +1253,59 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
     renderLatex: (baseSymbol) => `\\left(${baseSymbol || 'x'}\\right)`,
     apply: (prev, baseSymbol) => `${prev}\\left(${baseSymbol || 'x'}\\right)`,
   },
+  {
+    id: 'bracket',
+    title: 'square brackets',
+    description: 'square brackets',
+    latex: '\\left[x\\right]',
+    renderLatex: (baseSymbol) => `\\left[${baseSymbol || 'x'}\\right]`,
+    apply: (prev, baseSymbol) => `${prev}\\left[${baseSymbol || 'x'}\\right]`,
+  },
+  {
+    id: 'brace',
+    title: 'curly braces',
+    description: 'curly braces',
+    latex: '\\left\\{x\\right\\}',
+    renderLatex: (baseSymbol) => `\\left\\{${baseSymbol || 'x'}\\right\\}`,
+    apply: (prev, baseSymbol) => `${prev}\\left\\{${baseSymbol || 'x'}\\right\\}`,
+  },
+  {
+    id: 'absolute',
+    title: 'absolute value',
+    description: 'absolute value',
+    latex: '\\left|x\\right|',
+    renderLatex: (baseSymbol) => `\\left|${baseSymbol || 'x'}\\right|`,
+    apply: (prev, baseSymbol) => `${prev}\\left|${baseSymbol || 'x'}\\right|`,
+  },
+  {
+    id: 'floor',
+    title: 'floor',
+    description: 'floor',
+    latex: '\\left\\lfloor x \\right\\rfloor',
+    renderLatex: (baseSymbol) => `\\left\\lfloor ${baseSymbol || 'x'} \\right\\rfloor`,
+    apply: (prev, baseSymbol) => `${prev}\\left\\lfloor ${baseSymbol || 'x'} \\right\\rfloor`,
+  },
+  {
+    id: 'ceiling',
+    title: 'ceiling',
+    description: 'ceiling',
+    latex: '\\left\\lceil x \\right\\rceil',
+    renderLatex: (baseSymbol) => `\\left\\lceil ${baseSymbol || 'x'} \\right\\rceil`,
+    apply: (prev, baseSymbol) => `${prev}\\left\\lceil ${baseSymbol || 'x'} \\right\\rceil`,
+  },
+  createWrappedLatexKeyboardAction('sin', 'sine', 'sine', (baseSymbol) => `\\sin\\left(${baseSymbol}\\right)`),
+  createWrappedLatexKeyboardAction('cos', 'cosine', 'cosine', (baseSymbol) => `\\cos\\left(${baseSymbol}\\right)`),
+  createWrappedLatexKeyboardAction('tan', 'tangent', 'tangent', (baseSymbol) => `\\tan\\left(${baseSymbol}\\right)`),
+  createWrappedLatexKeyboardAction('ln', 'natural logarithm', 'natural logarithm', (baseSymbol) => `\\ln\\left(${baseSymbol}\\right)`),
+  createWrappedLatexKeyboardAction('log', 'logarithm', 'logarithm', (baseSymbol) => `\\log\\left(${baseSymbol}\\right)`),
+  createWrappedLatexKeyboardAction('derivative', 'derivative', 'derivative', (baseSymbol) => `\\frac{d}{dx}\\left(${baseSymbol}\\right)`),
+  createWrappedLatexKeyboardAction('second-derivative', 'second derivative', 'second derivative', (baseSymbol) => `\\frac{d^{2}}{dx^{2}}\\left(${baseSymbol}\\right)`),
+  createWrappedLatexKeyboardAction('integral', 'integral', 'integral', (baseSymbol) => `\\int ${baseSymbol}\\,dx`),
+  createWrappedLatexKeyboardAction('definite-integral', 'definite integral', 'definite integral', (baseSymbol) => `\\int_{a}^{b} ${baseSymbol}\\,dx`),
+  createWrappedLatexKeyboardAction('limit', 'limit', 'limit', (baseSymbol) => `\\lim_{x \\to a} ${baseSymbol}`),
+  createWrappedLatexKeyboardAction('reciprocal', 'reciprocal', 'reciprocal', (baseSymbol) => `${baseSymbol}^{-1}`),
+  createAppendTextKeyboardAction('dx', '\\,dx', 'dx', 'dx'),
+  createAppendTextKeyboardAction('partial', '\\partial', 'partial derivative symbol', 'partial derivative symbol'),
   createAppendLatexKeyboardAction('leq', ' \\leq ', 'less than or equal to', 'less than or equal to'),
   createAppendLatexKeyboardAction('geq', ' \\geq ', 'greater than or equal to', 'greater than or equal to'),
   {
@@ -1208,6 +1321,59 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
     description: 'clear',
     label: 'Clear',
     apply: () => '',
+  },
+]
+
+const KEYBOARD_MOUNTED_ROWS: KeyboardMountedRowDefinition[] = [
+  {
+    id: 'functions',
+    label: 'Functions',
+    actionIds: ['sin', 'cos', 'tan', 'ln', 'log', 'pi', 'theta', 'percent'],
+  },
+  {
+    id: 'calculus',
+    label: 'Calculus',
+    actionIds: ['limit', 'to', 'derivative', 'second-derivative', 'integral', 'definite-integral', 'dx', 'partial', 'infinity'],
+  },
+  {
+    id: 'relations',
+    label: 'Relations',
+    actionIds: ['plus', 'minus', 'times', 'divide', 'equals', 'lt', 'gt', 'leq', 'geq', 'neq', 'approx'],
+  },
+  {
+    id: 'enclosures',
+    label: 'Enclosures',
+    actionIds: ['paren', 'bracket', 'brace', 'absolute', 'floor', 'ceiling'],
+  },
+  {
+    id: 'radicals',
+    label: 'Radicals',
+    actionIds: ['sqrt', 'cuberoot', 'nth-root', 'fraction', 'fraction-denominator', 'power2', 'power3', 'reciprocal'],
+  },
+  {
+    id: 'numbers',
+    label: 'Numbers',
+    actionIds: ['digit-1', 'digit-2', 'digit-3', 'digit-4', 'digit-5', 'digit-6', 'digit-7', 'digit-8', 'digit-9', 'digit-0', 'decimal'],
+  },
+  {
+    id: 'qwerty-1',
+    label: 'QWERTY',
+    actionIds: ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+  },
+  {
+    id: 'qwerty-2',
+    label: '',
+    actionIds: ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
+  },
+  {
+    id: 'qwerty-3',
+    label: '',
+    actionIds: ['z', 'x', 'c', 'v', 'b', 'n', 'm', 'comma', 'backspace'],
+  },
+  {
+    id: 'qwerty-4',
+    label: '',
+    actionIds: ['space', 'clear'],
   },
 ]
 
@@ -9511,8 +9677,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [scheduleKeyboardFadeOut])
 
   const renderKeyboardCanvasSurface = useCallback(() => {
-    const activeRadialTarget = activeKeyboardRadialTarget
-    const activeFamilyTarget = activeKeyboardFamilyTarget
     const renderKeyboardActionContent = (actionId: string, baseSymbol?: string) => {
       const action = KEYBOARD_ACTION_MAP[actionId]
       if (!action) return <span className="text-sm font-semibold">?</span>
@@ -9527,300 +9691,58 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return <span className="text-sm font-semibold">{action.label ?? action.title}</span>
     }
 
-    const buildAnchorFromElement = (keyId: string, element: HTMLElement): KeyboardOverlayAnchor => {
-      return {
-        keyId,
-        x: element.offsetLeft + (element.offsetWidth / 2),
-        y: element.offsetTop + (element.offsetHeight / 2),
-      }
-    }
-
-    const handleStageTargetPointerDown = (event: React.PointerEvent<HTMLButtonElement>, target: KeyboardStageTarget) => {
-      event.stopPropagation()
-      clearKeyboardRepresentativeTapTimeout()
-      clearKeyboardRepresentativeLongPress()
-      const anchor = buildAnchorFromElement(target.id, event.currentTarget)
-      keyboardRepresentativeLongPressRef.current = {
-        timer: setTimeout(() => {
-          keyboardRepresentativeLongPressRef.current.triggered = true
-          openKeyboardRadial(target, anchor)
-        }, KEYBOARD_REPRESENTATIVE_LONG_PRESS_MS),
-        keyId: target.id,
-        pointerId: event.pointerId,
-        triggered: false,
-      }
-      try {
-        event.currentTarget.setPointerCapture(event.pointerId)
-      } catch {}
-    }
-
-    const handleStageTargetPointerUp = (event: React.PointerEvent<HTMLButtonElement>, target: KeyboardStageTarget) => {
-      event.stopPropagation()
-      const anchor = buildAnchorFromElement(target.id, event.currentTarget)
-      const longPress = keyboardRepresentativeLongPressRef.current
-      const wasLongPress = longPress.triggered && longPress.keyId === target.id && longPress.pointerId === event.pointerId
-      clearKeyboardRepresentativeLongPress()
-      if (wasLongPress) return
-
-      const now = Date.now()
-      const lastTap = keyboardRepresentativeLastTapRef.current
-      if (lastTap && lastTap.keyId === target.id && (now - lastTap.ts) <= KEYBOARD_REPRESENTATIVE_TAP_MS) {
-        keyboardRepresentativeLastTapRef.current = null
-        clearKeyboardRepresentativeTapTimeout()
-        openKeyboardFamily(target, anchor)
-        return
-      }
-
-      keyboardRepresentativeLastTapRef.current = { keyId: target.id, ts: now }
-      keyboardRepresentativeTapTimeoutRef.current = setTimeout(() => {
-        keyboardRepresentativeTapTimeoutRef.current = null
-        keyboardRepresentativeLastTapRef.current = null
-        applyKeyboardAction(target.singleTapActionId, target.baseSymbol)
-      }, KEYBOARD_REPRESENTATIVE_TAP_MS)
-    }
-
-    const handleStageTargetPointerCancel = (event: React.PointerEvent<HTMLButtonElement>) => {
-      event.stopPropagation()
-      clearKeyboardRepresentativeLongPress()
-    }
-
     return (
       <div
-        className="absolute inset-0 z-30 bg-[radial-gradient(circle_at_top,rgba(219,234,254,0.45),transparent_55%),linear-gradient(180deg,rgba(248,250,252,0.97),rgba(255,255,255,1))]"
-        onPointerDown={() => {
-          closeKeyboardTransientOverlays()
-          revealKeyboardPalette()
-        }}
+        className="absolute inset-0 z-30 overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(219,234,254,0.52),transparent_48%),linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,1))]"
       >
-        <div className="absolute inset-0 flex items-center justify-center px-6">
-          <div
-            ref={keyboardExpressionSurfaceRef}
-            role="textbox"
-            aria-label="Current expression"
-            aria-multiline={false}
-            tabIndex={0}
-            className="flex min-h-[3.25rem] w-full max-w-[min(82%,32rem)] cursor-text items-center justify-center bg-transparent px-0 py-0 text-center text-[2rem] leading-[1.3] text-slate-900 outline-none"
-            onPointerDown={(event) => {
-              event.stopPropagation()
-              revealKeyboardPalette()
-            }}
-            onFocus={() => {
-              revealKeyboardPalette()
-            }}
-            onKeyDown={(event) => {
-              const current = keyboardSelectionRef.current
-              if (event.key === 'ArrowLeft') {
-                event.preventDefault()
-                const next = Math.max(0, Math.min(current.start, current.end) - 1)
-                setKeyboardSelection({ start: next, end: next })
-                keyboardSelectionRef.current = { start: next, end: next }
-                scheduleKeyboardFadeOut()
-                return
-              }
-              if (event.key === 'ArrowRight') {
-                event.preventDefault()
-                const next = Math.min(latexOutputRef.current.length, Math.max(current.start, current.end) + 1)
-                setKeyboardSelection({ start: next, end: next })
-                keyboardSelectionRef.current = { start: next, end: next }
-                scheduleKeyboardFadeOut()
-                return
-              }
-              if (event.key === 'Home') {
-                event.preventDefault()
-                setKeyboardSelection({ start: 0, end: 0 })
-                keyboardSelectionRef.current = { start: 0, end: 0 }
-                scheduleKeyboardFadeOut()
-                return
-              }
-              if (event.key === 'End') {
-                event.preventDefault()
-                const next = latexOutputRef.current.length
-                setKeyboardSelection({ start: next, end: next })
-                keyboardSelectionRef.current = { start: next, end: next }
-                scheduleKeyboardFadeOut()
-                return
-              }
-              if (event.key === 'Backspace') {
-                event.preventDefault()
-                applyKeyboardAction('backspace')
-              }
-            }}
-          >
-            <div
-              className="flex min-h-[3.25rem] flex-wrap items-center justify-center gap-y-1 whitespace-pre-wrap break-words text-center select-none"
-              style={{ minWidth: '2ch' } as CSSProperties}
-            >
-              {Array.from({ length: latexOutput.length + 1 }, (_, slotIndex) => {
-                const showCaret = keyboardSelection.start === keyboardSelection.end && keyboardSelection.start === slotIndex
-                const charIndex = slotIndex
-                const char = latexOutput[charIndex]
-                const isSelected = charIndex >= Math.min(keyboardSelection.start, keyboardSelection.end) && charIndex < Math.max(keyboardSelection.start, keyboardSelection.end)
-
-                return (
-                  <Fragment key={`keyboard-expression-slot-${slotIndex}`}>
-                    {showCaret ? (
-                      <span
-                        aria-hidden="true"
-                        className="inline-flex h-[1.1em] w-[2px] self-center rounded-full bg-sky-500 shadow-[0_0_0_1px_rgba(14,165,233,0.08)]"
-                      />
-                    ) : null}
-                    {char !== undefined ? (
-                      <span
-                        className={`inline-flex min-w-[0.6ch] items-center justify-center rounded-[0.2em] px-[0.02em] ${isSelected ? 'bg-sky-100 text-sky-950' : ''}`}
-                        onPointerDown={(event) => {
-                          event.stopPropagation()
-                          const rect = event.currentTarget.getBoundingClientRect()
-                          const midpoint = rect.left + rect.width / 2
-                          const nextCaret = event.clientX <= midpoint ? charIndex : charIndex + 1
-                          setKeyboardSelection({ start: nextCaret, end: nextCaret })
-                          keyboardSelectionRef.current = { start: nextCaret, end: nextCaret }
-                          revealKeyboardPalette()
-                        }}
-                      >
-                        {char === ' ' ? '\u00A0' : char}
-                      </span>
-                    ) : null}
-                  </Fragment>
-                )
-              })}
+        <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col justify-center gap-3 px-3 py-4 sm:px-4">
+          <div className="rounded-[28px] border border-slate-200/90 bg-white/94 p-3 shadow-[0_24px_80px_rgba(15,23,42,0.14)] backdrop-blur-xl sm:p-4">
+            <div className="mb-3 flex items-center justify-between gap-3 px-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+              <span>Mounted math keyboard</span>
+              <span>Always-on categories for algebra, trigonometry, and calculus</span>
             </div>
-          </div>
-        </div>
-
-        <div
-          className={`absolute inset-0 z-40 flex items-center justify-center px-4 transition-all duration-300 ${keyboardPaletteVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-[0.985] pointer-events-none'}`}
-        >
-          <div className="w-full max-w-3xl rounded-[28px] border border-slate-200/90 bg-white/94 p-3 shadow-[0_24px_80px_rgba(15,23,42,0.18)] backdrop-blur-xl">
-            <div className="mb-2 flex items-center justify-between px-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
-              <span>Representative keyboard</span>
-              <span>Tap to use, hold for radial, double tap for family</span>
-            </div>
-            <div className="relative">
-              {activeRadialTarget && keyboardOverlayAnchor ? (
-                <div
-                  className="pointer-events-none absolute z-20 h-56 w-56 -translate-x-1/2 -translate-y-1/2"
-                  style={{ left: keyboardOverlayAnchor.x, top: keyboardOverlayAnchor.y }}
-                >
-                  <div className="absolute inset-0 rounded-full border border-sky-200/80 bg-white/92 shadow-[0_18px_50px_rgba(14,116,144,0.22)] backdrop-blur-md" />
-                  <div className="absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-slate-950 text-white shadow-lg">
-                    {renderKeyboardActionContent(activeRadialTarget.displayActionId, activeRadialTarget.baseSymbol)}
-                  </div>
-                  {activeRadialTarget.radialActionIds.map((actionId, index) => {
-                    const action = KEYBOARD_ACTION_MAP[actionId]
-                    if (!action) return null
-                    const isSelected = selectedKeyboardKey === actionId
-                    const position = KEYBOARD_RADIAL_POSITIONS[index]
-                    if (!position) return null
-                    return (
-                      <button
-                        key={`${activeRadialTarget.id}-${actionId}`}
-                        type="button"
-                        className={`pointer-events-auto absolute flex h-14 w-14 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-800 shadow-md transition-all ${position.className} ${isSelected ? 'scale-95 border-sky-300 bg-sky-50 text-sky-700' : 'hover:border-slate-300 hover:bg-slate-50'}`}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          applyKeyboardAction(actionId, activeRadialTarget.baseSymbol)
-                        }}
-                        title={action.title}
-                      >
-                        {renderKeyboardActionContent(actionId, activeRadialTarget.baseSymbol)}
-                      </button>
-                    )
-                  })}
-                </div>
-              ) : null}
-
-              {activeFamilyTarget ? (
-                <div className="mb-3 rounded-[24px] border border-sky-200/70 bg-[linear-gradient(180deg,rgba(239,246,255,0.98),rgba(255,255,255,0.98))] p-3 shadow-[0_18px_50px_rgba(14,116,144,0.12)]">
-                  <div className="mb-3 flex items-center justify-between gap-3 px-1">
-                    <div>
-                      <div className="text-sm font-semibold text-slate-800">{activeFamilyTarget.familyTitle}</div>
-                      <div className="text-[11px] text-slate-500">Full family for {activeFamilyTarget.title}</div>
+            <div className="space-y-3">
+              {KEYBOARD_MOUNTED_ROWS.map((row) => (
+                <div key={row.id} className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-2.5 sm:p-3">
+                  {row.label ? <div className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">{row.label}</div> : null}
+                  <div className="overflow-x-auto pb-1">
+                    <div className="flex min-w-max gap-2">
+                      {row.actionIds.map((actionId) => {
+                        const action = KEYBOARD_ACTION_MAP[actionId]
+                        if (!action) return null
+                        const isSelected = selectedKeyboardKey === actionId
+                        const isSpaceKey = actionId === 'space'
+                        const buttonClassName = isSpaceKey
+                          ? `flex min-h-[52px] min-w-[12rem] items-center justify-center rounded-2xl border px-4 py-2 text-slate-800 shadow-sm transition-all ${isSelected ? 'border-sky-300 bg-sky-50 text-sky-700 shadow-[0_0_0_4px_rgba(191,219,254,0.4)]' : 'border-slate-200 bg-white/95 hover:border-slate-300 hover:bg-white'}`
+                          : `flex min-h-[52px] min-w-[3.6rem] items-center justify-center rounded-2xl border px-3 py-2 text-slate-800 shadow-sm transition-all ${isSelected ? 'border-sky-300 bg-sky-50 text-sky-700 shadow-[0_0_0_4px_rgba(191,219,254,0.4)]' : 'border-slate-200 bg-white/95 hover:border-slate-300 hover:bg-white'}`
+                        return (
+                          <button
+                            key={`${row.id}-${actionId}`}
+                            type="button"
+                            data-keyboard-row={row.id}
+                            data-keyboard-action={actionId}
+                            className={buttonClassName}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              applyKeyboardAction(actionId)
+                            }}
+                            title={action.title}
+                          >
+                            <span className="text-base leading-none">{actionId === 'space' ? <span className="text-xs font-semibold uppercase tracking-[0.18em]">Space</span> : renderKeyboardActionContent(actionId)}</span>
+                          </button>
+                        )
+                      })}
                     </div>
-                    <button
-                      type="button"
-                      className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        closeKeyboardTransientOverlays()
-                        scheduleKeyboardFadeOut()
-                      }}
-                    >
-                      Close
-                    </button>
-                  </div>
-                  <div className="space-y-2">
-                    {activeFamilyTarget.familyRows.map((row, rowIndex) => (
-                      <div key={`${activeFamilyTarget.id}-row-${rowIndex}`} className="grid gap-2" style={{ gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))` }}>
-                        {row.map((actionId) => {
-                          const action = KEYBOARD_ACTION_MAP[actionId]
-                          if (!action) return null
-                          const nestedTarget = buildKeyboardStageTargetFromAction(actionId)
-                          const isSelected = selectedKeyboardKey === actionId
-                          if (nestedTarget) {
-                            return (
-                              <button
-                                key={`${activeFamilyTarget.id}-${actionId}`}
-                                type="button"
-                                className={`flex min-h-[48px] items-center justify-center rounded-2xl border border-slate-200 bg-white/95 px-3 py-2 text-slate-800 shadow-sm transition-all ${isSelected ? 'scale-[0.98] border-blue-300 bg-blue-50 text-blue-700 shadow-[0_0_0_4px_rgba(191,219,254,0.4)]' : 'hover:border-slate-300 hover:bg-white'}`}
-                                onPointerDown={(event) => handleStageTargetPointerDown(event, nestedTarget)}
-                                onPointerUp={(event) => handleStageTargetPointerUp(event, nestedTarget)}
-                                onPointerCancel={handleStageTargetPointerCancel}
-                                title={nestedTarget.title}
-                              >
-                                {renderKeyboardActionContent(nestedTarget.displayActionId, nestedTarget.baseSymbol)}
-                              </button>
-                            )
-                          }
-                          return (
-                            <button
-                              key={`${activeFamilyTarget.id}-${actionId}`}
-                              type="button"
-                              className={`flex min-h-[48px] items-center justify-center rounded-2xl border border-slate-200 bg-white/95 px-3 py-2 text-slate-800 shadow-sm transition-all ${isSelected ? 'scale-[0.98] border-blue-300 bg-blue-50 text-blue-700 shadow-[0_0_0_4px_rgba(191,219,254,0.4)]' : 'hover:border-slate-300 hover:bg-white'}`}
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                applyKeyboardAction(actionId, activeFamilyTarget.baseSymbol)
-                              }}
-                              title={action.title}
-                            >
-                              {renderKeyboardActionContent(actionId, activeFamilyTarget.baseSymbol)}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    ))}
                   </div>
                 </div>
-              ) : null}
-
-              <div className="grid grid-cols-4 gap-2">
-                {KEYBOARD_REPRESENTATIVE_KEYS.map((key) => {
-                  const stageTarget = buildKeyboardStageTarget(key.id)
-                  if (!stageTarget) return null
-                  const isSelected = selectedKeyboardKey === key.singleTapActionId || activeKeyboardRadialTarget?.id === stageTarget.id || activeKeyboardFamilyTarget?.id === stageTarget.id
-                  return (
-                    <button
-                      key={key.id}
-                      type="button"
-                      className={`flex min-h-[58px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-slate-50/90 px-3 py-2 text-slate-800 shadow-sm transition-all ${isSelected ? 'scale-[0.98] border-blue-300 bg-blue-50 text-blue-700 shadow-[0_0_0_4px_rgba(191,219,254,0.5)]' : 'hover:border-slate-300 hover:bg-white'}`}
-                      onPointerDown={(event) => handleStageTargetPointerDown(event, stageTarget)}
-                      onPointerUp={(event) => handleStageTargetPointerUp(event, stageTarget)}
-                      onPointerCancel={handleStageTargetPointerCancel}
-                      title={key.title}
-                    >
-                      <span className="text-lg leading-none">{key.latex ? renderKeyboardActionContent(stageTarget.displayActionId, stageTarget.baseSymbol) : <span className="text-base font-semibold">{key.label ?? key.title}</span>}</span>
-                      <span className="mt-1 text-[10px] uppercase tracking-[0.14em] text-slate-500">{key.description}</span>
-                    </button>
-                  )
-                })}
-              </div>
+              ))}
             </div>
           </div>
         </div>
       </div>
     )
-  }, [activeKeyboardFamilyTarget, activeKeyboardRadialTarget, applyKeyboardAction, clearKeyboardRepresentativeLongPress, clearKeyboardRepresentativeTapTimeout, closeKeyboardTransientOverlays, keyboardPaletteVisible, latexOutput, openKeyboardFamily, openKeyboardRadial, revealKeyboardPalette, scheduleKeyboardFadeOut, selectedKeyboardKey])
+  }, [applyKeyboardAction, selectedKeyboardKey])
 
   const handleConvert = () => {
     if (canvasModeRef.current === 'raw-ink') return

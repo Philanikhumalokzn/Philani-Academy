@@ -9693,52 +9693,44 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     return (
       <div
-        className="absolute inset-0 z-30 overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(219,234,254,0.52),transparent_48%),linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,255,255,1))]"
+        className="absolute inset-0 z-30 overflow-y-auto bg-white"
       >
-        <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col justify-center gap-3 px-3 py-4 sm:px-4">
-          <div className="rounded-[28px] border border-slate-200/90 bg-white/94 p-3 shadow-[0_24px_80px_rgba(15,23,42,0.14)] backdrop-blur-xl sm:p-4">
-            <div className="mb-3 flex items-center justify-between gap-3 px-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
-              <span>Mounted math keyboard</span>
-              <span>Always-on categories for algebra, trigonometry, and calculus</span>
+        <div className="flex min-h-full w-full flex-col justify-center gap-1 px-1 py-1">
+          {KEYBOARD_MOUNTED_ROWS.map((row) => (
+            <div key={row.id} className="overflow-x-auto">
+              <div className="flex min-w-max gap-1">
+                {row.actionIds.map((actionId) => {
+                  const action = KEYBOARD_ACTION_MAP[actionId]
+                  if (!action) return null
+                  const isSelected = selectedKeyboardKey === actionId
+                  const isSpaceKey = actionId === 'space'
+                  const isClearKey = actionId === 'clear'
+                  const keyWidthClassName = isSpaceKey
+                    ? 'min-w-[10rem]'
+                    : isClearKey
+                      ? 'min-w-[4.5rem]'
+                      : 'min-w-[2.9rem]'
+                  return (
+                    <button
+                      key={`${row.id}-${actionId}`}
+                      type="button"
+                      data-keyboard-row={row.id}
+                      data-keyboard-action={actionId}
+                      className={`flex h-10 ${keyWidthClassName} items-center justify-center px-2 text-slate-900 transition-colors ${isSelected ? 'bg-sky-100 text-sky-700' : 'bg-transparent hover:bg-slate-100'}`}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        applyKeyboardAction(actionId)
+                      }}
+                      title={action.title}
+                    >
+                      <span className="text-[0.95rem] leading-none">{actionId === 'space' ? <span aria-hidden="true" className="block h-px w-16 bg-slate-500" /> : renderKeyboardActionContent(actionId)}</span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-            <div className="space-y-3">
-              {KEYBOARD_MOUNTED_ROWS.map((row) => (
-                <div key={row.id} className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-2.5 sm:p-3">
-                  {row.label ? <div className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">{row.label}</div> : null}
-                  <div className="overflow-x-auto pb-1">
-                    <div className="flex min-w-max gap-2">
-                      {row.actionIds.map((actionId) => {
-                        const action = KEYBOARD_ACTION_MAP[actionId]
-                        if (!action) return null
-                        const isSelected = selectedKeyboardKey === actionId
-                        const isSpaceKey = actionId === 'space'
-                        const buttonClassName = isSpaceKey
-                          ? `flex min-h-[52px] min-w-[12rem] items-center justify-center rounded-2xl border px-4 py-2 text-slate-800 shadow-sm transition-all ${isSelected ? 'border-sky-300 bg-sky-50 text-sky-700 shadow-[0_0_0_4px_rgba(191,219,254,0.4)]' : 'border-slate-200 bg-white/95 hover:border-slate-300 hover:bg-white'}`
-                          : `flex min-h-[52px] min-w-[3.6rem] items-center justify-center rounded-2xl border px-3 py-2 text-slate-800 shadow-sm transition-all ${isSelected ? 'border-sky-300 bg-sky-50 text-sky-700 shadow-[0_0_0_4px_rgba(191,219,254,0.4)]' : 'border-slate-200 bg-white/95 hover:border-slate-300 hover:bg-white'}`
-                        return (
-                          <button
-                            key={`${row.id}-${actionId}`}
-                            type="button"
-                            data-keyboard-row={row.id}
-                            data-keyboard-action={actionId}
-                            className={buttonClassName}
-                            onPointerDown={(event) => event.stopPropagation()}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              applyKeyboardAction(actionId)
-                            }}
-                            title={action.title}
-                          >
-                            <span className="text-base leading-none">{actionId === 'space' ? <span className="text-xs font-semibold uppercase tracking-[0.18em]">Space</span> : renderKeyboardActionContent(actionId)}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     )

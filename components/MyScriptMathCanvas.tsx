@@ -10669,6 +10669,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     keyboardSelectionRef.current = selection
   }, [])
 
+  const keyboardTopPanelExpression = useMemo(() => {
+    const editableValue = useAdminStepComposer ? adminDraftLatex : latexOutput
+    return normalizeStepLatex(editableValue || '')
+  }, [adminDraftLatex, latexOutput, normalizeStepLatex, useAdminStepComposer])
+
   const estimateKeyboardCaretFromHorizontalTap = useCallback((value: string, clientX: number, rect: DOMRect) => {
     const symbols = Array.from(value || '')
     if (!symbols.length) return 0
@@ -10677,27 +10682,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return Math.max(0, Math.min(symbols.length, Math.round(symbols.length * ratio)))
   }, [])
 
-  const focusTopPanelStepAtTap = useCallback(async (index: number, clientX: number, rect: DOMRect) => {
-    const stepLatex = (() => {
-      if (useAdminStepComposer) {
-        const step = adminSteps[index]
-        if (!step) return ''
-        return String(adminEditIndex === index ? adminDraftLatex : (step.latex || ''))
-      }
-      if (useStudentStepComposer) {
-        const step = studentSteps[index]
-        if (!step) return ''
-        return String(studentEditIndex === index ? latexOutputRef.current : (step.latex || ''))
-      }
-      return ''
-    })()
-
+  const focusKeyboardTopPanelAtTap = useCallback((clientX: number, rect: DOMRect) => {
     setOverlayChromePeekVisible(false)
-    setTopPanelEditingMode(true)
-    await loadTopPanelStepForEditing(index)
-    const caret = estimateKeyboardCaretFromHorizontalTap(stepLatex, clientX, rect)
+    setTopPanelEditingMode(false)
+    clearTopPanelSelection()
+    setMobileTopPanelActionStepIndex(null)
+    const caret = estimateKeyboardCaretFromHorizontalTap(keyboardTopPanelExpression, clientX, rect)
     setKeyboardSelectionState({ start: caret, end: caret })
-  }, [adminDraftLatex, adminEditIndex, adminSteps, estimateKeyboardCaretFromHorizontalTap, loadTopPanelStepForEditing, setKeyboardSelectionState, studentEditIndex, studentSteps, useAdminStepComposer, useStudentStepComposer])
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => {
+        keyboardExpressionSurfaceRef.current?.focus()
+      }, 0)
+    }
+    scheduleKeyboardFadeOut()
+  }, [clearTopPanelSelection, estimateKeyboardCaretFromHorizontalTap, keyboardTopPanelExpression, scheduleKeyboardFadeOut, setKeyboardSelectionState])
 
   const renderKeyboardTopPanelCaretSurface = useCallback((latex: string) => {
     const currentValue = typeof latex === 'string' ? latex : ''
@@ -10736,6 +10734,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       </span>
     )
   }, [keyboardSelection.end, keyboardSelection.start, setKeyboardSelectionState])
+
+  const renderKeyboardTopPanelEditorSurface = useCallback(() => {
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <div
+          ref={keyboardExpressionSurfaceRef}
+          tabIndex={-1}
+          role="textbox"
+          aria-label="Editable math expression"
+          className="flex h-full w-full items-center justify-center overflow-hidden px-2 py-1 text-center text-[1.15rem] leading-relaxed text-slate-900 outline-none select-none"
+          style={{ WebkitUserSelect: 'none', userSelect: 'none' }}
+        >
+          {renderKeyboardTopPanelCaretSurface(keyboardTopPanelExpression)}
+        </div>
+      </div>
+    )
+  }, [keyboardTopPanelExpression, renderKeyboardTopPanelCaretSurface])
 
   const finishQuestionSourceLatex = useMemo(() => {
     return normalizeStepLatex(adminSteps[0]?.latex || '')
@@ -14673,39 +14688,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   className="h-full bg-white rounded-lg p-3 overflow-visible relative"
                   ref={(useAdminStepComposer || useStudentStepComposer) ? adminTopPanelRef : undefined}
                   onPointerDown={(e) => {
-                    if (recognitionEngine === 'keyboard' && (useAdminStepComposer || useStudentStepComposer)) {
-                      const target = e.target as HTMLElement | null
-                      const actionEl = target?.closest?.('[data-top-panel-step-action]') as HTMLElement | null
-                      if (actionEl) {
-                        e.stopPropagation()
-                        return
-                      }
-
-                      const stepEl = target?.closest?.('[data-top-panel-step]') as HTMLElement | null
-                      const idxRaw = stepEl?.getAttribute?.('data-step-idx') || ''
-                      const idx = idxRaw ? Number(idxRaw) : NaN
-                      if (Number.isFinite(idx) && stepEl) {
-                        e.stopPropagation()
-                        e.preventDefault()
-                        void focusTopPanelStepAtTap(idx, e.clientX, stepEl.getBoundingClientRect())
-                        return
-                      }
-
-                      const box = adminTopPanelRef.current?.getBoundingClientRect()
-                      if (box && topPanelStepsPayload?.steps?.length) {
-                        const localY = e.clientY - box.top
-                        const approxRowHeight = 34
-                        const index = Math.max(0, Math.min(topPanelStepsPayload.steps.length - 1, Math.floor(localY / approxRowHeight)))
-                        e.stopPropagation()
-                        e.preventDefault()
-                        void focusTopPanelStepAtTap(index, e.clientX, box)
-                        return
-                      }
-
+                    if (recognitionEngine === 'keyboard') {
                       e.stopPropagation()
                       e.preventDefault()
-                      setOverlayChromePeekVisible(false)
-                      setTopPanelEditingMode(true)
+                      focusKeyboardTopPanelAtTap(e.clientX, e.currentTarget.getBoundingClientRect())
                       return
                     }
 
@@ -14938,7 +14924,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     </div>
                   )}
                   {hasWriteAccess ? (
-                    topPanelStepsPayload ? (
+                    recognitionEngine === 'keyboard' ? (
+                      renderKeyboardTopPanelEditorSurface()
+                    ) : topPanelStepsPayload ? (
                       topPanelStepsPayload.steps.length ? (
                         <div
                           className="text-slate-900 leading-relaxed text-center"
@@ -14975,12 +14963,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                                       data-step-idx={String(index)}
                                       className={`min-w-0 flex-1 rounded px-2 py-1 focus:outline-none focus:ring-0 text-center ${selected ? 'bg-slate-100' : 'bg-transparent'} ${showKeyboardStepCaret ? 'select-none' : ''}`}
                                       onPointerDown={(ev) => {
-                                        if (recognitionEngine === 'keyboard') {
-                                          ev.preventDefault()
-                                          ev.stopPropagation()
-                                          void focusTopPanelStepAtTap(index, ev.clientX, ev.currentTarget.getBoundingClientRect())
-                                          return
-                                        }
                                         ev.stopPropagation()
                                         if (!isCompactViewport) return
                                         topPanelStepLongPressTriggeredRef.current = null
@@ -15181,28 +15163,28 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
                       {!hasWriteAccess && quizActive && !isAssignmentView ? (
                         <>
-                          {topPanelRenderPayload.markup ? (
+                          {recognitionEngine === 'keyboard' ? (
+                            renderKeyboardTopPanelEditorSurface()
+                          ) : topPanelRenderPayload.markup ? (
                             <div
                               className="text-slate-700 font-semibold leading-relaxed"
                               style={topPanelRenderPayload.style}
                               dangerouslySetInnerHTML={{ __html: topPanelRenderPayload.markup }}
                             />
-                          ) : recognitionEngine === 'keyboard' ? (
-                            <div className="w-full h-full" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
                               <p className="text-slate-500 text-sm text-center">Write your answer below to see your LaTeX here.</p>
                             </div>
                           )}
                         </>
+                          ) : recognitionEngine === 'keyboard' ? (
+                        renderKeyboardTopPanelEditorSurface()
                           ) : topPanelRenderPayload.markup ? (
                         <div
                           className="text-slate-900 leading-relaxed"
                               style={topPanelRenderPayload.style}
                               dangerouslySetInnerHTML={{ __html: topPanelRenderPayload.markup }}
                         />
-                          ) : recognitionEngine === 'keyboard' ? (
-                            <div className="w-full h-full" />
                       ) : isAssignmentView ? null : (
                         <div className="w-full h-full flex items-center justify-center">
                           <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>
@@ -15210,14 +15192,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       )}
                     </div>
                   ) : latexDisplayState.enabled ? (
-                    topPanelRenderPayload.markup ? (
+                    recognitionEngine === 'keyboard' ? (
+                      renderKeyboardTopPanelEditorSurface()
+                    ) : topPanelRenderPayload.markup ? (
                       <div
                         className="text-slate-900 leading-relaxed"
                         style={topPanelRenderPayload.style}
                         dangerouslySetInnerHTML={{ __html: topPanelRenderPayload.markup }}
                       />
-                    ) : recognitionEngine === 'keyboard' ? (
-                      <div className="w-full h-full" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <p className="text-slate-500 text-sm text-center">Waiting for teacher notes…</p>

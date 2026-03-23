@@ -9787,7 +9787,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return (
       <div
         ref={keyboardSurfaceRef}
-        className="absolute inset-0 z-30 overflow-y-auto bg-white"
+        className="absolute inset-0 z-30 overflow-y-auto bg-white select-none"
+        style={{ WebkitUserSelect: 'none', userSelect: 'none' }}
         onPointerDown={() => {
           closeKeyboardTransientOverlays()
         }}
@@ -9814,7 +9815,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       type="button"
                       data-keyboard-row={row.id}
                       data-keyboard-action={actionId}
-                      className={`flex h-9 min-w-0 items-center justify-center px-[1px] text-slate-900 transition-colors ${row.id === 'qwerty-4' && isSpaceKey ? 'col-span-9' : row.id === 'qwerty-4' && isClearKey ? 'col-span-3' : ''} ${isSelected ? 'bg-sky-100 text-sky-700' : 'bg-transparent hover:bg-slate-100'}`}
+                      className={`flex h-9 min-w-0 select-none items-center justify-center px-[1px] text-slate-900 transition-colors ${row.id === 'qwerty-4' && isSpaceKey ? 'col-span-9' : row.id === 'qwerty-4' && isClearKey ? 'col-span-3' : ''} ${isSelected ? 'bg-sky-100 text-sky-700' : 'bg-transparent hover:bg-slate-100'}`}
                       onPointerDown={(event) => handleMountedKeyPointerDown(event, actionId)}
                       onPointerUp={(event) => handleMountedKeyPointerUp(event, actionId)}
                       onPointerCancel={handleMountedKeyPointerCancel}
@@ -9849,7 +9850,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   <button
                     key={`${activeRadialTarget.id}-${actionId}`}
                     type="button"
-                    className={`pointer-events-auto absolute flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-900 shadow-md transition-all ${position.className} ${isSelected ? 'bg-sky-100 text-sky-700' : 'hover:bg-slate-100'}`}
+                    className={`pointer-events-auto absolute flex h-12 w-12 select-none items-center justify-center rounded-full bg-white text-slate-900 shadow-md transition-all ${position.className} ${isSelected ? 'bg-sky-100 text-sky-700' : 'hover:bg-slate-100'}`}
                     onPointerDown={(event) => event.stopPropagation()}
                     onClick={(event) => {
                       event.stopPropagation()

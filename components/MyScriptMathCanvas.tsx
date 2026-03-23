@@ -1377,6 +1377,52 @@ const KEYBOARD_MOUNTED_ROWS: KeyboardMountedRowDefinition[] = [
   },
 ]
 
+const KEYBOARD_MOUNTED_ROW_MAP = Object.fromEntries(KEYBOARD_MOUNTED_ROWS.map((row) => [row.id, row])) as Record<string, KeyboardMountedRowDefinition>
+
+const KEYBOARD_ACTION_ROW_MAP = KEYBOARD_MOUNTED_ROWS.reduce<Record<string, string>>((acc, row) => {
+  for (const actionId of row.actionIds) {
+    acc[actionId] = row.id
+  }
+  return acc
+}, {})
+
+const buildMountedKeyboardRadialActionIds = (rowActionIds: string[], actionId: string) => {
+  const currentIndex = rowActionIds.indexOf(actionId)
+  const candidates = rowActionIds
+    .map((candidateActionId, index) => ({
+      actionId: candidateActionId,
+      index,
+      distance: currentIndex >= 0 ? Math.abs(index - currentIndex) : index,
+    }))
+    .filter((candidate) => candidate.actionId !== actionId)
+    .sort((left, right) => {
+      if (left.distance !== right.distance) return left.distance - right.distance
+      return left.index - right.index
+    })
+
+  return candidates.slice(0, 8).map((candidate) => candidate.actionId)
+}
+
+const buildMountedKeyboardStageTarget = (actionId: string): KeyboardStageTarget | null => {
+  const action = KEYBOARD_ACTION_MAP[actionId]
+  if (!action) return null
+  const rowId = KEYBOARD_ACTION_ROW_MAP[actionId]
+  const row = rowId ? KEYBOARD_MOUNTED_ROW_MAP[rowId] : null
+  if (!row) return buildKeyboardStageTargetFromAction(actionId)
+  return {
+    id: actionId,
+    title: action.title,
+    description: action.description,
+    representativeKeyId: row.id,
+    singleTapActionId: actionId,
+    displayActionId: actionId,
+    radialActionIds: buildMountedKeyboardRadialActionIds(row.actionIds, actionId),
+    familyRows: [row.actionIds],
+    familyTitle: row.label || action.title,
+    baseSymbol: action.token,
+  }
+}
+
 const KEYBOARD_ACTION_MAP = Object.fromEntries(KEYBOARD_ACTIONS.map((action) => [action.id, action])) as Record<string, KeyboardActionDefinition>
 const KEYBOARD_TEXT_ACTION_ID_BY_TOKEN = KEYBOARD_ACTIONS.reduce<Record<string, string>>((acc, action) => {
   if (action.token) acc[action.token] = action.id
@@ -2079,6 +2125,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const canvasModeRef = useRef<CanvasMode>(DEFAULT_CANVAS_MODE)
   const [recognitionEngine, setRecognitionEngine] = useState<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
   const recognitionEngineRef = useRef<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
+  const keyboardSurfaceRef = useRef<HTMLDivElement | null>(null)
   const keyboardExpressionSurfaceRef = useRef<HTMLDivElement | null>(null)
   const [keyboardSelection, setKeyboardSelection] = useState<KeyboardSelectionState>({ start: 0, end: 0 })
   const keyboardSelectionRef = useRef<KeyboardSelectionState>({ start: 0, end: 0 })
@@ -9677,6 +9724,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [scheduleKeyboardFadeOut])
 
   const renderKeyboardCanvasSurface = useCallback(() => {
+    const activeRadialTarget = activeKeyboardRadialTarget
     const renderKeyboardActionContent = (actionId: string, baseSymbol?: string) => {
       const action = KEYBOARD_ACTION_MAP[actionId]
       if (!action) return <span className="text-sm font-semibold">?</span>
@@ -9691,9 +9739,65 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return <span className="text-sm font-semibold">{action.label ?? action.title}</span>
     }
 
+    const buildAnchorFromElement = (keyId: string, element: HTMLElement): KeyboardOverlayAnchor => {
+      const rootRect = keyboardSurfaceRef.current?.getBoundingClientRect()
+      const elementRect = element.getBoundingClientRect()
+      if (!rootRect) {
+        return {
+          keyId,
+          x: element.offsetLeft + (element.offsetWidth / 2),
+          y: element.offsetTop + (element.offsetHeight / 2),
+        }
+      }
+      return {
+        keyId,
+        x: elementRect.left - rootRect.left + (elementRect.width / 2),
+        y: elementRect.top - rootRect.top + (elementRect.height / 2),
+      }
+    }
+
+    const handleMountedKeyPointerDown = (event: React.PointerEvent<HTMLButtonElement>, actionId: string) => {
+      event.stopPropagation()
+      clearKeyboardRepresentativeTapTimeout()
+      clearKeyboardRepresentativeLongPress()
+      const stageTarget = buildMountedKeyboardStageTarget(actionId)
+      if (!stageTarget) return
+      const anchor = buildAnchorFromElement(actionId, event.currentTarget)
+      keyboardRepresentativeLongPressRef.current = {
+        timer: setTimeout(() => {
+          keyboardRepresentativeLongPressRef.current.triggered = true
+          openKeyboardRadial(stageTarget, anchor)
+        }, KEYBOARD_REPRESENTATIVE_LONG_PRESS_MS),
+        keyId: actionId,
+        pointerId: event.pointerId,
+        triggered: false,
+      }
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId)
+      } catch {}
+    }
+
+    const handleMountedKeyPointerUp = (event: React.PointerEvent<HTMLButtonElement>, actionId: string) => {
+      event.stopPropagation()
+      const longPress = keyboardRepresentativeLongPressRef.current
+      const wasLongPress = longPress.triggered && longPress.keyId === actionId && longPress.pointerId === event.pointerId
+      clearKeyboardRepresentativeLongPress()
+      if (wasLongPress) return
+      applyKeyboardAction(actionId)
+    }
+
+    const handleMountedKeyPointerCancel = (event: React.PointerEvent<HTMLButtonElement>) => {
+      event.stopPropagation()
+      clearKeyboardRepresentativeLongPress()
+    }
+
     return (
       <div
+        ref={keyboardSurfaceRef}
         className="absolute inset-0 z-30 overflow-y-auto bg-white"
+        onPointerDown={() => {
+          closeKeyboardTransientOverlays()
+        }}
       >
         <div className="flex min-h-full w-full flex-col justify-center gap-px px-px py-px">
           {KEYBOARD_MOUNTED_ROWS.map((row) => (
@@ -9718,11 +9822,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       data-keyboard-row={row.id}
                       data-keyboard-action={actionId}
                       className={`flex h-8 min-w-0 items-center justify-center px-0 text-slate-900 transition-colors ${row.id === 'qwerty-4' && isSpaceKey ? 'col-span-9' : row.id === 'qwerty-4' && isClearKey ? 'col-span-3' : ''} ${isSelected ? 'bg-sky-100 text-sky-700' : 'bg-transparent hover:bg-slate-100'}`}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        applyKeyboardAction(actionId)
-                      }}
+                      onPointerDown={(event) => handleMountedKeyPointerDown(event, actionId)}
+                      onPointerUp={(event) => handleMountedKeyPointerUp(event, actionId)}
+                      onPointerCancel={handleMountedKeyPointerCancel}
+                      onContextMenu={(event) => event.preventDefault()}
                       title={action.title}
                     >
                       <span className={`${isWideFunctionKey ? 'text-[0.72rem]' : 'text-[0.84rem]'} leading-none`}>{actionId === 'space' ? <span aria-hidden="true" className="block h-px w-full max-w-20 bg-slate-500" /> : renderKeyboardActionContent(actionId)}</span>
@@ -9733,9 +9836,44 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             </div>
           ))}
         </div>
+        {activeRadialTarget && keyboardOverlayAnchor ? (
+          <div className="pointer-events-none absolute inset-0 z-40">
+            <div
+              className="absolute h-56 w-56 -translate-x-1/2 -translate-y-1/2"
+              style={{ left: keyboardOverlayAnchor.x, top: keyboardOverlayAnchor.y }}
+            >
+              <div className="absolute inset-0 rounded-full bg-white/96 shadow-[0_18px_50px_rgba(15,23,42,0.2)]" />
+              <div className="absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-slate-950 text-white shadow-lg">
+                {renderKeyboardActionContent(activeRadialTarget.displayActionId, activeRadialTarget.baseSymbol)}
+              </div>
+              {activeRadialTarget.radialActionIds.map((actionId, index) => {
+                const action = KEYBOARD_ACTION_MAP[actionId]
+                if (!action) return null
+                const position = KEYBOARD_RADIAL_POSITIONS[index]
+                if (!position) return null
+                const isSelected = selectedKeyboardKey === actionId
+                return (
+                  <button
+                    key={`${activeRadialTarget.id}-${actionId}`}
+                    type="button"
+                    className={`pointer-events-auto absolute flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-900 shadow-md transition-all ${position.className} ${isSelected ? 'bg-sky-100 text-sky-700' : 'hover:bg-slate-100'}`}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      applyKeyboardAction(actionId, activeRadialTarget.baseSymbol)
+                    }}
+                    title={action.title}
+                  >
+                    <span className="text-[0.78rem] leading-none">{renderKeyboardActionContent(actionId, activeRadialTarget.baseSymbol)}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ) : null}
       </div>
     )
-  }, [applyKeyboardAction, selectedKeyboardKey])
+  }, [activeKeyboardRadialTarget, applyKeyboardAction, clearKeyboardRepresentativeLongPress, clearKeyboardRepresentativeTapTimeout, closeKeyboardTransientOverlays, keyboardOverlayAnchor, openKeyboardRadial, selectedKeyboardKey])
 
   const handleConvert = () => {
     if (canvasModeRef.current === 'raw-ink') return

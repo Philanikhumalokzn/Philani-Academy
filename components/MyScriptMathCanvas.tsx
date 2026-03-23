@@ -9695,28 +9695,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       <div
         className="absolute inset-0 z-30 overflow-y-auto bg-white"
       >
-        <div className="flex min-h-full w-full flex-col justify-center gap-1 px-1 py-1">
+        <div className="flex min-h-full w-full flex-col justify-center gap-px px-px py-px">
           {KEYBOARD_MOUNTED_ROWS.map((row) => (
-            <div key={row.id} className="overflow-x-auto">
-              <div className="flex min-w-max gap-1">
+            <div key={row.id} className="w-full">
+              <div
+                className="grid w-full gap-px"
+                style={row.id === 'qwerty-4'
+                  ? ({ gridTemplateColumns: 'repeat(12, minmax(0, 1fr))' } as CSSProperties)
+                  : ({ gridTemplateColumns: `repeat(${row.actionIds.length}, minmax(0, 1fr))` } as CSSProperties)}
+              >
                 {row.actionIds.map((actionId) => {
                   const action = KEYBOARD_ACTION_MAP[actionId]
                   if (!action) return null
                   const isSelected = selectedKeyboardKey === actionId
                   const isSpaceKey = actionId === 'space'
                   const isClearKey = actionId === 'clear'
-                  const keyWidthClassName = isSpaceKey
-                    ? 'min-w-[10rem]'
-                    : isClearKey
-                      ? 'min-w-[4.5rem]'
-                      : 'min-w-[2.9rem]'
+                  const isWideFunctionKey = row.id === 'functions' || row.id === 'calculus'
                   return (
                     <button
                       key={`${row.id}-${actionId}`}
                       type="button"
                       data-keyboard-row={row.id}
                       data-keyboard-action={actionId}
-                      className={`flex h-10 ${keyWidthClassName} items-center justify-center px-2 text-slate-900 transition-colors ${isSelected ? 'bg-sky-100 text-sky-700' : 'bg-transparent hover:bg-slate-100'}`}
+                      className={`flex h-8 min-w-0 items-center justify-center px-0 text-slate-900 transition-colors ${row.id === 'qwerty-4' && isSpaceKey ? 'col-span-9' : row.id === 'qwerty-4' && isClearKey ? 'col-span-3' : ''} ${isSelected ? 'bg-sky-100 text-sky-700' : 'bg-transparent hover:bg-slate-100'}`}
                       onPointerDown={(event) => event.stopPropagation()}
                       onClick={(event) => {
                         event.stopPropagation()
@@ -9724,7 +9725,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       }}
                       title={action.title}
                     >
-                      <span className="text-[0.95rem] leading-none">{actionId === 'space' ? <span aria-hidden="true" className="block h-px w-16 bg-slate-500" /> : renderKeyboardActionContent(actionId)}</span>
+                      <span className={`${isWideFunctionKey ? 'text-[0.72rem]' : 'text-[0.84rem]'} leading-none`}>{actionId === 'space' ? <span aria-hidden="true" className="block h-px w-full max-w-20 bg-slate-500" /> : renderKeyboardActionContent(actionId)}</span>
                     </button>
                   )
                 })}

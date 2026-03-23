@@ -15921,19 +15921,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 >
                   <div
                     ref={stackedZoomContentRef}
-                    className="flex w-max min-w-full flex-col items-center gap-6 px-4 py-4 sm:px-6 sm:py-6"
+                    className={`flex min-w-full flex-col gap-6 py-4 sm:py-6 ${recognitionEngine === 'keyboard' ? 'w-full items-stretch px-0 sm:px-0' : 'w-max items-center px-4 sm:px-6'}`}
                     style={{
                       zoom: stackedLiveScale,
                       paddingTop: 'calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 14px)',
                       willChange: stackedPinchStateRef.current.active ? 'transform' : undefined,
                     }}
                   >
-                    <div className="w-full flex items-start justify-center">
+                    <div className={`w-full flex items-start ${recognitionEngine === 'keyboard' ? 'justify-stretch' : 'justify-center'}`}>
                       <div
                         style={{
                           position: 'relative',
                           backgroundColor: '#ffffff',
-                          width: `${Math.max(320, Math.round(stackedSurfaceBaseSize.width * inkSurfaceWidthFactor))}px`,
+                          width: recognitionEngine === 'keyboard'
+                            ? '100%'
+                            : `${Math.max(320, Math.round(stackedSurfaceBaseSize.width * inkSurfaceWidthFactor))}px`,
                           height: `${Math.max(320, stackedSurfaceBaseSize.height)}px`,
                         }}
                       >
@@ -16040,7 +16042,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         {hasMounted && rightMasterGainSlider}
 
         {!useStackedStudentLayout && (
-          <div className={`border rounded bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
+          <div className={`${recognitionEngine === 'keyboard' ? '' : 'border rounded'} bg-white relative overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
           <div
             ref={editorHostRef}
             className={editorHostClass}

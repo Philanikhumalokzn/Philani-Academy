@@ -11103,10 +11103,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               autoCorrect="off"
               autoCapitalize="off"
               autoComplete="off"
-              className={`input input-light absolute inset-0 z-20 h-full w-full bg-transparent px-3 py-2 leading-tight outline-none caret-sky-600 ${compact ? 'text-lg' : 'text-[1.9rem]'}`}
+              className={`absolute inset-0 z-20 h-full w-full border border-transparent bg-transparent px-3 py-2 leading-tight outline-none caret-sky-600 focus:outline-none ${compact ? 'text-lg' : 'text-[1.9rem]'}`}
               style={{
                 color: 'transparent',
                 WebkitTextFillColor: 'transparent',
+                backgroundColor: 'transparent',
+                borderColor: 'transparent',
+                boxShadow: 'none',
                 WebkitUserSelect: 'text',
                 userSelect: 'text',
               }}

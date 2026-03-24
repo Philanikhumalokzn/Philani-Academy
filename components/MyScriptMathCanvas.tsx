@@ -9994,7 +9994,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             onPointerDown={(event) => {
               event.stopPropagation()
               event.preventDefault()
-              focusKeyboardExpressionAtTap(event.clientX, event.currentTarget.getBoundingClientRect(), keyboardBottomTypesetPreviewRef, keyboardBottomCaretSlotRefs)
+              focusKeyboardExpressionAtTap(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect(), keyboardBottomTypesetPreviewRef, keyboardBottomCaretSlotRefs)
             }}
           >
             {renderKeyboardBottomPanelPreviewSurface()}
@@ -10892,20 +10892,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [keyboardTopPanelExpression])
 
-  const estimateKeyboardCaretFromHorizontalTap = useCallback((value: string, clientX: number, rect: DOMRect, slotRefs?: Array<HTMLSpanElement | null>) => {
+  const estimateKeyboardCaretFromTap = useCallback((value: string, clientX: number, clientY: number, rect: DOMRect, slotRefs?: Array<HTMLSpanElement | null>) => {
     const symbols = Array.from(value || '')
     if (!symbols.length) return 0
     const slotRects = slotRefs
       ?.map((element) => element?.getBoundingClientRect() || null)
       .filter((entry): entry is DOMRect => Boolean(entry))
     if (slotRects && slotRects.length) {
-      const boundaryPositions = [slotRects[0].left, ...slotRects.map((entry) => entry.right)]
+      const boundaryPositions = [
+        { x: slotRects[0].left, y: slotRects[0].top + (slotRects[0].height / 2) },
+        ...slotRects.map((entry) => ({ x: entry.right, y: entry.top + (entry.height / 2) })),
+      ]
       let bestIndex = 0
-      let bestDistance = Number.POSITIVE_INFINITY
+      let bestDistanceSq = Number.POSITIVE_INFINITY
       boundaryPositions.forEach((position, index) => {
-        const distance = Math.abs(clientX - position)
-        if (distance < bestDistance) {
-          bestDistance = distance
+        const dx = clientX - position.x
+        const dy = clientY - position.y
+        const distanceSq = (dx * dx) + (dy * dy)
+        if (distanceSq < bestDistanceSq) {
+          bestDistanceSq = distanceSq
           bestIndex = index
         }
       })
@@ -10918,6 +10923,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   const focusKeyboardExpressionAtTap = useCallback((
     clientX: number,
+    clientY: number,
     fallbackRect: DOMRect,
     typesetPreviewRef?: { current: HTMLDivElement | null },
     slotRefs?: { current: Array<HTMLSpanElement | null> },
@@ -10928,7 +10934,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setMobileTopPanelActionStepIndex(null)
     const measuredRect = typesetPreviewRef?.current?.getBoundingClientRect()
     const effectiveRect = measuredRect && measuredRect.width > 0 ? measuredRect : fallbackRect
-    const caret = estimateKeyboardCaretFromHorizontalTap(keyboardTopPanelExpression, clientX, effectiveRect, slotRefs?.current)
+    const caret = estimateKeyboardCaretFromTap(keyboardTopPanelExpression, clientX, clientY, effectiveRect, slotRefs?.current)
     setKeyboardSelectionState({ start: caret, end: caret })
     if (typeof window !== 'undefined') {
       window.setTimeout(() => {
@@ -10936,7 +10942,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       }, 0)
     }
     scheduleKeyboardFadeOut()
-  }, [clearTopPanelSelection, estimateKeyboardCaretFromHorizontalTap, keyboardTopPanelExpression, scheduleKeyboardFadeOut, setKeyboardSelectionState])
+  }, [clearTopPanelSelection, estimateKeyboardCaretFromTap, keyboardTopPanelExpression, scheduleKeyboardFadeOut, setKeyboardSelectionState])
 
   const renderKeyboardCaretOverlaySurface = useCallback((latex: string, slotRefs: Array<HTMLSpanElement | null>, compact = false) => {
     const currentValue = typeof latex === 'string' ? latex : ''
@@ -14966,7 +14972,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     if (recognitionEngine === 'keyboard') {
                       e.stopPropagation()
                       e.preventDefault()
-                      focusKeyboardExpressionAtTap(e.clientX, e.currentTarget.getBoundingClientRect(), keyboardTopTypesetPreviewRef, keyboardTopCaretSlotRefs)
+                      focusKeyboardExpressionAtTap(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect(), keyboardTopTypesetPreviewRef, keyboardTopCaretSlotRefs)
                       return
                     }
 

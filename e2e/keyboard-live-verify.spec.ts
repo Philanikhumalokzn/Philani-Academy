@@ -184,4 +184,63 @@ test.describe('live keyboard verification', () => {
 
     await page.screenshot({ path: 'test-results/keyboard-live-verify.png', fullPage: true })
   })
+
+  test('keyboard mode top panel tap updates caret for a six-term expression', async ({ page }) => {
+    test.skip(!baseUrl || !email || !password, 'Set E2E_BASE_URL, E2E_USER_A_EMAIL, E2E_USER_A_PASSWORD')
+
+    await page.goto(toAbsoluteUrl('/auth/signin'), { waitUntil: 'domcontentloaded' })
+    await fillSignIn(page)
+
+    if (!/\/dashboard/i.test(page.url())) {
+      await page.goto(toAbsoluteUrl('/dashboard'), { waitUntil: 'domcontentloaded' })
+    }
+
+    const enterClassButton = page.getByRole('button', { name: /enter class/i }).first()
+    await expect(enterClassButton).toBeVisible({ timeout: 30_000 })
+    await enterClassButton.click()
+    await page.waitForTimeout(8_000)
+
+    const editorSurface = page.locator('.ms-editor').last()
+    await expect(editorSurface).toBeVisible({ timeout: 30_000 })
+
+    const xKey = page.locator('button[title="x"]').first()
+    const plusKey = page.locator('button[title="plus"]').first()
+
+    if (!(await xKey.isVisible().catch(() => false))) {
+      await editorSurface.click({ position: { x: 120, y: 120 } })
+    }
+
+    await expect(xKey).toBeVisible({ timeout: 10_000 })
+    await expect(plusKey).toBeVisible({ timeout: 10_000 })
+
+    for (let i = 0; i < 6; i += 1) {
+      await triggerRepresentativeTap(page, xKey)
+      if (i < 5) await triggerRepresentativeTap(page, plusKey)
+    }
+
+    const topPanel = page.locator('div.h-full.bg-white.rounded-lg.p-3.overflow-visible.relative').first()
+    await expect(topPanel).toBeVisible({ timeout: 10_000 })
+
+    const readTopLatex = async () => {
+      const text = await topPanel.locator('annotation[encoding="application/x-tex"]').first().textContent()
+      return (text || '').trim()
+    }
+
+    const beforeTapLatex = await readTopLatex()
+    expect(beforeTapLatex).toContain('x')
+
+    const box = await topPanel.boundingBox()
+    expect(box).toBeTruthy()
+    if (!box) return
+
+    await topPanel.click({ position: { x: Math.max(8, box.width - 12), y: Math.max(8, box.height * 0.5) } })
+    await triggerRepresentativeTap(page, plusKey)
+    const rightTapLatex = await readTopLatex()
+    expect(rightTapLatex).toMatch(/\+$/)
+
+    await topPanel.click({ position: { x: 8, y: Math.max(8, box.height * 0.5) } })
+    await triggerRepresentativeTap(page, plusKey)
+    const leftTapLatex = await readTopLatex()
+    expect(leftTapLatex.trimStart().startsWith('+')).toBeTruthy()
+  })
 })

@@ -10927,6 +10927,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     scheduleKeyboardFadeOut()
   }, [scheduleKeyboardFadeOut, setKeyboardSelectionState])
 
+  const handleKeyboardExpressionInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextValue = event.target.value
+    const nextSelectionStart = event.target.selectionStart ?? nextValue.length
+    const nextSelectionEnd = event.target.selectionEnd ?? nextSelectionStart
+
+    setLatexOutput(nextValue)
+    latexOutputRef.current = nextValue
+    if (useAdminStepComposerRef.current && hasControllerRights()) {
+      setAdminDraftLatex(normalizeStepLatex(nextValue))
+    }
+
+    const nextSelection = { start: nextSelectionStart, end: nextSelectionEnd }
+    setKeyboardSelectionState(nextSelection)
+    closeKeyboardTransientOverlays()
+    scheduleKeyboardFadeOut()
+  }, [closeKeyboardTransientOverlays, hasControllerRights, normalizeStepLatex, scheduleKeyboardFadeOut, setKeyboardSelectionState])
+
   useEffect(() => {
     const input = keyboardExpressionSurfaceRef.current
     if (!input) return
@@ -11013,23 +11030,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           <input
             ref={keyboardExpressionSurfaceRef}
             type="text"
-            readOnly
-            inputMode="none"
+            inputMode="text"
             value={keyboardTopPanelExpression}
+            onChange={handleKeyboardExpressionInputChange}
             onFocus={() => {
               setOverlayChromePeekVisible(false)
               setTopPanelEditingMode(false)
               clearTopPanelSelection()
               setMobileTopPanelActionStepIndex(null)
+              scheduleKeyboardFadeOut()
             }}
             onClick={handleKeyboardExpressionSelectionChange}
             onKeyUp={handleKeyboardExpressionSelectionChange}
             onSelect={handleKeyboardExpressionSelectionChange}
             aria-label="Keyboard expression"
+            placeholder="Type or tap to place the caret"
             spellCheck={false}
             autoCorrect="off"
             autoCapitalize="off"
-            className={`h-full w-full bg-transparent px-3 py-2 text-left text-[1.9rem] leading-tight text-slate-900 outline-none ${compact ? 'min-h-[2.75rem]' : ''}`}
+            autoComplete="off"
+            className={`input input-light h-full w-full px-3 py-2 text-left leading-tight text-slate-900 caret-sky-600 ${compact ? 'min-h-[2.75rem] text-lg' : 'min-h-[4.5rem] text-[1.9rem]'}`}
             style={{ WebkitUserSelect: 'text', userSelect: 'text' }}
           />
         </div>
@@ -11047,7 +11067,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         </div>
       </div>
     )
-  }, [clearTopPanelSelection, handleKeyboardExpressionSelectionChange, keyboardTopPanelExpression, setMobileTopPanelActionStepIndex, setOverlayChromePeekVisible, setTopPanelEditingMode])
+  }, [clearTopPanelSelection, handleKeyboardExpressionInputChange, handleKeyboardExpressionSelectionChange, keyboardTopPanelExpression, scheduleKeyboardFadeOut, setMobileTopPanelActionStepIndex, setOverlayChromePeekVisible, setTopPanelEditingMode])
 
   const renderKeyboardTopPanelEditorSurface = useCallback(() => {
     return renderKeyboardTypesetEditorSurface(false, true, keyboardTopTypesetPreviewRef, keyboardTopCaretSlotRefs)
@@ -14994,6 +15014,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   ref={(useAdminStepComposer || useStudentStepComposer) ? adminTopPanelRef : undefined}
                   onPointerDown={(e) => {
                     if (recognitionEngine === 'keyboard') {
+                      const target = e.target as HTMLElement | null
+                      const isTextFieldTap = target?.tagName === 'INPUT' || target?.closest?.('input')
+                      if (isTextFieldTap) {
+                        e.stopPropagation()
+                        return
+                      }
                       e.stopPropagation()
                       e.preventDefault()
                       focusKeyboardExpressionAtTap(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect(), keyboardTopTypesetPreviewRef, keyboardTopCaretSlotRefs)

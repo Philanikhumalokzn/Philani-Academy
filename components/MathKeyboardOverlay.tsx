@@ -2,6 +2,7 @@ import { useCallback, useRef, useState, useEffect } from 'react'
 import katex from 'katex'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import 'katex/dist/katex.min.css'
+import 'mathlive/static.css'
 
 type MathKeyboardOverlayProps = {
   open: boolean
@@ -71,36 +72,34 @@ const renderKatexToString = (latex: string, displayMode: boolean) => {
   }
 }
 
-// KaTeX Preview component with professional rendering
-function MathPreview({
-  latex,
-  cursorPosition,
-  onDisplayClick,
-}: {
-  latex: string
-  cursorPosition: number
-  onDisplayClick: (clientX: number, clientY: number) => void
-}) {
-  const containerRef = useRef<HTMLDivElement>(null)
+type MathfieldLike = HTMLElement & {
+  value: string
+  focus: () => void
+  executeCommand?: (command: unknown) => unknown
+  insert?: (latex: string) => void
+}
 
-  useEffect(() => {
-    if (!containerRef.current || !latex) return
-
-    containerRef.current.innerHTML = renderKatexToString(latex, true)
-  }, [latex])
-
-  const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    onDisplayClick(event.clientX, event.clientY)
+const insertForDirection = (direction: Exclude<Direction, null>) => {
+  switch (direction) {
+    case 'N':
+      return '\\frac{#?}{}'
+    case 'NE':
+      return '^{2}'
+    case 'E':
+      return ' + '
+    case 'SE':
+      return '_{i}'
+    case 'S':
+      return '\\frac{}{#?}'
+    case 'SW':
+      return '\\sqrt{#?}'
+    case 'W':
+      return ' - '
+    case 'NW':
+      return '\\left(#?\\right)'
+    default:
+      return ''
   }
-
-  return (
-    <div
-      ref={containerRef}
-      onClick={handleClick}
-      className="h-full w-full flex items-center justify-center bg-white p-4 text-slate-800 cursor-text"
-      style={{ minHeight: '100px' }}
-    />
-  )
 }
 
 function ZoomableMathCanvas({ latex }: { latex: string }) {
@@ -444,8 +443,55 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
   const [latexExpression, setLatexExpression] = useState<string>('x')
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [selectedDirection, setSelectedDirection] = useState<Direction>(null)
-  const [cursorPosition, setCursorPosition] = useState<number>(1) // Start at end of 'x'
-  const displayPanelRef = useRef<HTMLDivElement | null>(null)
+  const mathfieldHostRef = useRef<HTMLDivElement | null>(null)
+  const mathfieldRef = useRef<MathfieldLike | null>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const host = mathfieldHostRef.current
+    if (!host || mathfieldRef.current) return
+
+    let cancelled = false
+
+    const setup = async () => {
+      await import('mathlive')
+      if (cancelled || !mathfieldHostRef.current || mathfieldRef.current) return
+
+      const mf = document.createElement('math-field') as MathfieldLike
+      mf.value = latexExpression || 'x'
+      mf.setAttribute('smart-mode', 'true')
+      mf.setAttribute('virtual-keyboard-mode', 'manual')
+      mf.className = 'block h-full w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-slate-900'
+      mf.style.minHeight = '100px'
+      mf.style.fontSize = '1.35rem'
+      mf.style.lineHeight = '1.45'
+
+      const syncFromField = () => {
+        const value = mf.value || ''
+        setLatexExpression(value.length ? value : 'x')
+      }
+
+      mf.addEventListener('input', syncFromField)
+      mf.addEventListener('change', syncFromField)
+
+      mathfieldHostRef.current.innerHTML = ''
+      mathfieldHostRef.current.appendChild(mf)
+      mathfieldRef.current = mf
+    }
+
+    void setup()
+
+    return () => {
+      cancelled = true
+    }
+  }, [latexExpression])
+
+  useEffect(() => {
+    const mf = mathfieldRef.current
+    if (!mf) return
+    if (mf.value === latexExpression) return
+    mf.value = latexExpression
+  }, [latexExpression])
 
   const updateFromClientY = useCallback((clientY: number) => {
     const container = containerRef.current
@@ -460,34 +506,6 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
     const nextRatio = (clientY - rect.top) / rect.height
     setTopRatio(clamp(nextRatio, MIN_RATIO, MAX_RATIO))
   }, [])
-
-  const handleDisplayClick = useCallback(
-    (clientX: number, clientY: number) => {
-      if (!displayPanelRef.current) return
-
-      const rect = displayPanelRef.current.getBoundingClientRect()
-      
-      // Get the rendered content container
-      const contentDiv = displayPanelRef.current.querySelector('div')
-      if (!contentDiv) return
-
-      const contentRect = contentDiv.getBoundingClientRect()
-      
-      // Calculate relative position within the content
-      const relativeX = clientX - contentRect.left
-      
-      // Estimate character position based on width
-      // This is a heuristic: we assume roughly equal character widths
-      const contentWidth = contentRect.width
-      const estimatedCharWidth = contentWidth / Math.max(latexExpression.length * 0.6, 1)
-      
-      let estimatedPosition = Math.round(relativeX / estimatedCharWidth)
-      estimatedPosition = clamp(estimatedPosition, 0, latexExpression.length)
-      
-      setCursorPosition(estimatedPosition)
-    },
-    [latexExpression]
-  )
 
   const handleSeparatorPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -515,54 +533,37 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
 
     setSelectedDirection(direction)
 
-    // Build LaTeX expression, inserting at cursor position
-    setLatexExpression((prev) => {
-      let newExpr = prev
-      const pos = cursorPosition
+    const mf = mathfieldRef.current
+    const directionKey = direction as Exclude<Direction, null>
+    const insertLatex = insertForDirection(directionKey)
 
-      switch (direction) {
-        case 'N': // x as numerator
-          newExpr = `${prev.slice(0, pos)}\\frac{${prev.slice(pos)}}{\\phantom{a}}`
-          setCursorPosition(pos + 6) // Position after \frac{
-          break
-        case 'NE': // power
-          newExpr = `${prev.slice(0, pos)}${prev.slice(pos)}^{2}`
-          setCursorPosition(pos + prev.slice(pos).length + 4) // After ^{2}
-          break
-        case 'E': // addition
-          newExpr = `${prev.slice(0, pos)} + \\phantom{a}${prev.slice(pos)}`
-          setCursorPosition(pos + 3) // After ' + '
-          break
-        case 'SE': // subscript
-          newExpr = `${prev.slice(0, pos)}${prev.slice(pos)}_{i}`
-          setCursorPosition(pos + prev.slice(pos).length + 3) // After _{i}
-          break
-        case 'S': // x as denominator
-          newExpr = `${prev.slice(0, pos)}\\frac{\\phantom{a}}{${prev.slice(pos)}}`
-          setCursorPosition(pos + 20) // Position after \frac{\phantom{a}}{
-          break
-        case 'SW': // radical
-          newExpr = `${prev.slice(0, pos)}\\sqrt{${prev.slice(pos)}}`
-          setCursorPosition(pos + 6) // Position after \sqrt{
-          break
-        case 'W': // subtraction
-          newExpr = `${prev.slice(0, pos)} - \\phantom{a}${prev.slice(pos)}`
-          setCursorPosition(pos + 3) // After ' - '
-          break
-        case 'NW': // enclosure
-          newExpr = `${prev.slice(0, pos)}\\left(${prev.slice(pos)}\\right)`
-          setCursorPosition(pos + 6) // Position after \left(
-          break
-        default:
-          break
+    if (mf && insertLatex) {
+      mf.focus()
+      let inserted = false
+
+      if (typeof mf.executeCommand === 'function') {
+        const result = mf.executeCommand(['insert', insertLatex])
+        inserted = result !== false
       }
 
-      return newExpr
-    })
+      if (!inserted && typeof mf.insert === 'function') {
+        try {
+          mf.insert(insertLatex)
+          inserted = true
+        } catch {
+          inserted = false
+        }
+      }
+
+      if (inserted) {
+        const next = mf.value || ''
+        setLatexExpression(next.length ? next : 'x')
+      }
+    }
 
     // Clear selection after a delay
     setTimeout(() => setSelectedDirection(null), 300)
-  }, [cursorPosition])
+  }, [])
 
   if (!open) return null
 
@@ -604,17 +605,12 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
           >
             {/* Top Preview Panel with KaTeX rendering */}
             <div
-              ref={displayPanelRef}
               className="flex flex-col"
               style={{ flex: Math.max(topRatio, 0.2), minHeight: '200px' }}
             >
               <div className="px-3 py-3 flex-1 min-h-[140px]">
                 <div className="h-full bg-white rounded-lg p-3 overflow-auto">
-                  <MathPreview
-                    latex={latexExpression}
-                    cursorPosition={cursorPosition}
-                    onDisplayClick={handleDisplayClick}
-                  />
+                  <div ref={mathfieldHostRef} className="h-full w-full" />
                 </div>
               </div>
             </div>

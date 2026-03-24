@@ -9716,7 +9716,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     scheduleKeyboardFadeOut()
   }, [scheduleKeyboardFadeOut])
 
-  const renderKeyboardCanvasSurface = useCallback(() => {
+  const renderKeyboardCanvasSurface = () => {
     const activeRadialTarget = activeKeyboardRadialTarget
     const renderKeyboardActionContent = (actionId: string, baseSymbol?: string) => {
       const action = KEYBOARD_ACTION_MAP[actionId]
@@ -9793,6 +9793,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           closeKeyboardTransientOverlays()
         }}
       >
+        <div className="sticky top-0 z-10 bg-white/95 px-2 py-2 backdrop-blur-sm">
+          <div
+            className="min-h-[3rem] w-full"
+            onPointerDown={(event) => {
+              event.stopPropagation()
+              event.preventDefault()
+              focusKeyboardExpressionAtTap(event.clientX, event.currentTarget.getBoundingClientRect())
+            }}
+          >
+            {renderKeyboardBottomPanelPreviewSurface()}
+          </div>
+        </div>
         <div className="flex min-h-full w-full flex-col justify-center gap-[3px] px-0 py-[3px]">
           {KEYBOARD_MOUNTED_ROWS.map((row) => (
             <div key={row.id} className="w-full">
@@ -9867,7 +9879,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         ) : null}
       </div>
     )
-  }, [activeKeyboardRadialTarget, applyKeyboardAction, clearKeyboardRepresentativeLongPress, clearKeyboardRepresentativeTapTimeout, closeKeyboardTransientOverlays, keyboardOverlayAnchor, openKeyboardRadial, selectedKeyboardKey])
+  }
 
   const handleConvert = () => {
     if (canvasModeRef.current === 'raw-ink') return
@@ -10674,6 +10686,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return normalizeStepLatex(editableValue || '')
   }, [adminDraftLatex, latexOutput, normalizeStepLatex, useAdminStepComposer])
 
+  const keyboardTypesetPreviewMarkup = useMemo(() => {
+    const latex = (keyboardTopPanelExpression || '').trim()
+    if (!latex) return ''
+    try {
+      return renderToString(latex, { throwOnError: false, displayMode: true })
+    } catch (err) {
+      console.warn('Failed to render keyboard preview LaTeX', err)
+      return ''
+    }
+  }, [keyboardTopPanelExpression])
+
   const estimateKeyboardCaretFromHorizontalTap = useCallback((value: string, clientX: number, rect: DOMRect) => {
     const symbols = Array.from(value || '')
     if (!symbols.length) return 0
@@ -10682,7 +10705,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return Math.max(0, Math.min(symbols.length, Math.round(symbols.length * ratio)))
   }, [])
 
-  const focusKeyboardTopPanelAtTap = useCallback((clientX: number, rect: DOMRect) => {
+  const focusKeyboardExpressionAtTap = useCallback((clientX: number, rect: DOMRect) => {
     setOverlayChromePeekVisible(false)
     setTopPanelEditingMode(false)
     clearTopPanelSelection()
@@ -10697,10 +10720,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     scheduleKeyboardFadeOut()
   }, [clearTopPanelSelection, estimateKeyboardCaretFromHorizontalTap, keyboardTopPanelExpression, scheduleKeyboardFadeOut, setKeyboardSelectionState])
 
-  const renderKeyboardTopPanelCaretSurface = useCallback((latex: string) => {
+  const renderKeyboardCaretOverlaySurface = useCallback((latex: string, compact = false) => {
     const currentValue = typeof latex === 'string' ? latex : ''
     return (
-      <span className="inline-flex flex-wrap items-center gap-y-1 whitespace-pre-wrap break-words align-middle select-none">
+      <span className={`inline-flex max-w-full flex-wrap items-center gap-y-1 whitespace-pre-wrap break-words align-middle select-none ${compact ? 'text-[0.95rem]' : 'text-[1.15rem]'}`}>
         {Array.from({ length: currentValue.length + 1 }, (_, slotIndex) => {
           const showCaret = keyboardSelection.start === keyboardSelection.end && keyboardSelection.start === slotIndex
           const char = currentValue[slotIndex]
@@ -10715,7 +10738,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               ) : null}
               {char !== undefined ? (
                 <span
-                  className={`inline-flex min-w-[0.55ch] items-center justify-center rounded-[0.18em] px-[0.01em] ${isSelected ? 'bg-sky-100 text-sky-950' : ''}`}
+                  className={`inline-flex min-w-[0.55ch] items-center justify-center rounded-[0.18em] px-[0.01em] text-transparent ${isSelected ? 'bg-sky-100/70' : ''}`}
                   onPointerDown={(event) => {
                     event.preventDefault()
                     event.stopPropagation()
@@ -10735,22 +10758,44 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     )
   }, [keyboardSelection.end, keyboardSelection.start, setKeyboardSelectionState])
 
-  const renderKeyboardTopPanelEditorSurface = useCallback(() => {
+  const renderKeyboardTypesetEditorSurface = useCallback((compact = false, attachFocusRef = false) => {
+    const showMarkup = Boolean(keyboardTypesetPreviewMarkup)
     return (
       <div className="flex h-full w-full items-center justify-center">
         <div
-          ref={keyboardExpressionSurfaceRef}
-          tabIndex={-1}
-          role="textbox"
-          aria-label="Editable math expression"
-          className="flex h-full w-full items-center justify-center overflow-hidden px-2 py-1 text-center text-[1.15rem] leading-relaxed text-slate-900 outline-none select-none"
+          ref={attachFocusRef ? keyboardExpressionSurfaceRef : undefined}
+          tabIndex={attachFocusRef ? -1 : undefined}
+          role={attachFocusRef ? 'textbox' : undefined}
+          aria-label={attachFocusRef ? 'Editable math expression' : undefined}
+          className={`relative flex h-full w-full items-center justify-center overflow-hidden px-2 py-1 text-center text-slate-900 outline-none select-none ${compact ? 'min-h-[2.75rem]' : ''}`}
           style={{ WebkitUserSelect: 'none', userSelect: 'none' }}
         >
-          {renderKeyboardTopPanelCaretSurface(keyboardTopPanelExpression)}
+          {showMarkup ? (
+            <div
+              aria-hidden="true"
+              className={`pointer-events-none max-w-full overflow-x-auto overflow-y-hidden text-slate-900 ${compact ? '[&_.katex]:text-[1rem]' : '[&_.katex]:text-[1.15rem]'}`}
+              dangerouslySetInnerHTML={{ __html: keyboardTypesetPreviewMarkup }}
+            />
+          ) : (
+            <span className={`text-slate-400 ${compact ? 'text-sm' : 'text-base'}`}>
+              Start typing to build the expression.
+            </span>
+          )}
+          <div className="absolute inset-0 flex items-center justify-center overflow-hidden px-2 py-1">
+            {renderKeyboardCaretOverlaySurface(keyboardTopPanelExpression, compact)}
+          </div>
         </div>
       </div>
     )
-  }, [keyboardTopPanelExpression, renderKeyboardTopPanelCaretSurface])
+  }, [keyboardTopPanelExpression, keyboardTypesetPreviewMarkup, renderKeyboardCaretOverlaySurface])
+
+  const renderKeyboardTopPanelEditorSurface = useCallback(() => {
+    return renderKeyboardTypesetEditorSurface(false, true)
+  }, [renderKeyboardTypesetEditorSurface])
+
+  const renderKeyboardBottomPanelPreviewSurface = useCallback(() => {
+    return renderKeyboardTypesetEditorSurface(true, false)
+  }, [renderKeyboardTypesetEditorSurface])
 
   const finishQuestionSourceLatex = useMemo(() => {
     return normalizeStepLatex(adminSteps[0]?.latex || '')
@@ -14691,7 +14736,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     if (recognitionEngine === 'keyboard') {
                       e.stopPropagation()
                       e.preventDefault()
-                      focusKeyboardTopPanelAtTap(e.clientX, e.currentTarget.getBoundingClientRect())
+                      focusKeyboardExpressionAtTap(e.clientX, e.currentTarget.getBoundingClientRect())
                       return
                     }
 

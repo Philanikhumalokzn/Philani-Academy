@@ -2285,10 +2285,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const [recognitionEngine, setRecognitionEngine] = useState<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
   const recognitionEngineRef = useRef<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
   const keyboardSurfaceRef = useRef<HTMLDivElement | null>(null)
-  const keyboardExpressionSurfaceRef = useRef<HTMLDivElement | null>(null)
+  const keyboardExpressionSurfaceRef = useRef<HTMLInputElement | null>(null)
   const keyboardTopTypesetPreviewRef = useRef<HTMLDivElement | null>(null)
   const keyboardBottomTypesetPreviewRef = useRef<HTMLDivElement | null>(null)
-  const keyboardMathLiveFieldRef = useRef<any>(null)
   const [keyboardSelection, setKeyboardSelection] = useState<KeyboardSelectionState>({ start: 0, end: 0 })
   const keyboardSelectionRef = useRef<KeyboardSelectionState>({ start: 0, end: 0 })
   const keyboardTopCaretSlotRefs = useRef<Array<HTMLSpanElement | null>>([])
@@ -2361,48 +2360,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   useEffect(() => {
     keyboardSelectionRef.current = keyboardSelection
   }, [keyboardSelection])
-
-  // Initialize MathLive field for keyboard mode top panel
-  useEffect(() => {
-    const initMathLive = async () => {
-      try {
-        const m = await import('mathlive')
-
-        // Create MathLive field if not already created
-        if (!keyboardMathLiveFieldRef.current) {
-          keyboardMathLiveFieldRef.current = new m.MathfieldElement()
-          keyboardMathLiveFieldRef.current.style.width = '100%'
-          keyboardMathLiveFieldRef.current.style.height = '100%'
-          keyboardMathLiveFieldRef.current.style.fontSize = '1.15rem'
-          keyboardMathLiveFieldRef.current.readOnly = true
-          keyboardMathLiveFieldRef.current.removeAttribute('autocorrect')
-          keyboardMathLiveFieldRef.current.removeAttribute('spellcheck')
-          keyboardMathLiveFieldRef.current.hidePointerIndicator = true
-          keyboardMathLiveFieldRef.current.virtualKeyboardMode = 'off'
-
-          // Prevent actual text input - let keyboard buttons handle insertion
-          keyboardMathLiveFieldRef.current.addEventListener('keydown', (e: KeyboardEvent) => {
-            e.preventDefault()
-          })
-          keyboardMathLiveFieldRef.current.addEventListener('beforeinput', (e: Event) => {
-            ;(e as InputEvent).preventDefault?.()
-          })
-        }
-
-        const el = keyboardExpressionSurfaceRef.current
-        const mf = keyboardMathLiveFieldRef.current
-        // Move MathLive field into the current host if needed.
-        // appendChild() will safely reparent an existing node without manual removeChild calls.
-        if (el && mf && mf.parentElement !== el) {
-          el.appendChild(mf)
-        }
-      } catch (err) {
-        console.warn('Failed to initialize keyboard MathLive field', err)
-      }
-    }
-
-    initMathLive()
-  }, [])
 
   useEffect(() => {
     canvasModeRef.current = canvasMode
@@ -10961,37 +10918,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return normalizeStepLatex(editableValue || '')
   }, [adminDraftLatex, latexOutput, normalizeStepLatex, useAdminStepComposer])
 
-  const keyboardTypesetPreviewMarkup = useMemo(() => {
-    const latex = (keyboardTopPanelExpression || '').trim()
-    if (!latex) return ''
-    try {
-      return renderToString(latex, { throwOnError: false, displayMode: true })
-    } catch (err) {
-      console.warn('Failed to render keyboard preview LaTeX', err)
-      return ''
-    }
-  }, [keyboardTopPanelExpression])
+  const handleKeyboardExpressionSelectionChange = useCallback(() => {
+    const input = keyboardExpressionSurfaceRef.current
+    if (!input) return
+    const start = input.selectionStart ?? 0
+    const end = input.selectionEnd ?? start
+    setKeyboardSelectionState({ start, end })
+    scheduleKeyboardFadeOut()
+  }, [scheduleKeyboardFadeOut, setKeyboardSelectionState])
 
-  // Keep MathLive attached and synchronized with current keyboard expression/caret.
   useEffect(() => {
-    const mf = keyboardMathLiveFieldRef.current
-    if (!mf) return
-
-    const host = keyboardExpressionSurfaceRef.current
-    if (host && mf.parentElement !== host) {
-      host.appendChild(mf)
+    const input = keyboardExpressionSurfaceRef.current
+    if (!input) return
+    const nextStart = Math.max(0, Math.min(keyboardTopPanelExpression.length, keyboardSelection.start))
+    const nextEnd = Math.max(nextStart, Math.min(keyboardTopPanelExpression.length, keyboardSelection.end))
+    try {
+      input.setSelectionRange(nextStart, nextEnd)
+    } catch {
+      // Ignore selection sync failures on unsupported platforms.
     }
-
-    const nextValue = keyboardTopPanelExpression || ''
-    if (mf.value !== nextValue) {
-      mf.value = nextValue
-    }
-
-    const nextPosition = Math.max(0, Math.min(nextValue.length, keyboardSelection.start))
-    if (Number(mf.position) !== nextPosition) {
-      mf.position = nextPosition
-    }
-  }, [canvasMode, keyboardSelection.start, keyboardTopPanelExpression, recognitionEngine])
+  }, [keyboardSelection.end, keyboardSelection.start, keyboardTopPanelExpression])
 
   const estimateKeyboardCaretFromTap = useCallback((value: string, clientX: number, clientY: number, rect: DOMRect, slotRefs?: Array<HTMLSpanElement | null>) => {
     const symbols = Array.from(value || '')
@@ -11034,71 +10980,24 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     clearTopPanelSelection()
     setMobileTopPanelActionStepIndex(null)
 
-    if (keyboardMathLiveFieldRef.current) {
-      const mf = keyboardMathLiveFieldRef.current
-      const caret = Math.max(0, Math.min((keyboardTopPanelExpression || '').length, Number(mf.position) || 0))
-      setKeyboardSelectionState({ start: caret, end: caret })
-      if (typeof window !== 'undefined') {
-        window.setTimeout(() => {
-          keyboardExpressionSurfaceRef.current?.focus()
-        }, 0)
-      }
-    } else {
-      // Fallback: use 2D heuristic estimator
-      const measuredRect = typesetPreviewRef?.current?.getBoundingClientRect()
-      const effectiveRect = measuredRect && measuredRect.width > 0 ? measuredRect : fallbackRect
-      const caret = estimateKeyboardCaretFromTap(keyboardTopPanelExpression, clientX, clientY, effectiveRect, slotRefs?.current)
-      setKeyboardSelectionState({ start: caret, end: caret })
-      if (typeof window !== 'undefined') {
-        window.setTimeout(() => {
-          keyboardExpressionSurfaceRef.current?.focus()
-        }, 0)
-      }
+    const measuredRect = typesetPreviewRef?.current?.getBoundingClientRect()
+    const effectiveRect = measuredRect && measuredRect.width > 0 ? measuredRect : fallbackRect
+    const caret = estimateKeyboardCaretFromTap(keyboardTopPanelExpression, clientX, clientY, effectiveRect, slotRefs?.current)
+    setKeyboardSelectionState({ start: caret, end: caret })
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => {
+        const input = keyboardExpressionSurfaceRef.current
+        if (!input) return
+        input.focus()
+        try {
+          input.setSelectionRange(caret, caret)
+        } catch {
+          // Ignore selection placement failures on unsupported platforms.
+        }
+      }, 0)
     }
     scheduleKeyboardFadeOut()
   }, [clearTopPanelSelection, estimateKeyboardCaretFromTap, keyboardTopPanelExpression, scheduleKeyboardFadeOut, setKeyboardSelectionState])
-
-  const renderKeyboardCaretOverlaySurface = useCallback((latex: string, slotRefs: Array<HTMLSpanElement | null>, compact = false) => {
-    const currentValue = typeof latex === 'string' ? latex : ''
-    slotRefs.length = currentValue.length
-    return (
-      <span className={`inline-flex max-w-full flex-wrap items-center gap-y-1 whitespace-pre-wrap break-words align-middle select-none ${compact ? 'text-[0.95rem]' : 'text-[1.15rem]'}`}>
-        {Array.from({ length: currentValue.length + 1 }, (_, slotIndex) => {
-          const showCaret = keyboardSelection.start === keyboardSelection.end && keyboardSelection.start === slotIndex
-          const char = currentValue[slotIndex]
-          const isSelected = slotIndex >= Math.min(keyboardSelection.start, keyboardSelection.end) && slotIndex < Math.max(keyboardSelection.start, keyboardSelection.end)
-          return (
-            <Fragment key={`top-panel-keyboard-slot-${slotIndex}`}>
-              {showCaret ? (
-                <span
-                  aria-hidden="true"
-                  className="inline-flex h-[1.1em] w-[2px] self-center rounded-full bg-sky-500"
-                />
-              ) : null}
-              {char !== undefined ? (
-                <span
-                  ref={(element) => {
-                    slotRefs[slotIndex] = element
-                  }}
-                  className={`inline-flex min-w-[0.55ch] items-center justify-center rounded-[0.18em] px-[0.01em] text-transparent ${isSelected ? 'bg-sky-100/70' : ''}`}
-                  onPointerDown={(event) => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    const rect = event.currentTarget.getBoundingClientRect()
-                    const midpoint = rect.left + rect.width / 2
-                    const nextCaret = event.clientX <= midpoint ? slotIndex : slotIndex + 1
-                    setKeyboardSelectionState({ start: nextCaret, end: nextCaret })
-                  }}
-                >
-                  {char === ' ' ? '\u00A0' : char}
-                </span>
-              ) : null}
-            </Fragment>
-          )
-        })}
-      </span>
-    )
-  }, [keyboardSelection.end, keyboardSelection.start, setKeyboardSelectionState])
 
   const renderKeyboardTypesetEditorSurface = useCallback((
     compact = false,
@@ -11106,24 +11005,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     typesetPreviewRef?: { current: HTMLDivElement | null },
     slotRefs?: { current: Array<HTMLSpanElement | null> },
   ) => {
-    const showMarkup = Boolean(keyboardTypesetPreviewMarkup)
-    // On top panel, always reserve host for MathLive (field attaches asynchronously).
     const useMathLiveOnTopPanel = attachFocusRef
     
     if (useMathLiveOnTopPanel) {
-      // MathLive will be appended to this div; don't render KaTeX markup
       return (
         <div className="flex h-full w-full items-center justify-center">
-          <div
+          <input
             ref={keyboardExpressionSurfaceRef}
-            tabIndex={-1}
-            role="textbox"
-            aria-label="Editable math expression"
-            className={`relative flex h-full w-full items-center justify-center overflow-hidden px-2 py-1 text-center text-slate-900 outline-none select-none ${compact ? 'min-h-[2.75rem]' : ''}`}
-            style={{ WebkitUserSelect: 'none', userSelect: 'none' }}
-          >
-            {/* MathLive field will be rendered here by useEffect */}
-          </div>
+            type="text"
+            readOnly
+            inputMode="none"
+            value={keyboardTopPanelExpression}
+            onFocus={() => {
+              setOverlayChromePeekVisible(false)
+              setTopPanelEditingMode(false)
+              clearTopPanelSelection()
+              setMobileTopPanelActionStepIndex(null)
+            }}
+            onClick={handleKeyboardExpressionSelectionChange}
+            onKeyUp={handleKeyboardExpressionSelectionChange}
+            onSelect={handleKeyboardExpressionSelectionChange}
+            aria-label="Keyboard expression"
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
+            className={`h-full w-full bg-transparent px-3 py-2 text-left text-[1.9rem] leading-tight text-slate-900 outline-none ${compact ? 'min-h-[2.75rem]' : ''}`}
+            style={{ WebkitUserSelect: 'text', userSelect: 'text' }}
+          />
         </div>
       )
     }
@@ -11131,34 +11039,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return (
       <div className="flex h-full w-full items-center justify-center">
         <div
-          ref={attachFocusRef ? keyboardExpressionSurfaceRef : undefined}
-          tabIndex={attachFocusRef ? -1 : undefined}
-          role={attachFocusRef ? 'textbox' : undefined}
-          aria-label={attachFocusRef ? 'Editable math expression' : undefined}
-          className={`relative flex h-full w-full items-center justify-center overflow-hidden px-2 py-1 text-center text-slate-900 outline-none select-none ${compact ? 'min-h-[2.75rem]' : ''}`}
-          style={{ WebkitUserSelect: 'none', userSelect: 'none' }}
+          className={`relative flex h-full w-full items-center justify-center overflow-hidden px-2 py-1 text-center text-slate-600 outline-none select-none ${compact ? 'min-h-[2.75rem]' : ''}`}
         >
-          <div className="relative inline-flex max-w-full items-center justify-center">
-            {showMarkup ? (
-              <div
-                ref={typesetPreviewRef}
-                aria-hidden="true"
-                className={`pointer-events-none max-w-full overflow-x-auto overflow-y-hidden text-slate-900 ${compact ? '[&_.katex]:text-[1rem]' : '[&_.katex]:text-[1.15rem]'}`}
-                dangerouslySetInnerHTML={{ __html: keyboardTypesetPreviewMarkup }}
-              />
-            ) : (
-              <span className={`text-slate-400 ${compact ? 'text-sm' : 'text-base'}`}>
-                Start typing to build the expression.
-              </span>
-            )}
-            <div className="absolute inset-0 flex items-center justify-center overflow-visible px-2 py-1">
-              {renderKeyboardCaretOverlaySurface(keyboardTopPanelExpression, slotRefs?.current || [], compact)}
-            </div>
-          </div>
+          <span className={`text-center ${compact ? 'text-xs' : 'text-sm'}`}>
+            Tap the top field to place the caret. The keyboard writes into the top field only.
+          </span>
         </div>
       </div>
     )
-  }, [keyboardTopPanelExpression, keyboardTypesetPreviewMarkup, renderKeyboardCaretOverlaySurface])
+  }, [clearTopPanelSelection, handleKeyboardExpressionSelectionChange, keyboardTopPanelExpression, setMobileTopPanelActionStepIndex, setOverlayChromePeekVisible, setTopPanelEditingMode])
 
   const renderKeyboardTopPanelEditorSurface = useCallback(() => {
     return renderKeyboardTypesetEditorSurface(false, true, keyboardTopTypesetPreviewRef, keyboardTopCaretSlotRefs)
@@ -15106,18 +14995,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   onPointerDown={(e) => {
                     if (recognitionEngine === 'keyboard') {
                       e.stopPropagation()
-                      if (keyboardMathLiveFieldRef.current) {
-                        if (typeof window !== 'undefined') {
-                          window.setTimeout(() => {
-                            focusKeyboardExpressionAtTap(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect(), keyboardTopTypesetPreviewRef, keyboardTopCaretSlotRefs)
-                          }, 0)
-                        } else {
-                          focusKeyboardExpressionAtTap(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect(), keyboardTopTypesetPreviewRef, keyboardTopCaretSlotRefs)
-                        }
-                      } else {
-                        e.preventDefault()
-                        focusKeyboardExpressionAtTap(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect(), keyboardTopTypesetPreviewRef, keyboardTopCaretSlotRefs)
-                      }
+                      e.preventDefault()
+                      focusKeyboardExpressionAtTap(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect(), keyboardTopTypesetPreviewRef, keyboardTopCaretSlotRefs)
                       return
                     }
 

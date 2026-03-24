@@ -1562,27 +1562,27 @@ const buildKeyboardContextualRadialOperation = (
     case 'power2':
       return {
         previewLatex: `${referenceSymbol}^{${payload}}`,
-        replacement: `${referenceSymbol}^{${payload}}`,
+        replacement: `${referenceSymbol}^${payload}`,
       }
     case 'subscript':
       return {
         previewLatex: `${referenceSymbol}_{${payload}}`,
-        replacement: `${referenceSymbol}_{${payload}}`,
+        replacement: `${referenceSymbol}_${payload}`,
       }
     case 'fraction':
       return {
         previewLatex: `\\frac{${payload}}{${referenceSymbol}}`,
-        replacement: `\\frac{${payload}}{${referenceSymbol}}`,
+        replacement: `(${payload})/(${referenceSymbol})`,
       }
     case 'fraction-denominator':
       return {
         previewLatex: `\\frac{${referenceSymbol}}{${payload}}`,
-        replacement: `\\frac{${referenceSymbol}}{${payload}}`,
+        replacement: `(${referenceSymbol})/(${payload})`,
       }
     case 'sqrt':
       return {
         previewLatex: `\\sqrt[${payload}]{${referenceSymbol}}`,
-        replacement: `\\sqrt[${payload}]{${referenceSymbol}}`,
+        replacement: `root(${referenceSymbol}, ${payload})`,
       }
     case 'plus':
       return {
@@ -1597,7 +1597,7 @@ const buildKeyboardContextualRadialOperation = (
     case 'paren':
       return {
         previewLatex: `\\left(${payload}\\right)`,
-        replacement: `\\left(${payload}\\right)`,
+        replacement: `(${payload})`,
       }
     default:
       return null
@@ -9848,7 +9848,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       const inserted = action.apply('', resolvedBaseSymbol)
       result = insertKeyboardTextAtSelection(prev, inserted, selection)
     } else {
-      const replacement = action.renderLatex?.(resolvedBaseSymbol) ?? action.apply('', resolvedBaseSymbol)
+      const replacement = action.apply('', resolvedBaseSymbol)
       result = replaceKeyboardReferenceTarget(prev, referenceTarget, replacement, selection)
     }
 
@@ -9893,7 +9893,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         const inserted = action.apply('', resolvedBaseSymbol)
         result = insertKeyboardTextAtSelection(prev, inserted, selection)
       } else {
-        const replacement = action.renderLatex?.(resolvedBaseSymbol) ?? action.apply('', resolvedBaseSymbol)
+        const replacement = action.apply('', resolvedBaseSymbol)
         result = replaceKeyboardReferenceTarget(prev, target.referenceTarget || findKeyboardReferenceTarget(prev, selection), replacement, selection)
       }
     }
@@ -10920,6 +10920,51 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return normalizeStepLatex(editableValue || '')
   }, [adminDraftLatex, latexOutput, normalizeStepLatex, useAdminStepComposer])
 
+  const keyboardDisplayLatex = useMemo(() => {
+    const source = keyboardTopPanelExpression || ''
+    if (!source.trim()) return ''
+
+    const normalized = source
+      .replace(/≤/g, ' \\leq ')
+      .replace(/≥/g, ' \\geq ')
+      .replace(/≠/g, ' \\neq ')
+      .replace(/≈/g, ' \\approx ')
+      .replace(/→/g, ' \\to ')
+      .replace(/×/g, ' \\times ')
+      .replace(/÷/g, ' \\div ')
+      .replace(/π/g, ' \\pi ')
+      .replace(/θ/g, ' \\theta ')
+      .replace(/∞/g, ' \\infty ')
+      .replace(/([A-Za-z0-9)])\^([A-Za-z0-9]+)/g, '$1^{$2}')
+      .replace(/([A-Za-z0-9)])_([A-Za-z0-9]+)/g, '$1_{$2}')
+      .replace(/sqrt\(([^()]*)\)/g, '\\sqrt{$1}')
+      .replace(/cbrt\(([^()]*)\)/g, '\\sqrt[3]{$1}')
+      .replace(/root\(([^,]+),\s*([^()]+)\)/g, '\\sqrt[$2]{$1}')
+      .replace(/sin\(([^()]*)\)/g, '\\sin\\left($1\\right)')
+      .replace(/cos\(([^()]*)\)/g, '\\cos\\left($1\\right)')
+      .replace(/tan\(([^()]*)\)/g, '\\tan\\left($1\\right)')
+      .replace(/ln\(([^()]*)\)/g, '\\ln\\left($1\\right)')
+      .replace(/log\(([^()]*)\)/g, '\\log\\left($1\\right)')
+      .replace(/d\/dx\(([^()]*)\)/g, '\\frac{d}{dx}\\left($1\\right)')
+      .replace(/d\^2\/dx\^2\(([^()]*)\)/g, '\\frac{d^{2}}{dx^{2}}\\left($1\\right)')
+      .replace(/∫\s*([^∫]+?)\s*dx/g, '\\int $1\\,dx')
+      .replace(/\(\s*([^()]+?)\s*\)\s*\/\s*\(\s*([^()]*?)\s*\)/g, '\\frac{$1}{$2}')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    return normalized
+  }, [keyboardTopPanelExpression])
+
+  const keyboardTypesetPreviewMarkup = useMemo(() => {
+    if (!keyboardDisplayLatex) return ''
+    try {
+      return renderToString(keyboardDisplayLatex, { throwOnError: false, displayMode: true })
+    } catch (err) {
+      console.warn('Failed to render keyboard preview LaTeX', err)
+      return ''
+    }
+  }, [keyboardDisplayLatex])
+
   const handleKeyboardExpressionSelectionChange = useCallback(() => {
     const input = keyboardExpressionSurfaceRef.current
     if (!input) return
@@ -11029,31 +11074,39 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (useMathLiveOnTopPanel) {
       return (
         <div className="flex h-full w-full items-center justify-center">
-          <input
-            ref={keyboardExpressionSurfaceRef}
-            type="text"
-            inputMode="text"
-            value={keyboardTopPanelExpression}
-            onChange={handleKeyboardExpressionInputChange}
-            onFocus={() => {
-              setOverlayChromePeekVisible(false)
-              setTopPanelEditingMode(false)
-              clearTopPanelSelection()
-              setMobileTopPanelActionStepIndex(null)
-              scheduleKeyboardFadeOut()
-            }}
-            onClick={handleKeyboardExpressionSelectionChange}
-            onKeyUp={handleKeyboardExpressionSelectionChange}
-            onSelect={handleKeyboardExpressionSelectionChange}
-            aria-label="Keyboard expression"
-            placeholder="Type or tap to place the caret"
-            spellCheck={false}
-            autoCorrect="off"
-            autoCapitalize="off"
-            autoComplete="off"
-            className={`input input-light h-full w-full px-3 py-2 text-left leading-tight text-slate-900 caret-sky-600 ${compact ? 'min-h-[2.75rem] text-lg' : 'min-h-[4.5rem] text-[1.9rem]'}`}
-            style={{ WebkitUserSelect: 'text', userSelect: 'text' }}
-          />
+          <div className={`relative h-full w-full ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}>
+            <div
+              ref={typesetPreviewRef}
+              aria-hidden="true"
+              className={`pointer-events-none absolute inset-0 flex items-center overflow-hidden rounded-[10px] border border-[rgba(15,23,42,0.2)] bg-white px-3 py-2 text-slate-900 ${compact ? '[&_.katex]:text-[1rem]' : '[&_.katex]:text-[1.35rem]'}`}
+              dangerouslySetInnerHTML={{ __html: keyboardTypesetPreviewMarkup || '<span class="text-slate-400">Type or tap to place the caret</span>' }}
+            />
+            <input
+              ref={keyboardExpressionSurfaceRef}
+              type="text"
+              inputMode="text"
+              value={keyboardTopPanelExpression}
+              onChange={handleKeyboardExpressionInputChange}
+              onFocus={() => {
+                setOverlayChromePeekVisible(false)
+                setTopPanelEditingMode(false)
+                clearTopPanelSelection()
+                setMobileTopPanelActionStepIndex(null)
+                scheduleKeyboardFadeOut()
+              }}
+              onClick={handleKeyboardExpressionSelectionChange}
+              onKeyUp={handleKeyboardExpressionSelectionChange}
+              onSelect={handleKeyboardExpressionSelectionChange}
+              aria-label="Keyboard expression"
+              placeholder="Type or tap to place the caret"
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
+              autoComplete="off"
+              className={`input input-light absolute inset-0 h-full w-full bg-transparent px-3 py-2 text-transparent leading-tight outline-none caret-sky-600 ${compact ? 'text-lg' : 'text-[1.9rem]'}`}
+              style={{ WebkitUserSelect: 'text', userSelect: 'text' }}
+            />
+          </div>
         </div>
       )
     }
@@ -11069,7 +11122,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         </div>
       </div>
     )
-  }, [clearTopPanelSelection, handleKeyboardExpressionInputChange, handleKeyboardExpressionSelectionChange, keyboardTopPanelExpression, scheduleKeyboardFadeOut, setMobileTopPanelActionStepIndex, setOverlayChromePeekVisible, setTopPanelEditingMode])
+  }, [clearTopPanelSelection, handleKeyboardExpressionInputChange, handleKeyboardExpressionSelectionChange, keyboardTopPanelExpression, keyboardTypesetPreviewMarkup, scheduleKeyboardFadeOut, setMobileTopPanelActionStepIndex, setOverlayChromePeekVisible, setTopPanelEditingMode])
 
   const renderKeyboardTopPanelEditorSurface = useCallback(() => {
     return renderKeyboardTypesetEditorSurface(false, true, keyboardTopTypesetPreviewRef, keyboardTopCaretSlotRefs)

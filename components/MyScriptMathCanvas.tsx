@@ -2367,8 +2367,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const initMathLive = async () => {
       try {
         const m = await import('mathlive')
-        const el = keyboardExpressionSurfaceRef.current
-        if (!el) return
 
         // Create MathLive field if not already created
         if (!keyboardMathLiveFieldRef.current) {
@@ -2391,10 +2389,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           })
         }
 
+        const el = keyboardExpressionSurfaceRef.current
         const mf = keyboardMathLiveFieldRef.current
         // Move MathLive field into the current host if needed.
         // appendChild() will safely reparent an existing node without manual removeChild calls.
-        if (mf && mf.parentElement !== el) {
+        if (el && mf && mf.parentElement !== el) {
           el.appendChild(mf)
         }
       } catch (err) {
@@ -10973,6 +10972,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [keyboardTopPanelExpression])
 
+  // Keep MathLive attached and synchronized with current keyboard expression/caret.
+  useEffect(() => {
+    const mf = keyboardMathLiveFieldRef.current
+    if (!mf) return
+
+    const host = keyboardExpressionSurfaceRef.current
+    if (host && mf.parentElement !== host) {
+      host.appendChild(mf)
+    }
+
+    const nextValue = keyboardTopPanelExpression || ''
+    if (mf.value !== nextValue) {
+      mf.value = nextValue
+    }
+
+    const nextPosition = Math.max(0, Math.min(nextValue.length, keyboardSelection.start))
+    if (Number(mf.position) !== nextPosition) {
+      mf.position = nextPosition
+    }
+  }, [canvasMode, keyboardSelection.start, keyboardTopPanelExpression, recognitionEngine])
+
   const estimateKeyboardCaretFromTap = useCallback((value: string, clientX: number, clientY: number, rect: DOMRect, slotRefs?: Array<HTMLSpanElement | null>) => {
     const symbols = Array.from(value || '')
     if (!symbols.length) return 0
@@ -11087,8 +11107,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     slotRefs?: { current: Array<HTMLSpanElement | null> },
   ) => {
     const showMarkup = Boolean(keyboardTypesetPreviewMarkup)
-    // On top panel with MathLive, let MathLive handle rendering
-    const useMathLiveOnTopPanel = attachFocusRef && keyboardMathLiveFieldRef.current
+    // On top panel, always reserve host for MathLive (field attaches asynchronously).
+    const useMathLiveOnTopPanel = attachFocusRef
     
     if (useMathLiveOnTopPanel) {
       // MathLive will be appended to this div; don't render KaTeX markup
@@ -11141,13 +11161,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [keyboardTopPanelExpression, keyboardTypesetPreviewMarkup, renderKeyboardCaretOverlaySurface])
 
   const renderKeyboardTopPanelEditorSurface = useCallback(() => {
-    const mf = keyboardMathLiveFieldRef.current
-    if (mf) {
-      mf.value = keyboardTopPanelExpression || ''
-      mf.position = Math.max(0, Math.min((keyboardTopPanelExpression || '').length, keyboardSelection.start))
-    }
     return renderKeyboardTypesetEditorSurface(false, true, keyboardTopTypesetPreviewRef, keyboardTopCaretSlotRefs)
-  }, [keyboardSelection.start, keyboardTopPanelExpression, renderKeyboardTypesetEditorSurface])
+  }, [renderKeyboardTypesetEditorSurface])
 
   const renderKeyboardBottomPanelPreviewSurface = useCallback(() => {
     return renderKeyboardTypesetEditorSurface(true, false, keyboardBottomTypesetPreviewRef, keyboardBottomCaretSlotRefs)

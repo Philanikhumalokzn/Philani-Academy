@@ -14952,7 +14952,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                             const selected = topPanelStepsPayload.selectedIndex === index
                             const mobileActionsOpen = isCompactViewport && mobileTopPanelActionStepIndex === index
                             const html = renderLatexStepInline(latex)
-                            const showKeyboardStepCaret = recognitionEngine === 'keyboard' && selected
                             return (
                               <div key={index} className="py-1" data-top-panel-step-shell data-step-idx={String(index)}>
                                 <div className={`rounded border ${selected ? 'border-slate-300 bg-slate-50' : 'border-transparent bg-transparent'}`}>
@@ -14961,7 +14960,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                                       type="button"
                                       data-top-panel-step
                                       data-step-idx={String(index)}
-                                      className={`min-w-0 flex-1 rounded px-2 py-1 focus:outline-none focus:ring-0 text-center ${selected ? 'bg-slate-100' : 'bg-transparent'} ${showKeyboardStepCaret ? 'select-none' : ''}`}
+                                      className={`min-w-0 flex-1 rounded px-2 py-1 focus:outline-none focus:ring-0 text-center ${selected ? 'bg-slate-100' : 'bg-transparent'}`}
                                       onPointerDown={(ev) => {
                                         ev.stopPropagation()
                                         if (!isCompactViewport) return
@@ -14986,9 +14985,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                                       onClick={(ev) => {
                                         ev.preventDefault()
                                         ev.stopPropagation()
-                                        if (recognitionEngine === 'keyboard') {
-                                          return
-                                        }
                                         if (topPanelStepLongPressTriggeredRef.current === index) {
                                           topPanelStepLongPressTriggeredRef.current = null
                                           return
@@ -15000,9 +14996,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                                       <span className="mr-2 inline-block min-w-[2.25rem] text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                                         {isEditing ? 'Edit' : `Step ${index + 1}`}
                                       </span>
-                                      {showKeyboardStepCaret ? (
-                                        renderKeyboardTopPanelCaretSurface(latex)
-                                      ) : html ? (
+                                      {html ? (
                                         <span className="inline align-middle" dangerouslySetInnerHTML={{ __html: html }} />
                                       ) : (
                                         <span className="text-slate-500">&nbsp;</span>

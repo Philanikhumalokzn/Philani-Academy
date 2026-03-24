@@ -11078,7 +11078,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             <div
               ref={typesetPreviewRef}
               aria-hidden="true"
-              className={`pointer-events-none absolute inset-0 flex items-center overflow-hidden rounded-[10px] border border-[rgba(15,23,42,0.2)] bg-white px-3 py-2 text-slate-900 ${compact ? '[&_.katex]:text-[1rem]' : '[&_.katex]:text-[1.35rem]'}`}
+              className={`pointer-events-none absolute inset-0 z-10 flex items-center overflow-hidden rounded-[10px] border border-[rgba(15,23,42,0.2)] bg-white px-3 py-2 text-slate-900 ${compact ? '[&_.katex]:text-[1rem]' : '[&_.katex]:text-[1.35rem]'}`}
               dangerouslySetInnerHTML={{ __html: keyboardTypesetPreviewMarkup || '<span class="text-slate-400">Type or tap to place the caret</span>' }}
             />
             <input
@@ -11103,8 +11103,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               autoCorrect="off"
               autoCapitalize="off"
               autoComplete="off"
-              className={`input input-light absolute inset-0 h-full w-full bg-transparent px-3 py-2 text-transparent leading-tight outline-none caret-sky-600 ${compact ? 'text-lg' : 'text-[1.9rem]'}`}
-              style={{ WebkitUserSelect: 'text', userSelect: 'text' }}
+              className={`input input-light absolute inset-0 z-20 h-full w-full bg-transparent px-3 py-2 leading-tight outline-none caret-sky-600 ${compact ? 'text-lg' : 'text-[1.9rem]'}`}
+              style={{
+                color: 'transparent',
+                WebkitTextFillColor: 'transparent',
+                WebkitUserSelect: 'text',
+                userSelect: 'text',
+              }}
             />
           </div>
         </div>

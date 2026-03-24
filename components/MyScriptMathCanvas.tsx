@@ -2392,11 +2392,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         }
 
         const mf = keyboardMathLiveFieldRef.current
-        // Clear previous children (except MathLive field if exists)
-        while (el.firstChild && el.firstChild !== mf) {
-          el.removeChild(el.firstChild)
-        }
-        if (!el.contains(mf)) {
+        // Move MathLive field into the current host if needed.
+        // appendChild() will safely reparent an existing node without manual removeChild calls.
+        if (mf && mf.parentElement !== el) {
           el.appendChild(mf)
         }
       } catch (err) {

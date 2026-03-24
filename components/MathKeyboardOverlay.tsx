@@ -72,7 +72,15 @@ const renderKatexToString = (latex: string, displayMode: boolean) => {
 }
 
 // KaTeX Preview component with professional rendering
-function MathPreview({ latex }: { latex: string }) {
+function MathPreview({
+  latex,
+  cursorPosition,
+  onDisplayClick,
+}: {
+  latex: string
+  cursorPosition: number
+  onDisplayClick: (clientX: number, clientY: number) => void
+}) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -81,10 +89,15 @@ function MathPreview({ latex }: { latex: string }) {
     containerRef.current.innerHTML = renderKatexToString(latex, true)
   }, [latex])
 
+  const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    onDisplayClick(event.clientX, event.clientY)
+  }
+
   return (
     <div
       ref={containerRef}
-      className="h-full w-full flex items-center justify-center bg-white p-4 text-slate-800"
+      onClick={handleClick}
+      className="h-full w-full flex items-center justify-center bg-white p-4 text-slate-800 cursor-text"
       style={{ minHeight: '100px' }}
     />
   )
@@ -431,6 +444,8 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
   const [latexExpression, setLatexExpression] = useState<string>('x')
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [selectedDirection, setSelectedDirection] = useState<Direction>(null)
+  const [cursorPosition, setCursorPosition] = useState<number>(1) // Start at end of 'x'
+  const displayPanelRef = useRef<HTMLDivElement | null>(null)
 
   const updateFromClientY = useCallback((clientY: number) => {
     const container = containerRef.current
@@ -445,6 +460,34 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
     const nextRatio = (clientY - rect.top) / rect.height
     setTopRatio(clamp(nextRatio, MIN_RATIO, MAX_RATIO))
   }, [])
+
+  const handleDisplayClick = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!displayPanelRef.current) return
+
+      const rect = displayPanelRef.current.getBoundingClientRect()
+      
+      // Get the rendered content container
+      const contentDiv = displayPanelRef.current.querySelector('div')
+      if (!contentDiv) return
+
+      const contentRect = contentDiv.getBoundingClientRect()
+      
+      // Calculate relative position within the content
+      const relativeX = clientX - contentRect.left
+      
+      // Estimate character position based on width
+      // This is a heuristic: we assume roughly equal character widths
+      const contentWidth = contentRect.width
+      const estimatedCharWidth = contentWidth / Math.max(latexExpression.length * 0.6, 1)
+      
+      let estimatedPosition = Math.round(relativeX / estimatedCharWidth)
+      estimatedPosition = clamp(estimatedPosition, 0, latexExpression.length)
+      
+      setCursorPosition(estimatedPosition)
+    },
+    [latexExpression]
+  )
 
   const handleSeparatorPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -472,34 +515,43 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
 
     setSelectedDirection(direction)
 
-    // Build LaTeX expression
+    // Build LaTeX expression, inserting at cursor position
     setLatexExpression((prev) => {
       let newExpr = prev
+      const pos = cursorPosition
 
       switch (direction) {
         case 'N': // x as numerator
-          newExpr = `\\frac{${prev}}{\\phantom{a}}`
+          newExpr = `${prev.slice(0, pos)}\\frac{${prev.slice(pos)}}{\\phantom{a}}`
+          setCursorPosition(pos + 6) // Position after \frac{
           break
         case 'NE': // power
-          newExpr = `${prev}^{2}`
+          newExpr = `${prev.slice(0, pos)}${prev.slice(pos)}^{2}`
+          setCursorPosition(pos + prev.slice(pos).length + 4) // After ^{2}
           break
         case 'E': // addition
-          newExpr = `${prev} + \\phantom{a}`
+          newExpr = `${prev.slice(0, pos)} + \\phantom{a}${prev.slice(pos)}`
+          setCursorPosition(pos + 3) // After ' + '
           break
         case 'SE': // subscript
-          newExpr = `${prev}_{i}`
+          newExpr = `${prev.slice(0, pos)}${prev.slice(pos)}_{i}`
+          setCursorPosition(pos + prev.slice(pos).length + 3) // After _{i}
           break
         case 'S': // x as denominator
-          newExpr = `\\frac{\\phantom{a}}{${prev}}`
+          newExpr = `${prev.slice(0, pos)}\\frac{\\phantom{a}}{${prev.slice(pos)}}`
+          setCursorPosition(pos + 20) // Position after \frac{\phantom{a}}{
           break
         case 'SW': // radical
-          newExpr = `\\sqrt{${prev}}`
+          newExpr = `${prev.slice(0, pos)}\\sqrt{${prev.slice(pos)}}`
+          setCursorPosition(pos + 6) // Position after \sqrt{
           break
         case 'W': // subtraction
-          newExpr = `${prev} - \\phantom{a}`
+          newExpr = `${prev.slice(0, pos)} - \\phantom{a}${prev.slice(pos)}`
+          setCursorPosition(pos + 3) // After ' - '
           break
         case 'NW': // enclosure
-          newExpr = `\\left(${prev}\\right)`
+          newExpr = `${prev.slice(0, pos)}\\left(${prev.slice(pos)}\\right)`
+          setCursorPosition(pos + 6) // Position after \left(
           break
         default:
           break
@@ -510,7 +562,7 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
 
     // Clear selection after a delay
     setTimeout(() => setSelectedDirection(null), 300)
-  }, [])
+  }, [cursorPosition])
 
   if (!open) return null
 
@@ -552,12 +604,17 @@ export default function MathKeyboardOverlay({ open, onClose }: MathKeyboardOverl
           >
             {/* Top Preview Panel with KaTeX rendering */}
             <div
+              ref={displayPanelRef}
               className="flex flex-col"
               style={{ flex: Math.max(topRatio, 0.2), minHeight: '200px' }}
             >
               <div className="px-3 py-3 flex-1 min-h-[140px]">
                 <div className="h-full bg-white rounded-lg p-3 overflow-auto">
-                  <MathPreview latex={latexExpression} />
+                  <MathPreview
+                    latex={latexExpression}
+                    cursorPosition={cursorPosition}
+                    onDisplayClick={handleDisplayClick}
+                  />
                 </div>
               </div>
             </div>

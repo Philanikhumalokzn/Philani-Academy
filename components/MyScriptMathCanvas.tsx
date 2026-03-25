@@ -10960,7 +10960,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const keyboardTypesetPreviewMarkup = useMemo(() => {
     if (!keyboardDisplayLatex) return ''
     try {
-      return renderToString(keyboardDisplayLatex, { throwOnError: false, displayMode: true })
+      return renderToString(keyboardDisplayLatex, { throwOnError: false, displayMode: false })
     } catch (err) {
       console.warn('Failed to render keyboard preview LaTeX', err)
       return ''
@@ -11105,7 +11105,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               autoCorrect="off"
               autoCapitalize="off"
               autoComplete="off"
-              className={`absolute inset-0 z-20 h-full w-full border border-transparent bg-transparent px-3 py-2 leading-tight outline-none caret-sky-600 focus:outline-none ${compact ? 'text-lg' : 'text-[1.9rem]'}`}
+              className={`absolute inset-0 z-20 h-full w-full border border-transparent bg-transparent px-3 py-2 leading-tight outline-none caret-sky-600 focus:outline-none ${compact ? 'text-[1rem]' : 'text-[1.35rem]'}`}
               style={{
                 color: 'transparent',
                 WebkitTextFillColor: 'transparent',

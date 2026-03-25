@@ -10935,6 +10935,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       .replace(/π/g, ' \\pi ')
       .replace(/θ/g, ' \\theta ')
       .replace(/∞/g, ' \\infty ')
+      .replace(/([A-Za-z0-9)])\^\[([^\]]+)\]/g, '$1^{$2}')
+      .replace(/([A-Za-z0-9)])_\[([^\]]+)\]/g, '$1_{$2}')
       .replace(/([A-Za-z0-9)])\^([A-Za-z0-9]+)/g, '$1^{$2}')
       .replace(/([A-Za-z0-9)])_([A-Za-z0-9]+)/g, '$1_{$2}')
       .replace(/sqrt\(([^()]*)\)/g, '\\sqrt{$1}')

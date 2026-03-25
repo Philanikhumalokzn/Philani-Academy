@@ -2382,11 +2382,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const nextPosition = typeof field.position === 'number' ? field.position : 0
     setLatexOutput(nextValue)
     latexOutputRef.current = nextValue
-    if (useAdminStepComposerRef.current && hasControllerRights()) {
-      setAdminDraftLatex(normalizeStepLatex(nextValue))
+    if (useAdminStepComposerRef.current && canOrchestrateLesson) {
+      setAdminDraftLatex(nextValue)
     }
     setKeyboardSelectionState({ start: nextPosition, end: nextPosition })
-  }, [hasControllerRights, normalizeStepLatex, setKeyboardSelectionState])
+  }, [canOrchestrateLesson, setKeyboardSelectionState])
 
   useEffect(() => {
     if (!hasMounted) return
@@ -2416,33 +2416,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       const handleInput = () => {
         if (keyboardMathfieldSyncRef.current) return
         syncKeyboardMathfieldState(field)
-        closeKeyboardTransientOverlays()
-        scheduleKeyboardFadeOut()
       }
 
       const handleSelectionChange = () => {
         const nextPosition = typeof field.position === 'number' ? field.position : 0
         setKeyboardSelectionState({ start: nextPosition, end: nextPosition })
-        scheduleKeyboardFadeOut()
-      }
-
-      const handleFocus = () => {
-        setOverlayChromePeekVisible(false)
-        setTopPanelEditingMode(false)
-        clearTopPanelSelection()
-        setMobileTopPanelActionStepIndex(null)
-        scheduleKeyboardFadeOut()
       }
 
       field.addEventListener('input', handleInput)
       field.addEventListener('selection-change', handleSelectionChange)
-      field.addEventListener('focus', handleFocus)
       keyboardMathfieldHostRef.current.replaceChildren(field)
 
       cleanup = () => {
         field.removeEventListener('input', handleInput)
         field.removeEventListener('selection-change', handleSelectionChange)
-        field.removeEventListener('focus', handleFocus)
         if (keyboardMathfieldHostRef.current?.contains(field)) {
           keyboardMathfieldHostRef.current.replaceChildren()
         }
@@ -2456,7 +2443,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       disposed = true
       cleanup()
     }
-  }, [clearTopPanelSelection, closeKeyboardTransientOverlays, hasMounted, scheduleKeyboardFadeOut, setKeyboardSelectionState, setMobileTopPanelActionStepIndex, setOverlayChromePeekVisible, setTopPanelEditingMode, syncKeyboardMathfieldState])
+  }, [hasMounted, setKeyboardSelectionState, syncKeyboardMathfieldState])
 
   useEffect(() => {
     const field = keyboardMathfieldRef.current

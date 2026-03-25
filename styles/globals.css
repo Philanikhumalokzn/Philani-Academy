@@ -1,5 +1,25 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
 @import 'react-image-crop/dist/ReactCrop.css';
+@import 'mathlive/fonts.css';
+@import 'mathlive/static.css';
+
+math-field.keyboard-mathlive-field {
+  width: 100%;
+  min-height: 100%;
+  display: block;
+  background: #fff;
+  color: #0f172a;
+  --hue: 204;
+  --caret-color: #0284c7;
+  --selection-background-color: rgba(14, 165, 233, 0.18);
+}
+
+math-field.keyboard-mathlive-field::part(container) {
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  border-radius: 10px;
+  min-height: 100%;
+  padding: 0.5rem 0.75rem;
+}
 
 /* Modern crop styling - hide default dotted lines, use clean corner borders */
 .ReactCrop__crop-area {

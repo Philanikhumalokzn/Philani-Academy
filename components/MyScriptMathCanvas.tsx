@@ -1,4 +1,5 @@
 import { CSSProperties, Fragment, Ref, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react'
+import type { MathfieldElement as MathfieldElementType } from 'mathlive'
 
 import { createPortal } from 'react-dom'
 import { renderToString } from 'katex'
@@ -2288,6 +2289,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const recognitionEngineRef = useRef<RecognitionEngine>(DEFAULT_RECOGNITION_ENGINE)
   const keyboardSurfaceRef = useRef<HTMLDivElement | null>(null)
   const keyboardExpressionSurfaceRef = useRef<HTMLInputElement | null>(null)
+  const keyboardMathfieldHostRef = useRef<HTMLDivElement | null>(null)
+  const keyboardMathfieldRef = useRef<MathfieldElementType | null>(null)
+  const keyboardMathfieldSyncRef = useRef(false)
   const keyboardTopTypesetPreviewRef = useRef<HTMLDivElement | null>(null)
   const keyboardBottomTypesetPreviewRef = useRef<HTMLDivElement | null>(null)
   const [keyboardSelection, setKeyboardSelection] = useState<KeyboardSelectionState>({ start: 0, end: 0 })
@@ -2370,6 +2374,107 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   useEffect(() => {
     recognitionEngineRef.current = recognitionEngine
   }, [recognitionEngine])
+
+  const syncKeyboardMathfieldState = useCallback((mathfield?: MathfieldElementType | null) => {
+    const field = mathfield ?? keyboardMathfieldRef.current
+    if (!field) return
+    const nextValue = field.getValue('latex') || ''
+    const nextPosition = typeof field.position === 'number' ? field.position : 0
+    setLatexOutput(nextValue)
+    latexOutputRef.current = nextValue
+    if (useAdminStepComposerRef.current && hasControllerRights()) {
+      setAdminDraftLatex(normalizeStepLatex(nextValue))
+    }
+    setKeyboardSelectionState({ start: nextPosition, end: nextPosition })
+  }, [hasControllerRights, normalizeStepLatex, setKeyboardSelectionState])
+
+  useEffect(() => {
+    if (!hasMounted) return
+
+    let disposed = false
+    let cleanup = () => {}
+
+    ;(async () => {
+      const host = keyboardMathfieldHostRef.current
+      if (!host || keyboardMathfieldRef.current) return
+
+      const { MathfieldElement } = await import('mathlive')
+      if (disposed || !keyboardMathfieldHostRef.current || keyboardMathfieldRef.current) return
+
+      const field = new MathfieldElement()
+      keyboardMathfieldRef.current = field
+      field.className = 'keyboard-mathlive-field block h-full w-full rounded-[10px] border border-[rgba(15,23,42,0.2)] bg-white px-3 py-2 text-slate-900'
+      field.setAttribute('aria-label', 'Keyboard expression')
+      field.setAttribute('spellcheck', 'false')
+      field.mathVirtualKeyboardPolicy = 'manual'
+      field.smartFence = true
+      field.smartMode = false
+      field.smartSuperscript = true
+      field.readOnly = false
+      field.value = latexOutputRef.current || ''
+
+      const handleInput = () => {
+        if (keyboardMathfieldSyncRef.current) return
+        syncKeyboardMathfieldState(field)
+        closeKeyboardTransientOverlays()
+        scheduleKeyboardFadeOut()
+      }
+
+      const handleSelectionChange = () => {
+        const nextPosition = typeof field.position === 'number' ? field.position : 0
+        setKeyboardSelectionState({ start: nextPosition, end: nextPosition })
+        scheduleKeyboardFadeOut()
+      }
+
+      const handleFocus = () => {
+        setOverlayChromePeekVisible(false)
+        setTopPanelEditingMode(false)
+        clearTopPanelSelection()
+        setMobileTopPanelActionStepIndex(null)
+        scheduleKeyboardFadeOut()
+      }
+
+      field.addEventListener('input', handleInput)
+      field.addEventListener('selection-change', handleSelectionChange)
+      field.addEventListener('focus', handleFocus)
+      keyboardMathfieldHostRef.current.replaceChildren(field)
+
+      cleanup = () => {
+        field.removeEventListener('input', handleInput)
+        field.removeEventListener('selection-change', handleSelectionChange)
+        field.removeEventListener('focus', handleFocus)
+        if (keyboardMathfieldHostRef.current?.contains(field)) {
+          keyboardMathfieldHostRef.current.replaceChildren()
+        }
+        if (keyboardMathfieldRef.current === field) {
+          keyboardMathfieldRef.current = null
+        }
+      }
+    })()
+
+    return () => {
+      disposed = true
+      cleanup()
+    }
+  }, [clearTopPanelSelection, closeKeyboardTransientOverlays, hasMounted, scheduleKeyboardFadeOut, setKeyboardSelectionState, setMobileTopPanelActionStepIndex, setOverlayChromePeekVisible, setTopPanelEditingMode, syncKeyboardMathfieldState])
+
+  useEffect(() => {
+    const field = keyboardMathfieldRef.current
+    if (!field || keyboardMathfieldSyncRef.current) return
+
+    const currentValue = field.getValue('latex') || ''
+    const nextValue = latexOutput || ''
+    if (currentValue === nextValue) return
+
+    keyboardMathfieldSyncRef.current = true
+    try {
+      field.setValue(nextValue)
+      const nextPosition = typeof field.position === 'number' ? field.position : 0
+      setKeyboardSelectionState({ start: nextPosition, end: nextPosition })
+    } finally {
+      keyboardMathfieldSyncRef.current = false
+    }
+  }, [latexOutput, setKeyboardSelectionState])
 
   const keyboardIdleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const keyboardRepresentativeTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -9827,6 +9932,90 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     await loadAdminStepForEditing(nextIndex)
   }
 
+  const applyMathfieldKeyboardAction = useCallback((actionId: string, baseSymbol?: string, overrideLatex?: string | null) => {
+    const field = keyboardMathfieldRef.current
+    const action = KEYBOARD_ACTION_MAP[actionId]
+    if (!field || !action) return false
+
+    field.focus()
+
+    if (actionId === 'backspace') {
+      field.executeCommand('deleteBackward')
+      syncKeyboardMathfieldState(field)
+      return true
+    }
+
+    if (actionId === 'clear') {
+      field.executeCommand('deleteAll')
+      syncKeyboardMathfieldState(field)
+      return true
+    }
+
+    if (actionId === 'power2') {
+      if (!field.executeCommand('moveToSuperscript')) {
+        field.executeCommand(['insert', '^{2}'])
+      } else {
+        field.executeCommand(['insert', '2'])
+      }
+      syncKeyboardMathfieldState(field)
+      return true
+    }
+
+    if (actionId === 'power3') {
+      if (!field.executeCommand('moveToSuperscript')) {
+        field.executeCommand(['insert', '^{3}'])
+      } else {
+        field.executeCommand(['insert', '3'])
+      }
+      syncKeyboardMathfieldState(field)
+      return true
+    }
+
+    if (actionId === 'subscript') {
+      if (!field.executeCommand('moveToSubscript')) {
+        field.executeCommand(['insert', '_{i}'])
+      } else {
+        field.executeCommand(['insert', 'i'])
+      }
+      syncKeyboardMathfieldState(field)
+      return true
+    }
+
+    let insertion = overrideLatex ?? ''
+    if (!insertion) {
+      if (action.token) {
+        insertion = action.token
+      } else if (actionId === 'fraction' || actionId === 'fraction-denominator') {
+        insertion = '\\frac{}{}'
+      } else if (actionId === 'sqrt') {
+        insertion = '\\sqrt{}'
+      } else if (actionId === 'cuberoot') {
+        insertion = '\\sqrt[3]{}'
+      } else if (actionId === 'nth-root') {
+        insertion = '\\sqrt[]{}'
+      } else if (actionId === 'paren') {
+        insertion = '\\left(\\right)'
+      } else if (actionId === 'bracket') {
+        insertion = '\\left[\\right]'
+      } else if (actionId === 'brace') {
+        insertion = '\\left\\{\\right\\}'
+      } else if (actionId === 'absolute') {
+        insertion = '\\left|\\right|'
+      } else if (actionId === 'floor') {
+        insertion = '\\left\\lfloor \\right\\rfloor'
+      } else if (actionId === 'ceiling') {
+        insertion = '\\left\\lceil \\right\\rceil'
+      } else {
+        insertion = action.renderLatex?.(baseSymbol) ?? action.latex ?? ''
+      }
+    }
+
+    if (!insertion) return false
+    field.executeCommand(['insert', insertion])
+    syncKeyboardMathfieldState(field)
+    return true
+  }, [syncKeyboardMathfieldState])
+
   const applyKeyboardAction = useCallback((actionId: string, baseSymbol?: string) => {
     const action = KEYBOARD_ACTION_MAP[actionId]
     if (!action) return
@@ -9836,6 +10025,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const selection = keyboardSelectionRef.current
     const referenceTarget = findKeyboardReferenceTarget(prev, selection)
     const resolvedBaseSymbol = baseSymbol || referenceTarget?.symbol
+
+    if (recognitionEngineRef.current === 'keyboard' && applyMathfieldKeyboardAction(actionId, resolvedBaseSymbol)) {
+      closeKeyboardTransientOverlays()
+      scheduleKeyboardFadeOut()
+      if (typeof window !== 'undefined') {
+        window.setTimeout(() => setSelectedKeyboardKey(null), 220)
+      } else {
+        setSelectedKeyboardKey(null)
+      }
+      return
+    }
 
     let result: KeyboardEditResult
     if (actionId === 'backspace') {
@@ -9871,7 +10071,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     } else {
       setSelectedKeyboardKey(null)
     }
-  }, [closeKeyboardTransientOverlays, hasControllerRights, normalizeStepLatex, scheduleKeyboardFadeOut])
+  }, [applyMathfieldKeyboardAction, closeKeyboardTransientOverlays, hasControllerRights, normalizeStepLatex, scheduleKeyboardFadeOut])
 
   const applyKeyboardRadialAction = useCallback((actionId: string, target: KeyboardStageTarget) => {
     const action = KEYBOARD_ACTION_MAP[actionId]
@@ -9881,6 +10081,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const prev = latexOutputRef.current || ''
     const selection = keyboardSelectionRef.current
     const contextual = buildKeyboardContextualRadialOperation(actionId, target.payloadSymbol || target.baseSymbol, target.referenceTarget)
+
+    if (recognitionEngineRef.current === 'keyboard') {
+      const fallbackBaseSymbol = (target.payloadSymbol || target.baseSymbol) ?? target.referenceTarget?.symbol
+      const overrideLatex = contextual?.previewLatex || action.renderLatex?.(fallbackBaseSymbol) || action.latex || null
+      if (applyMathfieldKeyboardAction(actionId, fallbackBaseSymbol, overrideLatex)) {
+        closeKeyboardTransientOverlays()
+        scheduleKeyboardFadeOut()
+        if (typeof window !== 'undefined') {
+          window.setTimeout(() => setSelectedKeyboardKey(null), 220)
+        } else {
+          setSelectedKeyboardKey(null)
+        }
+        return
+      }
+    }
 
     let result: KeyboardEditResult
     if (contextual) {
@@ -9917,7 +10132,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     } else {
       setSelectedKeyboardKey(null)
     }
-  }, [closeKeyboardTransientOverlays, hasControllerRights, normalizeStepLatex, scheduleKeyboardFadeOut])
+  }, [applyMathfieldKeyboardAction, closeKeyboardTransientOverlays, hasControllerRights, normalizeStepLatex, scheduleKeyboardFadeOut])
 
   const openKeyboardRadial = useCallback((target: KeyboardStageTarget, anchor: KeyboardOverlayAnchor) => {
     const currentValue = latexOutputRef.current || ''
@@ -11046,6 +11261,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     clearTopPanelSelection()
     setMobileTopPanelActionStepIndex(null)
 
+    const mathfield = keyboardMathfieldRef.current
+    if (mathfield) {
+      const nextOffset = mathfield.getOffsetFromPoint(clientX, clientY, { bias: 0 })
+      mathfield.focus()
+      mathfield.position = nextOffset
+      setKeyboardSelectionState({ start: nextOffset, end: nextOffset })
+      scheduleKeyboardFadeOut()
+      return
+    }
+
     const measuredRect = typesetPreviewRef?.current?.getBoundingClientRect()
     const effectiveRect = measuredRect && measuredRect.width > 0 ? measuredRect : fallbackRect
     const caret = estimateKeyboardCaretFromTap(keyboardTopPanelExpression, clientX, clientY, effectiveRect, slotRefs?.current)
@@ -11078,43 +11303,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         <div className="flex h-full w-full items-center justify-center">
           <div className={`relative h-full w-full ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}>
             <div
-              ref={typesetPreviewRef}
-              aria-hidden="true"
-              className={`pointer-events-none absolute inset-0 z-10 flex items-center overflow-hidden rounded-[10px] border border-[rgba(15,23,42,0.2)] bg-white px-3 py-2 text-slate-900 ${compact ? '[&_.katex]:text-[1rem]' : '[&_.katex]:text-[1.35rem]'}`}
-              dangerouslySetInnerHTML={{ __html: keyboardTypesetPreviewMarkup || '<span class="text-slate-400">Type or tap to place the caret</span>' }}
-            />
-            <input
-              ref={keyboardExpressionSurfaceRef}
-              type="text"
-              inputMode="text"
-              value={keyboardTopPanelExpression}
-              onChange={handleKeyboardExpressionInputChange}
-              onFocus={() => {
-                setOverlayChromePeekVisible(false)
-                setTopPanelEditingMode(false)
-                clearTopPanelSelection()
-                setMobileTopPanelActionStepIndex(null)
-                scheduleKeyboardFadeOut()
-              }}
-              onClick={handleKeyboardExpressionSelectionChange}
-              onKeyUp={handleKeyboardExpressionSelectionChange}
-              onSelect={handleKeyboardExpressionSelectionChange}
-              aria-label="Keyboard expression"
-              placeholder="Type or tap to place the caret"
-              spellCheck={false}
-              autoCorrect="off"
-              autoCapitalize="off"
-              autoComplete="off"
-              className={`absolute inset-0 z-20 h-full w-full border border-transparent bg-transparent px-3 py-2 leading-tight outline-none caret-sky-600 focus:outline-none ${compact ? 'text-[1rem]' : 'text-[1.35rem]'}`}
-              style={{
-                color: 'transparent',
-                WebkitTextFillColor: 'transparent',
-                backgroundColor: 'transparent',
-                borderColor: 'transparent',
-                boxShadow: 'none',
-                WebkitUserSelect: 'text',
-                userSelect: 'text',
-              }}
+              ref={keyboardMathfieldHostRef}
+              className={`h-full w-full overflow-hidden rounded-[10px] ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
             />
           </div>
         </div>
@@ -11132,7 +11322,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         </div>
       </div>
     )
-  }, [clearTopPanelSelection, handleKeyboardExpressionInputChange, handleKeyboardExpressionSelectionChange, keyboardTopPanelExpression, keyboardTypesetPreviewMarkup, scheduleKeyboardFadeOut, setMobileTopPanelActionStepIndex, setOverlayChromePeekVisible, setTopPanelEditingMode])
+  }, [clearTopPanelSelection, scheduleKeyboardFadeOut, setMobileTopPanelActionStepIndex, setOverlayChromePeekVisible, setTopPanelEditingMode])
 
   const renderKeyboardTopPanelEditorSurface = useCallback(() => {
     return renderKeyboardTypesetEditorSurface(false, true, keyboardTopTypesetPreviewRef, keyboardTopCaretSlotRefs)
@@ -15080,7 +15270,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   onPointerDown={(e) => {
                     if (recognitionEngine === 'keyboard') {
                       const target = e.target as HTMLElement | null
-                      const isTextFieldTap = target?.tagName === 'INPUT' || target?.closest?.('input')
+                      const isTextFieldTap = target?.tagName === 'INPUT' || target?.closest?.('input') || target?.tagName === 'MATH-FIELD' || target?.closest?.('math-field')
                       if (isTextFieldTap) {
                         e.stopPropagation()
                         return

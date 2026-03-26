@@ -981,6 +981,7 @@ const KEYBOARD_ENGINE_TEMPLATES = ['x', 'y', '=', '+', '-', '\\times', '\\div', 
 const KEYBOARD_IDLE_MS = 3000
 const KEYBOARD_REPRESENTATIVE_TAP_MS = 260
 const KEYBOARD_REPRESENTATIVE_LONG_PRESS_MS = 420
+const KEYBOARD_SWIPE_DISAMBIGUATION_DISTANCE_PX = 14
 const KEYBOARD_SWIPE_MIN_DISTANCE_PX = 28
 
 type KeyboardActionDefinition = {
@@ -2306,6 +2307,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     startX: number
     startY: number
     active: boolean
+  } | null>(null)
+  const keyboardPendingKeyGestureRef = useRef<{
+    actionId: string
+    pointerId: number
+    startX: number
+    startY: number
+    swipeMode: boolean
   } | null>(null)
   const keyboardTopCaretSlotRefs = useRef<Array<HTMLSpanElement | null>>([])
   const keyboardBottomCaretSlotRefs = useRef<Array<HTMLSpanElement | null>>([])
@@ -10325,6 +10333,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       event.stopPropagation()
       clearKeyboardRepresentativeTapTimeout()
       clearKeyboardRepresentativeLongPress()
+      keyboardPendingKeyGestureRef.current = {
+        actionId,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        swipeMode: false,
+      }
       const stageTarget = buildMountedKeyboardStageTarget(actionId)
       if (!stageTarget) return
       const anchor = buildAnchorFromElement(actionId, event.currentTarget)
@@ -10342,17 +10357,50 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       } catch {}
     }
 
+    const handleMountedKeyPointerMove = (event: React.PointerEvent<HTMLButtonElement>, actionId: string) => {
+      event.stopPropagation()
+      const pending = keyboardPendingKeyGestureRef.current
+      if (!pending || pending.actionId !== actionId || pending.pointerId !== event.pointerId) return
+
+      const dx = event.clientX - pending.startX
+      const dy = event.clientY - pending.startY
+      const distance = Math.hypot(dx, dy)
+
+      if (!pending.swipeMode && distance >= KEYBOARD_SWIPE_DISAMBIGUATION_DISTANCE_PX) {
+        pending.swipeMode = true
+        clearKeyboardRepresentativeLongPress()
+      }
+
+      if (pending.swipeMode && distance >= KEYBOARD_SWIPE_MIN_DISTANCE_PX) {
+        event.preventDefault()
+      }
+    }
+
     const handleMountedKeyPointerUp = (event: React.PointerEvent<HTMLButtonElement>, actionId: string) => {
       event.stopPropagation()
+      const pending = keyboardPendingKeyGestureRef.current
+      keyboardPendingKeyGestureRef.current = null
       const longPress = keyboardRepresentativeLongPressRef.current
       const wasLongPress = longPress.triggered && longPress.keyId === actionId && longPress.pointerId === event.pointerId
       clearKeyboardRepresentativeLongPress()
       if (wasLongPress) return
+
+      if (pending && pending.actionId === actionId && pending.pointerId === event.pointerId) {
+        const dx = event.clientX - pending.startX
+        const dy = event.clientY - pending.startY
+        if (pending.swipeMode && Math.hypot(dx, dy) >= KEYBOARD_SWIPE_MIN_DISTANCE_PX) {
+          event.preventDefault()
+          moveKeyboardCaretBySwipe(classifyKeyboardSwipeDirection(dx, dy))
+          return
+        }
+      }
+
       applyKeyboardAction(actionId)
     }
 
     const handleMountedKeyPointerCancel = (event: React.PointerEvent<HTMLButtonElement>) => {
       event.stopPropagation()
+      keyboardPendingKeyGestureRef.current = null
       clearKeyboardRepresentativeLongPress()
     }
 
@@ -10443,6 +10491,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           data-keyboard-action={actionId}
                           className={`flex h-9 min-w-0 select-none items-center justify-center px-[1px] text-slate-900 transition-colors ${row.id === 'qwerty-4' && isSpaceKey ? 'col-span-9' : row.id === 'qwerty-4' && isClearKey ? 'col-span-3' : ''} ${isSelected ? 'bg-sky-100 text-sky-700' : 'bg-transparent hover:bg-slate-100'}`}
                           onPointerDown={(event) => handleMountedKeyPointerDown(event, actionId)}
+                          onPointerMove={(event) => handleMountedKeyPointerMove(event, actionId)}
                           onPointerUp={(event) => handleMountedKeyPointerUp(event, actionId)}
                           onPointerCancel={handleMountedKeyPointerCancel}
                           onContextMenu={(event) => event.preventDefault()}

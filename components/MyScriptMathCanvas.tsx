@@ -981,6 +981,7 @@ const KEYBOARD_ENGINE_TEMPLATES = ['x', 'y', '=', '+', '-', '\\times', '\\div', 
 const KEYBOARD_IDLE_MS = 3000
 const KEYBOARD_REPRESENTATIVE_TAP_MS = 260
 const KEYBOARD_REPRESENTATIVE_LONG_PRESS_MS = 420
+const KEYBOARD_SWIPE_MIN_DISTANCE_PX = 28
 
 type KeyboardActionDefinition = {
   id: string
@@ -1025,6 +1026,8 @@ type KeyboardStageTarget = {
   payloadSymbol?: string
   referenceTarget?: KeyboardReferenceTarget | null
 }
+
+type KeyboardSwipeDirection = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
 
 type KeyboardSelectionState = {
   start: number
@@ -2298,6 +2301,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const keyboardBottomTypesetPreviewRef = useRef<HTMLDivElement | null>(null)
   const [keyboardSelection, setKeyboardSelection] = useState<KeyboardSelectionState>({ start: 0, end: 0 })
   const keyboardSelectionRef = useRef<KeyboardSelectionState>({ start: 0, end: 0 })
+  const keyboardSwipeGestureRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    active: boolean
+  } | null>(null)
   const keyboardTopCaretSlotRefs = useRef<Array<HTMLSpanElement | null>>([])
   const keyboardBottomCaretSlotRefs = useRef<Array<HTMLSpanElement | null>>([])
 
@@ -10146,6 +10155,95 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [applyMathfieldKeyboardAction, closeKeyboardTransientOverlays, hasControllerRights, normalizeStepLatex, scheduleKeyboardFadeOut])
 
+  const moveKeyboardCaretBySwipe = useCallback((direction: KeyboardSwipeDirection) => {
+    const field = keyboardMathfieldRef.current
+    if (!field) return false
+
+    field.focus()
+
+    const tryExecute = (...commands: Array<string | [string, string]>) => {
+      for (const command of commands) {
+        try {
+          const handled = Array.isArray(command)
+            ? field.executeCommand(command)
+            : field.executeCommand(command)
+          if (handled) return true
+        } catch {}
+      }
+      return false
+    }
+
+    const clampAndSetPosition = (delta: number) => {
+      const currentValue = field.getValue('latex') || ''
+      const currentPosition = typeof field.position === 'number' ? field.position : 0
+      const nextPosition = Math.max(0, Math.min(currentValue.length, currentPosition + delta))
+      if (nextPosition === currentPosition) return false
+      field.position = nextPosition
+      return true
+    }
+
+    const moveHorizontally = (delta: 1 | -1) => {
+      if (tryExecute(delta > 0 ? 'moveToNextChar' : 'moveToPreviousChar')) return true
+      return clampAndSetPosition(delta)
+    }
+
+    const moveToSuperscript = () => {
+      if (tryExecute('moveToSuperscript')) return true
+      try {
+        field.executeCommand(['insert', '^{}'])
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    const moveToSubscript = () => {
+      if (tryExecute('moveToSubscript')) return true
+      try {
+        field.executeCommand(['insert', '_{}'])
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    const moveVertical = (axis: 'up' | 'down') => {
+      if (axis === 'up') {
+        return tryExecute('moveUp', 'moveToNumerator', 'moveToPreviousPlaceholder')
+      }
+      return tryExecute('moveDown', 'moveToDenominator', 'moveToNextPlaceholder')
+    }
+
+    const handled = (() => {
+      switch (direction) {
+        case 'e':
+          return moveHorizontally(1)
+        case 'w':
+          return moveHorizontally(-1)
+        case 'ne':
+          return moveToSuperscript()
+        case 'se':
+          return moveToSubscript()
+        case 'n':
+          return moveVertical('up')
+        case 's':
+          return moveVertical('down')
+        case 'nw':
+          return moveHorizontally(-1) && moveToSuperscript()
+        case 'sw':
+          return moveHorizontally(-1) && moveToSubscript()
+        default:
+          return false
+      }
+    })()
+
+    if (!handled) return false
+    syncKeyboardMathfieldState(field)
+    closeKeyboardTransientOverlays()
+    scheduleKeyboardFadeOut()
+    return true
+  }, [closeKeyboardTransientOverlays, scheduleKeyboardFadeOut, syncKeyboardMathfieldState])
+
   const openKeyboardRadial = useCallback((target: KeyboardStageTarget, anchor: KeyboardOverlayAnchor) => {
     const currentValue = latexOutputRef.current || ''
     const referenceTarget = findKeyboardReferenceTarget(currentValue, keyboardSelectionRef.current)
@@ -10168,6 +10266,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   const renderKeyboardCanvasSurface = () => {
     const activeRadialTarget = activeKeyboardRadialTarget
+    const classifyKeyboardSwipeDirection = (dx: number, dy: number): KeyboardSwipeDirection => {
+      const angle = Math.atan2(-dy, dx)
+      const normalized = angle >= 0 ? angle : angle + (Math.PI * 2)
+      const sector = Math.round(normalized / (Math.PI / 4)) % 8
+      const directions: KeyboardSwipeDirection[] = ['e', 'ne', 'n', 'nw', 'w', 'sw', 's', 'se']
+      return directions[sector] || 'e'
+    }
+
     const renderKeyboardActionContent = (actionId: string, baseSymbol?: string) => {
       const action = KEYBOARD_ACTION_MAP[actionId]
       if (!action) return <span className="text-sm font-semibold">?</span>
@@ -10250,14 +10356,54 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       clearKeyboardRepresentativeLongPress()
     }
 
+    const handleKeyboardSurfacePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+      closeKeyboardTransientOverlays()
+      const target = event.target as HTMLElement | null
+      if (target?.closest('button')) {
+        keyboardSwipeGestureRef.current = null
+        return
+      }
+      keyboardSwipeGestureRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        active: true,
+      }
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId)
+      } catch {}
+    }
+
+    const handleKeyboardSurfacePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+      const gesture = keyboardSwipeGestureRef.current
+      if (!gesture || !gesture.active || gesture.pointerId !== event.pointerId) return
+      const dx = event.clientX - gesture.startX
+      const dy = event.clientY - gesture.startY
+      if (Math.hypot(dx, dy) >= KEYBOARD_SWIPE_MIN_DISTANCE_PX) {
+        event.preventDefault()
+      }
+    }
+
+    const handleKeyboardSurfacePointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+      const gesture = keyboardSwipeGestureRef.current
+      if (!gesture || gesture.pointerId !== event.pointerId) return
+      keyboardSwipeGestureRef.current = null
+      const dx = event.clientX - gesture.startX
+      const dy = event.clientY - gesture.startY
+      if (Math.hypot(dx, dy) < KEYBOARD_SWIPE_MIN_DISTANCE_PX) return
+      event.preventDefault()
+      moveKeyboardCaretBySwipe(classifyKeyboardSwipeDirection(dx, dy))
+    }
+
     return (
       <div
         ref={keyboardSurfaceRef}
         className="absolute inset-0 z-30 overflow-y-auto bg-white select-none"
         style={{ WebkitUserSelect: 'none', userSelect: 'none' }}
-        onPointerDown={() => {
-          closeKeyboardTransientOverlays()
-        }}
+        onPointerDown={handleKeyboardSurfacePointerDown}
+        onPointerMove={handleKeyboardSurfacePointerMove}
+        onPointerUp={handleKeyboardSurfacePointerEnd}
+        onPointerCancel={handleKeyboardSurfacePointerEnd}
       >
         <div className="sticky top-0 z-10 bg-white/95 px-2 py-2 backdrop-blur-sm">
           <div

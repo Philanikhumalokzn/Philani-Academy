@@ -2697,6 +2697,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   useEffect(() => {
     if (!isTechnicalAdmin) return
+    if (uiMode === 'overlay') return
     if (typeof window === 'undefined') return
     try {
       const saved = window.localStorage.getItem(RECOGNITION_ENGINE_STORAGE_KEY)
@@ -2708,11 +2709,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   useEffect(() => {
     if (!isTechnicalAdmin) return
+    if (uiMode === 'overlay') return
     if (typeof window === 'undefined') return
     try {
       window.localStorage.setItem(RECOGNITION_ENGINE_STORAGE_KEY, recognitionEngine)
     } catch {}
-  }, [isTechnicalAdmin, recognitionEngine])
+  }, [isTechnicalAdmin, recognitionEngine, uiMode])
   const [eraserShimReady, setEraserShimReady] = useState(false)
   const eraserLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const eraserLongPressTriggeredRef = useRef(false)

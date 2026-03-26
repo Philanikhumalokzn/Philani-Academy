@@ -984,6 +984,8 @@ const KEYBOARD_REPRESENTATIVE_LONG_PRESS_MS = 420
 const KEYBOARD_SWIPE_DISAMBIGUATION_DISTANCE_PX = 14
 const KEYBOARD_SWIPE_MIN_DISTANCE_PX = 28
 const KEYBOARD_SWIPE_STEP_DISTANCE_PX = 34
+const KEYBOARD_SWIPE_HOLD_DELAY_MS = 170
+const KEYBOARD_SWIPE_HOLD_REPEAT_MS = 82
 
 type KeyboardActionDefinition = {
   id: string
@@ -2320,6 +2322,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     direction: KeyboardSwipeDirection | null
     appliedSteps: number
   } | null>(null)
+  const keyboardSwipeHoldTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const keyboardSwipeHoldStateRef = useRef<{
+    pointerId: number | null
+    direction: KeyboardSwipeDirection | null
+    active: boolean
+  }>({
+    pointerId: null,
+    direction: null,
+    active: false,
+  })
   const keyboardTopCaretSlotRefs = useRef<Array<HTMLSpanElement | null>>([])
   const keyboardBottomCaretSlotRefs = useRef<Array<HTMLSpanElement | null>>([])
 
@@ -2547,6 +2559,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [])
 
+  const stopKeyboardSwipeHold = useCallback(() => {
+    if (keyboardSwipeHoldTimeoutRef.current) {
+      clearTimeout(keyboardSwipeHoldTimeoutRef.current)
+      keyboardSwipeHoldTimeoutRef.current = null
+    }
+    keyboardSwipeHoldStateRef.current = {
+      pointerId: null,
+      direction: null,
+      active: false,
+    }
+  }, [])
+
   const clearKeyboardIdleTimeout = useCallback(() => {
     if (!keyboardIdleTimeoutRef.current) return
     clearTimeout(keyboardIdleTimeoutRef.current)
@@ -2593,8 +2617,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       clearKeyboardRepresentativeTapTimeout()
       clearKeyboardRepresentativeLongPress()
       clearKeyboardIdleTimeout()
+      stopKeyboardSwipeHold()
     }
-  }, [clearKeyboardIdleTimeout, clearKeyboardRepresentativeLongPress, clearKeyboardRepresentativeTapTimeout])
+  }, [clearKeyboardIdleTimeout, clearKeyboardRepresentativeLongPress, clearKeyboardRepresentativeTapTimeout, stopKeyboardSwipeHold])
 
   useEffect(() => {
     rawInkStrokesRef.current = rawInkStrokes
@@ -10270,6 +10295,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [])
 
+  const startKeyboardSwipeHold = useCallback((pointerId: number, direction: KeyboardSwipeDirection) => {
+    stopKeyboardSwipeHold()
+
+    keyboardSwipeHoldStateRef.current = {
+      pointerId,
+      direction,
+      active: true,
+    }
+
+    const repeat = () => {
+      const state = keyboardSwipeHoldStateRef.current
+      if (!state.active || state.pointerId !== pointerId || !state.direction) return
+
+      const repeatDirection = getKeyboardSwipeContinuationDirection(state.direction)
+      if (!moveKeyboardCaretBySwipe(repeatDirection)) {
+        stopKeyboardSwipeHold()
+        return
+      }
+
+      keyboardSwipeHoldTimeoutRef.current = setTimeout(repeat, KEYBOARD_SWIPE_HOLD_REPEAT_MS)
+    }
+
+    keyboardSwipeHoldTimeoutRef.current = setTimeout(repeat, KEYBOARD_SWIPE_HOLD_DELAY_MS)
+  }, [getKeyboardSwipeContinuationDirection, moveKeyboardCaretBySwipe, stopKeyboardSwipeHold])
+
   const openKeyboardRadial = useCallback((target: KeyboardStageTarget, anchor: KeyboardOverlayAnchor) => {
     const currentValue = latexOutputRef.current || ''
     const referenceTarget = findKeyboardReferenceTarget(currentValue, keyboardSelectionRef.current)
@@ -10302,6 +10352,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const applyKeyboardSwipeProgress = (
       gesture: {
+        pointerId: number
         direction: KeyboardSwipeDirection | null
         appliedSteps: number
       },
@@ -10327,6 +10378,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           return true
         }
         gesture.appliedSteps = stepIndex + 1
+      }
+
+      if (gesture.direction && gesture.appliedSteps > 0) {
+        startKeyboardSwipeHold(gesture.pointerId, gesture.direction)
       }
 
       return true
@@ -10381,6 +10436,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const handleMountedKeyPointerDown = (event: React.PointerEvent<HTMLButtonElement>, actionId: string) => {
       event.stopPropagation()
+      stopKeyboardSwipeHold()
       clearKeyboardRepresentativeTapTimeout()
       clearKeyboardRepresentativeLongPress()
       keyboardPendingKeyGestureRef.current = {
@@ -10436,6 +10492,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       const longPress = keyboardRepresentativeLongPressRef.current
       const wasLongPress = longPress.triggered && longPress.keyId === actionId && longPress.pointerId === event.pointerId
       clearKeyboardRepresentativeLongPress()
+      stopKeyboardSwipeHold()
       if (wasLongPress) return
 
       if (pending && pending.actionId === actionId && pending.pointerId === event.pointerId) {
@@ -10454,10 +10511,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const handleMountedKeyPointerCancel = (event: React.PointerEvent<HTMLButtonElement>) => {
       event.stopPropagation()
       keyboardPendingKeyGestureRef.current = null
+      stopKeyboardSwipeHold()
       clearKeyboardRepresentativeLongPress()
     }
 
     const handleKeyboardSurfacePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+      stopKeyboardSwipeHold()
       closeKeyboardTransientOverlays()
       const target = event.target as HTMLElement | null
       if (target?.closest('button')) {
@@ -10492,6 +10551,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       const gesture = keyboardSwipeGestureRef.current
       if (!gesture || gesture.pointerId !== event.pointerId) return
       keyboardSwipeGestureRef.current = null
+      stopKeyboardSwipeHold()
       const dx = event.clientX - gesture.startX
       const dy = event.clientY - gesture.startY
       if (Math.hypot(dx, dy) < KEYBOARD_SWIPE_MIN_DISTANCE_PX) return

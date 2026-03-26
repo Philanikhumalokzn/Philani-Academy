@@ -10398,61 +10398,65 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return (
       <div
         ref={keyboardSurfaceRef}
-        className="absolute inset-0 z-30 overflow-y-auto bg-white select-none"
-        style={{ WebkitUserSelect: 'none', userSelect: 'none' }}
+        className="absolute inset-0 z-30 overflow-hidden bg-white select-none"
+        style={{ WebkitUserSelect: 'none', userSelect: 'none', touchAction: 'none' }}
         onPointerDown={handleKeyboardSurfacePointerDown}
         onPointerMove={handleKeyboardSurfacePointerMove}
         onPointerUp={handleKeyboardSurfacePointerEnd}
         onPointerCancel={handleKeyboardSurfacePointerEnd}
       >
-        <div className="sticky top-0 z-10 bg-white/95 px-2 py-2 backdrop-blur-sm">
-          <div
-            className="min-h-[3rem] w-full"
-            onPointerDown={(event) => {
-              event.stopPropagation()
-              event.preventDefault()
-              focusKeyboardExpressionAtTap(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect(), keyboardBottomTypesetPreviewRef, keyboardBottomCaretSlotRefs)
-            }}
-          >
-            {renderKeyboardBottomPanelPreviewSurface()}
-          </div>
-        </div>
-        <div className="flex min-h-full w-full flex-col justify-center gap-[3px] px-0 py-[3px]">
-          {KEYBOARD_MOUNTED_ROWS.map((row) => (
-            <div key={row.id} className="w-full">
+        <div className="flex h-full w-full items-center justify-center px-2 py-2 sm:px-3 sm:py-3">
+          <div className="flex h-full max-h-full w-full max-w-[1120px] flex-col justify-center gap-[4px]">
+            <div className="rounded-xl border border-slate-200 bg-white/95 px-2 py-2 shadow-sm backdrop-blur-sm">
               <div
-                className="grid w-full gap-[2px]"
-                style={row.id === 'qwerty-4'
-                  ? ({ gridTemplateColumns: 'repeat(12, minmax(0, 1fr))' } as CSSProperties)
-                  : ({ gridTemplateColumns: `repeat(${row.actionIds.length}, minmax(0, 1fr))` } as CSSProperties)}
+                className="min-h-[3rem] w-full"
+                onPointerDown={(event) => {
+                  event.stopPropagation()
+                  event.preventDefault()
+                  focusKeyboardExpressionAtTap(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect(), keyboardBottomTypesetPreviewRef, keyboardBottomCaretSlotRefs)
+                }}
               >
-                {row.actionIds.map((actionId) => {
-                  const action = KEYBOARD_ACTION_MAP[actionId]
-                  if (!action) return null
-                  const isSelected = selectedKeyboardKey === actionId
-                  const isSpaceKey = actionId === 'space'
-                  const isClearKey = actionId === 'clear'
-                  const isWideFunctionKey = row.id === 'functions' || row.id === 'calculus'
-                  return (
-                    <button
-                      key={`${row.id}-${actionId}`}
-                      type="button"
-                      data-keyboard-row={row.id}
-                      data-keyboard-action={actionId}
-                      className={`flex h-9 min-w-0 select-none items-center justify-center px-[1px] text-slate-900 transition-colors ${row.id === 'qwerty-4' && isSpaceKey ? 'col-span-9' : row.id === 'qwerty-4' && isClearKey ? 'col-span-3' : ''} ${isSelected ? 'bg-sky-100 text-sky-700' : 'bg-transparent hover:bg-slate-100'}`}
-                      onPointerDown={(event) => handleMountedKeyPointerDown(event, actionId)}
-                      onPointerUp={(event) => handleMountedKeyPointerUp(event, actionId)}
-                      onPointerCancel={handleMountedKeyPointerCancel}
-                      onContextMenu={(event) => event.preventDefault()}
-                      title={action.title}
-                    >
-                      <span className={`${isWideFunctionKey ? 'text-[0.76rem]' : 'text-[0.9rem]'} leading-none`}>{actionId === 'space' ? <span aria-hidden="true" className="block h-px w-full max-w-24 bg-slate-500" /> : renderKeyboardActionContent(actionId)}</span>
-                    </button>
-                  )
-                })}
+                {renderKeyboardBottomPanelPreviewSurface()}
               </div>
             </div>
-          ))}
+            <div className="flex w-full flex-col justify-center gap-[3px]">
+              {KEYBOARD_MOUNTED_ROWS.map((row) => (
+                <div key={row.id} className="w-full">
+                  <div
+                    className="grid w-full gap-[2px]"
+                    style={row.id === 'qwerty-4'
+                      ? ({ gridTemplateColumns: 'repeat(12, minmax(0, 1fr))' } as CSSProperties)
+                      : ({ gridTemplateColumns: `repeat(${row.actionIds.length}, minmax(0, 1fr))` } as CSSProperties)}
+                  >
+                    {row.actionIds.map((actionId) => {
+                      const action = KEYBOARD_ACTION_MAP[actionId]
+                      if (!action) return null
+                      const isSelected = selectedKeyboardKey === actionId
+                      const isSpaceKey = actionId === 'space'
+                      const isClearKey = actionId === 'clear'
+                      const isWideFunctionKey = row.id === 'functions' || row.id === 'calculus'
+                      return (
+                        <button
+                          key={`${row.id}-${actionId}`}
+                          type="button"
+                          data-keyboard-row={row.id}
+                          data-keyboard-action={actionId}
+                          className={`flex h-9 min-w-0 select-none items-center justify-center px-[1px] text-slate-900 transition-colors ${row.id === 'qwerty-4' && isSpaceKey ? 'col-span-9' : row.id === 'qwerty-4' && isClearKey ? 'col-span-3' : ''} ${isSelected ? 'bg-sky-100 text-sky-700' : 'bg-transparent hover:bg-slate-100'}`}
+                          onPointerDown={(event) => handleMountedKeyPointerDown(event, actionId)}
+                          onPointerUp={(event) => handleMountedKeyPointerUp(event, actionId)}
+                          onPointerCancel={handleMountedKeyPointerCancel}
+                          onContextMenu={(event) => event.preventDefault()}
+                          title={action.title}
+                        >
+                          <span className={`${isWideFunctionKey ? 'text-[0.76rem]' : 'text-[0.9rem]'} leading-none`}>{actionId === 'space' ? <span aria-hidden="true" className="block h-px w-full max-w-24 bg-slate-500" /> : renderKeyboardActionContent(actionId)}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
         {activeRadialTarget && keyboardOverlayAnchor ? (
           <div className="pointer-events-none absolute inset-0 z-40">
@@ -16752,25 +16756,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               <div className="rounded bg-white relative overflow-hidden flex flex-col flex-1 min-h-0">
                 <div
                   ref={studentViewportRef}
-                  className="relative flex-1 min-h-0 overflow-auto"
+                  className={`relative flex-1 min-h-0 ${recognitionEngine === 'keyboard' ? 'overflow-hidden' : 'overflow-auto'}`}
                   style={{
-                    touchAction: 'pan-x pan-y',
-                    WebkitOverflowScrolling: 'touch',
-                    paddingBottom: showBottomHorizontalScrollbar
-                      ? `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px + ${STACKED_BOTTOM_OVERLAY_RESERVE_PX}px)`
-                      : undefined,
+                    touchAction: recognitionEngine === 'keyboard' ? 'none' : 'pan-x pan-y',
+                    WebkitOverflowScrolling: recognitionEngine === 'keyboard' ? undefined : 'touch',
+                    paddingBottom: recognitionEngine === 'keyboard'
+                      ? undefined
+                      : (showBottomHorizontalScrollbar
+                        ? `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px + ${STACKED_BOTTOM_OVERLAY_RESERVE_PX}px)`
+                        : undefined),
                   }}
                 >
                   <div
                     ref={stackedZoomContentRef}
-                    className={`flex min-w-full flex-col gap-6 py-4 sm:py-6 ${recognitionEngine === 'keyboard' ? 'w-full items-stretch px-0 sm:px-0' : 'w-max items-center px-4 sm:px-6'}`}
+                    className={`flex min-w-full flex-col ${recognitionEngine === 'keyboard' ? 'h-full w-full items-stretch justify-center gap-0 px-0 py-0 sm:px-0 sm:py-0' : 'w-max items-center gap-6 px-4 py-4 sm:px-6 sm:py-6'}`}
                     style={{
-                      zoom: stackedLiveScale,
-                      paddingTop: 'calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 14px)',
+                      zoom: recognitionEngine === 'keyboard' ? 1 : stackedLiveScale,
+                      paddingTop: recognitionEngine === 'keyboard'
+                        ? 0
+                        : 'calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 14px)',
                       willChange: stackedPinchStateRef.current.active ? 'transform' : undefined,
                     }}
                   >
-                    <div className={`w-full flex items-start ${recognitionEngine === 'keyboard' ? 'justify-stretch' : 'justify-center'}`}>
+                    <div className={`w-full flex ${recognitionEngine === 'keyboard' ? 'h-full items-center justify-center' : 'items-start justify-center'}`}>
                       <div
                         style={{
                           position: 'relative',
@@ -16778,7 +16786,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           width: recognitionEngine === 'keyboard'
                             ? '100%'
                             : `${Math.max(320, Math.round(stackedSurfaceBaseSize.width * inkSurfaceWidthFactor))}px`,
-                          height: `${Math.max(320, stackedSurfaceBaseSize.height)}px`,
+                          height: recognitionEngine === 'keyboard'
+                            ? '100%'
+                            : `${Math.max(320, stackedSurfaceBaseSize.height)}px`,
                         }}
                       >
                         <div

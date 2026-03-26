@@ -983,8 +983,7 @@ const KEYBOARD_REPRESENTATIVE_TAP_MS = 260
 const KEYBOARD_REPRESENTATIVE_LONG_PRESS_MS = 420
 const KEYBOARD_SWIPE_DISAMBIGUATION_DISTANCE_PX = 14
 const KEYBOARD_SWIPE_MIN_DISTANCE_PX = 28
-const KEYBOARD_SWIPE_SEEK_HOLD_MS = 220
-const KEYBOARD_SWIPE_SEEK_STEP_PX = 22
+const KEYBOARD_SWIPE_STEP_DISTANCE_PX = 34
 
 type KeyboardActionDefinition = {
   id: string
@@ -2308,20 +2307,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     pointerId: number
     startX: number
     startY: number
-    startTs: number
     active: boolean
-    seekMode: boolean
-    consumedSteps: number
+    direction: KeyboardSwipeDirection | null
+    appliedSteps: number
   } | null>(null)
   const keyboardPendingKeyGestureRef = useRef<{
     actionId: string
     pointerId: number
     startX: number
     startY: number
-    startTs: number
     swipeMode: boolean
-    seekMode: boolean
-    consumedSteps: number
+    direction: KeyboardSwipeDirection | null
+    appliedSteps: number
   } | null>(null)
   const keyboardTopCaretSlotRefs = useRef<Array<HTMLSpanElement | null>>([])
   const keyboardBottomCaretSlotRefs = useRef<Array<HTMLSpanElement | null>>([])
@@ -10260,6 +10257,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return true
   }, [closeKeyboardTransientOverlays, scheduleKeyboardFadeOut, syncKeyboardMathfieldState])
 
+  const getKeyboardSwipeContinuationDirection = useCallback((direction: KeyboardSwipeDirection): KeyboardSwipeDirection => {
+    switch (direction) {
+      case 'ne':
+      case 'se':
+        return 'e'
+      case 'nw':
+      case 'sw':
+        return 'w'
+      default:
+        return direction
+    }
+  }, [])
+
   const openKeyboardRadial = useCallback((target: KeyboardStageTarget, anchor: KeyboardOverlayAnchor) => {
     const currentValue = latexOutputRef.current || ''
     const referenceTarget = findKeyboardReferenceTarget(currentValue, keyboardSelectionRef.current)
@@ -10290,36 +10300,36 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return directions[sector] || 'e'
     }
 
-    const advanceKeyboardSwipeSeek = (
-      gesture: { startX: number; startY: number; startTs: number; seekMode: boolean; consumedSteps: number },
-      clientX: number,
-      clientY: number,
+    const applyKeyboardSwipeProgress = (
+      gesture: {
+        direction: KeyboardSwipeDirection | null
+        appliedSteps: number
+      },
+      dx: number,
+      dy: number,
     ) => {
-      const dx = clientX - gesture.startX
-      const dy = clientY - gesture.startY
       const distance = Math.hypot(dx, dy)
-      const elapsed = Date.now() - gesture.startTs
+      if (distance < KEYBOARD_SWIPE_MIN_DISTANCE_PX) return false
 
-      if (!gesture.seekMode) {
-        if (distance < KEYBOARD_SWIPE_MIN_DISTANCE_PX || elapsed < KEYBOARD_SWIPE_SEEK_HOLD_MS) {
-          return false
+      if (!gesture.direction) {
+        gesture.direction = classifyKeyboardSwipeDirection(dx, dy)
+      }
+
+      const totalSteps = 1 + Math.max(0, Math.floor((distance - KEYBOARD_SWIPE_MIN_DISTANCE_PX) / KEYBOARD_SWIPE_STEP_DISTANCE_PX))
+      if (totalSteps <= gesture.appliedSteps) return false
+
+      for (let stepIndex = gesture.appliedSteps; stepIndex < totalSteps; stepIndex += 1) {
+        const direction = stepIndex === 0
+          ? gesture.direction
+          : getKeyboardSwipeContinuationDirection(gesture.direction)
+        if (!moveKeyboardCaretBySwipe(direction)) {
+          gesture.appliedSteps = stepIndex + 1
+          return true
         }
-        gesture.seekMode = true
+        gesture.appliedSteps = stepIndex + 1
       }
 
-      const availableSteps = Math.max(0, Math.floor((distance - KEYBOARD_SWIPE_MIN_DISTANCE_PX) / KEYBOARD_SWIPE_SEEK_STEP_PX) + 1)
-      const nextSteps = availableSteps - gesture.consumedSteps
-      if (nextSteps <= 0) return false
-
-      const direction = classifyKeyboardSwipeDirection(dx, dy)
-      let moved = false
-      for (let index = 0; index < nextSteps; index += 1) {
-        moved = moveKeyboardCaretBySwipe(direction) || moved
-      }
-      if (moved) {
-        gesture.consumedSteps += nextSteps
-      }
-      return moved
+      return true
     }
 
     const renderKeyboardActionContent = (actionId: string, baseSymbol?: string) => {
@@ -10378,10 +10388,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
-        startTs: Date.now(),
         swipeMode: false,
-        seekMode: false,
-        consumedSteps: 0,
+        direction: null,
+        appliedSteps: 0,
       }
       const stageTarget = buildMountedKeyboardStageTarget(actionId)
       if (!stageTarget) return
@@ -10414,12 +10423,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         clearKeyboardRepresentativeLongPress()
       }
 
-      if (pending.swipeMode) {
-        advanceKeyboardSwipeSeek(pending, event.clientX, event.clientY)
-      }
-
       if (pending.swipeMode && distance >= KEYBOARD_SWIPE_MIN_DISTANCE_PX) {
         event.preventDefault()
+        applyKeyboardSwipeProgress(pending, dx, dy)
       }
     }
 
@@ -10435,13 +10441,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (pending && pending.actionId === actionId && pending.pointerId === event.pointerId) {
         const dx = event.clientX - pending.startX
         const dy = event.clientY - pending.startY
-        if (pending.seekMode) {
-          event.preventDefault()
-          return
-        }
         if (pending.swipeMode && Math.hypot(dx, dy) >= KEYBOARD_SWIPE_MIN_DISTANCE_PX) {
           event.preventDefault()
-          moveKeyboardCaretBySwipe(classifyKeyboardSwipeDirection(dx, dy))
+          applyKeyboardSwipeProgress(pending, dx, dy)
           return
         }
       }
@@ -10466,10 +10468,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
-        startTs: Date.now(),
         active: true,
-        seekMode: false,
-        consumedSteps: 0,
+        direction: null,
+        appliedSteps: 0,
       }
       try {
         event.currentTarget.setPointerCapture(event.pointerId)
@@ -10481,9 +10482,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (!gesture || !gesture.active || gesture.pointerId !== event.pointerId) return
       const dx = event.clientX - gesture.startX
       const dy = event.clientY - gesture.startY
-      advanceKeyboardSwipeSeek(gesture, event.clientX, event.clientY)
       if (Math.hypot(dx, dy) >= KEYBOARD_SWIPE_MIN_DISTANCE_PX) {
         event.preventDefault()
+        applyKeyboardSwipeProgress(gesture, dx, dy)
       }
     }
 
@@ -10493,13 +10494,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       keyboardSwipeGestureRef.current = null
       const dx = event.clientX - gesture.startX
       const dy = event.clientY - gesture.startY
-      if (gesture.seekMode) {
-        event.preventDefault()
-        return
-      }
       if (Math.hypot(dx, dy) < KEYBOARD_SWIPE_MIN_DISTANCE_PX) return
       event.preventDefault()
-      moveKeyboardCaretBySwipe(classifyKeyboardSwipeDirection(dx, dy))
+      applyKeyboardSwipeProgress(gesture, dx, dy)
     }
 
     return (

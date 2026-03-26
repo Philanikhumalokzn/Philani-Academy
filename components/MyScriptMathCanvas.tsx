@@ -984,6 +984,7 @@ const KEYBOARD_REPRESENTATIVE_LONG_PRESS_MS = 420
 const KEYBOARD_SWIPE_DISAMBIGUATION_DISTANCE_PX = 14
 const KEYBOARD_SWIPE_MIN_DISTANCE_PX = 28
 const KEYBOARD_SWIPE_STEP_DISTANCE_PX = 34
+const KEYBOARD_SWIPE_STRUCTURAL_STICKY_DISTANCE_PX = 54
 const KEYBOARD_SWIPE_HOLD_DELAY_MS = 170
 const KEYBOARD_SWIPE_HOLD_REPEAT_MS = 82
 
@@ -10350,6 +10351,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return directions[sector] || 'e'
     }
 
+    const isStructuralSwipeDirection = (direction: KeyboardSwipeDirection) => (
+      direction === 'ne' || direction === 'se' || direction === 'nw' || direction === 'sw'
+    )
+
     const applyKeyboardSwipeProgress = (
       gesture: {
         pointerId: number
@@ -10366,7 +10371,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         gesture.direction = classifyKeyboardSwipeDirection(dx, dy)
       }
 
-      const totalSteps = 1 + Math.max(0, Math.floor((distance - KEYBOARD_SWIPE_MIN_DISTANCE_PX) / KEYBOARD_SWIPE_STEP_DISTANCE_PX))
+      let totalSteps = 1
+      if (isStructuralSwipeDirection(gesture.direction)) {
+        if (distance >= KEYBOARD_SWIPE_MIN_DISTANCE_PX + KEYBOARD_SWIPE_STRUCTURAL_STICKY_DISTANCE_PX) {
+          totalSteps += 1 + Math.max(0, Math.floor((distance - (KEYBOARD_SWIPE_MIN_DISTANCE_PX + KEYBOARD_SWIPE_STRUCTURAL_STICKY_DISTANCE_PX)) / KEYBOARD_SWIPE_STEP_DISTANCE_PX))
+        }
+      } else {
+        totalSteps += Math.max(0, Math.floor((distance - KEYBOARD_SWIPE_MIN_DISTANCE_PX) / KEYBOARD_SWIPE_STEP_DISTANCE_PX))
+      }
+
       if (totalSteps <= gesture.appliedSteps) return false
 
       for (let stepIndex = gesture.appliedSteps; stepIndex < totalSteps; stepIndex += 1) {
@@ -10378,10 +10391,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           return true
         }
         gesture.appliedSteps = stepIndex + 1
-      }
-
-      if (gesture.direction && gesture.appliedSteps > 0) {
-        startKeyboardSwipeHold(gesture.pointerId, gesture.direction)
       }
 
       return true
@@ -10482,6 +10491,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (pending.swipeMode && distance >= KEYBOARD_SWIPE_MIN_DISTANCE_PX) {
         event.preventDefault()
         applyKeyboardSwipeProgress(pending, dx, dy)
+        if (pending.direction) {
+          startKeyboardSwipeHold(pending.pointerId, pending.direction)
+        }
       }
     }
 
@@ -10544,6 +10556,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (Math.hypot(dx, dy) >= KEYBOARD_SWIPE_MIN_DISTANCE_PX) {
         event.preventDefault()
         applyKeyboardSwipeProgress(gesture, dx, dy)
+        if (gesture.direction) {
+          startKeyboardSwipeHold(gesture.pointerId, gesture.direction)
+        }
       }
     }
 

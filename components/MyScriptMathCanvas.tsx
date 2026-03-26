@@ -10246,10 +10246,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     const moveVertical = (axis: 'up' | 'down') => {
-      if (axis === 'up') {
-        return tryExecute('moveUp', 'moveToNumerator', 'moveToPreviousPlaceholder')
+      const currentValue = field.getValue('latex') || ''
+      const referenceTarget = findKeyboardReferenceTarget(currentValue, keyboardSelectionRef.current)
+
+      if (!referenceTarget || !referenceTarget.symbol.trim()) {
+        if (axis === 'up') {
+          return tryExecute('moveUp', 'moveToNumerator', 'moveToPreviousPlaceholder')
+        }
+        return tryExecute('moveDown', 'moveToDenominator', 'moveToNextPlaceholder')
       }
-      return tryExecute('moveDown', 'moveToDenominator', 'moveToNextPlaceholder')
+
+      const numerator = axis === 'down' ? referenceTarget.symbol : ''
+      const denominator = axis === 'up' ? referenceTarget.symbol : ''
+      const replacement = `\\frac{${numerator}}{${denominator}}`
+      const nextValue = `${currentValue.slice(0, referenceTarget.start)}${replacement}${currentValue.slice(referenceTarget.end)}`
+      const nextCaretPosition = referenceTarget.start + (axis === 'down'
+        ? `\\frac{${numerator}}{`.length
+        : '\\frac{'.length)
+
+      field.setValue(nextValue)
+      field.position = nextCaretPosition
+      return true
     }
 
     const handled = (() => {

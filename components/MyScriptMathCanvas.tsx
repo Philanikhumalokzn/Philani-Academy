@@ -10359,10 +10359,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     const isStructuralSwipeDirection = (direction: KeyboardSwipeDirection) => (
-      direction === 'ne' || direction === 'se' || direction === 'nw' || direction === 'sw'
+      direction === 'n'
+      || direction === 's'
+      || direction === 'ne'
+      || direction === 'se'
+      || direction === 'nw'
+      || direction === 'sw'
     )
 
-    const isContinuousSwipeDirection = (direction: KeyboardSwipeDirection) => !isStructuralSwipeDirection(direction)
+    const isContinuousSwipeDirection = (direction: KeyboardSwipeDirection) => (
+      direction === 'e' || direction === 'w'
+    )
 
     const applyKeyboardSwipeProgress = (
       gesture: {

@@ -2290,7 +2290,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const keyboardSurfaceRef = useRef<HTMLDivElement | null>(null)
   const keyboardExpressionSurfaceRef = useRef<HTMLInputElement | null>(null)
   const keyboardMathfieldHostRef = useRef<HTMLDivElement | null>(null)
+  const [keyboardMathfieldHostNode, setKeyboardMathfieldHostNode] = useState<HTMLDivElement | null>(null)
   const keyboardMathfieldRef = useRef<MathfieldElementType | null>(null)
+  const keyboardMathfieldCleanupRef = useRef<(() => void) | null>(null)
   const keyboardMathfieldSyncRef = useRef(false)
   const keyboardTopTypesetPreviewRef = useRef<HTMLDivElement | null>(null)
   const keyboardBottomTypesetPreviewRef = useRef<HTMLDivElement | null>(null)
@@ -2303,6 +2305,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const setKeyboardSelectionState = useCallback((selection: KeyboardSelectionState) => {
     setKeyboardSelection(selection)
     keyboardSelectionRef.current = selection
+  }, [])
+
+  const setKeyboardMathfieldHostNodeRef = useCallback((node: HTMLDivElement | null) => {
+    keyboardMathfieldHostRef.current = node
+    setKeyboardMathfieldHostNode(node)
   }, [])
 
   const [selectedKeyboardKey, setSelectedKeyboardKey] = useState<string | null>(null)
@@ -2390,60 +2397,76 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   useEffect(() => {
     if (!hasMounted) return
+    if (!keyboardMathfieldHostNode) return
 
     let disposed = false
-    let cleanup = () => {}
 
     ;(async () => {
-      const host = keyboardMathfieldHostRef.current
-      if (!host || keyboardMathfieldRef.current) return
+      let field = keyboardMathfieldRef.current
+      if (!field) {
+        const { MathfieldElement } = await import('mathlive')
+        if (disposed) return
 
-      const { MathfieldElement } = await import('mathlive')
-      if (disposed || !keyboardMathfieldHostRef.current || keyboardMathfieldRef.current) return
+        field = new MathfieldElement()
+        keyboardMathfieldRef.current = field
+        field.className = 'keyboard-mathlive-field block h-full w-full rounded-[10px] border border-[rgba(15,23,42,0.2)] bg-white px-3 py-2 text-slate-900'
+        field.setAttribute('aria-label', 'Keyboard expression')
+        field.setAttribute('spellcheck', 'false')
+        field.mathVirtualKeyboardPolicy = 'manual'
+        field.smartFence = true
+        field.smartMode = false
+        field.smartSuperscript = true
+        field.readOnly = false
+        field.value = latexOutputRef.current || ''
 
-      const field = new MathfieldElement()
-      keyboardMathfieldRef.current = field
-      field.className = 'keyboard-mathlive-field block h-full w-full rounded-[10px] border border-[rgba(15,23,42,0.2)] bg-white px-3 py-2 text-slate-900'
-      field.setAttribute('aria-label', 'Keyboard expression')
-      field.setAttribute('spellcheck', 'false')
-      field.mathVirtualKeyboardPolicy = 'manual'
-      field.smartFence = true
-      field.smartMode = false
-      field.smartSuperscript = true
-      field.readOnly = false
-      field.value = latexOutputRef.current || ''
+        const handleInput = () => {
+          if (keyboardMathfieldSyncRef.current) return
+          syncKeyboardMathfieldState(field)
+        }
 
-      const handleInput = () => {
-        if (keyboardMathfieldSyncRef.current) return
-        syncKeyboardMathfieldState(field)
+        const handleSelectionChange = () => {
+          const nextPosition = typeof field.position === 'number' ? field.position : 0
+          setKeyboardSelectionState({ start: nextPosition, end: nextPosition })
+        }
+
+        field.addEventListener('input', handleInput)
+        field.addEventListener('selection-change', handleSelectionChange)
+        keyboardMathfieldCleanupRef.current = () => {
+          field?.removeEventListener('input', handleInput)
+          field?.removeEventListener('selection-change', handleSelectionChange)
+          if (field?.parentElement) {
+            try {
+              field.parentElement.replaceChildren()
+            } catch {}
+          }
+          if (keyboardMathfieldRef.current === field) {
+            keyboardMathfieldRef.current = null
+          }
+        }
       }
 
-      const handleSelectionChange = () => {
-        const nextPosition = typeof field.position === 'number' ? field.position : 0
-        setKeyboardSelectionState({ start: nextPosition, end: nextPosition })
-      }
-
-      field.addEventListener('input', handleInput)
-      field.addEventListener('selection-change', handleSelectionChange)
-      keyboardMathfieldHostRef.current.replaceChildren(field)
-
-      cleanup = () => {
-        field.removeEventListener('input', handleInput)
-        field.removeEventListener('selection-change', handleSelectionChange)
-        if (keyboardMathfieldHostRef.current?.contains(field)) {
-          keyboardMathfieldHostRef.current.replaceChildren()
-        }
-        if (keyboardMathfieldRef.current === field) {
-          keyboardMathfieldRef.current = null
-        }
+      if (disposed || !field || !keyboardMathfieldHostNode.isConnected) return
+      if (field.parentElement !== keyboardMathfieldHostNode) {
+        keyboardMathfieldHostNode.replaceChildren(field)
       }
     })()
 
     return () => {
       disposed = true
-      cleanup()
+      const field = keyboardMathfieldRef.current
+      if (!field) return
+      if (keyboardMathfieldHostNode.contains(field)) {
+        keyboardMathfieldHostNode.replaceChildren()
+      }
     }
-  }, [hasMounted, setKeyboardSelectionState, syncKeyboardMathfieldState])
+  }, [hasMounted, keyboardMathfieldHostNode, setKeyboardSelectionState, syncKeyboardMathfieldState])
+
+  useEffect(() => {
+    return () => {
+      keyboardMathfieldCleanupRef.current?.()
+      keyboardMathfieldCleanupRef.current = null
+    }
+  }, [])
 
   useEffect(() => {
     const field = keyboardMathfieldRef.current
@@ -11292,7 +11315,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         <div className="flex h-full w-full items-center justify-center">
           <div className={`relative h-full w-full ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}>
             <div
-              ref={keyboardMathfieldHostRef}
+              ref={setKeyboardMathfieldHostNodeRef}
               className={`h-full w-full overflow-hidden rounded-[10px] ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
             />
           </div>

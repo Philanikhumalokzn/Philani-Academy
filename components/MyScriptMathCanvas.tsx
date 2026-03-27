@@ -10866,32 +10866,135 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               <div className="mb-2 flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-2 text-white">
                 <span className="text-lg font-normal leading-none">{renderKeyboardActionContent(activeKeyboardFamilyTarget.displayActionId, activeKeyboardFamilyTarget.payloadSymbol || activeKeyboardFamilyTarget.baseSymbol)}</span>
               </div>
-              <div className="flex flex-col gap-2">
-                {activeKeyboardFamilyTarget.familyRows.map((row, rowIndex) => (
-                  <div key={`${activeKeyboardFamilyTarget.id}-family-row-${rowIndex}`} className="flex flex-wrap items-center justify-center gap-2">
-                    {row.map((actionId) => {
-                      const action = KEYBOARD_ACTION_MAP[actionId]
-                      if (!action) return null
+              {activeKeyboardFamilyTarget.representativeKeyId === 'letters' ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-center gap-1.5">
+                    {['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'].map((actionId) => {
                       const isSelected = selectedKeyboardKey === actionId
                       return (
                         <button
-                          key={`${activeKeyboardFamilyTarget.id}-${actionId}`}
+                          key={`qwerty-row-1-${actionId}`}
                           type="button"
-                          className={`inline-flex min-h-0 min-w-0 select-none items-center justify-center rounded-2xl border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm transition-colors ${isSelected ? 'border-sky-300 bg-sky-100 text-sky-700' : 'hover:bg-slate-100'}`}
+                          className={`inline-flex h-11 min-w-[2.3rem] select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-2 text-white shadow-sm transition-colors ${isSelected ? 'border-sky-300 bg-sky-700 text-white' : 'hover:bg-slate-700'}`}
                           onPointerDown={(event) => event.stopPropagation()}
                           onClick={(event) => {
                             event.stopPropagation()
                             applyKeyboardAction(actionId)
                           }}
-                          title={action.title}
+                          title={KEYBOARD_ACTION_MAP[actionId]?.title || actionId}
                         >
                           <span className="text-[1.05rem] font-normal leading-none">{renderKeyboardActionContent(actionId, activeKeyboardFamilyTarget.payloadSymbol || activeKeyboardFamilyTarget.baseSymbol)}</span>
                         </button>
                       )
                     })}
                   </div>
-                ))}
-              </div>
+                  <div className="flex items-center justify-center gap-1.5 pl-4 pr-4">
+                    {['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'].map((actionId) => {
+                      const isSelected = selectedKeyboardKey === actionId
+                      return (
+                        <button
+                          key={`qwerty-row-2-${actionId}`}
+                          type="button"
+                          className={`inline-flex h-11 min-w-[2.3rem] select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-2 text-white shadow-sm transition-colors ${isSelected ? 'border-sky-300 bg-sky-700 text-white' : 'hover:bg-slate-700'}`}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            applyKeyboardAction(actionId)
+                          }}
+                          title={KEYBOARD_ACTION_MAP[actionId]?.title || actionId}
+                        >
+                          <span className="text-[1.05rem] font-normal leading-none">{renderKeyboardActionContent(actionId, activeKeyboardFamilyTarget.payloadSymbol || activeKeyboardFamilyTarget.baseSymbol)}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="flex items-center justify-center gap-1.5">
+                    {['uppercase', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'backspace'].map((actionId) => {
+                      const isSelected = selectedKeyboardKey === actionId
+                      const isWide = actionId === 'uppercase' || actionId === 'backspace'
+                      return (
+                        <button
+                          key={`qwerty-row-3-${actionId}`}
+                          type="button"
+                          className={`inline-flex h-11 ${isWide ? 'min-w-[3.1rem]' : 'min-w-[2.3rem]'} select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-2 text-white shadow-sm transition-colors ${isSelected ? 'border-sky-300 bg-sky-700 text-white' : 'hover:bg-slate-700'}`}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            applyKeyboardAction(actionId)
+                          }}
+                          title={KEYBOARD_ACTION_MAP[actionId]?.title || actionId}
+                        >
+                          <span className="text-[1.05rem] font-normal leading-none">{actionId === 'uppercase' ? '↑' : actionId === 'backspace' ? '⌫' : renderKeyboardActionContent(actionId, activeKeyboardFamilyTarget.payloadSymbol || activeKeyboardFamilyTarget.baseSymbol)}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="flex items-center justify-center gap-1.5">
+                    <button
+                      type="button"
+                      className="inline-flex h-11 min-w-[3.1rem] cursor-default select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-2 text-white shadow-sm"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      title="Symbols"
+                    >
+                      <span className="text-[1.05rem] font-normal leading-none">!#1</span>
+                    </button>
+                    {['comma', 'space', 'decimal'].map((actionId) => {
+                      const isSelected = selectedKeyboardKey === actionId
+                      const isSpace = actionId === 'space'
+                      return (
+                        <button
+                          key={`qwerty-row-4-${actionId}`}
+                          type="button"
+                          className={`inline-flex h-11 ${isSpace ? 'min-w-[10.5rem] px-4' : 'min-w-[2.8rem] px-2'} select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 text-white shadow-sm transition-colors ${isSelected ? 'border-sky-300 bg-sky-700 text-white' : 'hover:bg-slate-700'}`}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            applyKeyboardAction(actionId)
+                          }}
+                          title={KEYBOARD_ACTION_MAP[actionId]?.title || actionId}
+                        >
+                          <span className="text-[1.05rem] font-normal leading-none">{actionId === 'comma' ? ',' : actionId === 'decimal' ? '.' : ' '}</span>
+                        </button>
+                      )
+                    })}
+                    <button
+                      type="button"
+                      className="inline-flex h-11 min-w-[3.1rem] cursor-default select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-2 text-white shadow-sm"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      title="Enter"
+                    >
+                      <span className="text-[1.05rem] font-normal leading-none">↵</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {activeKeyboardFamilyTarget.familyRows.map((row, rowIndex) => (
+                    <div key={`${activeKeyboardFamilyTarget.id}-family-row-${rowIndex}`} className="flex flex-wrap items-center justify-center gap-2">
+                      {row.map((actionId) => {
+                        const action = KEYBOARD_ACTION_MAP[actionId]
+                        if (!action) return null
+                        const isSelected = selectedKeyboardKey === actionId
+                        return (
+                          <button
+                            key={`${activeKeyboardFamilyTarget.id}-${actionId}`}
+                            type="button"
+                            className={`inline-flex min-h-0 min-w-0 select-none items-center justify-center rounded-2xl border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm transition-colors ${isSelected ? 'border-sky-300 bg-sky-100 text-sky-700' : 'hover:bg-slate-100'}`}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              applyKeyboardAction(actionId)
+                            }}
+                            title={action.title}
+                          >
+                            <span className="text-[1.05rem] font-normal leading-none">{renderKeyboardActionContent(actionId, activeKeyboardFamilyTarget.payloadSymbol || activeKeyboardFamilyTarget.baseSymbol)}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
               )
             })()}

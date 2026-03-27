@@ -21,6 +21,11 @@ math-field.keyboard-mathlive-field::part(container) {
   padding: 0.5rem 0.75rem;
 }
 
+/* Use the same math-oriented glyph stack for keyboard symbol labels. */
+.keyboard-symbol-font {
+  font-family: 'KaTeX_Main', 'KaTeX_Math', 'Latin Modern Math', 'Cambria Math', 'STIX Two Math', 'Times New Roman', serif;
+}
+
 /* Modern crop styling - hide default dotted lines, use clean corner borders */
 .ReactCrop__crop-area {
   /* Hide the dotted border grid */

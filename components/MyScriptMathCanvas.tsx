@@ -10799,7 +10799,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           onContextMenu={(event) => event.preventDefault()}
           title={action.title}
         >
-          <span className={`leading-none ${options?.textClassName || 'text-[1.75rem] sm:text-[1.95rem] font-normal'}`}>
+          <span className={`keyboard-symbol-font leading-none ${options?.textClassName || 'text-[1.75rem] sm:text-[1.95rem] font-normal'}`}>
             {key.label ?? renderKeyboardActionContent(key.actionId)}
           </span>
         </button>
@@ -10940,7 +10940,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return (
       <div
         ref={keyboardSurfaceRef}
-        className="absolute inset-0 z-30 overflow-hidden bg-white select-none"
+        className="absolute inset-0 z-30 overflow-hidden bg-white select-none keyboard-symbol-font"
         style={{ WebkitUserSelect: 'none', userSelect: 'none', touchAction: 'none' }}
         onPointerDown={handleKeyboardSurfacePointerDown}
         onPointerMove={handleKeyboardSurfacePointerMove}

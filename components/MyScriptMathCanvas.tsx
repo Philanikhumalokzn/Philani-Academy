@@ -1719,6 +1719,7 @@ const SIMPLE_KEYBOARD_NUMBER_ROW: KeyboardVisibleKeyDefinition[] = [
   { actionId: 'digit-8', label: '8' },
   { actionId: 'digit-9', label: '9' },
   { actionId: 'digit-0', label: '0' },
+  { actionId: 'decimal', label: ',' },
 ]
 
 const SIMPLE_KEYBOARD_TOP_FAMILY_KEYS: KeyboardVisibleKeyDefinition[] = [
@@ -1732,7 +1733,7 @@ const SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS: {
   right: KeyboardVisibleKeyDefinition
   bottom: KeyboardVisibleKeyDefinition
 } = {
-  left: { actionId: 'paren', label: '(', representativeKeyId: 'enclosures' },
+  left: { actionId: 'paren', label: '()', representativeKeyId: 'enclosures' },
   center: { actionId: 'x', representativeKeyId: 'letters' },
   right: { actionId: 'sqrt', label: '√', representativeKeyId: 'radicals' },
   bottom: { actionId: 'equals', label: '=', representativeKeyId: 'relations' },
@@ -10539,21 +10540,47 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const renderKeyboardActionContent = (actionId: string, baseSymbol?: string) => {
       const action = KEYBOARD_ACTION_MAP[actionId]
-      if (!action) return <span className="text-sm font-semibold">?</span>
+      if (!action) return <span className="text-sm font-normal">?</span>
       const latex = action.renderLatex?.(baseSymbol) ?? action.latex
       if (latex) {
         try {
           return <span dangerouslySetInnerHTML={{ __html: renderToString(latex, { throwOnError: false }) }} />
         } catch {
-          return <span className="text-sm font-semibold">{action.title}</span>
+          return <span className="text-sm font-normal">{action.title}</span>
         }
       }
-      return <span className="text-sm font-semibold">{action.label ?? action.title}</span>
+      return <span className="text-sm font-normal">{action.label ?? action.title}</span>
+    }
+
+    const computeFamilyOverlayPlacement = (target: KeyboardStageTarget, anchor: KeyboardOverlayAnchor) => {
+      const rootRect = keyboardSurfaceRef.current?.getBoundingClientRect()
+      if (!rootRect) {
+        return { left: anchor.x, top: Math.max(8, anchor.y - 18), width: undefined as number | undefined }
+      }
+
+      const horizontalMargin = 8
+      const verticalMargin = 8
+      const desiredWidth = Math.max(256, Math.min(608, rootRect.width * 0.92))
+      const width = Math.max(220, desiredWidth)
+
+      const estimatedHeight = 132 + (target.familyRows.length * 56)
+      const maxLeft = Math.max(horizontalMargin, rootRect.width - width - horizontalMargin)
+      const left = Math.min(maxLeft, Math.max(horizontalMargin, anchor.x - (width / 2)))
+
+      const preferredTop = anchor.y - estimatedHeight - 12
+      let top = preferredTop
+      if (top < verticalMargin) {
+        top = anchor.y + 12
+      }
+      const maxTop = Math.max(verticalMargin, rootRect.height - estimatedHeight - verticalMargin)
+      top = Math.min(maxTop, Math.max(verticalMargin, top))
+
+      return { left, top, width }
     }
 
     const renderKeyboardRadialActionContent = (actionId: string, target: KeyboardStageTarget) => {
       const action = KEYBOARD_ACTION_MAP[actionId]
-      if (!action) return <span className="text-sm font-semibold">?</span>
+      if (!action) return <span className="text-sm font-normal">?</span>
       const contextual = buildKeyboardContextualRadialOperation(actionId, target.payloadSymbol || target.baseSymbol, target.referenceTarget)
       const fallbackBaseSymbol = (target.payloadSymbol || target.baseSymbol) ?? target.referenceTarget?.symbol
       const latex = contextual?.previewLatex || action.renderLatex?.(fallbackBaseSymbol) || action.latex
@@ -10561,10 +10588,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         try {
           return <span dangerouslySetInnerHTML={{ __html: renderToString(latex, { throwOnError: false }) }} />
         } catch {
-          return <span className="text-sm font-semibold">{action.title}</span>
+          return <span className="text-sm font-normal">{action.title}</span>
         }
       }
-      return <span className="text-sm font-semibold">{action.label ?? action.title}</span>
+      return <span className="text-sm font-normal">{action.label ?? action.title}</span>
     }
 
     const buildAnchorFromElement = (keyId: string, element: HTMLElement): KeyboardOverlayAnchor => {
@@ -10614,7 +10641,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           onContextMenu={(event) => event.preventDefault()}
           title={action.title}
         >
-          <span className={`leading-none ${options?.textClassName || 'text-[1.75rem] sm:text-[1.95rem] font-semibold'}`}>
+          <span className={`leading-none ${options?.textClassName || 'text-[1.75rem] sm:text-[1.95rem] font-normal'}`}>
             {key.label ?? renderKeyboardActionContent(key.actionId)}
           </span>
         </button>
@@ -10765,43 +10792,46 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         <div className="flex h-full w-full items-center justify-center px-3 py-3 sm:px-4 sm:py-4">
           <div className="flex flex-col items-center gap-2.5 sm:gap-3">
             <div className="flex items-center justify-center gap-2.5 sm:gap-3">
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_TOP_FAMILY_KEYS[0], { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base sm:text-lg font-semibold' })}
+              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_TOP_FAMILY_KEYS[0], { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base sm:text-lg font-normal' })}
               <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 max-w-[22rem] sm:max-w-[28rem]">
-                {SIMPLE_KEYBOARD_NUMBER_ROW.map((key) => renderVisibleKeyboardButton(key, { className: 'border-slate-300 bg-white hover:bg-slate-100 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl', textClassName: 'text-lg sm:text-xl font-semibold' }))}
+                {SIMPLE_KEYBOARD_NUMBER_ROW.map((key) => renderVisibleKeyboardButton(key, { className: 'border-slate-300 bg-white hover:bg-slate-100 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl', textClassName: 'text-lg sm:text-xl font-normal' }))}
               </div>
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_TOP_FAMILY_KEYS[1], { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.4rem] sm:text-[1.6rem] font-semibold' })}
+              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_TOP_FAMILY_KEYS[1], { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.4rem] sm:text-[1.6rem] font-normal' })}
             </div>
 
             <div className="flex justify-center">
-              {renderVisibleKeyboardButton({ actionId: 'times', label: '×' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-semibold' })}
+              {renderVisibleKeyboardButton({ actionId: 'times', label: '×' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
             </div>
 
             <div className="flex items-center justify-center gap-2.5 sm:gap-3">
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.left, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-semibold' })}
-              {renderVisibleKeyboardButton({ actionId: 'minus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-semibold' })}
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.center, { className: 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800', textClassName: 'text-3xl sm:text-[2.15rem] font-semibold', activeClassName: 'border-sky-300 bg-sky-100 text-sky-700' })}
-              {renderVisibleKeyboardButton({ actionId: 'plus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-semibold' })}
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.right, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-semibold' })}
+              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.left, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
+              {renderVisibleKeyboardButton({ actionId: 'minus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
+              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.center, { className: 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800', textClassName: 'text-3xl sm:text-[2.15rem] font-normal', activeClassName: 'border-sky-300 bg-sky-100 text-sky-700' })}
+              {renderVisibleKeyboardButton({ actionId: 'plus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
+              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.right, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
             </div>
 
             <div className="flex justify-center">
-              {renderVisibleKeyboardButton({ actionId: 'divide', label: '÷' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-semibold' })}
+              {renderVisibleKeyboardButton({ actionId: 'divide', label: '÷' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
             </div>
 
             <div className="flex justify-center">
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.bottom, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-semibold' })}
+              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.bottom, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
             </div>
           </div>
         </div>
         {activeKeyboardFamilyTarget && keyboardOverlayAnchor ? (
           <div className="pointer-events-none absolute inset-0 z-40">
+            {(() => {
+              const overlayPlacement = computeFamilyOverlayPlacement(activeKeyboardFamilyTarget, keyboardOverlayAnchor)
+              return (
             <div
-              className="pointer-events-auto absolute min-w-[16rem] max-w-[min(92vw,38rem)] -translate-x-1/2 rounded-3xl border border-slate-200 bg-white/98 p-3 shadow-[0_18px_50px_rgba(15,23,42,0.2)] backdrop-blur-sm"
-              style={{ left: keyboardOverlayAnchor.x, top: keyboardOverlayAnchor.y - 18 }}
+              className="pointer-events-auto absolute min-w-[16rem] max-w-[min(92vw,38rem)] rounded-3xl border border-slate-200 bg-white/98 p-3 shadow-[0_18px_50px_rgba(15,23,42,0.2)] backdrop-blur-sm"
+              style={{ left: overlayPlacement.left, top: overlayPlacement.top, width: overlayPlacement.width, maxWidth: '92vw' }}
               onPointerDown={(event) => event.stopPropagation()}
             >
               <div className="mb-2 flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-2 text-white">
-                <span className="text-lg font-semibold leading-none">{renderKeyboardActionContent(activeKeyboardFamilyTarget.displayActionId, activeKeyboardFamilyTarget.payloadSymbol || activeKeyboardFamilyTarget.baseSymbol)}</span>
+                <span className="text-lg font-normal leading-none">{renderKeyboardActionContent(activeKeyboardFamilyTarget.displayActionId, activeKeyboardFamilyTarget.payloadSymbol || activeKeyboardFamilyTarget.baseSymbol)}</span>
               </div>
               <div className="flex flex-col gap-2">
                 {activeKeyboardFamilyTarget.familyRows.map((row, rowIndex) => (
@@ -10822,7 +10852,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           }}
                           title={action.title}
                         >
-                          <span className="text-[1.05rem] font-semibold leading-none">{renderKeyboardActionContent(actionId, activeKeyboardFamilyTarget.payloadSymbol || activeKeyboardFamilyTarget.baseSymbol)}</span>
+                          <span className="text-[1.05rem] font-normal leading-none">{renderKeyboardActionContent(actionId, activeKeyboardFamilyTarget.payloadSymbol || activeKeyboardFamilyTarget.baseSymbol)}</span>
                         </button>
                       )
                     })}
@@ -10830,6 +10860,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 ))}
               </div>
             </div>
+              )
+            })()}
           </div>
         ) : null}
         {activeRadialTarget && keyboardOverlayAnchor ? (

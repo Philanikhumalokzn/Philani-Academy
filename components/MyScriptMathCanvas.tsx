@@ -2434,6 +2434,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const [keyboardPaletteVisible, setKeyboardPaletteVisible] = useState(false)
   const [activeKeyboardRadialTarget, setActiveKeyboardRadialTarget] = useState<KeyboardStageTarget | null>(null)
   const [activeKeyboardFamilyTarget, setActiveKeyboardFamilyTarget] = useState<KeyboardStageTarget | null>(null)
+  const activeKeyboardFamilyTargetRef = useRef<KeyboardStageTarget | null>(null)
   const [keyboardOverlayAnchor, setKeyboardOverlayAnchor] = useState<KeyboardOverlayAnchor | null>(null)
   const [mathpixError, setMathpixError] = useState<string | null>(null)
   const [mathpixRawResponse, setMathpixRawResponse] = useState<string | null>(null)
@@ -2622,6 +2623,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const closeKeyboardTransientOverlays = useCallback(() => {
     setActiveKeyboardRadialTarget(null)
     setActiveKeyboardFamilyTarget(null)
+    activeKeyboardFamilyTargetRef.current = null
     setKeyboardOverlayAnchor(null)
   }, [])
 
@@ -2665,6 +2667,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     clearKeyboardIdleTimeout()
     if (typeof window === 'undefined') return
     keyboardIdleTimeoutRef.current = setTimeout(() => {
+      // Don't hide palette or close overlays while a family overlay is open.
+      // It will be dismissed when the user taps away.
+      if (activeKeyboardFamilyTargetRef.current) {
+        keyboardIdleTimeoutRef.current = null
+        return
+      }
       setKeyboardPaletteVisible(false)
       closeKeyboardTransientOverlays()
       keyboardIdleTimeoutRef.current = null
@@ -10237,7 +10245,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (isLetterTokenAction && keyboardUppercase) {
         setKeyboardUppercase(false)
       }
-      closeKeyboardTransientOverlays()
       scheduleKeyboardFadeOut()
       if (typeof window !== 'undefined') {
         window.setTimeout(() => setSelectedKeyboardKey(null), 220)
@@ -10277,7 +10284,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         keyboardExpressionSurfaceRef.current?.focus()
       }, 0)
     }
-    closeKeyboardTransientOverlays()
     scheduleKeyboardFadeOut()
     if (typeof window !== 'undefined') {
       window.setTimeout(() => setSelectedKeyboardKey(null), 220)
@@ -10338,7 +10344,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         keyboardExpressionSurfaceRef.current?.focus()
       }, 0)
     }
-    closeKeyboardTransientOverlays()
     scheduleKeyboardFadeOut()
     if (typeof window !== 'undefined') {
       window.setTimeout(() => setSelectedKeyboardKey(null), 220)
@@ -10500,9 +10505,24 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const openKeyboardFamily = useCallback((target: KeyboardStageTarget, anchor: KeyboardOverlayAnchor) => {
     setActiveKeyboardRadialTarget(null)
     setActiveKeyboardFamilyTarget(target)
+    activeKeyboardFamilyTargetRef.current = target
     setKeyboardOverlayAnchor(anchor)
     scheduleKeyboardFadeOut()
   }, [scheduleKeyboardFadeOut])
+
+  // Close the family overlay when the user taps/clicks anywhere outside it.
+  // The overlay panel calls stopPropagation on pointerdown, so events from
+  // inside the panel never reach the document — only outside clicks reach here.
+  useEffect(() => {
+    if (!activeKeyboardFamilyTarget) return
+    const handleOutsidePointerDown = () => {
+      setActiveKeyboardFamilyTarget(null)
+      activeKeyboardFamilyTargetRef.current = null
+      setKeyboardOverlayAnchor(null)
+    }
+    document.addEventListener('pointerdown', handleOutsidePointerDown)
+    return () => document.removeEventListener('pointerdown', handleOutsidePointerDown)
+  }, [activeKeyboardFamilyTarget])
 
   const renderKeyboardCanvasSurface = () => {
     const activeRadialTarget = activeKeyboardRadialTarget

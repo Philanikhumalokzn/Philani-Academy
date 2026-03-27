@@ -10010,19 +10010,50 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return true
     }
 
-    if (actionId === 'power2') {
-      if (!field.executeCommand('moveToSuperscript')) {
-        field.executeCommand(['insert', '^{2}'])
-      } else {
-        field.executeCommand(['insert', '2'])
+    // Enclosure actions: wrap selection if present, else insert empty enclosure
+    if ([
+      'paren', 'bracket', 'brace', 'absolute', 'floor', 'ceiling'
+    ].includes(actionId)) {
+      let left, right
+      switch (actionId) {
+        case 'paren':
+          left = '\\left('; right = '\\right)'; break
+        case 'bracket':
+          left = '\\left['; right = '\\right]'; break
+        case 'brace':
+          left = '\\left\\{'; right = '\\right\\}'; break
+        case 'absolute':
+          left = '\\left|'; right = '\\right|'; break
+        case 'floor':
+          left = '\\left\\lfloor '; right = ' \\right\\rfloor'; break
+        case 'ceiling':
+          left = '\\left\\lceil '; right = ' \\right\\rceil'; break
+        default:
+          left = ''; right = ''
       }
-      syncKeyboardMathfieldState(field)
-      return true
+      // Use MathLive selection API if possible
+      const selectionStart = typeof field.selectionStart === 'number' ? field.selectionStart : field.position
+      const selectionEnd = typeof field.selectionEnd === 'number' ? field.selectionEnd : field.position
+      if (selectionStart !== selectionEnd) {
+        // There is a selection: wrap it
+        const latex = field.getValue('latex') || ''
+        const before = latex.slice(0, selectionStart)
+        const selected = latex.slice(selectionStart, selectionEnd)
+        const after = latex.slice(selectionEnd)
+        const wrapped = `${before}${left}${selected}${right}${after}`
+        field.setValue(wrapped)
+        // Try to keep the selection highlighted
+        field.selectionStart = selectionStart + left.length
+        field.selectionEnd = selectionEnd + left.length
+        syncKeyboardMathfieldState(field)
+        return true
+      } else {
+        // No selection: insert empty enclosure
+        field.executeCommand(['insert', `${left}${right}`])
+        syncKeyboardMathfieldState(field)
+        return true
+      }
     }
-
-    if (actionId === 'power3') {
-      if (!field.executeCommand('moveToSuperscript')) {
-        field.executeCommand(['insert', '^{3}'])
       } else {
         field.executeCommand(['insert', '3'])
       }

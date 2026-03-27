@@ -10031,34 +10031,49 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         default:
           left = ''; right = ''
       }
-      // Use MathLive model.selection API
-      let selectionStart = field.position;
-      let selectionEnd = field.position;
-      if (field.model && field.model.selection && Array.isArray(field.model.selection.ranges) && field.model.selection.ranges.length > 0) {
-        selectionStart = field.model.selection.ranges[0][0];
-        selectionEnd = field.model.selection.ranges[0][1];
+      const selectableField = field as MathfieldElementType & {
+        selection: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
+        selectionIsCollapsed: boolean
+        getValue: (selection?: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }, format?: 'latex') => string
+        insert: (
+          value: string,
+          options?: {
+            insertionMode?: 'replaceSelection' | 'replaceAll' | 'insertBefore' | 'insertAfter'
+            selectionMode?: 'placeholder' | 'after' | 'before' | 'item'
+          }
+        ) => boolean
       }
-      if (selectionStart !== selectionEnd) {
-        // There is a selection: wrap it
-        const latex = field.getValue('latex') || ''
-        const before = latex.slice(0, selectionStart)
-        const selected = latex.slice(selectionStart, selectionEnd)
-        const after = latex.slice(selectionEnd)
-        const wrapped = `${before}${left}${selected}${right}${after}`
-        field.setValue(wrapped)
-        // Try to keep the selection highlighted
-        if (field.model && field.model.setSelection) {
-          field.model.setSelection(selectionStart + left.length, selectionEnd + left.length);
-        }
-        syncKeyboardMathfieldState(field)
-        return true
-      } else {
-        // No selection: insert empty enclosure
-        field.executeCommand(['insert', `${left}${right}`])
+      const selection = selectableField.selection
+      if (!selectableField.selectionIsCollapsed && selection.ranges.length > 0) {
+        const selected = selectableField.getValue(selection, 'latex') || ''
+        selectableField.insert(`${left}${selected}${right}`, {
+          insertionMode: 'replaceSelection',
+          selectionMode: 'item',
+        })
         syncKeyboardMathfieldState(field)
         return true
       }
+
+      selectableField.insert(`${left}${right}`, {
+        selectionMode: 'after',
+      })
+      syncKeyboardMathfieldState(field)
+      return true
     }
+
+    if (actionId === 'power2') {
+      if (!field.executeCommand('moveToSuperscript')) {
+        field.executeCommand(['insert', '^{2}'])
+      } else {
+        field.executeCommand(['insert', '2'])
+      }
+      syncKeyboardMathfieldState(field)
+      return true
+    }
+
+    if (actionId === 'power3') {
+      if (!field.executeCommand('moveToSuperscript')) {
+        field.executeCommand(['insert', '^{3}'])
       } else {
         field.executeCommand(['insert', '3'])
       }

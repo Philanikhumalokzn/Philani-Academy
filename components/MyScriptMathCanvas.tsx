@@ -10031,9 +10031,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         default:
           left = ''; right = ''
       }
-      // Use MathLive selection API if possible
-      const selectionStart = typeof field.selectionStart === 'number' ? field.selectionStart : field.position
-      const selectionEnd = typeof field.selectionEnd === 'number' ? field.selectionEnd : field.position
+      // Use MathLive model.selection API
+      let selectionStart = field.position;
+      let selectionEnd = field.position;
+      if (field.model && field.model.selection && Array.isArray(field.model.selection.ranges) && field.model.selection.ranges.length > 0) {
+        selectionStart = field.model.selection.ranges[0][0];
+        selectionEnd = field.model.selection.ranges[0][1];
+      }
       if (selectionStart !== selectionEnd) {
         // There is a selection: wrap it
         const latex = field.getValue('latex') || ''
@@ -10043,8 +10047,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         const wrapped = `${before}${left}${selected}${right}${after}`
         field.setValue(wrapped)
         // Try to keep the selection highlighted
-        field.selectionStart = selectionStart + left.length
-        field.selectionEnd = selectionEnd + left.length
+        if (field.model && field.model.setSelection) {
+          field.model.setSelection(selectionStart + left.length, selectionEnd + left.length);
+        }
         syncKeyboardMathfieldState(field)
         return true
       } else {

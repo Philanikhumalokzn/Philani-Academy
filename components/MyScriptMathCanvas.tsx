@@ -1095,6 +1095,22 @@ const removeLastKeyboardChunk = (value: string) => {
   return trimmed.slice(0, -1).trimEnd()
 }
 
+const isEmptyFractionDenominatorPlaceholderAtPosition = (value: string, position: number) => {
+  const pattern = /\\frac\{[^{}]*\}\{#\?\}/g
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(value)) !== null) {
+    const fraction = match[0]
+    const placeholderOffset = fraction.lastIndexOf('{#?}')
+    if (placeholderOffset < 0) continue
+    const denominatorStart = match.index + placeholderOffset + 1
+    const denominatorEnd = denominatorStart + 2
+    if (position >= denominatorStart && position <= denominatorEnd + 1) {
+      return true
+    }
+  }
+  return false
+}
+
 const createAppendTextKeyboardAction = (
   id: string,
   text: string,
@@ -2437,7 +2453,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     })
   }, [])
 
+  const triggerKeyboardSwipeBlock = useCallback((message: string, blockedActionId?: string) => {
+    setKeyboardTransientWarning(message)
+    if (keyboardTransientWarningTimeoutRef.current) {
+      clearTimeout(keyboardTransientWarningTimeoutRef.current)
+    }
+    keyboardTransientWarningTimeoutRef.current = setTimeout(() => {
+      setKeyboardTransientWarning((current) => (current === message ? null : current))
+    }, 2200)
+
+    if (blockedActionId) {
+      setKeyboardBlockedActionId(blockedActionId)
+      if (keyboardBlockedActionTimeoutRef.current) {
+        clearTimeout(keyboardBlockedActionTimeoutRef.current)
+      }
+      keyboardBlockedActionTimeoutRef.current = setTimeout(() => {
+        setKeyboardBlockedActionId((current) => (current === blockedActionId ? null : current))
+      }, 650)
+    }
+  }, [])
+
   const [selectedKeyboardKey, setSelectedKeyboardKey] = useState<string | null>(null)
+  const [keyboardBlockedActionId, setKeyboardBlockedActionId] = useState<string | null>(null)
+  const [keyboardTransientWarning, setKeyboardTransientWarning] = useState<string | null>(null)
+  const keyboardBlockedActionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const keyboardTransientWarningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [keyboardUppercase, setKeyboardUppercase] = useState(false)
   const [keyboardPaletteVisible, setKeyboardPaletteVisible] = useState(false)
   const [recentLetters, setRecentLetters] = useState<string[]>(['x', 'y', 'f', 'k', 't'])
@@ -10418,7 +10458,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [applyMathfieldKeyboardAction, closeKeyboardTransientOverlays, hasControllerRights, normalizeStepLatex, scheduleKeyboardFadeOut])
 
-  const moveKeyboardCaretBySwipe = useCallback((direction: KeyboardSwipeDirection) => {
+  const moveKeyboardCaretBySwipe = useCallback((direction: KeyboardSwipeDirection, sourceActionId?: string) => {
     const field = keyboardMathfieldRef.current
     if (!field) return false
 
@@ -10472,6 +10512,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const moveVertical = (axis: 'up' | 'down') => {
       const currentValue = field.getValue('latex') || ''
+      const currentPosition = typeof field.position === 'number' ? field.position : 0
+      if (axis === 'down' && isEmptyFractionDenominatorPlaceholderAtPosition(currentValue, currentPosition)) {
+        triggerKeyboardSwipeBlock('Enter the denominator before stacking again.', sourceActionId)
+        return false
+      }
       const referenceTarget = findKeyboardReferenceTarget(currentValue, keyboardSelectionRef.current)
 
       if (!referenceTarget || !referenceTarget.symbol.trim()) {
@@ -10524,7 +10569,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     closeKeyboardTransientOverlays()
     scheduleKeyboardFadeOut()
     return true
-  }, [closeKeyboardTransientOverlays, scheduleKeyboardFadeOut, syncKeyboardMathfieldState])
+  }, [closeKeyboardTransientOverlays, scheduleKeyboardFadeOut, syncKeyboardMathfieldState, triggerKeyboardSwipeBlock])
 
   const getKeyboardSwipeContinuationDirection = useCallback((direction: KeyboardSwipeDirection): KeyboardSwipeDirection => {
     return direction
@@ -10640,7 +10685,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         const direction = stepIndex === 0
           ? gesture.direction
           : getKeyboardSwipeContinuationDirection(gesture.direction)
-        if (!moveKeyboardCaretBySwipe(direction)) {
+        const sourceActionId = (gesture as { actionId?: string }).actionId
+        if (!moveKeyboardCaretBySwipe(direction, sourceActionId)) {
           gesture.appliedSteps = stepIndex + 1
           return true
         }
@@ -10783,6 +10829,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       const action = KEYBOARD_ACTION_MAP[key.actionId]
       if (!action) return null
       const isSelected = selectedKeyboardKey === key.actionId
+      const isBlocked = keyboardBlockedActionId === key.actionId
       const hasExplicitSize = options?.style?.width != null
       return (
         <button
@@ -10790,7 +10837,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           type="button"
           data-keyboard-row="simple-core"
           data-keyboard-action={key.actionId}
-          className={`inline-flex min-h-0 min-w-0 select-none items-center justify-center rounded-2xl border text-slate-900 shadow-sm transition-colors ${hasExplicitSize ? 'p-0' : 'px-3 py-2 sm:px-3.5 sm:py-2.5'} ${options?.className || 'border-slate-300 bg-white hover:bg-slate-100'} ${isSelected ? (options?.activeClassName || 'border-sky-300 bg-sky-100 text-sky-700') : ''}`}
+          className={`inline-flex min-h-0 min-w-0 select-none items-center justify-center rounded-2xl border text-slate-900 shadow-sm transition-colors ${hasExplicitSize ? 'p-0' : 'px-3 py-2 sm:px-3.5 sm:py-2.5'} ${options?.className || 'border-slate-300 bg-white hover:bg-slate-100'} ${isBlocked ? 'border-red-300 bg-red-50 text-red-700' : isSelected ? (options?.activeClassName || 'border-sky-300 bg-sky-100 text-sky-700') : ''}`}
           style={options?.style}
           onPointerDown={(event) => handleMountedKeyPointerDown(event, key.actionId, key.representativeKeyId)}
           onPointerMove={(event) => handleMountedKeyPointerMove(event, key.actionId)}
@@ -10992,6 +11039,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             </div>
           </div>
         </div>
+        {keyboardTransientWarning ? (
+          <div className="pointer-events-none absolute bottom-3 left-1/2 z-30 -translate-x-1/2 rounded-xl border border-red-200 bg-red-50/95 px-3 py-2 text-center text-[11px] font-semibold text-red-700 shadow-sm">
+            {keyboardTransientWarning}
+          </div>
+        ) : null}
         {activeKeyboardFamilyTarget && keyboardOverlayAnchor ? (
           <div className="pointer-events-none absolute inset-0 z-40">
             {(() => {

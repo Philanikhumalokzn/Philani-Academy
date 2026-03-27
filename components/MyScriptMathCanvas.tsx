@@ -10235,6 +10235,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const tokenOverride = isLetterTokenAction && keyboardUppercase ? action.token!.toUpperCase() : null
 
     if (recognitionEngineRef.current === 'keyboard' && applyMathfieldKeyboardAction(actionId, resolvedBaseSymbol, tokenOverride)) {
+      if (isLetterTokenAction && keyboardUppercase) {
+        setKeyboardUppercase(false)
+      }
       closeKeyboardTransientOverlays()
       scheduleKeyboardFadeOut()
       if (typeof window !== 'undefined') {
@@ -10264,6 +10267,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     latexOutputRef.current = result.value
     setKeyboardSelection({ start: result.selectionStart, end: result.selectionEnd })
     keyboardSelectionRef.current = { start: result.selectionStart, end: result.selectionEnd }
+    if (isLetterTokenAction && keyboardUppercase) {
+      setKeyboardUppercase(false)
+    }
     if (useAdminStepComposerRef.current && hasControllerRights()) {
       setAdminDraftLatex(normalizeStepLatex(result.value))
     }
@@ -10279,7 +10285,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     } else {
       setSelectedKeyboardKey(null)
     }
-  }, [applyMathfieldKeyboardAction, closeKeyboardTransientOverlays, hasControllerRights, normalizeStepLatex, scheduleKeyboardFadeOut])
+  }, [applyMathfieldKeyboardAction, closeKeyboardTransientOverlays, hasControllerRights, keyboardUppercase, normalizeStepLatex, scheduleKeyboardFadeOut])
 
   const applyKeyboardRadialAction = useCallback((actionId: string, target: KeyboardStageTarget) => {
     const action = KEYBOARD_ACTION_MAP[actionId]

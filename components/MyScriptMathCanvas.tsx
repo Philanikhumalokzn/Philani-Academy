@@ -10842,11 +10842,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         onPointerUp={handleKeyboardSurfacePointerEnd}
         onPointerCancel={handleKeyboardSurfacePointerEnd}
       >
-        <div className="flex h-full w-full items-center justify-center px-1.5 py-1.5 sm:px-4 sm:py-4">
-          <div className="flex flex-col items-center gap-2.5 sm:gap-3">
-            <div className="flex items-center justify-center gap-2.5 sm:gap-3">
+        <div className="flex h-full w-full items-center justify-center px-1 py-1.5 sm:px-4 sm:py-4">
+          <div className="flex flex-col items-center gap-3 sm:gap-3">
+            <div className="flex items-center justify-center gap-3 sm:gap-3">
               {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_TOP_FAMILY_KEYS[0], { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base sm:text-lg font-normal' })}
-              <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 max-w-[22rem] sm:max-w-[28rem]">
+              <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 max-w-[22rem] sm:max-w-[28rem]">
                 {SIMPLE_KEYBOARD_NUMBER_ROW.map((key) => renderVisibleKeyboardButton(key, { className: 'border-slate-300 bg-white hover:bg-slate-100 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl', textClassName: 'text-lg sm:text-xl font-normal' }))}
               </div>
               {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_TOP_FAMILY_KEYS[1], { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.4rem] sm:text-[1.6rem] font-normal' })}
@@ -10856,7 +10856,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               {renderVisibleKeyboardButton({ actionId: 'times', label: '×' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
             </div>
 
-            <div className="flex items-center justify-center gap-2.5 sm:gap-3">
+            <div className="flex items-center justify-center gap-3 sm:gap-3">
               {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.left, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
               {renderVisibleKeyboardButton({ actionId: 'minus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
               {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.center, { className: 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800', textClassName: 'text-3xl sm:text-[2.15rem] font-normal', activeClassName: 'border-sky-300 bg-sky-100 text-sky-700' })}
@@ -10887,8 +10887,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 <span className="text-lg font-normal leading-none">{renderKeyboardActionContent(activeKeyboardFamilyTarget.displayActionId, activeKeyboardFamilyTarget.payloadSymbol || activeKeyboardFamilyTarget.baseSymbol)}</span>
               </div>
               {activeKeyboardFamilyTarget.representativeKeyId === 'letters' ? (
-                <div className="flex w-full flex-col gap-1.5">
-                  <div className="flex w-full items-center justify-center gap-1">
+                <div className="flex w-full flex-col gap-2">
+                  <div className="flex w-full items-center justify-center gap-1.5">
                     {['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'].map((actionId) => {
                       const isSelected = selectedKeyboardKey === actionId
                       return (
@@ -10908,7 +10908,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       )
                     })}
                   </div>
-                  <div className="flex w-full items-center justify-center gap-1 px-3 sm:px-4">
+                  <div className="flex w-full items-center justify-center gap-1.5 px-2 sm:px-4">
                     {['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'].map((actionId) => {
                       const isSelected = selectedKeyboardKey === actionId
                       return (
@@ -10928,7 +10928,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       )
                     })}
                   </div>
-                  <div className="flex w-full items-center justify-center gap-1">
+                  <div className="flex w-full items-center justify-center gap-1.5">
                     {['uppercase', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'backspace'].map((actionId) => {
                       const isSelected = selectedKeyboardKey === actionId
                       const isWide = actionId === 'uppercase' || actionId === 'backspace'

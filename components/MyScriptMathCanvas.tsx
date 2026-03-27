@@ -10111,6 +10111,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return true
     }
 
+    const selectableField = field as MathfieldElementType & {
+      selection: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
+      selectionIsCollapsed: boolean
+      getValue: (selection?: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }, format?: 'latex') => string
+      insert: (
+        value: string,
+        options?: {
+          insertionMode?: 'replaceSelection' | 'replaceAll' | 'insertBefore' | 'insertAfter'
+          selectionMode?: 'placeholder' | 'after' | 'before' | 'item'
+        }
+      ) => boolean
+    }
+    const selection = selectableField.selection
+    const hasSelectionRange = !selectableField.selectionIsCollapsed && selection.ranges.length > 0
+
     // Enclosure actions: wrap selection if present, else insert empty enclosure
     if ([
       'paren', 'bracket', 'brace', 'absolute', 'floor', 'ceiling'
@@ -10132,20 +10147,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         default:
           left = ''; right = ''
       }
-      const selectableField = field as MathfieldElementType & {
-        selection: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
-        selectionIsCollapsed: boolean
-        getValue: (selection?: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }, format?: 'latex') => string
-        insert: (
-          value: string,
-          options?: {
-            insertionMode?: 'replaceSelection' | 'replaceAll' | 'insertBefore' | 'insertAfter'
-            selectionMode?: 'placeholder' | 'after' | 'before' | 'item'
-          }
-        ) => boolean
-      }
-      const selection = selectableField.selection
-      if (!selectableField.selectionIsCollapsed && selection.ranges.length > 0) {
+      if (hasSelectionRange) {
         const selected = selectableField.getValue(selection, 'latex') || ''
         selectableField.insert(`${left}${selected}${right}`, {
           insertionMode: 'replaceSelection',
@@ -10160,6 +10162,48 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       })
       syncKeyboardMathfieldState(field)
       return true
+    }
+
+    // Radical and power actions: wrap selection if present.
+    if (['sqrt', 'cuberoot', 'nth-root', 'fraction', 'fraction-denominator', 'power2', 'power3', 'reciprocal'].includes(actionId) && hasSelectionRange) {
+      const selected = selectableField.getValue(selection, 'latex') || ''
+      let wrapped = ''
+      switch (actionId) {
+        case 'sqrt':
+          wrapped = `\\sqrt{${selected}}`
+          break
+        case 'cuberoot':
+          wrapped = `\\sqrt[3]{${selected}}`
+          break
+        case 'nth-root':
+          wrapped = `\\sqrt[]{${selected}}`
+          break
+        case 'fraction':
+          wrapped = `\\frac{${selected}}{}`
+          break
+        case 'fraction-denominator':
+          wrapped = `\\frac{}{${selected}}`
+          break
+        case 'power2':
+          wrapped = `${selected}^{2}`
+          break
+        case 'power3':
+          wrapped = `${selected}^{3}`
+          break
+        case 'reciprocal':
+          wrapped = `${selected}^{-1}`
+          break
+        default:
+          wrapped = ''
+      }
+      if (wrapped) {
+        selectableField.insert(wrapped, {
+          insertionMode: 'replaceSelection',
+          selectionMode: 'after',
+        })
+        syncKeyboardMathfieldState(field)
+        return true
+      }
     }
 
     if (actionId === 'power2') {

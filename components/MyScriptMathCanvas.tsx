@@ -1185,6 +1185,13 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
   createAppendTextKeyboardAction('decimal', '.', 'decimal point', 'decimal point'),
   createAppendTextKeyboardAction('comma', ',', 'comma', 'comma'),
   createAppendTextKeyboardAction('space', ' ', 'space', 'space'),
+  {
+    id: 'uppercase',
+    title: 'uppercase',
+    description: 'uppercase',
+    label: '↑',
+    apply: (prev) => prev,
+  },
   createAppendTextKeyboardAction('pi', 'π', 'pi', 'pi'),
   createAppendTextKeyboardAction('theta', 'θ', 'theta', 'theta'),
   createAppendTextKeyboardAction('infinity', '∞', 'infinity', 'infinity'),
@@ -1627,12 +1634,12 @@ const KEYBOARD_REPRESENTATIVE_KEYS: KeyboardRepresentativeKeyDefinition[] = [
     singleTapActionId: 'x',
     radialActionIds: ['fraction', 'power2', 'plus', 'subscript', 'fraction-denominator', 'sqrt', 'minus', 'paren'],
     familyRows: [
-      ['digit-1', 'digit-2', 'digit-3', 'digit-4', 'digit-5', 'digit-6', 'digit-7', 'digit-8', 'digit-9', 'digit-0'],
       ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
       ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
       ['z', 'x', 'c', 'v', 'b', 'n', 'm'],
+      ['uppercase', 'space'],
     ],
-    familyTitle: 'Letters and number row',
+    familyTitle: 'QWERTY keyboard',
   },
   {
     id: 'operators',
@@ -1650,8 +1657,8 @@ const KEYBOARD_REPRESENTATIVE_KEYS: KeyboardRepresentativeKeyDefinition[] = [
     description: 'relation family',
     latex: '=',
     singleTapActionId: 'equals',
-    radialActionIds: ['equals', 'leq', 'geq'],
-    familyRows: [['equals', 'leq', 'geq']],
+    radialActionIds: ['equals', 'neq', 'leq', 'geq'],
+    familyRows: [['equals', 'neq', 'lt', 'gt', 'leq', 'geq', 'approx']],
     familyTitle: 'Relation family',
   },
   {
@@ -1719,7 +1726,7 @@ const SIMPLE_KEYBOARD_NUMBER_ROW: KeyboardVisibleKeyDefinition[] = [
   { actionId: 'digit-8', label: '8' },
   { actionId: 'digit-9', label: '9' },
   { actionId: 'digit-0', label: '0' },
-  { actionId: 'decimal', label: ',' },
+  { actionId: 'decimal', label: '.' },
 ]
 
 const SIMPLE_KEYBOARD_TOP_FAMILY_KEYS: KeyboardVisibleKeyDefinition[] = [
@@ -2424,6 +2431,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [])
 
   const [selectedKeyboardKey, setSelectedKeyboardKey] = useState<string | null>(null)
+  const [keyboardUppercase, setKeyboardUppercase] = useState(false)
   const [keyboardPaletteVisible, setKeyboardPaletteVisible] = useState(false)
   const [activeKeyboardRadialTarget, setActiveKeyboardRadialTarget] = useState<KeyboardStageTarget | null>(null)
   const [activeKeyboardFamilyTarget, setActiveKeyboardFamilyTarget] = useState<KeyboardStageTarget | null>(null)
@@ -10207,13 +10215,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const action = KEYBOARD_ACTION_MAP[actionId]
     if (!action) return
 
+    if (actionId === 'uppercase') {
+      setSelectedKeyboardKey(actionId)
+      setKeyboardUppercase((prev) => !prev)
+      if (typeof window !== 'undefined') {
+        window.setTimeout(() => setSelectedKeyboardKey(null), 220)
+      } else {
+        setSelectedKeyboardKey(null)
+      }
+      return
+    }
+
     setSelectedKeyboardKey(actionId)
     const prev = latexOutputRef.current || ''
     const selection = keyboardSelectionRef.current
     const referenceTarget = findKeyboardReferenceTarget(prev, selection)
     const resolvedBaseSymbol = baseSymbol || referenceTarget?.symbol
+    const isLetterTokenAction = Boolean(action.token && /^[a-z]$/.test(action.token))
+    const tokenOverride = isLetterTokenAction && keyboardUppercase ? action.token!.toUpperCase() : null
 
-    if (recognitionEngineRef.current === 'keyboard' && applyMathfieldKeyboardAction(actionId, resolvedBaseSymbol)) {
+    if (recognitionEngineRef.current === 'keyboard' && applyMathfieldKeyboardAction(actionId, resolvedBaseSymbol, tokenOverride)) {
       closeKeyboardTransientOverlays()
       scheduleKeyboardFadeOut()
       if (typeof window !== 'undefined') {
@@ -10230,7 +10251,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     } else if (actionId === 'clear') {
       result = { value: '', selectionStart: 0, selectionEnd: 0 }
     } else if (action.token) {
-      result = insertKeyboardTextAtSelection(prev, action.token, selection)
+      result = insertKeyboardTextAtSelection(prev, tokenOverride || action.token, selection)
     } else if (actionId === 'plus' || actionId === 'minus' || actionId === 'equals' || actionId === 'times' || actionId === 'divide' || actionId === 'leq' || actionId === 'geq') {
       const inserted = action.apply('', resolvedBaseSymbol)
       result = insertKeyboardTextAtSelection(prev, inserted, selection)
@@ -10541,6 +10562,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const renderKeyboardActionContent = (actionId: string, baseSymbol?: string) => {
       const action = KEYBOARD_ACTION_MAP[actionId]
       if (!action) return <span className="text-sm font-normal">?</span>
+      if (actionId === 'uppercase') {
+        return <span className="text-sm font-normal">↑</span>
+      }
+      if (action.token && /^[a-z]$/.test(action.token)) {
+        const label = keyboardUppercase ? action.token.toUpperCase() : action.token
+        return <span className="text-sm font-normal">{label}</span>
+      }
       const latex = action.renderLatex?.(baseSymbol) ?? action.latex
       if (latex) {
         try {

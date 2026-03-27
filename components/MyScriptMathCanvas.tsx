@@ -303,7 +303,8 @@ function installIinkEraserPointerTypeShim(
           })
         }
         return result
-      }
+            description: 'editing controls',
+            label: '⌫',
 
       return undefined
     }
@@ -1337,7 +1338,7 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
     id: 'backspace',
     title: 'delete',
     description: 'delete',
-    label: 'Del',
+    label: '⌫',
     apply: (prev) => removeLastKeyboardChunk(prev),
   },
   {
@@ -1684,7 +1685,7 @@ const KEYBOARD_REPRESENTATIVE_KEYS: KeyboardRepresentativeKeyDefinition[] = [
   {
     id: 'trig',
     title: 'sine',
-    label: '⌫',
+    description: 'trigonometry family',
     latex: '\\sin(x)',
     singleTapActionId: 'sin',
     radialActionIds: [],
@@ -1704,7 +1705,7 @@ const KEYBOARD_REPRESENTATIVE_KEYS: KeyboardRepresentativeKeyDefinition[] = [
   {
     id: 'editing',
     title: 'delete',
-    description: 'editing controls',
+    label: '⌫',
     label: 'Del',
     singleTapActionId: 'backspace',
     radialActionIds: ['backspace', 'clear'],

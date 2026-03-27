@@ -37,7 +37,7 @@ const ZoomableImageOverlay = dynamic(() => import('../components/ZoomableImageOv
 const MOBILE_HERO_BG_MIN_WIDTH = 1200
 const MOBILE_HERO_BG_MIN_HEIGHT = 600
 const MOBILE_HERO_BG_MAX_WIDTH = 2000
-const WINDOW_PADDING_X = 8
+const WINDOW_PADDING_X = 24
 const WINDOW_PADDING_Y = 24
 
 const buildDefaultMobileHeroSvg = () => {

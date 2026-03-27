@@ -2544,8 +2544,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         }
 
         const handleSelectionChange = () => {
-          const nextPosition = typeof field.position === 'number' ? field.position : 0
-          setKeyboardSelectionState({ start: nextPosition, end: nextPosition })
+          const selectableField = field as MathfieldElementType & {
+            selection: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
+            selectionIsCollapsed: boolean
+          }
+          if (!selectableField.selectionIsCollapsed && selectableField.selection.ranges.length > 0) {
+            const [rangeStart, rangeEnd] = selectableField.selection.ranges[0]
+            setKeyboardSelectionState({ start: Math.min(rangeStart, rangeEnd), end: Math.max(rangeStart, rangeEnd) })
+          } else {
+            const nextPosition = typeof field.position === 'number' ? field.position : 0
+            setKeyboardSelectionState({ start: nextPosition, end: nextPosition })
+          }
         }
 
         field.addEventListener('input', handleInput)

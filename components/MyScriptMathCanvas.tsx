@@ -10611,9 +10611,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         return { left: anchor.x, top: Math.max(8, anchor.y - 18), width: undefined as number | undefined }
       }
 
-      const horizontalMargin = 4
+      const horizontalMargin = 2
       const verticalMargin = 8
-      const desiredWidth = Math.max(256, Math.min(608, rootRect.width * 0.98))
+      const desiredWidth = Math.max(256, Math.min(608, rootRect.width * 0.995))
       const width = Math.max(220, desiredWidth)
 
       const estimatedHeight = 132 + (target.familyRows.length * 56)
@@ -10879,8 +10879,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               const overlayPlacement = computeFamilyOverlayPlacement(activeKeyboardFamilyTarget, keyboardOverlayAnchor)
               return (
             <div
-              className="pointer-events-auto absolute min-w-[16rem] max-w-[min(98vw,38rem)] rounded-3xl border border-slate-200 bg-white/98 p-3 shadow-[0_18px_50px_rgba(15,23,42,0.2)] backdrop-blur-sm"
-              style={{ left: overlayPlacement.left, top: overlayPlacement.top, width: overlayPlacement.width, maxWidth: '98vw' }}
+              className="pointer-events-auto absolute min-w-[16rem] max-w-[min(99.5vw,38rem)] rounded-3xl border border-slate-200 bg-white/98 p-3 shadow-[0_18px_50px_rgba(15,23,42,0.2)] backdrop-blur-sm"
+              style={{ left: overlayPlacement.left, top: overlayPlacement.top, width: overlayPlacement.width, maxWidth: '99.5vw' }}
               onPointerDown={(event) => event.stopPropagation()}
             >
               <div className="mb-2 flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-2 text-white">

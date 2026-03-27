@@ -1663,9 +1663,9 @@ const KEYBOARD_REPRESENTATIVE_KEYS: KeyboardRepresentativeKeyDefinition[] = [
 const KEYBOARD_REPRESENTATIVE_MAP = Object.fromEntries(KEYBOARD_REPRESENTATIVE_KEYS.map((key) => [key.id, key])) as Record<string, KeyboardRepresentativeKeyDefinition>
 
 const SIMPLE_KEYBOARD_VISIBLE_KEYS: Array<Array<{ actionId: string; label?: string } | null>> = [
-  [null, { actionId: 'times', label: 'X' }, null],
+  [null, { actionId: 'times', label: '×' }, null],
   [{ actionId: 'minus' }, { actionId: 'x' }, { actionId: 'plus' }],
-  [null, { actionId: 'divide' }, null],
+  [null, { actionId: 'divide', label: '÷' }, null],
 ]
 
 const KEYBOARD_ACTION_REPRESENTATIVE_MAP = KEYBOARD_REPRESENTATIVE_KEYS.reduce<Record<string, string>>((acc, key) => {
@@ -10655,11 +10655,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         onPointerUp={handleKeyboardSurfacePointerEnd}
         onPointerCancel={handleKeyboardSurfacePointerEnd}
       >
-        <div className="flex h-full w-full items-center justify-center px-4 py-4 sm:px-6 sm:py-6">
-          <div className="grid grid-cols-3 grid-rows-3 gap-4 sm:gap-5">
+        <div className="flex h-full w-full items-center justify-center px-3 py-3 sm:px-4 sm:py-4">
+          <div className="grid grid-cols-3 grid-rows-3 place-items-center gap-2.5 sm:gap-3">
             {SIMPLE_KEYBOARD_VISIBLE_KEYS.flatMap((row, rowIndex) => row.map((cell, columnIndex) => {
               if (!cell) {
-                return <div key={`simple-keyboard-empty-${rowIndex}-${columnIndex}`} className="h-24 w-24 sm:h-28 sm:w-28" />
+                return <div key={`simple-keyboard-empty-${rowIndex}-${columnIndex}`} className="h-0 w-0" />
               }
               const action = KEYBOARD_ACTION_MAP[cell.actionId]
               if (!action) return null
@@ -10671,7 +10671,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   type="button"
                   data-keyboard-row="simple-core"
                   data-keyboard-action={cell.actionId}
-                  className={`flex h-24 w-24 select-none items-center justify-center rounded-[1.75rem] border text-slate-900 shadow-sm transition-colors sm:h-28 sm:w-28 ${isCenterKey ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white'} ${isSelected ? 'bg-sky-100 text-sky-700 border-sky-300' : isCenterKey ? 'hover:bg-slate-800' : 'hover:bg-slate-100'}`}
+                  className={`inline-flex min-h-0 min-w-0 select-none items-center justify-center rounded-2xl border px-3 py-2 text-slate-900 shadow-sm transition-colors sm:px-3.5 sm:py-2.5 ${isCenterKey ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white'} ${isSelected ? 'border-sky-300 bg-sky-100 text-sky-700' : isCenterKey ? 'hover:bg-slate-800' : 'hover:bg-slate-100'}`}
                   onPointerDown={(event) => handleMountedKeyPointerDown(event, cell.actionId)}
                   onPointerMove={(event) => handleMountedKeyPointerMove(event, cell.actionId)}
                   onPointerUp={(event) => handleMountedKeyPointerUp(event, cell.actionId)}
@@ -10679,7 +10679,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   onContextMenu={(event) => event.preventDefault()}
                   title={action.title}
                 >
-                  <span className={`leading-none ${isCenterKey ? 'text-4xl sm:text-5xl font-semibold' : 'text-3xl sm:text-4xl font-semibold'}`}>
+                  <span className={`leading-none ${isCenterKey ? 'text-3xl sm:text-[2.15rem] font-semibold' : 'text-[1.75rem] sm:text-[1.95rem] font-semibold'}`}>
                     {cell.label ?? renderKeyboardActionContent(cell.actionId)}
                   </span>
                 </button>

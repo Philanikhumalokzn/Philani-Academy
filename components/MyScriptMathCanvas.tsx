@@ -2429,9 +2429,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setKeyboardMathfieldHostNode(node)
   }, [])
 
+  const updateRecentLetters = useCallback((letter: string) => {
+    setRecentLetters((prev) => {
+      const updated = [letter, ...prev.filter((l) => l !== letter)].slice(0, 5)
+      recentLettersRef.current = updated
+      return updated
+    })
+  }, [])
+
   const [selectedKeyboardKey, setSelectedKeyboardKey] = useState<string | null>(null)
   const [keyboardUppercase, setKeyboardUppercase] = useState(false)
   const [keyboardPaletteVisible, setKeyboardPaletteVisible] = useState(false)
+  const [recentLetters, setRecentLetters] = useState<string[]>(['x', 'y'])
+  const recentLettersRef = useRef<string[]>(['x', 'y'])
   const [activeKeyboardRadialTarget, setActiveKeyboardRadialTarget] = useState<KeyboardStageTarget | null>(null)
   const [activeKeyboardFamilyTarget, setActiveKeyboardFamilyTarget] = useState<KeyboardStageTarget | null>(null)
   const activeKeyboardFamilyTargetRef = useRef<KeyboardStageTarget | null>(null)
@@ -10293,6 +10303,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const resolvedBaseSymbol = baseSymbol || referenceTarget?.symbol
     const isLetterTokenAction = Boolean(action.token && /^[a-z]$/.test(action.token))
     const tokenOverride = isLetterTokenAction && keyboardUppercase ? action.token!.toUpperCase() : null
+    if (isLetterTokenAction && action.token) {
+      updateRecentLetters(action.token)
+    }
 
     if (recognitionEngineRef.current === 'keyboard' && applyMathfieldKeyboardAction(actionId, resolvedBaseSymbol, tokenOverride)) {
       if (isLetterTokenAction && keyboardUppercase) {
@@ -10722,6 +10735,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return buildKeyboardStageTarget(representativeKeyId, actionId)
     }
 
+    const buildDynamicClusterKeys = () => {
+      const letters = recentLetters.slice(0, 5)
+      const centerLetter = letters[0] || 'x'
+      const surroundingLetters = letters.slice(1, 5)
+      return {
+        center: { actionId: centerLetter, representativeKeyId: 'letters' },
+        left: surroundingLetters[0] ? { actionId: surroundingLetters[0], representativeKeyId: 'letters' } : SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.left,
+        right: surroundingLetters[1] ? { actionId: surroundingLetters[1], representativeKeyId: 'letters' } : SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.right,
+        bottom: surroundingLetters[2] ? { actionId: surroundingLetters[2], representativeKeyId: 'letters' } : SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.bottom,
+      }
+    }
+
     const renderVisibleKeyboardButton = (
       key: KeyboardVisibleKeyDefinition,
       options?: {
@@ -10910,11 +10935,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             </div>
 
             <div className="flex items-center justify-center gap-3 sm:gap-3">
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.left, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
+              {renderVisibleKeyboardButton(buildDynamicClusterKeys().left, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
               {renderVisibleKeyboardButton({ actionId: 'minus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.center, { className: 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800', textClassName: 'text-3xl sm:text-[2.15rem] font-normal', activeClassName: 'border-sky-300 bg-sky-100 text-sky-700' })}
+              {renderVisibleKeyboardButton(buildDynamicClusterKeys().center, { className: 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800', textClassName: 'text-3xl sm:text-[2.15rem] font-normal', activeClassName: 'border-sky-300 bg-sky-100 text-sky-700' })}
               {renderVisibleKeyboardButton({ actionId: 'plus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.right, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
+              {renderVisibleKeyboardButton(buildDynamicClusterKeys().right, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
             </div>
 
             <div className="flex justify-center">
@@ -10922,7 +10947,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             </div>
 
             <div className="flex justify-center">
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.bottom, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
+              {renderVisibleKeyboardButton(buildDynamicClusterKeys().bottom, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
             </div>
           </div>
         </div>

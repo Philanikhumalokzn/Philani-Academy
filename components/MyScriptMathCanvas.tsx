@@ -10842,7 +10842,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         onPointerUp={handleKeyboardSurfacePointerEnd}
         onPointerCancel={handleKeyboardSurfacePointerEnd}
       >
-        <div className="flex h-full w-full items-center justify-center px-3 py-3 sm:px-4 sm:py-4">
+        <div className="flex h-full w-full items-center justify-center px-1.5 py-1.5 sm:px-4 sm:py-4">
           <div className="flex flex-col items-center gap-2.5 sm:gap-3">
             <div className="flex items-center justify-center gap-2.5 sm:gap-3">
               {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_TOP_FAMILY_KEYS[0], { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base sm:text-lg font-normal' })}

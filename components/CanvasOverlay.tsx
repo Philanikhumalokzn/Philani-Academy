@@ -1,7 +1,10 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { MyScriptMathCanvas } from './MyScriptMathCanvas'
+import * as MyScriptMathCanvasModule from './MyScriptMathCanvas'
 import BrandLogo from './BrandLogo'
+
+const MyScriptMathCanvas = ((MyScriptMathCanvasModule as any).MyScriptMathCanvas
+  ?? (MyScriptMathCanvasModule as any).default) as any
 
 type CanvasOverlayProps = {
   isOpen: boolean

@@ -303,9 +303,7 @@ function installIinkEraserPointerTypeShim(
           })
         }
         return result
-            description: 'editing controls',
-            label: '⌫',
-
+      }
       return undefined
     }
 
@@ -1705,8 +1703,8 @@ const KEYBOARD_REPRESENTATIVE_KEYS: KeyboardRepresentativeKeyDefinition[] = [
   {
     id: 'editing',
     title: 'delete',
+    description: 'editing controls',
     label: '⌫',
-    label: 'Del',
     singleTapActionId: 'backspace',
     radialActionIds: ['backspace', 'clear'],
     familyRows: [['backspace', 'clear']],

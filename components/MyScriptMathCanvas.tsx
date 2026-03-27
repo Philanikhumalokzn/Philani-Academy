@@ -10887,15 +10887,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 <span className="text-lg font-normal leading-none">{renderKeyboardActionContent(activeKeyboardFamilyTarget.displayActionId, activeKeyboardFamilyTarget.payloadSymbol || activeKeyboardFamilyTarget.baseSymbol)}</span>
               </div>
               {activeKeyboardFamilyTarget.representativeKeyId === 'letters' ? (
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-center gap-1.5">
+                <div className="flex w-full flex-col gap-1.5">
+                  <div className="flex w-full items-center justify-center gap-1">
                     {['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'].map((actionId) => {
                       const isSelected = selectedKeyboardKey === actionId
                       return (
                         <button
                           key={`qwerty-row-1-${actionId}`}
                           type="button"
-                          className={`inline-flex h-11 min-w-[2.3rem] select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-2 text-white shadow-sm transition-colors ${isSelected ? 'border-sky-300 bg-sky-700 text-white' : 'hover:bg-slate-700'}`}
+                          className={`inline-flex h-10 min-w-0 flex-1 select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-1.5 text-white shadow-sm transition-colors sm:h-11 sm:px-2 ${isSelected ? 'border-sky-300 bg-sky-700 text-white' : 'hover:bg-slate-700'}`}
                           onPointerDown={(event) => event.stopPropagation()}
                           onClick={(event) => {
                             event.stopPropagation()
@@ -10908,14 +10908,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       )
                     })}
                   </div>
-                  <div className="flex items-center justify-center gap-1.5 pl-4 pr-4">
+                  <div className="flex w-full items-center justify-center gap-1 px-3 sm:px-4">
                     {['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'].map((actionId) => {
                       const isSelected = selectedKeyboardKey === actionId
                       return (
                         <button
                           key={`qwerty-row-2-${actionId}`}
                           type="button"
-                          className={`inline-flex h-11 min-w-[2.3rem] select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-2 text-white shadow-sm transition-colors ${isSelected ? 'border-sky-300 bg-sky-700 text-white' : 'hover:bg-slate-700'}`}
+                          className={`inline-flex h-10 min-w-0 flex-1 select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-1.5 text-white shadow-sm transition-colors sm:h-11 sm:px-2 ${isSelected ? 'border-sky-300 bg-sky-700 text-white' : 'hover:bg-slate-700'}`}
                           onPointerDown={(event) => event.stopPropagation()}
                           onClick={(event) => {
                             event.stopPropagation()
@@ -10928,7 +10928,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       )
                     })}
                   </div>
-                  <div className="flex items-center justify-center gap-1.5">
+                  <div className="flex w-full items-center justify-center gap-1">
                     {['uppercase', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'backspace'].map((actionId) => {
                       const isSelected = selectedKeyboardKey === actionId
                       const isWide = actionId === 'uppercase' || actionId === 'backspace'
@@ -10936,7 +10936,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                         <button
                           key={`qwerty-row-3-${actionId}`}
                           type="button"
-                          className={`inline-flex h-11 ${isWide ? 'min-w-[3.1rem]' : 'min-w-[2.3rem]'} select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-2 text-white shadow-sm transition-colors ${isSelected ? 'border-sky-300 bg-sky-700 text-white' : 'hover:bg-slate-700'}`}
+                          className={`inline-flex h-10 min-w-0 ${isWide ? 'flex-[1.25]' : 'flex-1'} select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-1.5 text-white shadow-sm transition-colors sm:h-11 sm:px-2 ${isSelected ? 'border-sky-300 bg-sky-700 text-white' : 'hover:bg-slate-700'}`}
                           onPointerDown={(event) => event.stopPropagation()}
                           onClick={(event) => {
                             event.stopPropagation()
@@ -10949,10 +10949,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       )
                     })}
                   </div>
-                  <div className="flex items-center justify-center gap-1.5">
+                  <div className="flex w-full items-center justify-center gap-1">
                     <button
                       type="button"
-                      className="inline-flex h-11 min-w-[3.1rem] cursor-default select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-2 text-white shadow-sm"
+                      className="inline-flex h-10 min-w-0 flex-[1.25] cursor-default select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-1.5 text-white shadow-sm sm:h-11 sm:px-2"
                       onPointerDown={(event) => event.stopPropagation()}
                       title="Symbols"
                     >
@@ -10965,7 +10965,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                         <button
                           key={`qwerty-row-4-${actionId}`}
                           type="button"
-                          className={`inline-flex h-11 ${isSpace ? 'min-w-[10.5rem] px-4' : 'min-w-[2.8rem] px-2'} select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 text-white shadow-sm transition-colors ${isSelected ? 'border-sky-300 bg-sky-700 text-white' : 'hover:bg-slate-700'}`}
+                          className={`inline-flex h-10 min-w-0 ${isSpace ? 'flex-[4] px-2.5 sm:px-4' : 'flex-[1.15] px-1.5 sm:px-2'} select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 text-white shadow-sm transition-colors sm:h-11 ${isSelected ? 'border-sky-300 bg-sky-700 text-white' : 'hover:bg-slate-700'}`}
                           onPointerDown={(event) => event.stopPropagation()}
                           onClick={(event) => {
                             event.stopPropagation()
@@ -10979,7 +10979,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     })}
                     <button
                       type="button"
-                      className="inline-flex h-11 min-w-[3.1rem] cursor-default select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-2 text-white shadow-sm"
+                      className="inline-flex h-10 min-w-0 flex-[1.25] cursor-default select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-1.5 text-white shadow-sm sm:h-11 sm:px-2"
                       onPointerDown={(event) => event.stopPropagation()}
                       title="Enter"
                     >

@@ -10738,12 +10738,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const buildDynamicClusterKeys = () => {
       const letters = recentLetters.slice(0, 5)
       const centerLetter = letters[0] || 'x'
-      const surroundingLetters = letters.slice(1, 5)
       return {
         center: { actionId: centerLetter, representativeKeyId: 'letters' },
-        left: surroundingLetters[0] ? { actionId: surroundingLetters[0], representativeKeyId: 'letters' } : SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.left,
-        right: surroundingLetters[1] ? { actionId: surroundingLetters[1], representativeKeyId: 'letters' } : SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.right,
-        bottom: surroundingLetters[2] ? { actionId: surroundingLetters[2], representativeKeyId: 'letters' } : SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.bottom,
+        left: SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.left,
+        right: SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.right,
+        bottom: SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.bottom,
+      }
+    }
+
+    const buildCornerLetterKeys = () => {
+      const letters = recentLetters.slice(1, 5)
+      return {
+        nw: letters[0] ? { actionId: letters[0], representativeKeyId: 'letters' } : null,
+        ne: letters[1] ? { actionId: letters[1], representativeKeyId: 'letters' } : null,
+        sw: letters[2] ? { actionId: letters[2], representativeKeyId: 'letters' } : null,
+        se: letters[3] ? { actionId: letters[3], representativeKeyId: 'letters' } : null,
       }
     }
 
@@ -10934,12 +10943,24 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               {renderVisibleKeyboardButton({ actionId: 'times', label: '×' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
             </div>
 
-            <div className="flex items-center justify-center gap-3 sm:gap-3">
-              {renderVisibleKeyboardButton(buildDynamicClusterKeys().left, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
-              {renderVisibleKeyboardButton({ actionId: 'minus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
-              {renderVisibleKeyboardButton(buildDynamicClusterKeys().center, { className: 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800', textClassName: 'text-3xl sm:text-[2.15rem] font-normal', activeClassName: 'border-sky-300 bg-sky-100 text-sky-700' })}
-              {renderVisibleKeyboardButton({ actionId: 'plus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
-              {renderVisibleKeyboardButton(buildDynamicClusterKeys().right, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
+            <div className="relative flex flex-col items-center justify-center gap-3 sm:gap-3">
+              <div className="flex items-center justify-center gap-3 sm:gap-3">
+                {buildCornerLetterKeys().nw ? renderVisibleKeyboardButton(buildCornerLetterKeys().nw, { className: 'border-slate-300 bg-white hover:bg-slate-100 h-9 w-9 sm:h-10 sm:w-10 p-0', textClassName: 'text-sm sm:text-base font-normal' }) : null}
+                <div className="w-8 sm:w-10" />
+                {buildCornerLetterKeys().ne ? renderVisibleKeyboardButton(buildCornerLetterKeys().ne, { className: 'border-slate-300 bg-white hover:bg-slate-100 h-9 w-9 sm:h-10 sm:w-10 p-0', textClassName: 'text-sm sm:text-base font-normal' }) : null}
+              </div>
+              <div className="flex items-center justify-center gap-3 sm:gap-3">
+                {renderVisibleKeyboardButton(buildDynamicClusterKeys().left, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
+                {renderVisibleKeyboardButton({ actionId: 'minus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
+                {renderVisibleKeyboardButton(buildDynamicClusterKeys().center, { className: 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800', textClassName: 'text-3xl sm:text-[2.15rem] font-normal', activeClassName: 'border-sky-300 bg-sky-100 text-sky-700' })}
+                {renderVisibleKeyboardButton({ actionId: 'plus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
+                {renderVisibleKeyboardButton(buildDynamicClusterKeys().right, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.9rem] sm:text-[2.1rem] font-normal' })}
+              </div>
+              <div className="flex items-center justify-center gap-3 sm:gap-3">
+                {buildCornerLetterKeys().sw ? renderVisibleKeyboardButton(buildCornerLetterKeys().sw, { className: 'border-slate-300 bg-white hover:bg-slate-100 h-9 w-9 sm:h-10 sm:w-10 p-0', textClassName: 'text-sm sm:text-base font-normal' }) : null}
+                <div className="w-8 sm:w-10" />
+                {buildCornerLetterKeys().se ? renderVisibleKeyboardButton(buildCornerLetterKeys().se, { className: 'border-slate-300 bg-white hover:bg-slate-100 h-9 w-9 sm:h-10 sm:w-10 p-0', textClassName: 'text-sm sm:text-base font-normal' }) : null}
+              </div>
             </div>
 
             <div className="flex justify-center">

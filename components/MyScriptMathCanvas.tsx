@@ -10256,16 +10256,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         return tryExecute('moveDown', 'moveToDenominator', 'moveToNextPlaceholder')
       }
 
-      const numerator = axis === 'down' ? referenceTarget.symbol : ''
-      const denominator = axis === 'up' ? referenceTarget.symbol : ''
+      const numerator = axis === 'down' ? referenceTarget.symbol : '#?'
+      const denominator = axis === 'up' ? referenceTarget.symbol : '#?'
       const replacement = `\\frac{${numerator}}{${denominator}}`
       const nextValue = `${currentValue.slice(0, referenceTarget.start)}${replacement}${currentValue.slice(referenceTarget.end)}`
-      const nextCaretPosition = referenceTarget.start + (axis === 'down'
-        ? `\\frac{${numerator}}{`.length
-        : '\\frac{'.length)
 
       field.setValue(nextValue)
-      field.position = nextCaretPosition
+      field.position = referenceTarget.start
+      if (axis === 'down') {
+        tryExecute('moveToDenominator', 'moveToNextPlaceholder')
+      } else {
+        tryExecute('moveToNumerator', 'moveToNextPlaceholder')
+      }
       return true
     }
 

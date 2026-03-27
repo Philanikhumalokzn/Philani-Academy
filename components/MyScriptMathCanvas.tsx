@@ -1662,6 +1662,12 @@ const KEYBOARD_REPRESENTATIVE_KEYS: KeyboardRepresentativeKeyDefinition[] = [
 
 const KEYBOARD_REPRESENTATIVE_MAP = Object.fromEntries(KEYBOARD_REPRESENTATIVE_KEYS.map((key) => [key.id, key])) as Record<string, KeyboardRepresentativeKeyDefinition>
 
+const SIMPLE_KEYBOARD_VISIBLE_KEYS: Array<Array<{ actionId: string; label?: string } | null>> = [
+  [null, { actionId: 'times', label: 'X' }, null],
+  [{ actionId: 'minus' }, { actionId: 'x' }, { actionId: 'plus' }],
+  [null, { actionId: 'divide' }, null],
+]
+
 const KEYBOARD_ACTION_REPRESENTATIVE_MAP = KEYBOARD_REPRESENTATIVE_KEYS.reduce<Record<string, string>>((acc, key) => {
   acc[key.singleTapActionId] = key.id
   for (const row of key.familyRows) {
@@ -10649,58 +10655,36 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         onPointerUp={handleKeyboardSurfacePointerEnd}
         onPointerCancel={handleKeyboardSurfacePointerEnd}
       >
-        <div className="flex h-full w-full items-center justify-center px-2 py-2 sm:px-3 sm:py-3">
-          <div className="flex h-full max-h-full w-full max-w-[1120px] flex-col justify-center gap-[4px]">
-            <div className="rounded-xl border border-slate-200 bg-white/95 px-2 py-2 shadow-sm backdrop-blur-sm">
-              <div
-                className="min-h-[3rem] w-full"
-                onPointerDown={(event) => {
-                  event.stopPropagation()
-                  event.preventDefault()
-                  focusKeyboardExpressionAtTap(event.clientX, event.clientY, event.currentTarget.getBoundingClientRect(), keyboardBottomTypesetPreviewRef, keyboardBottomCaretSlotRefs)
-                }}
-              >
-                {renderKeyboardBottomPanelPreviewSurface()}
-              </div>
-            </div>
-            <div className="flex w-full flex-col justify-center gap-[3px]">
-              {KEYBOARD_MOUNTED_ROWS.map((row) => (
-                <div key={row.id} className="w-full">
-                  <div
-                    className="grid w-full gap-[2px]"
-                    style={row.id === 'qwerty-4'
-                      ? ({ gridTemplateColumns: 'repeat(12, minmax(0, 1fr))' } as CSSProperties)
-                      : ({ gridTemplateColumns: `repeat(${row.actionIds.length}, minmax(0, 1fr))` } as CSSProperties)}
-                  >
-                    {row.actionIds.map((actionId) => {
-                      const action = KEYBOARD_ACTION_MAP[actionId]
-                      if (!action) return null
-                      const isSelected = selectedKeyboardKey === actionId
-                      const isSpaceKey = actionId === 'space'
-                      const isClearKey = actionId === 'clear'
-                      const isWideFunctionKey = row.id === 'functions' || row.id === 'calculus'
-                      return (
-                        <button
-                          key={`${row.id}-${actionId}`}
-                          type="button"
-                          data-keyboard-row={row.id}
-                          data-keyboard-action={actionId}
-                          className={`flex h-9 min-w-0 select-none items-center justify-center px-[1px] text-slate-900 transition-colors ${row.id === 'qwerty-4' && isSpaceKey ? 'col-span-9' : row.id === 'qwerty-4' && isClearKey ? 'col-span-3' : ''} ${isSelected ? 'bg-sky-100 text-sky-700' : 'bg-transparent hover:bg-slate-100'}`}
-                          onPointerDown={(event) => handleMountedKeyPointerDown(event, actionId)}
-                          onPointerMove={(event) => handleMountedKeyPointerMove(event, actionId)}
-                          onPointerUp={(event) => handleMountedKeyPointerUp(event, actionId)}
-                          onPointerCancel={handleMountedKeyPointerCancel}
-                          onContextMenu={(event) => event.preventDefault()}
-                          title={action.title}
-                        >
-                          <span className={`${isWideFunctionKey ? 'text-[0.76rem]' : 'text-[0.9rem]'} leading-none`}>{actionId === 'space' ? <span aria-hidden="true" className="block h-px w-full max-w-24 bg-slate-500" /> : renderKeyboardActionContent(actionId)}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
+        <div className="flex h-full w-full items-center justify-center px-4 py-4 sm:px-6 sm:py-6">
+          <div className="grid grid-cols-3 grid-rows-3 gap-4 sm:gap-5">
+            {SIMPLE_KEYBOARD_VISIBLE_KEYS.flatMap((row, rowIndex) => row.map((cell, columnIndex) => {
+              if (!cell) {
+                return <div key={`simple-keyboard-empty-${rowIndex}-${columnIndex}`} className="h-24 w-24 sm:h-28 sm:w-28" />
+              }
+              const action = KEYBOARD_ACTION_MAP[cell.actionId]
+              if (!action) return null
+              const isSelected = selectedKeyboardKey === cell.actionId
+              const isCenterKey = cell.actionId === 'x'
+              return (
+                <button
+                  key={`simple-keyboard-${cell.actionId}`}
+                  type="button"
+                  data-keyboard-row="simple-core"
+                  data-keyboard-action={cell.actionId}
+                  className={`flex h-24 w-24 select-none items-center justify-center rounded-[1.75rem] border text-slate-900 shadow-sm transition-colors sm:h-28 sm:w-28 ${isCenterKey ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white'} ${isSelected ? 'bg-sky-100 text-sky-700 border-sky-300' : isCenterKey ? 'hover:bg-slate-800' : 'hover:bg-slate-100'}`}
+                  onPointerDown={(event) => handleMountedKeyPointerDown(event, cell.actionId)}
+                  onPointerMove={(event) => handleMountedKeyPointerMove(event, cell.actionId)}
+                  onPointerUp={(event) => handleMountedKeyPointerUp(event, cell.actionId)}
+                  onPointerCancel={handleMountedKeyPointerCancel}
+                  onContextMenu={(event) => event.preventDefault()}
+                  title={action.title}
+                >
+                  <span className={`leading-none ${isCenterKey ? 'text-4xl sm:text-5xl font-semibold' : 'text-3xl sm:text-4xl font-semibold'}`}>
+                    {cell.label ?? renderKeyboardActionContent(cell.actionId)}
+                  </span>
+                </button>
+              )
+            }))}
           </div>
         </div>
         {activeRadialTarget && keyboardOverlayAnchor ? (

@@ -1636,10 +1636,10 @@ const KEYBOARD_REPRESENTATIVE_KEYS: KeyboardRepresentativeKeyDefinition[] = [
     familyRows: [
       ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
       ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
-      ['z', 'x', 'c', 'v', 'b', 'n', 'm'],
-      ['uppercase', 'space'],
+      ['uppercase', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'backspace'],
+      ['comma', 'space', 'decimal'],
     ],
-    familyTitle: 'QWERTY keyboard',
+    familyTitle: 'QWERTY keyboard (no number row)',
   },
   {
     id: 'operators',
@@ -1684,7 +1684,7 @@ const KEYBOARD_REPRESENTATIVE_KEYS: KeyboardRepresentativeKeyDefinition[] = [
   {
     id: 'trig',
     title: 'sine',
-    description: 'trigonometry family',
+    label: '⌫',
     latex: '\\sin(x)',
     singleTapActionId: 'sin',
     radialActionIds: [],

@@ -11436,56 +11436,53 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.bottom, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(90, 128) })}
               {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.left, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(180, 128) })}
 
-              {/* ── NE utility keys: backspace (active) + enter-visual ── */}
-              {/* x=262-316 clears Ring2 √ at x=266 by less than r, but y=6-94 clears Ring2 y=138+ entirely */}
+              {/* ── SW number group: digits 1–6, 3×2 grid ── */}
+              {/* Lower band starts at y=232 to stay just below the diagonal letters while leaving room for the SE utility stack. */}
+              {([
+                { actionId: 'digit-1', label: '1', left: 4, top: 232 },
+                { actionId: 'digit-2', label: '2', left: 48, top: 232 },
+                { actionId: 'digit-3', label: '3', left: 92, top: 232 },
+                { actionId: 'digit-4', label: '4', left: 4, top: 262 },
+                { actionId: 'digit-5', label: '5', left: 48, top: 262 },
+                { actionId: 'digit-6', label: '6', left: 92, top: 262 },
+              ] as { actionId: string; label: string; left: number; top: number }[]).map(({ actionId, label, left, top }) =>
+                renderVisibleKeyboardButton({ actionId, label }, {
+                  className: 'border-slate-300 bg-white hover:bg-slate-100 rounded-xl',
+                  textClassName: 'text-base font-normal leading-none',
+                  style: { position: 'absolute', left, top, width: 40, height: 28, padding: 0 },
+                })
+              )}
+
+              {/* ── SE number group + utility stack ── */}
+              {/* Layout: 7 8 9 / 0 . ⌫ / _ _ ↵, keeping the utility keys in the requested lower-right slots. */}
+              {([
+                { actionId: 'digit-7', label: '7', left: 188, top: 232 },
+                { actionId: 'digit-8', label: '8', left: 232, top: 232 },
+                { actionId: 'digit-9', label: '9', left: 276, top: 232 },
+                { actionId: 'digit-0', label: '0', left: 188, top: 262 },
+                { actionId: 'decimal', label: '.', left: 232, top: 262 },
+              ] as { actionId: string; label: string; left: number; top: number }[]).map(({ actionId, label, left, top }) =>
+                renderVisibleKeyboardButton({ actionId, label }, {
+                  className: 'border-slate-300 bg-white hover:bg-slate-100 rounded-xl',
+                  textClassName: 'text-base font-normal leading-none',
+                  style: { position: 'absolute', left, top, width: 40, height: 28, padding: 0 },
+                })
+              )}
               {renderVisibleKeyboardButton({ actionId: 'backspace' }, {
                 className: 'border-slate-300 bg-white hover:bg-slate-100 rounded-xl',
-                textClassName: 'text-[1.05rem] font-normal leading-none',
-                style: { position: 'absolute', left: 262, top: 6, width: 54, height: 42, padding: 0 },
+                textClassName: 'text-sm font-normal leading-none',
+                style: { position: 'absolute', left: 276, top: 262, width: 40, height: 28, padding: 0 },
               })}
               <button
                 type="button"
                 className="inline-flex cursor-default select-none items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-900 shadow-sm"
-                style={{ position: 'absolute', left: 262, top: 52, width: 54, height: 42, padding: 0 }}
+                style={{ position: 'absolute', left: 276, top: 292, width: 40, height: 28, padding: 0 }}
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => event.stopPropagation()}
                 title="Enter"
               >
-                <span className="text-[1.05rem] font-normal leading-none">↵</span>
+                <span className="text-sm font-normal leading-none">↵</span>
               </button>
-
-              {/* ── SW number group: digits 1–6, 3×2 grid ── */}
-              {/* y=244/284 clears SW diagonal bottom (y=232) by 12px; x<138 clears ÷/= center keys */}
-              {([
-                { actionId: 'digit-1', label: '1', left: 4, top: 244 },
-                { actionId: 'digit-2', label: '2', left: 48, top: 244 },
-                { actionId: 'digit-3', label: '3', left: 92, top: 244 },
-                { actionId: 'digit-4', label: '4', left: 4, top: 284 },
-                { actionId: 'digit-5', label: '5', left: 48, top: 284 },
-                { actionId: 'digit-6', label: '6', left: 92, top: 284 },
-              ] as { actionId: string; label: string; left: number; top: number }[]).map(({ actionId, label, left, top }) =>
-                renderVisibleKeyboardButton({ actionId, label }, {
-                  className: 'border-slate-300 bg-white hover:bg-slate-100 rounded-xl',
-                  textClassName: 'text-lg font-normal leading-none',
-                  style: { position: 'absolute', left, top, width: 40, height: 36, padding: 0 },
-                })
-              )}
-
-              {/* ── SE number group: digits 7–9, 0, decimal, 3×2 grid ── */}
-              {/* x=188+ clears ÷/= (x<182) by 6px; y=244+ clears SE diagonal bottom (y=232) by 12px */}
-              {([
-                { actionId: 'digit-7', label: '7', left: 188, top: 244 },
-                { actionId: 'digit-8', label: '8', left: 232, top: 244 },
-                { actionId: 'digit-9', label: '9', left: 276, top: 244 },
-                { actionId: 'digit-0', label: '0', left: 188, top: 284 },
-                { actionId: 'decimal', label: '.', left: 232, top: 284 },
-              ] as { actionId: string; label: string; left: number; top: number }[]).map(({ actionId, label, left, top }) =>
-                renderVisibleKeyboardButton({ actionId, label }, {
-                  className: 'border-slate-300 bg-white hover:bg-slate-100 rounded-xl',
-                  textClassName: 'text-lg font-normal leading-none',
-                  style: { position: 'absolute', left, top, width: 40, height: 36, padding: 0 },
-                })
-              )}
             </div>
           </div>
         </div>

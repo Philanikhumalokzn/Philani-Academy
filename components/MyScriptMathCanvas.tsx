@@ -1541,6 +1541,49 @@ const findKeyboardBalancedGroupStart = (value: string, endIndex: number, openCha
   return -1
 }
 
+const getKeyboardFenceTokenLength = (value: string, index: number, kind: 'left' | 'right') => {
+  const prefix = kind === 'left' ? '\\left' : '\\right'
+  if (!value.startsWith(prefix, index)) return 0
+  const delimiterIndex = index + prefix.length
+  if (delimiterIndex >= value.length) return 0
+  const delimiter = value[delimiterIndex] === '\\' && delimiterIndex + 1 < value.length
+    ? value[delimiterIndex + 1]
+    : value[delimiterIndex]
+  if (!/[()\[\]{}|.]/.test(delimiter)) return 0
+  const delimiterLength = value[delimiterIndex] === '\\' ? 2 : 1
+  return prefix.length + delimiterLength
+}
+
+const findKeyboardLeftRightGroupStart = (value: string, endIndex: number) => {
+  const rightSuffixes = ['\\right)', '\\right]', '\\right|', '\\right\\}', '\\right\\{', '\\right\\|', '\\right.']
+  const prefix = value.slice(0, endIndex + 1)
+  let rightStart = -1
+  for (const suffix of rightSuffixes) {
+    if (prefix.endsWith(suffix)) {
+      rightStart = prefix.length - suffix.length
+      break
+    }
+  }
+  if (rightStart < 0) return -1
+
+  let depth = 1
+  for (let index = rightStart - 1; index >= 0; index -= 1) {
+    if (value[index] !== '\\') continue
+    const rightLength = getKeyboardFenceTokenLength(value, index, 'right')
+    if (rightLength > 0 && index + rightLength <= rightStart) {
+      depth += 1
+      continue
+    }
+    const leftLength = getKeyboardFenceTokenLength(value, index, 'left')
+    if (leftLength > 0) {
+      depth -= 1
+      if (depth === 0) return index
+    }
+  }
+
+  return -1
+}
+
 const findKeyboardReferenceTarget = (value: string, selection: KeyboardSelectionState): KeyboardReferenceTarget | null => {
   const start = Math.max(0, Math.min(selection.start, value.length))
   const end = Math.max(start, Math.min(selection.end, value.length))
@@ -1551,6 +1594,15 @@ const findKeyboardReferenceTarget = (value: string, selection: KeyboardSelection
   let index = start - 1
   while (index >= 0 && /\s/.test(value[index])) index -= 1
   if (index < 0) return null
+
+  const leftRightGroupStart = findKeyboardLeftRightGroupStart(value, index)
+  if (leftRightGroupStart >= 0) {
+    return {
+      start: leftRightGroupStart,
+      end: index + 1,
+      symbol: value.slice(leftRightGroupStart, index + 1),
+    }
+  }
 
   const currentChar = value[index]
 
@@ -1634,6 +1686,8 @@ const isValidKeyboardStructuralReferenceTarget = (target: KeyboardReferenceTarge
   if (/^\\(times|div|leq|geq|neq|approx)$/.test(symbol)) return false
   if (symbol === '#?') return false
   if (/^\\placeholder(?:\{.*\})?$/.test(symbol)) return false
+  if (/\\left/.test(symbol) && !/\\right/.test(symbol)) return false
+  if (/\\right/.test(symbol) && !/\\left/.test(symbol)) return false
   // Reject LaTeX command fragments such as \fr, \fra produced when
   // field.position (an atom index) is misread as a LaTeX string offset.
   if (isLatexCommandFragment(symbol)) return false

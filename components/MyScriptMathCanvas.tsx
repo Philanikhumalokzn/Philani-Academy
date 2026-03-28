@@ -1717,6 +1717,33 @@ const isKeyboardReferenceTargetCommandBoundarySafe = (value: string, target: Key
   return true
 }
 
+const resolveKeyboardSafeReferenceTarget = (
+  value: string,
+  selection: KeyboardSelectionState,
+  options?: {
+    requireStructuralValidity?: boolean
+    allowFallbackToExpressionEnd?: boolean
+  },
+) => {
+  const isTargetSafe = (target: KeyboardReferenceTarget | null) => {
+    if (!target || !target.symbol.trim()) return false
+    if (!isKeyboardReferenceTargetCommandBoundarySafe(value, target)) return false
+    if (options?.requireStructuralValidity && !isValidKeyboardStructuralReferenceTarget(target)) return false
+    return true
+  }
+
+  const primaryTarget = findKeyboardReferenceTarget(value, selection)
+  if (isTargetSafe(primaryTarget)) return primaryTarget
+
+  if (options?.allowFallbackToExpressionEnd && value.trim()) {
+    const endSelection = { start: value.length, end: value.length }
+    const endTarget = findKeyboardReferenceTarget(value, endSelection)
+    if (isTargetSafe(endTarget)) return endTarget
+  }
+
+  return null
+}
+
 const buildKeyboardContextualRadialOperation = (
   actionId: string,
   payloadSymbol?: string,
@@ -10569,7 +10596,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setSelectedKeyboardKey(actionId)
     const prev = latexOutputRef.current || ''
     const selection = keyboardSelectionRef.current
-    const referenceTarget = findKeyboardReferenceTarget(prev, selection)
+    const referenceTarget = resolveKeyboardSafeReferenceTarget(prev, selection, {
+      allowFallbackToExpressionEnd: true,
+    })
     const resolvedBaseSymbol = baseSymbol || referenceTarget?.symbol
     const isLetterTokenAction = Boolean(action.token && /^[a-z]$/.test(action.token))
     const tokenOverride = isLetterTokenAction && keyboardUppercase ? action.token!.toUpperCase() : null
@@ -10689,10 +10718,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setSelectedKeyboardKey(actionId)
     const prev = latexOutputRef.current || ''
     const selection = keyboardSelectionRef.current
-    const contextual = buildKeyboardContextualRadialOperation(actionId, target.payloadSymbol || target.baseSymbol, target.referenceTarget)
+    const safeReferenceTarget = (target.referenceTarget && isKeyboardReferenceTargetCommandBoundarySafe(prev, target.referenceTarget))
+      ? target.referenceTarget
+      : resolveKeyboardSafeReferenceTarget(prev, selection, { allowFallbackToExpressionEnd: true })
+    const contextual = buildKeyboardContextualRadialOperation(actionId, target.payloadSymbol || target.baseSymbol, safeReferenceTarget)
 
     if (recognitionEngineRef.current === 'keyboard') {
-      const fallbackBaseSymbol = (target.payloadSymbol || target.baseSymbol) ?? target.referenceTarget?.symbol
+      const fallbackBaseSymbol = (target.payloadSymbol || target.baseSymbol) ?? safeReferenceTarget?.symbol
       const overrideLatex = contextual?.previewLatex || action.renderLatex?.(fallbackBaseSymbol) || action.latex || null
       if (applyMathfieldKeyboardAction(actionId, fallbackBaseSymbol, overrideLatex)) {
         closeKeyboardTransientOverlays()
@@ -10708,9 +10740,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     let result: KeyboardEditResult
     if (contextual) {
-      result = replaceKeyboardReferenceTarget(prev, target.referenceTarget || null, contextual.replacement, selection)
+      result = replaceKeyboardReferenceTarget(prev, safeReferenceTarget || null, contextual.replacement, selection)
     } else {
-      const resolvedBaseSymbol = (target.payloadSymbol || target.baseSymbol) ?? target.referenceTarget?.symbol
+      const resolvedBaseSymbol = (target.payloadSymbol || target.baseSymbol) ?? safeReferenceTarget?.symbol
       if (action.token) {
         result = insertKeyboardTextAtSelection(prev, action.token, selection)
       } else if (actionId === 'plus' || actionId === 'minus' || actionId === 'equals' || actionId === 'times' || actionId === 'divide' || actionId === 'leq' || actionId === 'geq') {
@@ -10718,7 +10750,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         result = insertKeyboardTextAtSelection(prev, inserted, selection)
       } else {
         const replacement = action.apply('', resolvedBaseSymbol)
-        result = replaceKeyboardReferenceTarget(prev, target.referenceTarget || findKeyboardReferenceTarget(prev, selection), replacement, selection)
+        result = replaceKeyboardReferenceTarget(prev, safeReferenceTarget, replacement, selection)
       }
     }
 
@@ -10836,37 +10868,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       }
       // Use the selection ref first, but recover to expression-end targeting if
       // the live caret index does not map cleanly onto a LaTeX string offset.
-      let referenceTarget = findKeyboardReferenceTarget(currentValue, keyboardSelectionRef.current)
-      if (
-        currentValue.trim() &&
-        (!referenceTarget ||
-          !referenceTarget.symbol.trim() ||
-          !isValidKeyboardStructuralReferenceTarget(referenceTarget) ||
-          !isKeyboardReferenceTargetCommandBoundarySafe(currentValue, referenceTarget))
-      ) {
-        const endSelection = { start: currentValue.length, end: currentValue.length }
-        const endTarget = findKeyboardReferenceTarget(currentValue, endSelection)
-        if (
-          isValidKeyboardStructuralReferenceTarget(endTarget) &&
-          isKeyboardReferenceTargetCommandBoundarySafe(currentValue, endTarget)
-        ) {
-          referenceTarget = endTarget
-        }
-      }
+      const referenceTarget = resolveKeyboardSafeReferenceTarget(currentValue, keyboardSelectionRef.current, {
+        requireStructuralValidity: true,
+        allowFallbackToExpressionEnd: true,
+      })
 
-      if (!referenceTarget || !referenceTarget.symbol.trim()) {
+      if (!referenceTarget) {
         if (axis === 'up') {
           return tryExecute('moveUp', 'moveToNumerator', 'moveToPreviousPlaceholder')
         }
         return tryExecute('moveDown', 'moveToDenominator', 'moveToNextPlaceholder')
-      }
-
-      if (
-        !isValidKeyboardStructuralReferenceTarget(referenceTarget) ||
-        !isKeyboardReferenceTargetCommandBoundarySafe(currentValue, referenceTarget)
-      ) {
-        triggerKeyboardSwipeBlock('Place the caret after a valid term before creating a fraction.', sourceActionId)
-        return false
       }
 
       const numerator = axis === 'down' ? referenceTarget.symbol : '#?'
@@ -10945,7 +10956,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   const openKeyboardRadial = useCallback((target: KeyboardStageTarget, anchor: KeyboardOverlayAnchor) => {
     const currentValue = latexOutputRef.current || ''
-    const referenceTarget = findKeyboardReferenceTarget(currentValue, keyboardSelectionRef.current)
+    const referenceTarget = resolveKeyboardSafeReferenceTarget(currentValue, keyboardSelectionRef.current, {
+      allowFallbackToExpressionEnd: true,
+    })
     setActiveKeyboardFamilyTarget(null)
     setActiveKeyboardRadialTarget({
       ...target,
@@ -11089,8 +11102,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const renderKeyboardRadialActionContent = (actionId: string, target: KeyboardStageTarget) => {
       const action = KEYBOARD_ACTION_MAP[actionId]
       if (!action) return <span className="text-sm font-normal">?</span>
-      const contextual = buildKeyboardContextualRadialOperation(actionId, target.payloadSymbol || target.baseSymbol, target.referenceTarget)
-      const fallbackBaseSymbol = (target.payloadSymbol || target.baseSymbol) ?? target.referenceTarget?.symbol
+      const currentValue = latexOutputRef.current || ''
+      const safeReferenceTarget = (target.referenceTarget && isKeyboardReferenceTargetCommandBoundarySafe(currentValue, target.referenceTarget))
+        ? target.referenceTarget
+        : resolveKeyboardSafeReferenceTarget(currentValue, keyboardSelectionRef.current, { allowFallbackToExpressionEnd: true })
+      const contextual = buildKeyboardContextualRadialOperation(actionId, target.payloadSymbol || target.baseSymbol, safeReferenceTarget)
+      const fallbackBaseSymbol = (target.payloadSymbol || target.baseSymbol) ?? safeReferenceTarget?.symbol
       const latex = contextual?.previewLatex || action.renderLatex?.(fallbackBaseSymbol) || action.latex
       if (latex) {
         try {

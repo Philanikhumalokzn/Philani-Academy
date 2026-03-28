@@ -1479,6 +1479,19 @@ const insertKeyboardTextAtSelection = (value: string, text: string, selection: K
   return { value: next, selectionStart: caret, selectionEnd: caret }
 }
 
+const insertKeyboardStructureAtSelection = (
+  value: string,
+  text: string,
+  selection: KeyboardSelectionState,
+  caretOffset: number,
+): KeyboardEditResult => {
+  const start = Math.max(0, Math.min(selection.start, value.length))
+  const end = Math.max(start, Math.min(selection.end, value.length))
+  const next = `${value.slice(0, start)}${text}${value.slice(end)}`
+  const caret = start + Math.max(0, Math.min(caretOffset, text.length))
+  return { value: next, selectionStart: caret, selectionEnd: caret }
+}
+
 const removeKeyboardTextAtSelection = (value: string, selection: KeyboardSelectionState): KeyboardEditResult => {
   const start = Math.max(0, Math.min(selection.start, value.length))
   const end = Math.max(start, Math.min(selection.end, value.length))
@@ -10305,6 +10318,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       selectableField.insert(`${left}${right}`, {
         selectionMode: 'after',
       })
+      field.executeCommand('moveToPreviousChar')
+      syncKeyboardMathfieldState(field)
+      return true
+    }
+
+    if (['sqrt', 'cuberoot', 'nth-root'].includes(actionId) && !hasSelectionRange) {
+      let insertion = ''
+      switch (actionId) {
+        case 'sqrt':
+          insertion = '\\sqrt{}'
+          break
+        case 'cuberoot':
+          insertion = '\\sqrt[3]{}'
+          break
+        case 'nth-root':
+          insertion = '\\sqrt[]{}'
+          break
+        default:
+          insertion = ''
+      }
+      if (!insertion) return false
+      field.executeCommand(['insert', insertion])
+      field.executeCommand('moveToPreviousPlaceholder')
       syncKeyboardMathfieldState(field)
       return true
     }
@@ -10460,6 +10496,60 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       result = removeKeyboardTextAtSelection(prev, selection)
     } else if (actionId === 'clear') {
       result = { value: '', selectionStart: 0, selectionEnd: 0 }
+    } else if (selection.start === selection.end && ['paren', 'bracket', 'brace', 'absolute', 'floor', 'ceiling'].includes(actionId)) {
+      let insertion = ''
+      let caretOffset = 0
+      switch (actionId) {
+        case 'paren':
+          insertion = '()'
+          caretOffset = 1
+          break
+        case 'bracket':
+          insertion = '[]'
+          caretOffset = 1
+          break
+        case 'brace':
+          insertion = '{}'
+          caretOffset = 1
+          break
+        case 'absolute':
+          insertion = '||'
+          caretOffset = 1
+          break
+        case 'floor':
+          insertion = '\\left\\lfloor  \\right\\rfloor'
+          caretOffset = '\\left\\lfloor '.length
+          break
+        case 'ceiling':
+          insertion = '\\left\\lceil  \\right\\rceil'
+          caretOffset = '\\left\\lceil '.length
+          break
+        default:
+          insertion = ''
+          caretOffset = 0
+      }
+      result = insertKeyboardStructureAtSelection(prev, insertion, selection, caretOffset)
+    } else if (selection.start === selection.end && ['sqrt', 'cuberoot', 'nth-root'].includes(actionId)) {
+      let insertion = ''
+      let caretOffset = 0
+      switch (actionId) {
+        case 'sqrt':
+          insertion = '\\sqrt{}'
+          caretOffset = '\\sqrt{'.length
+          break
+        case 'cuberoot':
+          insertion = '\\sqrt[3]{}'
+          caretOffset = '\\sqrt[3]{'.length
+          break
+        case 'nth-root':
+          insertion = '\\sqrt[]{}'
+          caretOffset = '\\sqrt[]{'.length
+          break
+        default:
+          insertion = ''
+          caretOffset = 0
+      }
+      result = insertKeyboardStructureAtSelection(prev, insertion, selection, caretOffset)
     } else if (action.token) {
       result = insertKeyboardTextAtSelection(prev, tokenOverride || action.token, selection)
     } else if (actionId === 'plus' || actionId === 'minus' || actionId === 'equals' || actionId === 'times' || actionId === 'divide' || actionId === 'leq' || actionId === 'geq') {

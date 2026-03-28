@@ -11161,27 +11161,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return <span className="text-sm font-normal">{action.label ?? action.title}</span>
     }
 
-    const renderPersistentFamilyEditKey = (actionId: 'backspace' | 'clear', label: string) => {
-      const action = KEYBOARD_ACTION_MAP[actionId]
-      if (!action) return null
-      const isSelected = selectedKeyboardKey === actionId
-      return (
-        <button
-          key={`family-persistent-${actionId}`}
-          type="button"
-          className={`inline-flex h-10 w-11 min-w-0 select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-1.5 text-white shadow-sm transition-colors sm:h-11 sm:w-12 sm:px-2 ${isSelected ? 'border-sky-300 bg-sky-700 text-white' : 'hover:bg-slate-700'}`}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation()
-            applyKeyboardAction(actionId)
-          }}
-          title={action.title}
-        >
-          <span className="text-[1.05rem] font-normal leading-none">{label}</span>
-        </button>
-      )
-    }
-
     const buildAnchorFromElement = (keyId: string, element: HTMLElement): KeyboardOverlayAnchor => {
       const rootRect = keyboardSurfaceRef.current?.getBoundingClientRect()
       const elementRect = element.getBoundingClientRect()
@@ -11429,43 +11408,36 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
             {/* Radial symbol cluster — 320×320px container, center at (160,160).
                 Ring 1 (r=70): 4 cardinals (×,+,÷,−) + up to 4 diagonal recent letters.
-                Ring 2 (r=128): 3 family keys (√, =, ()) on E/S/W spokes.
-                Persistent editing keys sit in a fixed right column and are always visible. */}
-            <div className="flex items-center gap-2 sm:gap-2.5">
-              <div className="relative flex-shrink-0" style={{ width: 320, height: 320 }}>
-                {/* ── Center: most recently used letter ── */}
-                {renderVisibleKeyboardButton(buildDynamicClusterKeys().center, {
-                  className: 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800',
-                  textClassName: 'text-2xl font-normal',
-                  activeClassName: 'border-sky-300 bg-sky-100 text-sky-700',
-                  style: { position: 'absolute', left: 130, top: 130, width: 60, height: 60, padding: 0 },
-                })}
-                {/* ── Ring 1 cardinal spokes ── */}
-                {renderVisibleKeyboardButton({ actionId: 'times', label: '×' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(-90, 70) })}
-                {renderVisibleKeyboardButton({ actionId: 'plus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(0, 70) })}
-                {renderVisibleKeyboardButton({ actionId: 'divide', label: '÷' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(90, 70) })}
-                {renderVisibleKeyboardButton({ actionId: 'minus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(180, 70) })}
-                {/* ── Ring 1 diagonal spokes: recently used letters ── */}
-                {(() => {
-                  const c = buildCornerLetterKeys()
-                  return (
-                    <>
-                      {c.ne && renderVisibleKeyboardButton(c.ne, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(-45, 70) })}
-                      {c.se && renderVisibleKeyboardButton(c.se, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(45, 70) })}
-                      {c.sw && renderVisibleKeyboardButton(c.sw, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(135, 70) })}
-                      {c.nw && renderVisibleKeyboardButton(c.nw, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(225, 70) })}
-                    </>
-                  )
-                })()}
-                {/* ── Ring 2 cardinal family keys ── */}
-                {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.right, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(0, 128) })}
-                {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.bottom, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(90, 128) })}
-                {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.left, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(180, 128) })}
-              </div>
-              <div className="flex flex-col gap-2">
-                {renderPersistentFamilyEditKey('backspace', '⌫')}
-                {renderPersistentFamilyEditKey('clear', '↵')}
-              </div>
+                Ring 2 (r=128): 3 family keys (√, =, ()) on E/S/W spokes. */}
+            <div className="relative flex-shrink-0" style={{ width: 320, height: 320 }}>
+              {/* ── Center: most recently used letter ── */}
+              {renderVisibleKeyboardButton(buildDynamicClusterKeys().center, {
+                className: 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800',
+                textClassName: 'text-2xl font-normal',
+                activeClassName: 'border-sky-300 bg-sky-100 text-sky-700',
+                style: { position: 'absolute', left: 130, top: 130, width: 60, height: 60, padding: 0 },
+              })}
+              {/* ── Ring 1 cardinal spokes ── */}
+              {renderVisibleKeyboardButton({ actionId: 'times', label: '×' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(-90, 70) })}
+              {renderVisibleKeyboardButton({ actionId: 'plus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(0, 70) })}
+              {renderVisibleKeyboardButton({ actionId: 'divide', label: '÷' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(90, 70) })}
+              {renderVisibleKeyboardButton({ actionId: 'minus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(180, 70) })}
+              {/* ── Ring 1 diagonal spokes: recently used letters ── */}
+              {(() => {
+                const c = buildCornerLetterKeys()
+                return (
+                  <>
+                    {c.ne && renderVisibleKeyboardButton(c.ne, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(-45, 70) })}
+                    {c.se && renderVisibleKeyboardButton(c.se, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(45, 70) })}
+                    {c.sw && renderVisibleKeyboardButton(c.sw, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(135, 70) })}
+                    {c.nw && renderVisibleKeyboardButton(c.nw, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(225, 70) })}
+                  </>
+                )
+              })()}
+              {/* ── Ring 2 cardinal family keys ── */}
+              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.right, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(0, 128) })}
+              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.bottom, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(90, 128) })}
+              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.left, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(180, 128) })}
             </div>
           </div>
         </div>
@@ -11488,7 +11460,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 <span className="text-lg font-normal leading-none">{renderKeyboardActionContent(activeKeyboardFamilyTarget.displayActionId, activeKeyboardFamilyTarget.payloadSymbol || activeKeyboardFamilyTarget.baseSymbol)}</span>
               </div>
               {activeKeyboardFamilyTarget.representativeKeyId === 'letters' ? (
-                <div className="relative flex w-full flex-col gap-2 pr-[3.4rem] sm:pr-[3.7rem]">
+                <div className="flex w-full flex-col gap-2">
                   <div className="flex w-full items-center justify-center gap-1.5">
                     {['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'].map((actionId) => {
                       const isSelected = selectedKeyboardKey === actionId
@@ -11530,9 +11502,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     })}
                   </div>
                   <div className="flex w-full items-center justify-center gap-1.5">
-                    {['uppercase', 'z', 'x', 'c', 'v', 'b', 'n', 'm'].map((actionId) => {
+                    {['uppercase', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'backspace'].map((actionId) => {
                       const isSelected = selectedKeyboardKey === actionId
-                      const isWide = actionId === 'uppercase'
+                      const isWide = actionId === 'uppercase' || actionId === 'backspace'
                       return (
                         <button
                           key={`qwerty-row-3-${actionId}`}
@@ -11545,14 +11517,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           }}
                           title={KEYBOARD_ACTION_MAP[actionId]?.title || actionId}
                         >
-                          <span className="text-[1.05rem] font-normal leading-none">{actionId === 'uppercase' ? '↑' : renderKeyboardActionContent(actionId, activeKeyboardFamilyTarget.payloadSymbol || activeKeyboardFamilyTarget.baseSymbol)}</span>
+                          <span className="text-[1.05rem] font-normal leading-none">{actionId === 'uppercase' ? '↑' : actionId === 'backspace' ? '⌫' : renderKeyboardActionContent(actionId, activeKeyboardFamilyTarget.payloadSymbol || activeKeyboardFamilyTarget.baseSymbol)}</span>
                         </button>
                       )
                     })}
-                    <span
-                      className="inline-flex h-10 w-11 min-w-0 select-none rounded-xl border border-transparent sm:h-11 sm:w-12"
-                      aria-hidden="true"
-                    />
                   </div>
                   <div className="flex w-full items-center justify-center gap-1">
                     <button
@@ -11582,18 +11550,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                         </button>
                       )
                     })}
-                    <span
-                      className="inline-flex h-10 w-11 min-w-0 select-none rounded-xl border border-transparent sm:h-11 sm:w-12"
-                      aria-hidden="true"
-                    />
-                  </div>
-                  <div className="pointer-events-none absolute right-0 bottom-0 flex flex-col gap-2">
-                    <div className="pointer-events-auto">{renderPersistentFamilyEditKey('backspace', '⌫')}</div>
-                    <div className="pointer-events-auto">{renderPersistentFamilyEditKey('clear', '↵')}</div>
+                    <button
+                      type="button"
+                      className="inline-flex h-10 min-w-0 flex-[1.25] cursor-default select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-1.5 text-white shadow-sm sm:h-11 sm:px-2"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      title="Enter"
+                    >
+                      <span className="text-[1.05rem] font-normal leading-none">↵</span>
+                    </button>
                   </div>
                 </div>
               ) : (
-                <div className="relative flex flex-col gap-2 pr-[3.4rem] sm:pr-[3.7rem]">
+                <div className="flex flex-col gap-2">
                   {activeKeyboardFamilyTarget.familyRows.map((row, rowIndex) => (
                     <div key={`${activeKeyboardFamilyTarget.id}-family-row-${rowIndex}`} className="flex flex-wrap items-center justify-center gap-2">
                       {row.map((actionId) => {
@@ -11618,10 +11586,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       })}
                     </div>
                   ))}
-                  <div className="pointer-events-none absolute right-0 bottom-0 flex flex-col gap-2">
-                    <div className="pointer-events-auto">{renderPersistentFamilyEditKey('backspace', '⌫')}</div>
-                    <div className="pointer-events-auto">{renderPersistentFamilyEditKey('clear', '↵')}</div>
-                  </div>
                 </div>
               )}
             </div>

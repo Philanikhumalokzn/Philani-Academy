@@ -1695,6 +1695,28 @@ const isValidKeyboardStructuralReferenceTarget = (target: KeyboardReferenceTarge
   return true
 }
 
+const isKeyboardReferenceTargetCommandBoundarySafe = (value: string, target: KeyboardReferenceTarget | null) => {
+  if (!target) return false
+  const { start, end } = target
+  if (start < 0 || end <= start || end > value.length) return false
+
+  // Start cannot be inside a command name: e.g. targeting "left" in "\\left".
+  if (start > 0 && value[start - 1] === '\\' && /[A-Za-z]/.test(value[start] || '')) {
+    return false
+  }
+
+  // End cannot split command-name letters: e.g. ending on "\\righ" before "t".
+  if (end < value.length && /[A-Za-z]/.test(value[end - 1] || '') && /[A-Za-z]/.test(value[end] || '')) {
+    return false
+  }
+
+  // Reject known partial fence command fragments if they appear inside target text.
+  if (/\\lef(?!t)/.test(target.symbol)) return false
+  if (/\\righ(?!t)/.test(target.symbol)) return false
+
+  return true
+}
+
 const buildKeyboardContextualRadialOperation = (
   actionId: string,
   payloadSymbol?: string,
@@ -10819,11 +10841,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         currentValue.trim() &&
         (!referenceTarget ||
           !referenceTarget.symbol.trim() ||
-          !isValidKeyboardStructuralReferenceTarget(referenceTarget))
+          !isValidKeyboardStructuralReferenceTarget(referenceTarget) ||
+          !isKeyboardReferenceTargetCommandBoundarySafe(currentValue, referenceTarget))
       ) {
         const endSelection = { start: currentValue.length, end: currentValue.length }
         const endTarget = findKeyboardReferenceTarget(currentValue, endSelection)
-        if (isValidKeyboardStructuralReferenceTarget(endTarget)) {
+        if (
+          isValidKeyboardStructuralReferenceTarget(endTarget) &&
+          isKeyboardReferenceTargetCommandBoundarySafe(currentValue, endTarget)
+        ) {
           referenceTarget = endTarget
         }
       }
@@ -10835,7 +10861,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         return tryExecute('moveDown', 'moveToDenominator', 'moveToNextPlaceholder')
       }
 
-      if (!isValidKeyboardStructuralReferenceTarget(referenceTarget)) {
+      if (
+        !isValidKeyboardStructuralReferenceTarget(referenceTarget) ||
+        !isKeyboardReferenceTargetCommandBoundarySafe(currentValue, referenceTarget)
+      ) {
         triggerKeyboardSwipeBlock('Place the caret after a valid term before creating a fraction.', sourceActionId)
         return false
       }

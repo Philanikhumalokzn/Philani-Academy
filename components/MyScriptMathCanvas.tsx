@@ -10758,9 +10758,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         triggerKeyboardSwipeBlock('Enter the denominator before stacking again.', sourceActionId)
         return false
       }
-      // Use the user-facing selection ref (not field.position which is an atom index,
-      // not a LaTeX string character offset) to find the intended anchor term.
-      const referenceTarget = findKeyboardReferenceTarget(currentValue, keyboardSelectionRef.current)
+      // Use the selection ref first, but recover to expression-end targeting if
+      // the live caret index does not map cleanly onto a LaTeX string offset.
+      let referenceTarget = findKeyboardReferenceTarget(currentValue, keyboardSelectionRef.current)
+      if (
+        currentValue.trim() &&
+        (!referenceTarget ||
+          !referenceTarget.symbol.trim() ||
+          !isValidKeyboardStructuralReferenceTarget(referenceTarget))
+      ) {
+        const endSelection = { start: currentValue.length, end: currentValue.length }
+        const endTarget = findKeyboardReferenceTarget(currentValue, endSelection)
+        if (isValidKeyboardStructuralReferenceTarget(endTarget)) {
+          referenceTarget = endTarget
+        }
+      }
 
       if (!referenceTarget || !referenceTarget.symbol.trim()) {
         if (axis === 'up') {

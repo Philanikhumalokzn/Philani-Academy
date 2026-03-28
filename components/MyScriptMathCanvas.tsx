@@ -11438,6 +11438,38 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.right, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(0, 128) })}
               {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.bottom, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(90, 128) })}
               {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.left, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(180, 128) })}
+
+              {/* Persistent utility keys: keep these fixed on the base keyboard so
+                  they are always available even when QWERTY family is closed. */}
+              {renderVisibleKeyboardButton({ actionId: 'backspace' }, {
+                className: 'border-slate-300 bg-white hover:bg-slate-100 rounded-xl',
+                textClassName: 'text-[1.05rem] font-normal leading-none',
+                style: {
+                  position: 'absolute',
+                  left: 258,
+                  top: 198,
+                  width: 54,
+                  height: 42,
+                  padding: 0,
+                },
+              })}
+              <button
+                type="button"
+                className="inline-flex cursor-default select-none items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-900 shadow-sm"
+                style={{
+                  position: 'absolute',
+                  left: 258,
+                  top: 246,
+                  width: 54,
+                  height: 42,
+                  padding: 0,
+                }}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+                title="Enter"
+              >
+                <span className="text-[1.05rem] font-normal leading-none">↵</span>
+              </button>
             </div>
           </div>
         </div>

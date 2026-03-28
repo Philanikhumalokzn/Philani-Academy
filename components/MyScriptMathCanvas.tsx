@@ -11161,6 +11161,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return <span className="text-sm font-normal">{action.label ?? action.title}</span>
     }
 
+    const renderPersistentFamilyEditKey = (actionId: 'backspace' | 'clear', label: string) => {
+      const action = KEYBOARD_ACTION_MAP[actionId]
+      if (!action) return null
+      const isSelected = selectedKeyboardKey === actionId
+      return (
+        <button
+          key={`family-persistent-${actionId}`}
+          type="button"
+          className={`inline-flex h-10 w-11 min-w-0 select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-1.5 text-white shadow-sm transition-colors sm:h-11 sm:w-12 sm:px-2 ${isSelected ? 'border-sky-300 bg-sky-700 text-white' : 'hover:bg-slate-700'}`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation()
+            applyKeyboardAction(actionId)
+          }}
+          title={action.title}
+        >
+          <span className="text-[1.05rem] font-normal leading-none">{label}</span>
+        </button>
+      )
+    }
+
     const buildAnchorFromElement = (keyId: string, element: HTMLElement): KeyboardOverlayAnchor => {
       const rootRect = keyboardSurfaceRef.current?.getBoundingClientRect()
       const elementRect = element.getBoundingClientRect()
@@ -11460,7 +11481,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 <span className="text-lg font-normal leading-none">{renderKeyboardActionContent(activeKeyboardFamilyTarget.displayActionId, activeKeyboardFamilyTarget.payloadSymbol || activeKeyboardFamilyTarget.baseSymbol)}</span>
               </div>
               {activeKeyboardFamilyTarget.representativeKeyId === 'letters' ? (
-                <div className="flex w-full flex-col gap-2">
+                <div className="relative flex w-full flex-col gap-2 pr-[3.4rem] sm:pr-[3.7rem]">
                   <div className="flex w-full items-center justify-center gap-1.5">
                     {['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'].map((actionId) => {
                       const isSelected = selectedKeyboardKey === actionId
@@ -11502,9 +11523,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     })}
                   </div>
                   <div className="flex w-full items-center justify-center gap-1.5">
-                    {['uppercase', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'backspace'].map((actionId) => {
+                    {['uppercase', 'z', 'x', 'c', 'v', 'b', 'n', 'm'].map((actionId) => {
                       const isSelected = selectedKeyboardKey === actionId
-                      const isWide = actionId === 'uppercase' || actionId === 'backspace'
+                      const isWide = actionId === 'uppercase'
                       return (
                         <button
                           key={`qwerty-row-3-${actionId}`}
@@ -11517,10 +11538,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           }}
                           title={KEYBOARD_ACTION_MAP[actionId]?.title || actionId}
                         >
-                          <span className="text-[1.05rem] font-normal leading-none">{actionId === 'uppercase' ? '↑' : actionId === 'backspace' ? '⌫' : renderKeyboardActionContent(actionId, activeKeyboardFamilyTarget.payloadSymbol || activeKeyboardFamilyTarget.baseSymbol)}</span>
+                          <span className="text-[1.05rem] font-normal leading-none">{actionId === 'uppercase' ? '↑' : renderKeyboardActionContent(actionId, activeKeyboardFamilyTarget.payloadSymbol || activeKeyboardFamilyTarget.baseSymbol)}</span>
                         </button>
                       )
                     })}
+                    <span
+                      className="inline-flex h-10 w-11 min-w-0 select-none rounded-xl border border-transparent sm:h-11 sm:w-12"
+                      aria-hidden="true"
+                    />
                   </div>
                   <div className="flex w-full items-center justify-center gap-1">
                     <button
@@ -11550,18 +11575,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                         </button>
                       )
                     })}
-                    <button
-                      type="button"
-                      className="inline-flex h-10 min-w-0 flex-[1.25] cursor-default select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-1.5 text-white shadow-sm sm:h-11 sm:px-2"
-                      onPointerDown={(event) => event.stopPropagation()}
-                      title="Enter"
-                    >
-                      <span className="text-[1.05rem] font-normal leading-none">↵</span>
-                    </button>
+                    <span
+                      className="inline-flex h-10 w-11 min-w-0 select-none rounded-xl border border-transparent sm:h-11 sm:w-12"
+                      aria-hidden="true"
+                    />
+                  </div>
+                  <div className="pointer-events-none absolute right-0 bottom-0 flex flex-col gap-2">
+                    <div className="pointer-events-auto">{renderPersistentFamilyEditKey('backspace', '⌫')}</div>
+                    <div className="pointer-events-auto">{renderPersistentFamilyEditKey('clear', '↵')}</div>
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col gap-2">
+                <div className="relative flex flex-col gap-2 pr-[3.4rem] sm:pr-[3.7rem]">
                   {activeKeyboardFamilyTarget.familyRows.map((row, rowIndex) => (
                     <div key={`${activeKeyboardFamilyTarget.id}-family-row-${rowIndex}`} className="flex flex-wrap items-center justify-center gap-2">
                       {row.map((actionId) => {
@@ -11586,6 +11611,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       })}
                     </div>
                   ))}
+                  <div className="pointer-events-none absolute right-0 bottom-0 flex flex-col gap-2">
+                    <div className="pointer-events-auto">{renderPersistentFamilyEditKey('backspace', '⌫')}</div>
+                    <div className="pointer-events-auto">{renderPersistentFamilyEditKey('clear', '↵')}</div>
+                  </div>
                 </div>
               )}
             </div>

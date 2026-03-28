@@ -10890,13 +10890,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         try {
           selectableField.insert(replacement, {
             insertionMode: 'replaceSelection',
-            selectionMode: 'after',
+            selectionMode: 'placeholder',
           })
-          if (axis === 'down') {
-            tryExecute('moveToDenominator', 'moveToNextPlaceholder')
-          } else {
-            tryExecute('moveToNumerator', 'moveToPreviousPlaceholder')
-          }
           return true
         } catch {
           triggerKeyboardSwipeBlock('Select a valid term before creating a fraction.', sourceActionId)

@@ -1614,6 +1614,8 @@ const isValidKeyboardStructuralReferenceTarget = (target: KeyboardReferenceTarge
   if (/^[×÷≤≥≠≈]$/.test(symbol)) return false
   if (/^[()\[\]{}.,]$/.test(symbol)) return false
   if (/^\\(times|div|leq|geq|neq|approx)$/.test(symbol)) return false
+  if (symbol === '#?') return false
+  if (/^\\placeholder(?:\{.*\})?$/.test(symbol)) return false
 
   return true
 }
@@ -10675,6 +10677,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return clampAndSetPosition(delta)
     }
 
+    const moveHorizontallyThenApply = (delta: 1 | -1, structuralMove: () => boolean) => {
+      const currentPosition = typeof field.position === 'number' ? field.position : 0
+      if (!moveHorizontally(delta)) return false
+      if (structuralMove()) return true
+      field.position = currentPosition
+      return false
+    }
+
     const moveToSuperscript = () => {
       if (tryExecute('moveToSuperscript')) return true
       const currentValue = field.getValue('latex') || ''
@@ -10758,9 +10768,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         case 's':
           return moveVertical('down')
         case 'nw':
-          return moveHorizontally(-1) && moveToSuperscript()
+          return moveHorizontallyThenApply(-1, moveToSuperscript)
         case 'sw':
-          return moveHorizontally(-1) && moveToSubscript()
+          return moveHorizontallyThenApply(-1, moveToSubscript)
         default:
           return false
       }

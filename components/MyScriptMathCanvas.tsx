@@ -1055,6 +1055,13 @@ type KeyboardEditResult = {
   selectionEnd: number
 }
 
+type KeyboardHistoryAwareMathfield = MathfieldElementType & {
+  canUndo?: () => boolean
+  canRedo?: () => boolean
+  undoDepth?: number
+  redoDepth?: number
+}
+
 type KeyboardMountedRowDefinition = {
   id: string
   label: string
@@ -2551,6 +2558,36 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     recognitionEngineRef.current = recognitionEngine
   }, [recognitionEngine])
 
+  const syncKeyboardControlStripState = useCallback((mathfield?: MathfieldElementType | null, latexValueOverride?: string) => {
+    if (recognitionEngineRef.current !== 'keyboard') return
+
+    const field = (mathfield ?? keyboardMathfieldRef.current) as KeyboardHistoryAwareMathfield | null
+    const nextValue = typeof latexValueOverride === 'string'
+      ? latexValueOverride
+      : (field?.getValue('latex') || latexOutputRef.current || '')
+
+    let nextCanUndo = nextValue.trim().length > 0
+    let nextCanRedo = false
+
+    if (field) {
+      if (typeof field.canUndo === 'function') {
+        nextCanUndo = field.canUndo()
+      } else if (typeof field.undoDepth === 'number') {
+        nextCanUndo = field.undoDepth > 0
+      }
+
+      if (typeof field.canRedo === 'function') {
+        nextCanRedo = field.canRedo()
+      } else if (typeof field.redoDepth === 'number') {
+        nextCanRedo = field.redoDepth > 0
+      }
+    }
+
+    setCanUndo(nextCanUndo)
+    setCanRedo(nextCanRedo)
+    setCanClear(nextValue.trim().length > 0)
+  }, [])
+
   const syncKeyboardMathfieldState = useCallback((mathfield?: MathfieldElementType | null) => {
     const field = mathfield ?? keyboardMathfieldRef.current
     if (!field) return
@@ -2562,7 +2599,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       setAdminDraftLatex(nextValue)
     }
     setKeyboardSelectionState({ start: nextPosition, end: nextPosition })
-  }, [canOrchestrateLesson, setKeyboardSelectionState])
+    syncKeyboardControlStripState(field, nextValue)
+  }, [canOrchestrateLesson, setKeyboardSelectionState, syncKeyboardControlStripState])
+
+  useEffect(() => {
+    if (recognitionEngine !== 'keyboard') return
+    syncKeyboardControlStripState(keyboardMathfieldRef.current, latexOutput)
+  }, [latexOutput, recognitionEngine, syncKeyboardControlStripState])
 
   useEffect(() => {
     if (!hasMounted) return
@@ -10056,10 +10099,38 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }
 
   const handleClear = () => {
+    if (recognitionEngineRef.current === 'keyboard') {
+      const field = keyboardMathfieldRef.current
+      if (field) {
+        field.focus()
+        field.executeCommand('deleteAll')
+        syncKeyboardMathfieldState(field)
+      } else {
+        setLatexOutput('')
+        latexOutputRef.current = ''
+        setKeyboardSelectionState({ start: 0, end: 0 })
+        if (useAdminStepComposerRef.current && hasControllerRights()) {
+          setAdminDraftLatex('')
+        }
+        syncKeyboardControlStripState(null, '')
+      }
+      return
+    }
     handleTrashClick()
   }
 
   const handleUndo = async () => {
+    if (recognitionEngineRef.current === 'keyboard') {
+      if (lockedOutRef.current) return
+      const field = keyboardMathfieldRef.current
+      if (!field) return
+      field.focus()
+      const didUndo = field.executeCommand('undo')
+      if (!didUndo) return
+      syncKeyboardMathfieldState(field)
+      return
+    }
+
     if (canvasModeRef.current === 'raw-ink') {
       if (lockedOutRef.current) return
       const current = rawInkStrokesRef.current
@@ -10100,6 +10171,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }
 
   const handleRedo = async () => {
+    if (recognitionEngineRef.current === 'keyboard') {
+      if (lockedOutRef.current) return
+      const field = keyboardMathfieldRef.current
+      if (!field) return
+      field.focus()
+      const didRedo = field.executeCommand('redo')
+      if (!didRedo) return
+      syncKeyboardMathfieldState(field)
+      return
+    }
+
     if (canvasModeRef.current === 'raw-ink') {
       if (lockedOutRef.current) return
       const next = rawInkRedoStackRef.current.pop()

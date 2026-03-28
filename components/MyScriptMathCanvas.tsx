@@ -10686,13 +10686,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     const moveToSuperscript = () => {
-      if (tryExecute('moveToSuperscript')) return true
       const currentValue = field.getValue('latex') || ''
-      const referenceTarget = findKeyboardReferenceTarget(currentValue, keyboardSelectionRef.current)
+      const currentPosition = typeof field.position === 'number' ? field.position : 0
+      const referenceTarget = findKeyboardReferenceTarget(currentValue, {
+        start: currentPosition,
+        end: currentPosition,
+      })
       if (!isValidKeyboardStructuralReferenceTarget(referenceTarget)) {
         triggerKeyboardSwipeBlock('Place the caret after a valid base before exponentiating.', sourceActionId)
         return false
       }
+      if (tryExecute('moveToSuperscript')) return true
       try {
         field.executeCommand(['insert', '^{}'])
         return true
@@ -10702,13 +10706,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     const moveToSubscript = () => {
-      if (tryExecute('moveToSubscript')) return true
       const currentValue = field.getValue('latex') || ''
-      const referenceTarget = findKeyboardReferenceTarget(currentValue, keyboardSelectionRef.current)
+      const currentPosition = typeof field.position === 'number' ? field.position : 0
+      const referenceTarget = findKeyboardReferenceTarget(currentValue, {
+        start: currentPosition,
+        end: currentPosition,
+      })
       if (!isValidKeyboardStructuralReferenceTarget(referenceTarget)) {
         triggerKeyboardSwipeBlock('Place the caret after a valid base before adding a subscript.', sourceActionId)
         return false
       }
+      if (tryExecute('moveToSubscript')) return true
       try {
         field.executeCommand(['insert', '_{}'])
         return true
@@ -10724,7 +10732,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         triggerKeyboardSwipeBlock('Enter the denominator before stacking again.', sourceActionId)
         return false
       }
-      const referenceTarget = findKeyboardReferenceTarget(currentValue, keyboardSelectionRef.current)
+      const referenceTarget = findKeyboardReferenceTarget(currentValue, {
+        start: currentPosition,
+        end: currentPosition,
+      })
 
       if (!referenceTarget || !referenceTarget.symbol.trim()) {
         if (axis === 'up') {

@@ -10862,6 +10862,48 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const moveVertical = (axis: 'up' | 'down') => {
       const currentValue = field.getValue('latex') || ''
       const currentPosition = typeof field.position === 'number' ? field.position : 0
+      const selectableField = field as MathfieldElementType & {
+        selection: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
+        selectionIsCollapsed: boolean
+        getValue: (selection?: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }, format?: 'latex') => string
+        insert: (
+          value: string,
+          options?: {
+            insertionMode?: 'replaceSelection' | 'replaceAll' | 'insertBefore'
+            selectionMode?: 'item' | 'placeholder' | 'after' | 'before'
+          }
+        ) => boolean
+      }
+
+      // If a range is explicitly selected, trust MathLive's own selection model
+      // and replace that exact selection as an atomic term for stacking.
+      if (!selectableField.selectionIsCollapsed && selectableField.selection.ranges.length > 0) {
+        const selected = selectableField.getValue(selectableField.selection, 'latex') || ''
+        const trimmedSelected = selected.trim()
+        if (!trimmedSelected) {
+          triggerKeyboardSwipeBlock('Select a valid term before creating a fraction.', sourceActionId)
+          return false
+        }
+        const replacement = axis === 'down'
+          ? `\\frac{${trimmedSelected}}{}`
+          : `\\frac{}{${trimmedSelected}}`
+        try {
+          selectableField.insert(replacement, {
+            insertionMode: 'replaceSelection',
+            selectionMode: 'after',
+          })
+          if (axis === 'down') {
+            tryExecute('moveToDenominator', 'moveToNextPlaceholder')
+          } else {
+            tryExecute('moveToNumerator', 'moveToPreviousPlaceholder')
+          }
+          return true
+        } catch {
+          triggerKeyboardSwipeBlock('Select a valid term before creating a fraction.', sourceActionId)
+          return false
+        }
+      }
+
       if (axis === 'down' && isEmptyFractionDenominatorPlaceholderAtPosition(currentValue, currentPosition)) {
         triggerKeyboardSwipeBlock('Enter the denominator before stacking again.', sourceActionId)
         return false

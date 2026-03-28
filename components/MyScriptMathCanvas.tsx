@@ -1103,19 +1103,25 @@ const removeLastKeyboardChunk = (value: string) => {
 }
 
 const isEmptyFractionDenominatorPlaceholderAtPosition = (value: string, position: number) => {
-  const pattern = /\\frac\{[^{}]*\}\{#\?\}/g
+  // Match denominators that are empty ({}) or still contain our placeholder (#? / \placeholder{...})
+  const pattern = /\\frac\{[^{}]*\}(\{#\?\}|\{\\placeholder(?:\{[^{}]*\})?\}|\{\})/g
   let match: RegExpExecArray | null
   while ((match = pattern.exec(value)) !== null) {
-    const fraction = match[0]
-    const placeholderOffset = fraction.lastIndexOf('{#?}')
-    if (placeholderOffset < 0) continue
-    const denominatorStart = match.index + placeholderOffset + 1
-    const denominatorEnd = denominatorStart + 2
-    if (position >= denominatorStart && position <= denominatorEnd + 1) {
+    const denomStart = match.index + match[0].indexOf(match[1])
+    const denomEnd = denomStart + match[1].length
+    if (position >= denomStart && position <= denomEnd) {
       return true
     }
   }
   return false
+}
+
+const isLatexCommandFragment = (symbol: string) => {
+  // Reject partial or complete LaTeX structural command names that are
+  // part of the expression syntax, not a mathematical quantity.
+  // e.g. \fr, \fra, \frac, \sq, \sqrt, \left – these appear when
+  // field.position (an atom index) is mistakenly used as a string offset.
+  return /^\\[a-zA-Z]{0,6}$/.test(symbol)
 }
 
 const createAppendTextKeyboardAction = (
@@ -1616,6 +1622,9 @@ const isValidKeyboardStructuralReferenceTarget = (target: KeyboardReferenceTarge
   if (/^\\(times|div|leq|geq|neq|approx)$/.test(symbol)) return false
   if (symbol === '#?') return false
   if (/^\\placeholder(?:\{.*\})?$/.test(symbol)) return false
+  // Reject LaTeX command fragments such as \fr, \fra produced when
+  // field.position (an atom index) is misread as a LaTeX string offset.
+  if (isLatexCommandFragment(symbol)) return false
 
   return true
 }
@@ -10732,10 +10741,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         triggerKeyboardSwipeBlock('Enter the denominator before stacking again.', sourceActionId)
         return false
       }
-      const referenceTarget = findKeyboardReferenceTarget(currentValue, {
-        start: currentPosition,
-        end: currentPosition,
-      })
+      // Use the user-facing selection ref (not field.position which is an atom index,
+      // not a LaTeX string character offset) to find the intended anchor term.
+      const referenceTarget = findKeyboardReferenceTarget(currentValue, keyboardSelectionRef.current)
 
       if (!referenceTarget || !referenceTarget.symbol.trim()) {
         if (axis === 'up') {

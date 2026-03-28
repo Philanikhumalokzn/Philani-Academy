@@ -1124,6 +1124,18 @@ const isLatexCommandFragment = (symbol: string) => {
   return /^\\[a-zA-Z]{0,6}$/.test(symbol)
 }
 
+const isValidKeyboardExpressionEndForScript = (value: string) => {
+  // Used only for the fallback insert path where we are not relying on atom
+  // positions at all — just whether the expression ends with something
+  // that can serve as a base: a word char, a closing bracket/brace/paren,
+  // or a special symbol.
+  const trimmed = value.trimEnd()
+  if (!trimmed) return false
+  if (/[\w\u03b1-\u03c9\u0391-\u03a9\u221e\u221a]$/.test(trimmed)) return true
+  if (/[})\]|]$/.test(trimmed)) return true
+  return false
+}
+
 const createAppendTextKeyboardAction = (
   id: string,
   text: string,
@@ -10696,16 +10708,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const moveToSuperscript = () => {
       const currentValue = field.getValue('latex') || ''
-      const currentPosition = typeof field.position === 'number' ? field.position : 0
-      const referenceTarget = findKeyboardReferenceTarget(currentValue, {
-        start: currentPosition,
-        end: currentPosition,
-      })
-      if (!isValidKeyboardStructuralReferenceTarget(referenceTarget)) {
+      // Always block on empty field — MathLive would otherwise create a bare ^{} with no base.
+      if (!currentValue.trim()) {
         triggerKeyboardSwipeBlock('Place the caret after a valid base before exponentiating.', sourceActionId)
         return false
       }
+      // Trust MathLive's atom-aware navigation for non-empty expressions.
+      // It understands the atom structure (fractions, groups, etc.) correctly;
+      // our string-based lookup cannot reliably map atom indices to string offsets.
       if (tryExecute('moveToSuperscript')) return true
+      // Fallback insert path: only reached when MathLive can't navigate to an
+      // existing superscript. At this point we own the insertion, so validate
+      // the end of the expression as a safe anchor heuristic.
+      if (!isValidKeyboardExpressionEndForScript(currentValue)) {
+        triggerKeyboardSwipeBlock('Place the caret after a valid base before exponentiating.', sourceActionId)
+        return false
+      }
       try {
         field.executeCommand(['insert', '^{}'])
         return true
@@ -10716,16 +10734,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const moveToSubscript = () => {
       const currentValue = field.getValue('latex') || ''
-      const currentPosition = typeof field.position === 'number' ? field.position : 0
-      const referenceTarget = findKeyboardReferenceTarget(currentValue, {
-        start: currentPosition,
-        end: currentPosition,
-      })
-      if (!isValidKeyboardStructuralReferenceTarget(referenceTarget)) {
+      if (!currentValue.trim()) {
         triggerKeyboardSwipeBlock('Place the caret after a valid base before adding a subscript.', sourceActionId)
         return false
       }
       if (tryExecute('moveToSubscript')) return true
+      if (!isValidKeyboardExpressionEndForScript(currentValue)) {
+        triggerKeyboardSwipeBlock('Place the caret after a valid base before adding a subscript.', sourceActionId)
+        return false
+      }
       try {
         field.executeCommand(['insert', '_{}'])
         return true

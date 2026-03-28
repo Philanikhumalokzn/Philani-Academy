@@ -11429,36 +11429,43 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
             {/* Radial symbol cluster — 320×320px container, center at (160,160).
                 Ring 1 (r=70): 4 cardinals (×,+,÷,−) + up to 4 diagonal recent letters.
-                Ring 2 (r=128): 3 family keys (√, =, ()) on E/S/W spokes. */}
-            <div className="relative flex-shrink-0" style={{ width: 320, height: 320 }}>
-              {/* ── Center: most recently used letter ── */}
-              {renderVisibleKeyboardButton(buildDynamicClusterKeys().center, {
-                className: 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800',
-                textClassName: 'text-2xl font-normal',
-                activeClassName: 'border-sky-300 bg-sky-100 text-sky-700',
-                style: { position: 'absolute', left: 130, top: 130, width: 60, height: 60, padding: 0 },
-              })}
-              {/* ── Ring 1 cardinal spokes ── */}
-              {renderVisibleKeyboardButton({ actionId: 'times', label: '×' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(-90, 70) })}
-              {renderVisibleKeyboardButton({ actionId: 'plus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(0, 70) })}
-              {renderVisibleKeyboardButton({ actionId: 'divide', label: '÷' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(90, 70) })}
-              {renderVisibleKeyboardButton({ actionId: 'minus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(180, 70) })}
-              {/* ── Ring 1 diagonal spokes: recently used letters ── */}
-              {(() => {
-                const c = buildCornerLetterKeys()
-                return (
-                  <>
-                    {c.ne && renderVisibleKeyboardButton(c.ne, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(-45, 70) })}
-                    {c.se && renderVisibleKeyboardButton(c.se, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(45, 70) })}
-                    {c.sw && renderVisibleKeyboardButton(c.sw, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(135, 70) })}
-                    {c.nw && renderVisibleKeyboardButton(c.nw, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(225, 70) })}
-                  </>
-                )
-              })()}
-              {/* ── Ring 2 cardinal family keys ── */}
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.right, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(0, 128) })}
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.bottom, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(90, 128) })}
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.left, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(180, 128) })}
+                Ring 2 (r=128): 3 family keys (√, =, ()) on E/S/W spokes.
+                Persistent editing keys sit in a fixed right column and are always visible. */}
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              <div className="relative flex-shrink-0" style={{ width: 320, height: 320 }}>
+                {/* ── Center: most recently used letter ── */}
+                {renderVisibleKeyboardButton(buildDynamicClusterKeys().center, {
+                  className: 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800',
+                  textClassName: 'text-2xl font-normal',
+                  activeClassName: 'border-sky-300 bg-sky-100 text-sky-700',
+                  style: { position: 'absolute', left: 130, top: 130, width: 60, height: 60, padding: 0 },
+                })}
+                {/* ── Ring 1 cardinal spokes ── */}
+                {renderVisibleKeyboardButton({ actionId: 'times', label: '×' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(-90, 70) })}
+                {renderVisibleKeyboardButton({ actionId: 'plus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(0, 70) })}
+                {renderVisibleKeyboardButton({ actionId: 'divide', label: '÷' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(90, 70) })}
+                {renderVisibleKeyboardButton({ actionId: 'minus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(180, 70) })}
+                {/* ── Ring 1 diagonal spokes: recently used letters ── */}
+                {(() => {
+                  const c = buildCornerLetterKeys()
+                  return (
+                    <>
+                      {c.ne && renderVisibleKeyboardButton(c.ne, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(-45, 70) })}
+                      {c.se && renderVisibleKeyboardButton(c.se, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(45, 70) })}
+                      {c.sw && renderVisibleKeyboardButton(c.sw, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(135, 70) })}
+                      {c.nw && renderVisibleKeyboardButton(c.nw, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(225, 70) })}
+                    </>
+                  )
+                })()}
+                {/* ── Ring 2 cardinal family keys ── */}
+                {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.right, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(0, 128) })}
+                {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.bottom, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(90, 128) })}
+                {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.left, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(180, 128) })}
+              </div>
+              <div className="flex flex-col gap-2">
+                {renderPersistentFamilyEditKey('backspace', '⌫')}
+                {renderPersistentFamilyEditKey('clear', '↵')}
+              </div>
             </div>
           </div>
         </div>

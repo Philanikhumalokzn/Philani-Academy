@@ -1592,6 +1592,19 @@ const replaceKeyboardReferenceTarget = (value: string, target: KeyboardReference
   return { value: next, selectionStart: caret, selectionEnd: caret }
 }
 
+const isValidKeyboardStructuralReferenceTarget = (target: KeyboardReferenceTarget | null) => {
+  const symbol = target?.symbol?.trim()
+  if (!symbol) return false
+
+  // Reject stand-alone operators or delimiters as structure anchors.
+  if (/^[+\-*/=<>|]$/.test(symbol)) return false
+  if (/^[×÷≤≥≠≈]$/.test(symbol)) return false
+  if (/^[()\[\]{}.,]$/.test(symbol)) return false
+  if (/^\\(times|div|leq|geq|neq|approx)$/.test(symbol)) return false
+
+  return true
+}
+
 const buildKeyboardContextualRadialOperation = (
   actionId: string,
   payloadSymbol?: string,
@@ -10574,6 +10587,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const moveToSuperscript = () => {
       if (tryExecute('moveToSuperscript')) return true
+      const currentValue = field.getValue('latex') || ''
+      const referenceTarget = findKeyboardReferenceTarget(currentValue, keyboardSelectionRef.current)
+      if (!isValidKeyboardStructuralReferenceTarget(referenceTarget)) {
+        triggerKeyboardSwipeBlock('Place the caret after a valid base before exponentiating.', sourceActionId)
+        return false
+      }
       try {
         field.executeCommand(['insert', '^{}'])
         return true
@@ -10584,6 +10603,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const moveToSubscript = () => {
       if (tryExecute('moveToSubscript')) return true
+      const currentValue = field.getValue('latex') || ''
+      const referenceTarget = findKeyboardReferenceTarget(currentValue, keyboardSelectionRef.current)
+      if (!isValidKeyboardStructuralReferenceTarget(referenceTarget)) {
+        triggerKeyboardSwipeBlock('Place the caret after a valid base before adding a subscript.', sourceActionId)
+        return false
+      }
       try {
         field.executeCommand(['insert', '_{}'])
         return true
@@ -10606,6 +10631,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           return tryExecute('moveUp', 'moveToNumerator', 'moveToPreviousPlaceholder')
         }
         return tryExecute('moveDown', 'moveToDenominator', 'moveToNextPlaceholder')
+      }
+
+      if (!isValidKeyboardStructuralReferenceTarget(referenceTarget)) {
+        triggerKeyboardSwipeBlock('Place the caret after a valid term before creating a fraction.', sourceActionId)
+        return false
       }
 
       const numerator = axis === 'down' ? referenceTarget.symbol : '#?'

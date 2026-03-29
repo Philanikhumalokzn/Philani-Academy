@@ -11169,7 +11169,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       event.stopPropagation()
       if (!canCreateTopPanelStepFromEnter) return
       event.preventDefault()
-      void startNewTopPanelStepDraft()
+      if (adminSendingStep || lockedOutRef.current) return
+      void handleSendStepClick()
     }
 
     const buildAnchorFromElement = (keyId: string, element: HTMLElement): KeyboardOverlayAnchor => {

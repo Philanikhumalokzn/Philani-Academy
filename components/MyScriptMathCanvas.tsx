@@ -3850,6 +3850,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   type StudentStep = { latex: string; symbols: any[] | null; jiix?: string | null; rawStrokes?: any[] | null; strokeGroups?: any[] | null }
   const [studentSteps, setStudentSteps] = useState<StudentStep[]>([])
   const [studentEditIndex, setStudentEditIndex] = useState<number | null>(null)
+  const [keyboardSteps, setKeyboardSteps] = useState<NotebookStepRecord[]>([])
+  const [keyboardEditIndex, setKeyboardEditIndex] = useState<number | null>(null)
   const studentEditIndexRef = useRef<number | null>(null)
   useEffect(() => {
     studentEditIndexRef.current = studentEditIndex
@@ -9077,6 +9079,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setAdminDraftLatex('')
     setAdminSendingStep(false)
     setAdminEditIndex(null)
+    setKeyboardSteps([])
+    setKeyboardEditIndex(null)
     setActiveNotebookSolutionId(null)
     setLoadedNotebookRevision(null)
     setFinishQuestionNoteId(null)
@@ -10192,6 +10196,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       setAdminDraftLatex('')
       setAdminSendingStep(false)
       setAdminEditIndex(null)
+      setKeyboardSteps([])
+      setKeyboardEditIndex(null)
       clearTopPanelSelection()
       stepNavRedoStackRef.current = []
     }
@@ -10578,7 +10584,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return true
   }, [syncKeyboardMathfieldState])
 
-  const applyKeyboardAction = useCallback((actionId: string, baseSymbol?: string) => {
+  const  applyKeyboardAction = useCallback((actionId: string, baseSymbol?: string) => {
     const action = KEYBOARD_ACTION_MAP[actionId]
     if (!action) return
 
@@ -12641,6 +12647,67 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     scheduleKeyboardFadeOut()
   }, [clearTopPanelSelection, estimateKeyboardCaretFromTap, keyboardTopPanelExpression, scheduleKeyboardFadeOut, setKeyboardSelectionState])
 
+  const syncKeyboardDraftLatex = useCallback((nextLatex: string) => {
+    setLatexOutput(nextLatex)
+    latexOutputRef.current = nextLatex
+    if (useAdminStepComposerRef.current && hasControllerRights()) {
+      setAdminDraftLatex(normalizeStepLatex(nextLatex))
+    }
+  }, [hasControllerRights, normalizeStepLatex])
+
+  const startNewKeyboardStepDraft = useCallback(() => {
+    setKeyboardEditIndex(null)
+    syncKeyboardDraftLatex('')
+    clearTopPanelSelection()
+    setKeyboardSelectionState({ start: 0, end: 0 })
+  }, [clearTopPanelSelection, setKeyboardSelectionState, syncKeyboardDraftLatex])
+
+  const loadKeyboardStepForEditing = useCallback((index: number) => {
+    if (index < 0 || index >= keyboardSteps.length) return
+    const step = keyboardSteps[index]
+    const nextLatex = step?.latex || ''
+    setTopPanelSelectedStep(index)
+    setKeyboardEditIndex(index)
+    syncKeyboardDraftLatex(nextLatex)
+    const caret = nextLatex.length
+    setKeyboardSelectionState({ start: caret, end: caret })
+  }, [keyboardSteps, setKeyboardSelectionState, syncKeyboardDraftLatex])
+
+  const onKeyboardEnterButtonClick = useCallback(() => {
+    const rawStep = `${latexOutputRef.current || ''}`
+    const normalized = normalizeStepLatex(rawStep)
+    if (!normalized) return
+
+    const now = Date.now()
+    setKeyboardSteps(prev => {
+      const nextRecord: NotebookStepRecord = {
+        latex: normalized,
+        symbols: [],
+        jiix: null,
+        createdAt: keyboardEditIndex !== null && prev[keyboardEditIndex]?.createdAt != null
+          ? prev[keyboardEditIndex].createdAt
+          : now,
+        updatedAt: now,
+      }
+
+      if (keyboardEditIndex !== null && keyboardEditIndex >= 0 && keyboardEditIndex < prev.length) {
+        const next = [...prev]
+        next[keyboardEditIndex] = {
+          ...prev[keyboardEditIndex],
+          ...nextRecord,
+        }
+        return next
+      }
+
+      return [...prev, nextRecord]
+    })
+
+    setKeyboardEditIndex(null)
+    syncKeyboardDraftLatex('')
+    clearTopPanelSelection()
+    setKeyboardSelectionState({ start: 0, end: 0 })
+  }, [clearTopPanelSelection, keyboardEditIndex, normalizeStepLatex, setKeyboardSelectionState, syncKeyboardDraftLatex])
+
   const renderKeyboardTypesetEditorSurface = useCallback((
     compact = false,
     attachFocusRef = false,
@@ -12651,12 +12718,72 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     
     if (useMathLiveOnTopPanel) {
       return (
-        <div className="flex h-full w-full items-center justify-center">
-          <div className={`relative h-full w-full ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}>
-            <div
-              ref={setKeyboardMathfieldHostNodeRef}
-              className={`h-full w-full overflow-hidden rounded-[10px] ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
-            />
+        <div className="flex h-full w-full flex-col">
+          {topPanelEditingMode ? (
+            <div className="max-h-[45%] shrink-0 overflow-auto border-b border-slate-200 bg-white/95 px-3 py-2">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
+                <div>
+                  {keyboardEditIndex !== null
+                    ? `Editing step ${keyboardEditIndex + 1}. Tap New step to start a fresh draft.`
+                    : 'Tap a step to edit it, or start a new step.'}
+                </div>
+                <button
+                  type="button"
+                  className="rounded border border-slate-200 bg-white px-2 py-1 text-slate-700 hover:bg-slate-50"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    startNewKeyboardStepDraft()
+                  }}
+                >
+                  New step
+                </button>
+              </div>
+              {keyboardSteps.length ? (
+                keyboardSteps.map((step, index) => {
+                  const latex = (keyboardEditIndex === index ? keyboardTopPanelExpression : (step?.latex || '')).trimEnd()
+                  const html = renderLatexStepInline(latex)
+                  const selected = topPanelSelectedStep === index
+                  const isEditing = keyboardEditIndex === index
+                  return (
+                    <div key={`keyboard-step-${index}`} className="py-1" data-top-panel-step-shell data-step-idx={String(index)}>
+                      <button
+                        type="button"
+                        data-top-panel-step
+                        data-step-idx={String(index)}
+                        className={`min-w-0 w-full rounded px-2 py-1 text-center focus:outline-none focus:ring-0 ${selected ? 'border border-slate-300 bg-slate-100' : 'border border-transparent bg-transparent hover:bg-slate-50'}`}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          loadKeyboardStepForEditing(index)
+                        }}
+                      >
+                        <span className="mr-2 inline-block min-w-[2.25rem] text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                          {isEditing ? 'Edit' : `Step ${index + 1}`}
+                        </span>
+                        {html ? (
+                          <span className="inline align-middle" dangerouslySetInnerHTML={{ __html: html }} />
+                        ) : (
+                          <span className="text-slate-500">&nbsp;</span>
+                        )}
+                      </button>
+                    </div>
+                  )
+                })
+              ) : (
+                <div className="py-2 text-center text-[11px] text-slate-400">No committed steps yet.</div>
+              )}
+            </div>
+          ) : null}
+          <div className="flex h-full w-full items-center justify-center">
+            <div className={`relative h-full w-full ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}>
+              <div
+                ref={setKeyboardMathfieldHostNodeRef}
+                className={`h-full w-full overflow-hidden rounded-[10px] ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
+              />
+            </div>
           </div>
         </div>
       )
@@ -12673,7 +12800,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         </div>
       </div>
     )
-  }, [clearTopPanelSelection, scheduleKeyboardFadeOut, setMobileTopPanelActionStepIndex, setOverlayChromePeekVisible, setTopPanelEditingMode])
+  }, [
+    clearTopPanelSelection,
+    keyboardEditIndex,
+    keyboardSteps,
+    keyboardTopPanelExpression,
+    loadKeyboardStepForEditing,
+    renderLatexStepInline,
+    scheduleKeyboardFadeOut,
+    setMobileTopPanelActionStepIndex,
+    setOverlayChromePeekVisible,
+    setTopPanelEditingMode,
+    startNewKeyboardStepDraft,
+    topPanelEditingMode,
+    topPanelSelectedStep,
+  ])
 
   const renderKeyboardTopPanelEditorSurface = useCallback(() => {
     return renderKeyboardTypesetEditorSurface(false, true, keyboardTopTypesetPreviewRef, keyboardTopCaretSlotRefs)
@@ -14198,33 +14339,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       setQuizSubmitting(false)
     }
   }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, clearTopPanelSelection, exportLatexFromEngine, forceEditableForAssignment, getLatexFromEngineModel, hasWriteAccess, invalidatePendingLatexPreviewWork, latexOutput, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, studentEditIndex, studentSteps, updateControlState, userDisplayName, userId])
-
-  const onKeyboardEnterButtonClick = useCallback(() => {
-    const step = latexOutputRef.current?.trim()
-    if (!step) return
-
-    const normalized = normalizeStepLatex(step)
-    if (!normalized) return
-
-    // Append keyboard step to admin steps
-    setAdminSteps(prev => [
-      ...prev,
-      {
-        latex: normalized,
-        symbols: null,
-        jiix: null,
-        rawStrokes: null,
-        strokeGroups: null,
-      }
-    ])
-
-    // Clear keyboard state
-    setLatexOutput('')
-    latexOutputRef.current = ''
-    setAdminDraftLatex('')
-    setAdminEditIndex(null)
-    clearTopPanelSelection()
-  }, [normalizeStepLatex, clearTopPanelSelection])
 
   const handleSendStepClick = useCallback(async () => {
     if ((!canOrchestrateLesson || isAssignmentSolutionAuthoring) && (quizActiveRef.current || isAssignmentViewRef.current)) {

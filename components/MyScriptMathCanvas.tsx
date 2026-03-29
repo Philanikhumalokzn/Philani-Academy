@@ -11410,97 +11410,89 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           onPointerUp={handleKeyboardSurfacePointerEnd}
           onPointerCancel={handleKeyboardSurfacePointerEnd}
         >
-        <div className="flex h-full w-full items-center justify-center px-1 py-1.5 sm:px-4 sm:py-4">
-          <div className="flex flex-col items-center gap-3 sm:gap-3">
-            <div className="flex items-center justify-center gap-3 sm:gap-3">
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_TOP_FAMILY_KEYS[0], { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base sm:text-lg font-normal' })}
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_TOP_FAMILY_KEYS[1], { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-[1.4rem] sm:text-[1.6rem] font-normal' })}
-            </div>
+        <div className="flex h-full w-full items-center justify-center px-2 py-2 sm:px-4 sm:py-4">
+          <div className="w-full max-w-[26rem] rounded-[2rem] border border-slate-900/80 bg-[linear-gradient(180deg,#20252d_0%,#171b22_100%)] p-3 shadow-[0_20px_55px_rgba(15,23,42,0.45)] sm:p-4">
+            <div className="flex flex-col gap-2.5">
+              <div className="grid grid-cols-5 gap-2">
+                {renderVisibleKeyboardButton({ actionId: 'sin', label: 'sin', representativeKeyId: 'trig' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
+                {renderVisibleKeyboardButton({ actionId: 'cos', label: 'cos', representativeKeyId: 'trig' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
+                {renderVisibleKeyboardButton({ actionId: 'tan', label: 'tan', representativeKeyId: 'trig' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
+                {renderVisibleKeyboardButton({ actionId: 'ln', label: 'ln', representativeKeyId: 'trig' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
+                {renderVisibleKeyboardButton({ actionId: 'log', label: 'log', representativeKeyId: 'trig' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
+              </div>
 
-            {/* Radial symbol cluster — 320×320px container, center at (160,160).
-                Ring 1 (r=70): 4 cardinals (×,+,÷,−) + up to 4 diagonal recent letters.
-                Ring 2 (r=128): 3 family keys (√, =, ()) on E/S/W spokes. */}
-            <div className="relative flex-shrink-0" style={{ width: 320, height: 320 }}>
-              {/* ── Center: most recently used letter ── */}
-              {renderVisibleKeyboardButton(buildDynamicClusterKeys().center, {
-                className: 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800',
-                textClassName: 'text-2xl font-normal',
-                activeClassName: 'border-sky-300 bg-sky-100 text-sky-700',
-                style: { position: 'absolute', left: 130, top: 130, width: 60, height: 60, padding: 0 },
-              })}
-              {/* ── Ring 1 cardinal spokes ── */}
-              {renderVisibleKeyboardButton({ actionId: 'times', label: '×' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(-90, 70) })}
-              {renderVisibleKeyboardButton({ actionId: 'plus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(0, 70) })}
-              {renderVisibleKeyboardButton({ actionId: 'divide', label: '÷' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(90, 70) })}
-              {renderVisibleKeyboardButton({ actionId: 'minus' }, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(180, 70) })}
-              {/* ── Ring 1 diagonal spokes: recently used letters ── */}
-              {(() => {
-                const c = buildCornerLetterKeys()
-                return (
-                  <>
-                    {c.ne && renderVisibleKeyboardButton(c.ne, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(-45, 70) })}
-                    {c.se && renderVisibleKeyboardButton(c.se, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(45, 70) })}
-                    {c.sw && renderVisibleKeyboardButton(c.sw, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(135, 70) })}
-                    {c.nw && renderVisibleKeyboardButton(c.nw, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-base font-normal', style: clusterSpokeStyle(225, 70) })}
-                  </>
-                )
-              })()}
-              {/* ── Ring 2 cardinal family keys ── */}
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.right, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(0, 128) })}
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.bottom, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(90, 128) })}
-              {renderVisibleKeyboardButton(SIMPLE_KEYBOARD_CENTER_FAMILY_KEYS.left, { className: 'border-slate-300 bg-white hover:bg-slate-100', textClassName: 'text-lg font-normal', style: clusterSpokeStyle(180, 128) })}
+              <div className="grid grid-cols-5 gap-2">
+                {renderVisibleKeyboardButton({ actionId: 'paren', label: '()', representativeKeyId: 'enclosures' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-sm sm:text-base font-medium' })}
+                {renderVisibleKeyboardButton({ actionId: 'power2', label: 'x²', representativeKeyId: 'radicals' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-sm sm:text-base font-medium' })}
+                {renderVisibleKeyboardButton({ actionId: 'power3', label: 'x³', representativeKeyId: 'radicals' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-sm sm:text-base font-medium' })}
+                {renderVisibleKeyboardButton({ actionId: 'sqrt', label: '√', representativeKeyId: 'radicals' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-base sm:text-lg font-medium' })}
+                {renderVisibleKeyboardButton({ actionId: 'fraction', label: 'a/b', representativeKeyId: 'radicals' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
+              </div>
 
-              {/* ── SW number group: digits 1–6, 3×2 grid ── */}
-              {/* Lower band starts at y=232 to stay just below the diagonal letters while leaving room for the SE utility stack. */}
-              {([
-                { actionId: 'digit-1', label: '1', left: 4, top: 232 },
-                { actionId: 'digit-2', label: '2', left: 48, top: 232 },
-                { actionId: 'digit-3', label: '3', left: 92, top: 232 },
-                { actionId: 'digit-4', label: '4', left: 4, top: 262 },
-                { actionId: 'digit-5', label: '5', left: 48, top: 262 },
-                { actionId: 'digit-6', label: '6', left: 92, top: 262 },
-              ] as { actionId: string; label: string; left: number; top: number }[]).map(({ actionId, label, left, top }) =>
-                renderVisibleKeyboardButton({ actionId, label }, {
-                  className: 'border-slate-300 bg-white hover:bg-slate-100 rounded-xl',
-                  textClassName: 'text-base font-normal leading-none',
-                  style: { position: 'absolute', left, top, width: 40, height: 28, padding: 0 },
-                })
-              )}
+              <div className="grid grid-cols-[1.1fr_1.1fr_1.1fr_1fr_1fr] gap-2">
+                <div className="col-span-3 rounded-[1.4rem] bg-slate-900/70 p-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div />
+                    {renderVisibleKeyboardButton({ actionId: buildDynamicClusterKeys().center.actionId, label: buildDynamicClusterKeys().center.label, representativeKeyId: 'letters' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
+                    {renderVisibleKeyboardButton({ actionId: 'y', representativeKeyId: 'letters' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
+                    {renderVisibleKeyboardButton({ actionId: 'theta', label: 'θ', representativeKeyId: 'greek' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-base sm:text-lg font-medium' })}
+                    {renderVisibleKeyboardButton({ actionId: 'pi', label: 'π', representativeKeyId: 'greek' }, { className: 'border-transparent bg-slate-600 text-white hover:bg-slate-500 rounded-[999px]', textClassName: 'text-base sm:text-lg font-medium' })}
+                    {renderVisibleKeyboardButton({ actionId: 'equals', label: '=', representativeKeyId: 'relations' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
+                    {renderVisibleKeyboardButton({ actionId: 'x', representativeKeyId: 'letters' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
+                    {renderVisibleKeyboardButton({ actionId: 'digit-0', label: '0' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
+                    {renderVisibleKeyboardButton({ actionId: 'decimal', label: '.' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
+                  </div>
+                </div>
 
-              {/* ── SE number group + utility stack ── */}
-              {/* Layout: 7 8 9 / 0 . ⌫ / _ _ ↵, keeping the utility keys in the requested lower-right slots. */}
-              {([
-                { actionId: 'digit-7', label: '7', left: 188, top: 232 },
-                { actionId: 'digit-8', label: '8', left: 232, top: 232 },
-                { actionId: 'digit-9', label: '9', left: 276, top: 232 },
-                { actionId: 'digit-0', label: '0', left: 188, top: 262 },
-                { actionId: 'decimal', label: '.', left: 232, top: 262 },
-              ] as { actionId: string; label: string; left: number; top: number }[]).map(({ actionId, label, left, top }) =>
-                renderVisibleKeyboardButton({ actionId, label }, {
-                  className: 'border-slate-300 bg-white hover:bg-slate-100 rounded-xl',
-                  textClassName: 'text-base font-normal leading-none',
-                  style: { position: 'absolute', left, top, width: 40, height: 28, padding: 0 },
-                })
-              )}
-              {renderVisibleKeyboardButton({ actionId: 'backspace' }, {
-                className: 'border-slate-300 bg-white hover:bg-slate-100 rounded-xl',
-                textClassName: 'text-sm font-normal leading-none',
-                style: { position: 'absolute', left: 276, top: 262, width: 40, height: 28, padding: 0 },
-              })}
-              <button
-                type="button"
-                data-enter-step-key="true"
-                className="inline-flex select-none items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-900 shadow-sm hover:bg-slate-100"
-                style={{ position: 'absolute', left: 276, top: 292, width: 40, height: 28, padding: 0 }}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onKeyboardEnterButtonClick()
-                }}
-                title="New step"
-              >
-                <span className="text-sm font-normal leading-none">↵</span>
-              </button>
+                <div className="col-span-2 grid grid-cols-2 gap-2">
+                  {renderVisibleKeyboardButton({ actionId: 'backspace' }, { className: 'border-transparent bg-lime-500 text-white hover:bg-lime-400', textClassName: 'text-sm sm:text-base font-semibold' })}
+                  {renderVisibleKeyboardButton({ actionId: 'clear', label: 'AC' }, { className: 'border-transparent bg-lime-500 text-white hover:bg-lime-400', textClassName: 'text-sm sm:text-base font-semibold' })}
+                  {renderVisibleKeyboardButton({ actionId: 'times', label: '×' }, { className: 'border-transparent bg-slate-500 text-white hover:bg-slate-400', textClassName: 'text-xl sm:text-2xl font-medium' })}
+                  {renderVisibleKeyboardButton({ actionId: 'divide', label: '÷' }, { className: 'border-transparent bg-slate-500 text-white hover:bg-slate-400', textClassName: 'text-xl sm:text-2xl font-medium' })}
+                  {renderVisibleKeyboardButton({ actionId: 'plus' }, { className: 'border-transparent bg-slate-500 text-white hover:bg-slate-400', textClassName: 'text-xl sm:text-2xl font-medium' })}
+                  {renderVisibleKeyboardButton({ actionId: 'minus' }, { className: 'border-transparent bg-slate-500 text-white hover:bg-slate-400', textClassName: 'text-xl sm:text-2xl font-medium' })}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-[repeat(4,minmax(0,1fr))_1.1fr] gap-2">
+                {['digit-7', 'digit-8', 'digit-9', 'power2'].map((actionId) =>
+                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : 'x²', representativeKeyId: actionId === 'power2' ? 'radicals' : undefined }, {
+                    className: actionId.startsWith('digit-') ? 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100' : 'border-transparent bg-slate-800 text-white hover:bg-slate-700',
+                    textClassName: actionId.startsWith('digit-') ? 'text-2xl sm:text-[2rem] font-medium' : 'text-sm sm:text-base font-medium',
+                  })
+                )}
+                <button
+                  type="button"
+                  data-enter-step-key="true"
+                  className="row-span-4 inline-flex min-h-0 select-none items-center justify-center rounded-2xl border border-transparent bg-white text-slate-900 shadow-sm transition-colors hover:bg-slate-100"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onKeyboardEnterButtonClick()
+                  }}
+                  title="New step"
+                >
+                  <span className="text-3xl font-medium leading-none">=</span>
+                </button>
+
+                {['digit-4', 'digit-5', 'digit-6', 'fraction'].map((actionId) =>
+                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : 'a/b', representativeKeyId: actionId === 'fraction' ? 'radicals' : undefined }, {
+                    className: actionId.startsWith('digit-') ? 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100' : 'border-transparent bg-slate-800 text-white hover:bg-slate-700',
+                    textClassName: actionId.startsWith('digit-') ? 'text-2xl sm:text-[2rem] font-medium' : 'text-xs sm:text-sm font-medium',
+                  })
+                )}
+
+                {['digit-1', 'digit-2', 'digit-3', 'sqrt'].map((actionId) =>
+                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : '√', representativeKeyId: actionId === 'sqrt' ? 'radicals' : undefined }, {
+                    className: actionId.startsWith('digit-') ? 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100' : 'border-transparent bg-slate-800 text-white hover:bg-slate-700',
+                    textClassName: actionId.startsWith('digit-') ? 'text-2xl sm:text-[2rem] font-medium' : 'text-lg sm:text-xl font-medium',
+                  })
+                )}
+
+                {renderVisibleKeyboardButton({ actionId: 'digit-0', label: '0' }, { className: 'col-span-2 border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100', textClassName: 'text-2xl sm:text-[2rem] font-medium' })}
+                {renderVisibleKeyboardButton({ actionId: 'decimal', label: '.' }, { className: 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100', textClassName: 'text-2xl sm:text-[2rem] font-medium' })}
+                {renderVisibleKeyboardButton({ actionId: 'ans', label: 'Ans' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600', textClassName: 'text-sm sm:text-base font-medium' })}
+              </div>
             </div>
           </div>
         </div>

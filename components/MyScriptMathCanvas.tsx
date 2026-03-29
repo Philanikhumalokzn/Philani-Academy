@@ -1387,7 +1387,6 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
     label: 'Clear',
     apply: () => '',
   },
-  createAppendTextKeyboardAction('linebreak', ' \\\\ ', 'line break', 'line break'),
 ]
 
 const KEYBOARD_MOUNTED_ROWS: KeyboardMountedRowDefinition[] = [
@@ -2744,16 +2743,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const syncKeyboardMathfieldState = useCallback((mathfield?: MathfieldElementType | null) => {
     const field = mathfield ?? keyboardMathfieldRef.current
     if (!field) return
-    const displayValue = field.getValue('latex') || ''
+    const nextValue = field.getValue('latex') || ''
     const nextPosition = typeof field.position === 'number' ? field.position : 0
-    // Reconstruct the full accumulated value: keep all previous \\ segments and
-    // replace only the last segment with what the mathfield now contains.
-    const stored = latexOutputRef.current || ''
-    const storedSegments = stored.split(/\\\\/)
-    storedSegments[storedSegments.length - 1] = ` ${displayValue} `
-    const nextValue = storedSegments.length > 1
-      ? storedSegments.join(' \\\\ ')
-      : displayValue
     setLatexOutput(nextValue)
     latexOutputRef.current = nextValue
     if (useAdminStepComposerRef.current && canOrchestrateLesson) {
@@ -2856,15 +2847,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const currentValue = field.getValue('latex') || ''
     const nextValue = latexOutput || ''
-    // Show only the last segment after \\ separators so the mathfield never
-    // renders raw backslash tokens from the step-separator syntax.
-    const segments = nextValue.split(/\\\\/)
-    const displayValue = (segments[segments.length - 1] ?? '').trim()
-    if (currentValue === displayValue) return
+    if (currentValue === nextValue) return
 
     keyboardMathfieldSyncRef.current = true
     try {
-      field.setValue(displayValue)
+      field.setValue(nextValue)
       const nextPosition = typeof field.position === 'number' ? field.position : 0
       setKeyboardSelectionState({ start: nextPosition, end: nextPosition })
     } finally {
@@ -11491,8 +11478,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 className="inline-flex select-none items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-900 shadow-sm hover:bg-slate-100"
                 style={{ position: 'absolute', left: 276, top: 292, width: 40, height: 28, padding: 0 }}
                 onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => { event.stopPropagation(); applyKeyboardAction('linebreak') }}
-                title="Line break"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  const field = keyboardMathfieldRef.current
+                  if (field) field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true }))
+                }}
+                title="Enter"
               >
                 <span className="text-sm font-normal leading-none">↵</span>
               </button>
@@ -11612,8 +11603,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       type="button"
                       className="inline-flex h-10 min-w-0 flex-[1.25] select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-1.5 text-white shadow-sm sm:h-11 sm:px-2 hover:bg-slate-700"
                       onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => { event.stopPropagation(); applyKeyboardAction('linebreak') }}
-                      title="Line break"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        const field = keyboardMathfieldRef.current
+                        if (field) field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true }))
+                      }}
+                      title="Enter"
                     >
                       <span className="text-[1.05rem] font-normal leading-none">↵</span>
                     </button>

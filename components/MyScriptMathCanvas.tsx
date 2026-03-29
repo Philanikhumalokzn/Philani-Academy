@@ -14199,6 +14199,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, clearTopPanelSelection, exportLatexFromEngine, forceEditableForAssignment, getLatexFromEngineModel, hasWriteAccess, invalidatePendingLatexPreviewWork, latexOutput, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, studentEditIndex, studentSteps, updateControlState, userDisplayName, userId])
 
+  const commitKeyboardStep = useCallback(async () => {
+    const step = latexOutputRef.current || ''
+    const normalized = normalizeStepLatex(step)
+    if (!normalized) return false
+
+    setAdminSteps(prev => [
+      ...prev,
+      {
+        latex: normalized,
+        symbols: null,
+        jiix: null,
+        rawStrokes: null,
+        strokeGroups: null,
+      }
+    ])
+    setAdminDraftLatex('')
+    setAdminEditIndex(null)
+    setLatexOutput('')
+    latexOutputRef.current = ''
+    clearTopPanelSelection()
+    return true
+  }, [normalizeStepLatex, clearTopPanelSelection])
+
   const handleSendStepClick = useCallback(async () => {
     if ((!canOrchestrateLesson || isAssignmentSolutionAuthoring) && (quizActiveRef.current || isAssignmentViewRef.current)) {
       if (lockedOutRef.current) return
@@ -14207,7 +14230,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     const editor = editorInstanceRef.current
-    if (!editor) return
+    // If no ink editor, try keyboard-only commit
+    if (!editor) {
+      await commitKeyboardStep()
+      return
+    }
     if (lockedOutRef.current) return
     if (adminSendingStep) return
 
@@ -14369,6 +14396,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     getDefaultStackedScrollLeft,
     horizontalPanMax,
     studentQuizCommitOrSubmit,
+    commitKeyboardStep,
   ])
 
   useEffect(() => {

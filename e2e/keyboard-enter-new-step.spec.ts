@@ -232,5 +232,22 @@ test.describe('keyboard enter-like key new-step flow', () => {
     const renderedAfterDraft = ((await topDisplay.innerText().catch(() => '')) || '').replace(/\s+/g, '')
     expect(renderedAfterDraft).toContain('x+x')
     expect(renderedAfterDraft).not.toContain('y+y')
+
+    await clickBottomRightEnterKey(page)
+    await page.waitForTimeout(1500)
+
+    const afterSecondCommit = (await keyboardDebugInput.inputValue().catch(() => '')).trim()
+    expect(afterSecondCommit).toBe('')
+
+    const renderedAfterSecondCommitRaw = (await topDisplay.innerText().catch(() => '')) || ''
+    const renderedAfterSecondCommit = renderedAfterSecondCommitRaw.replace(/\s+/g, '')
+    expect(renderedAfterSecondCommit).toContain('x+x')
+    expect(renderedAfterSecondCommit).toContain('y+y')
+
+    const committedLines = renderedAfterSecondCommitRaw
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(Boolean)
+    expect(committedLines.length).toBeGreaterThan(1)
   })
 })

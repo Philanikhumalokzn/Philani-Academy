@@ -16567,7 +16567,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             {!isRawInkMode && (
             <div
               className="flex flex-col"
-              style={{ flex: shouldCollapseStackedView ? 1 : Math.max(studentSplitRatio, 0.2), minHeight: shouldCollapseStackedView ? 0 : '200px' }}
+              style={{ flex: shouldCollapseStackedView ? 1 : Math.max(studentSplitRatio, 0.2), minHeight: 0 }}
             >
               {!isOverlayMode && !isCompactViewport && canPersistLatex && (
                 <div className="px-4 pt-3 pb-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
@@ -16605,9 +16605,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   {latexSaveError && <span className="text-red-600 text-[11px]">{latexSaveError}</span>}
                 </div>
               )}
-              <div className={`${isOverlayMode || isCompactViewport ? 'px-3 py-3' : 'mt-2 px-4 pb-2'} flex-1 min-h-[140px]`}>
-                <div
-                  className="h-full bg-white rounded-lg p-3 overflow-visible relative"
+              <div
+                  className="relative flex-1 min-h-0 w-full overflow-visible"
                   ref={(useAdminStepComposer || useStudentStepComposer) ? adminTopPanelRef : undefined}
                   onPointerDown={(e) => {
                     if (recognitionEngine === 'keyboard') {
@@ -17133,7 +17132,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     </div>
                   )}
                 </div>
-              </div>
             </div>
             )}
             {!isRawInkMode && (

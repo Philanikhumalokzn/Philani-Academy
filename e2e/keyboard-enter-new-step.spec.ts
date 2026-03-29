@@ -203,6 +203,9 @@ test.describe('keyboard enter-like key new-step flow', () => {
     const beforeValue = (await keyboardDebugInput.inputValue().catch(() => '')).trim()
     expect(beforeValue.length).toBeGreaterThan(0)
 
+    // Wait briefly to ensure keyboard state is synced to adminDraftLatex
+    await page.waitForTimeout(500)
+
     // Enter-like key should use send/commit pipeline, not raw clear.
     await clickBottomRightEnterKey(page)
     await page.waitForTimeout(1200)

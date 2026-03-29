@@ -11163,43 +11163,32 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const canCreateTopPanelStepFromEnter = canUseAdminSend && (useAdminStepComposer || useStudentStepComposer)
 
-    const triggerMathfieldCtrlEnter = () => {
-      const field = keyboardMathfieldRef.current as (MathfieldElementType & {
-        executeCommand?: (command: any) => unknown
-      }) | null
-      if (!field) return false
+    const appendMathfieldLatexLineBreak = () => {
+      const field = keyboardMathfieldRef.current
+      const currentValue = field?.getValue('latex') || latexOutputRef.current || ''
+      const lineBreakToken = ' \\\\ '
+      const next = insertKeyboardTextAtSelection(currentValue, lineBreakToken, keyboardSelectionRef.current)
 
-      try {
-        field.focus()
-      } catch {}
+      latexOutputRef.current = next.value
+      setLatexOutput(next.value)
+      setKeyboardSelectionState({ start: next.selectionStart, end: next.selectionEnd })
 
-      try {
-        const keydown = new KeyboardEvent('keydown', {
-          key: 'Enter',
-          code: 'Enter',
-          ctrlKey: true,
-          bubbles: true,
-          cancelable: true,
-        })
-        field.dispatchEvent(keydown)
-      } catch {}
+      if (field) {
+        keyboardMathfieldSyncRef.current = true
+        try {
+          field.setValue(next.value)
+          try {
+            ;(field as any).setSelection?.(next.selectionStart, next.selectionEnd)
+          } catch {}
+          try {
+            ;(field as any).position = next.selectionEnd
+          } catch {}
+        } finally {
+          keyboardMathfieldSyncRef.current = false
+        }
+        syncKeyboardMathfieldState(field)
+      }
 
-      try {
-        const keyup = new KeyboardEvent('keyup', {
-          key: 'Enter',
-          code: 'Enter',
-          ctrlKey: true,
-          bubbles: true,
-          cancelable: true,
-        })
-        field.dispatchEvent(keyup)
-      } catch {}
-
-      try {
-        field.executeCommand?.('insertLineBreak')
-      } catch {}
-
-      syncKeyboardMathfieldState(field)
       return true
     }
 
@@ -11210,7 +11199,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       event.preventDefault()
       if (recognitionEngineRef.current === 'keyboard') {
         if (!canCreateTopPanelStepFromEnter) {
-          void triggerMathfieldCtrlEnter()
+          void appendMathfieldLatexLineBreak()
           return
         }
 

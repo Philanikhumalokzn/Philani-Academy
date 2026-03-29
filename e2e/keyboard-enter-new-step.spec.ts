@@ -174,11 +174,6 @@ test.describe('keyboard enter-like key new-step flow', () => {
 
     await waitForEnterToBecomeStepCommit(page)
 
-    // Read baseline committed step count from top-panel editing mode.
-    await toggleEditingMode(page)
-    const baselineCount = await page.locator('[data-top-panel-step]').count()
-    await toggleEditingMode(page)
-
     const xKey = page.locator('button[title="x"]').first()
     const plusKey = page.locator('button[title="plus"]').first()
     const keyboardField = page.locator('math-field.keyboard-mathlive-field').first()
@@ -213,16 +208,13 @@ test.describe('keyboard enter-like key new-step flow', () => {
     const afterValue = (await keyboardDebugInput.inputValue().catch(() => '')).trim()
     expect(afterValue).toBe('')
 
-    // Wait for state update and rendering before checking step count
+    // Wait for state update and rendering before checking the top KaTeX display.
     await page.waitForTimeout(800)
 
-    await toggleEditingMode(page)
-    const afterCount = await page.locator('[data-top-panel-step]').count()
-
-    expect(afterCount).toBeGreaterThan(baselineCount)
-
-    // Sanity: latest committed step should expose visible math text.
-    const latestStepText = await page.locator('[data-top-panel-step]').last().innerText().catch(() => '')
-    expect((latestStepText || '').trim().length).toBeGreaterThan(0)
+    const topDisplay = page.locator('[data-top-panel-katex-display="true"]').first()
+    await expect(topDisplay).toBeVisible({ timeout: 10_000 })
+    const renderedText = ((await topDisplay.innerText().catch(() => '')) || '').replace(/\s+/g, '')
+    expect(renderedText.length).toBeGreaterThan(0)
+    expect(renderedText).toContain('x+x')
   })
 })

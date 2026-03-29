@@ -11394,14 +11394,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     return (
       <div
-        ref={keyboardSurfaceRef}
-        className="absolute inset-0 z-30 overflow-hidden bg-white select-none keyboard-symbol-font"
+        className="absolute inset-0 z-30 flex flex-col overflow-hidden bg-white select-none keyboard-symbol-font"
         style={{ WebkitUserSelect: 'none', userSelect: 'none', touchAction: 'none' }}
-        onPointerDown={handleKeyboardSurfacePointerDown}
-        onPointerMove={handleKeyboardSurfacePointerMove}
-        onPointerUp={handleKeyboardSurfacePointerEnd}
-        onPointerCancel={handleKeyboardSurfacePointerEnd}
       >
+        <div className="shrink-0 border-b border-slate-200 bg-slate-50/80 px-3 py-3">
+          <div className="h-[6.5rem] sm:h-[7.5rem]">
+            {renderKeyboardBottomPanelPreviewSurface()}
+          </div>
+        </div>
+        <div
+          ref={keyboardSurfaceRef}
+          className="relative flex-1 overflow-hidden"
+          onPointerDown={handleKeyboardSurfacePointerDown}
+          onPointerMove={handleKeyboardSurfacePointerMove}
+          onPointerUp={handleKeyboardSurfacePointerEnd}
+          onPointerCancel={handleKeyboardSurfacePointerEnd}
+        >
         <div className="flex h-full w-full items-center justify-center px-1 py-1.5 sm:px-4 sm:py-4">
           <div className="flex flex-col items-center gap-3 sm:gap-3">
             <div className="flex items-center justify-center gap-3 sm:gap-3">
@@ -11688,6 +11696,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             </div>
           </div>
         ) : null}
+        </div>
       </div>
     )
   }
@@ -12274,6 +12283,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           : latexDisplayState.options
   const latexRenderSource = useMemo(() => {
     if (useAdminStepComposer) {
+      if (recognitionEngine === 'keyboard') {
+        const lines = keyboardSteps.map(step => normalizeStepLatex(step?.latex || ''))
+        const draft = normalizeStepLatex(latexOutput || '')
+        if (keyboardEditIndex !== null) {
+          if (draft) {
+            lines[keyboardEditIndex] = draft
+          }
+        } else if (draft) {
+          lines.push(draft)
+        }
+        const composed = lines.filter(Boolean).join(' \\ ').trim()
+        return composed || (latexDisplayState.latex || latexOutput || '').trim()
+      }
       const lines = adminSteps.map(s => s.latex)
       if (adminEditIndex !== null) {
         if (adminDraftLatex) {
@@ -12317,7 +12339,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return (stackedNotesState.latex || '').trim()
     }
     return (latexDisplayState.latex || '').trim()
-  }, [adminDraftLatex, adminEditIndex, adminSteps, hasWriteAccess, canOrchestrateLesson, isAssignmentView, latexDisplayState.latex, latexOutput, quizActive, stackedNotesState.latex, studentCommittedLatex, studentEditIndex, studentSteps, useAdminStepComposer, useStackedStudentLayout, useStudentStepComposer])
+  }, [adminDraftLatex, adminEditIndex, adminSteps, hasWriteAccess, canOrchestrateLesson, isAssignmentView, keyboardEditIndex, keyboardSteps, latexDisplayState.latex, latexOutput, normalizeStepLatex, quizActive, recognitionEngine, stackedNotesState.latex, studentCommittedLatex, studentEditIndex, studentSteps, useAdminStepComposer, useStackedStudentLayout, useStudentStepComposer])
 
   useEffect(() => {
     latexRenderSourceRef.current = latexRenderSource || ''
@@ -12444,6 +12466,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   const topPanelStepsPayload: TopPanelStepsPayload | null = useMemo(() => {
     if (!topPanelEditingMode) return null
+    if (recognitionEngine === 'keyboard') return null
     if (useAdminStepComposer) {
       return {
         steps: adminTopPanelStepItems,
@@ -12461,7 +12484,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       }
     }
     return null
-  }, [adminEditIndex, adminTopPanelStepItems, studentEditIndex, studentTopPanelStepItems, topPanelEditingMode, topPanelPayload.options, topPanelSelectedStep, useAdminStepComposer, useStudentStepComposer])
+  }, [adminEditIndex, adminTopPanelStepItems, recognitionEngine, studentEditIndex, studentTopPanelStepItems, topPanelEditingMode, topPanelPayload.options, topPanelSelectedStep, useAdminStepComposer, useStudentStepComposer])
 
   const activeComposerEditIndex = useMemo(() => {
     if (useAdminStepComposer) return adminEditIndex
@@ -12711,117 +12734,37 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const renderKeyboardTypesetEditorSurface = useCallback((
     compact = false,
     attachFocusRef = false,
-    typesetPreviewRef?: { current: HTMLDivElement | null },
-    slotRefs?: { current: Array<HTMLSpanElement | null> },
   ) => {
-    const useMathLiveOnTopPanel = attachFocusRef
-    
-    if (useMathLiveOnTopPanel) {
+    if (attachFocusRef) {
       return (
-        <div className="flex h-full w-full flex-col">
-          {topPanelEditingMode ? (
-            <div className="max-h-[45%] shrink-0 overflow-auto border-b border-slate-200 bg-white/95 px-3 py-2">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
-                <div>
-                  {keyboardEditIndex !== null
-                    ? `Editing step ${keyboardEditIndex + 1}. Tap New step to start a fresh draft.`
-                    : 'Tap a step to edit it, or start a new step.'}
-                </div>
-                <button
-                  type="button"
-                  className="rounded border border-slate-200 bg-white px-2 py-1 text-slate-700 hover:bg-slate-50"
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    startNewKeyboardStepDraft()
-                  }}
-                >
-                  New step
-                </button>
-              </div>
-              {keyboardSteps.length ? (
-                keyboardSteps.map((step, index) => {
-                  const latex = (keyboardEditIndex === index ? keyboardTopPanelExpression : (step?.latex || '')).trimEnd()
-                  const html = renderLatexStepInline(latex)
-                  const selected = topPanelSelectedStep === index
-                  const isEditing = keyboardEditIndex === index
-                  return (
-                    <div key={`keyboard-step-${index}`} className="py-1" data-top-panel-step-shell data-step-idx={String(index)}>
-                      <button
-                        type="button"
-                        data-top-panel-step
-                        data-step-idx={String(index)}
-                        className={`min-w-0 w-full rounded px-2 py-1 text-center focus:outline-none focus:ring-0 ${selected ? 'border border-slate-300 bg-slate-100' : 'border border-transparent bg-transparent hover:bg-slate-50'}`}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onClick={(event) => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          loadKeyboardStepForEditing(index)
-                        }}
-                      >
-                        <span className="mr-2 inline-block min-w-[2.25rem] text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                          {isEditing ? 'Edit' : `Step ${index + 1}`}
-                        </span>
-                        {html ? (
-                          <span className="inline align-middle" dangerouslySetInnerHTML={{ __html: html }} />
-                        ) : (
-                          <span className="text-slate-500">&nbsp;</span>
-                        )}
-                      </button>
-                    </div>
-                  )
-                })
-              ) : (
-                <div className="py-2 text-center text-[11px] text-slate-400">No committed steps yet.</div>
-              )}
-            </div>
-          ) : null}
-          <div className="flex h-full w-full items-center justify-center">
-            <div className={`relative h-full w-full ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}>
-              <div
-                ref={setKeyboardMathfieldHostNodeRef}
-                className={`h-full w-full overflow-hidden rounded-[10px] ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
-              />
-            </div>
+        <div className="flex h-full w-full items-center justify-center">
+          <div className={`relative h-full w-full ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}>
+            <div
+              ref={setKeyboardMathfieldHostNodeRef}
+              className={`h-full w-full overflow-hidden rounded-[10px] border border-slate-200 bg-white ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
+            />
           </div>
         </div>
       )
     }
-    
+
     return (
       <div className="flex h-full w-full items-center justify-center">
-        <div
-          className={`relative flex h-full w-full items-center justify-center overflow-hidden px-2 py-1 text-center text-slate-600 outline-none select-none ${compact ? 'min-h-[2.75rem]' : ''}`}
-        >
+        <div className={`relative flex h-full w-full items-center justify-center overflow-hidden px-2 py-1 text-center text-slate-600 outline-none select-none ${compact ? 'min-h-[2.75rem]' : ''}`}>
           <span className={`text-center ${compact ? 'text-xs' : 'text-sm'}`}>
-            Tap the top field to place the caret. The keyboard writes into the top field only.
+            Use the math field below to edit the current step.
           </span>
         </div>
       </div>
     )
-  }, [
-    clearTopPanelSelection,
-    keyboardEditIndex,
-    keyboardSteps,
-    keyboardTopPanelExpression,
-    loadKeyboardStepForEditing,
-    renderLatexStepInline,
-    scheduleKeyboardFadeOut,
-    setMobileTopPanelActionStepIndex,
-    setOverlayChromePeekVisible,
-    setTopPanelEditingMode,
-    startNewKeyboardStepDraft,
-    topPanelEditingMode,
-    topPanelSelectedStep,
-  ])
+  }, [])
 
   const renderKeyboardTopPanelEditorSurface = useCallback(() => {
-    return renderKeyboardTypesetEditorSurface(false, true, keyboardTopTypesetPreviewRef, keyboardTopCaretSlotRefs)
+    return renderKeyboardTypesetEditorSurface(false, true)
   }, [renderKeyboardTypesetEditorSurface])
 
   const renderKeyboardBottomPanelPreviewSurface = useCallback(() => {
-    return renderKeyboardTypesetEditorSurface(true, false, keyboardBottomTypesetPreviewRef, keyboardBottomCaretSlotRefs)
+    return renderKeyboardTypesetEditorSurface(false, true)
   }, [renderKeyboardTypesetEditorSurface])
 
   const finishQuestionSourceLatex = useMemo(() => {
@@ -16757,19 +16700,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   className="relative flex-1 min-h-0 w-full overflow-visible"
                   ref={(useAdminStepComposer || useStudentStepComposer) ? adminTopPanelRef : undefined}
                   onPointerDown={(e) => {
-                    if (recognitionEngine === 'keyboard') {
-                      const target = e.target as HTMLElement | null
-                      const isTextFieldTap = target?.tagName === 'INPUT' || target?.closest?.('input') || target?.tagName === 'MATH-FIELD' || target?.closest?.('math-field')
-                      if (isTextFieldTap) {
-                        e.stopPropagation()
-                        return
-                      }
-                      e.stopPropagation()
-                      e.preventDefault()
-                      focusKeyboardExpressionAtTap(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect(), keyboardTopTypesetPreviewRef, keyboardTopCaretSlotRefs)
-                      return
-                    }
-
                     if ((useAdminStepComposer || useStudentStepComposer) && topPanelEditingMode) {
                       // Step-recall mode: tap a step line to restore its ink for editing.
                       const target = e.target as HTMLElement | null
@@ -16999,9 +16929,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     </div>
                   )}
                   {hasWriteAccess ? (
-                    recognitionEngine === 'keyboard' ? (
-                      renderKeyboardTopPanelEditorSurface()
-                    ) : topPanelStepsPayload ? (
+                    topPanelStepsPayload ? (
                       topPanelStepsPayload.steps.length ? (
                         <div
                           className="text-slate-900 leading-relaxed text-center"
@@ -17213,6 +17141,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       )
                     ) : topPanelRenderPayload.markup ? (
                       <div
+                        data-top-panel-katex-display="true"
                         className="text-slate-900 leading-relaxed"
                         style={topPanelRenderPayload.style}
                         dangerouslySetInnerHTML={{ __html: topPanelRenderPayload.markup }}
@@ -17232,10 +17161,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
                       {!hasWriteAccess && quizActive && !isAssignmentView ? (
                         <>
-                          {recognitionEngine === 'keyboard' ? (
-                            renderKeyboardTopPanelEditorSurface()
-                          ) : topPanelRenderPayload.markup ? (
+                          {topPanelRenderPayload.markup ? (
                             <div
+                              data-top-panel-katex-display="true"
                               className="text-slate-700 font-semibold leading-relaxed"
                               style={topPanelRenderPayload.style}
                               dangerouslySetInnerHTML={{ __html: topPanelRenderPayload.markup }}
@@ -17246,13 +17174,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                             </div>
                           )}
                         </>
-                          ) : recognitionEngine === 'keyboard' ? (
-                        renderKeyboardTopPanelEditorSurface()
-                          ) : topPanelRenderPayload.markup ? (
+                      ) : topPanelRenderPayload.markup ? (
                         <div
+                          data-top-panel-katex-display="true"
                           className="text-slate-900 leading-relaxed"
-                              style={topPanelRenderPayload.style}
-                              dangerouslySetInnerHTML={{ __html: topPanelRenderPayload.markup }}
+                          style={topPanelRenderPayload.style}
+                          dangerouslySetInnerHTML={{ __html: topPanelRenderPayload.markup }}
                         />
                       ) : isAssignmentView ? null : (
                         <div className="w-full h-full flex items-center justify-center">
@@ -17261,10 +17188,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       )}
                     </div>
                   ) : latexDisplayState.enabled ? (
-                    recognitionEngine === 'keyboard' ? (
-                      renderKeyboardTopPanelEditorSurface()
-                    ) : topPanelRenderPayload.markup ? (
+                    topPanelRenderPayload.markup ? (
                       <div
+                        data-top-panel-katex-display="true"
                         className="text-slate-900 leading-relaxed"
                         style={topPanelRenderPayload.style}
                         dangerouslySetInnerHTML={{ __html: topPanelRenderPayload.markup }}

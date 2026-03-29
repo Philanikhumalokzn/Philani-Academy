@@ -216,5 +216,21 @@ test.describe('keyboard enter-like key new-step flow', () => {
     const renderedText = ((await topDisplay.innerText().catch(() => '')) || '').replace(/\s+/g, '')
     expect(renderedText.length).toBeGreaterThan(0)
     expect(renderedText).toContain('x+x')
+
+    // Start composing a second step. The top display should continue showing only
+    // committed content until the next enter-like commit happens.
+    const yKey = page.locator('button[title="y"]').first()
+    await expect(yKey).toBeVisible({ timeout: 10_000 })
+    await yKey.click()
+    await plusKey.click()
+    await yKey.click()
+    await page.waitForTimeout(600)
+
+    const draftValue = (await keyboardDebugInput.inputValue().catch(() => '')).replace(/\s+/g, '')
+    expect(draftValue).toBe('y+y')
+
+    const renderedAfterDraft = ((await topDisplay.innerText().catch(() => '')) || '').replace(/\s+/g, '')
+    expect(renderedAfterDraft).toContain('x+x')
+    expect(renderedAfterDraft).not.toContain('y+y')
   })
 })

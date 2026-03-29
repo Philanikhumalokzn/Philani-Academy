@@ -217,8 +217,8 @@ test.describe('keyboard enter-like key new-step flow', () => {
     expect(renderedText.length).toBeGreaterThan(0)
     expect(renderedText).toContain('x+x')
 
-    // Start composing a second step. The top display should continue showing only
-    // committed content until the next enter-like commit happens.
+    // Start composing a second step. The top display should preview the live draft
+    // above while preserving the already committed content.
     const yKey = page.locator('button[title="y"]').first()
     await expect(yKey).toBeVisible({ timeout: 10_000 })
     await yKey.click()
@@ -231,7 +231,7 @@ test.describe('keyboard enter-like key new-step flow', () => {
 
     const renderedAfterDraft = ((await topDisplay.innerText().catch(() => '')) || '').replace(/\s+/g, '')
     expect(renderedAfterDraft).toContain('x+x')
-    expect(renderedAfterDraft).not.toContain('y+y')
+    expect(renderedAfterDraft).toContain('y+y')
 
     await clickBottomRightEnterKey(page)
     await page.waitForTimeout(1500)

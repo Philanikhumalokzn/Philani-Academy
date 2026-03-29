@@ -12285,6 +12285,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (useAdminStepComposer) {
       if (recognitionEngine === 'keyboard') {
         const lines = keyboardSteps.map(step => normalizeStepLatex(step?.latex || ''))
+        const draft = normalizeStepLatex(latexOutput || '')
+        if (keyboardEditIndex !== null) {
+          if (draft) {
+            lines[keyboardEditIndex] = draft
+          }
+        } else if (draft) {
+          lines.push(draft)
+        }
         const composed = lines.filter(Boolean).join(' \\\\ ').trim()
         return composed || (latexDisplayState.latex || '').trim()
       }

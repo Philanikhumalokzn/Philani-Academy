@@ -16,10 +16,8 @@ math-field.keyboard-mathlive-field {
 }
 
 math-field.keyboard-mathlive-field::part(container) {
-  border: 1px solid rgba(15, 23, 42, 0.2);
-  border-radius: 10px;
   min-height: 100%;
-  padding: 0.5rem 0.75rem;
+  padding: 0;
 }
 
 /* Use the same math-oriented glyph stack for keyboard symbol labels. */

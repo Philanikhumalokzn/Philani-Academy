@@ -2773,7 +2773,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
         field = new MathfieldElement()
         keyboardMathfieldRef.current = field
-        field.className = 'keyboard-mathlive-field block h-full w-full rounded-[10px] border border-[rgba(15,23,42,0.2)] bg-white px-3 py-2 text-slate-900'
+        field.className = 'keyboard-mathlive-field block h-full w-full bg-white text-slate-900'
         field.setAttribute('aria-label', 'Keyboard expression')
         field.setAttribute('spellcheck', 'false')
         field.mathVirtualKeyboardPolicy = 'manual'
@@ -16555,7 +16555,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         {useStackedStudentLayout && (
           <div
             ref={studentStackRef}
-            className="border rounded bg-white p-0 shadow-sm flex flex-col relative"
+            className="bg-white p-0 shadow-sm flex flex-col relative"
             style={{
               flex: isOverlayMode ? 1 : undefined,
               minHeight: isOverlayMode ? '100%' : '520px',

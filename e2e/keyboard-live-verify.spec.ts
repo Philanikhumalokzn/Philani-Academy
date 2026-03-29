@@ -50,6 +50,21 @@ const dispatchElementClick = async (locator: Locator) => {
   await locator.dispatchEvent('click', { bubbles: true })
 }
 
+const ensureBoardCanvasReady = async (page: Page) => {
+  const gradePrompt = page.getByText(/Choose a grade to open the shared board\./i)
+  if (await gradePrompt.isVisible().catch(() => false)) {
+    const gradeSelect = page.getByRole('combobox', { name: /choose grade/i })
+    await expect(gradeSelect).toBeVisible({ timeout: 15_000 })
+    // Default to Grade 8 for E2E bootstrap when no active grade is selected yet.
+    await gradeSelect.selectOption({ label: 'Grade 8' })
+    await expect(gradePrompt).toBeHidden({ timeout: 20_000 })
+  }
+
+  const editorSurface = page.locator('.ms-editor').last()
+  await expect(editorSurface).toBeVisible({ timeout: 30_000 })
+  return editorSurface
+}
+
 test.describe('live keyboard verification', () => {
   test.setTimeout(180_000)
 
@@ -65,18 +80,10 @@ test.describe('live keyboard verification', () => {
     await page.goto(toAbsoluteUrl('/auth/signin'), { waitUntil: 'domcontentloaded' })
     await fillSignIn(page)
 
-    if (!/\/dashboard/i.test(page.url())) {
-      await page.goto(toAbsoluteUrl('/dashboard'), { waitUntil: 'domcontentloaded' })
-    }
+    await page.goto(toAbsoluteUrl('/board'), { waitUntil: 'domcontentloaded' })
+    await page.waitForTimeout(4_000)
 
-    const enterClassButton = page.getByRole('button', { name: /enter class/i }).first()
-    await expect(enterClassButton).toBeVisible({ timeout: 30_000 })
-    await enterClassButton.click()
-
-    await page.waitForTimeout(8_000)
-
-    const editorSurface = page.locator('.ms-editor').last()
-    await expect(editorSurface).toBeVisible({ timeout: 30_000 })
+    const editorSurface = await ensureBoardCanvasReady(page)
 
     const readKeyboardButtons = async () => page.locator('button[title]').evaluateAll((nodes) =>
       nodes.map((node) => {
@@ -191,17 +198,10 @@ test.describe('live keyboard verification', () => {
     await page.goto(toAbsoluteUrl('/auth/signin'), { waitUntil: 'domcontentloaded' })
     await fillSignIn(page)
 
-    if (!/\/dashboard/i.test(page.url())) {
-      await page.goto(toAbsoluteUrl('/dashboard'), { waitUntil: 'domcontentloaded' })
-    }
+    await page.goto(toAbsoluteUrl('/board'), { waitUntil: 'domcontentloaded' })
+    await page.waitForTimeout(4_000)
 
-    const enterClassButton = page.getByRole('button', { name: /enter class/i }).first()
-    await expect(enterClassButton).toBeVisible({ timeout: 30_000 })
-    await enterClassButton.click()
-    await page.waitForTimeout(8_000)
-
-    const editorSurface = page.locator('.ms-editor').last()
-    await expect(editorSurface).toBeVisible({ timeout: 30_000 })
+    const editorSurface = await ensureBoardCanvasReady(page)
 
     const xKey = page.locator('button[title="x"]').first()
     const plusKey = page.locator('button[title="plus"]').first()
@@ -218,12 +218,15 @@ test.describe('live keyboard verification', () => {
       if (i < 5) await triggerRepresentativeTap(page, plusKey)
     }
 
-    const topPanel = page.locator('div.h-full.bg-white.rounded-lg.p-3.overflow-visible.relative').first()
+    const topPanel = page.locator('math-field.keyboard-mathlive-field').first()
     await expect(topPanel).toBeVisible({ timeout: 10_000 })
 
     const readTopLatex = async () => {
-      const text = await topPanel.locator('annotation[encoding="application/x-tex"]').first().textContent()
-      return (text || '').trim()
+      const value = await topPanel.evaluate((node) => {
+        const field = node as HTMLElement & { value?: string }
+        return String(field.value || '')
+      })
+      return value.trim()
     }
 
     const beforeTapLatex = await readTopLatex()

@@ -3643,7 +3643,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   // This powers the multi-step editing UX (commit steps, recall/edit steps, step-boundary undo/redo).
   const useAdminStepComposer = Boolean(
     useStackedStudentLayout
-    && hasBoardWriteRights()
+    && (canOrchestrateLesson || hasBoardWriteRights())
     // Do not enable the admin step-composer on single-user canvases (assignments/challenges).
     // Those flows use `studentCommittedLatex` + `latexOutput` and should append steps as new lines.
     && (canOrchestrateLesson || (!forceEditableForAssignment && !forceEditable))
@@ -11161,14 +11161,129 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return <span className="text-sm font-normal">{action.label ?? action.title}</span>
     }
 
-    const canCreateTopPanelStepFromEnter = hasWriteAccess && (useAdminStepComposer || useStudentStepComposer)
+    const canCreateTopPanelStepFromEnter = canUseAdminSend && (useAdminStepComposer || useStudentStepComposer)
+
+    const triggerMathfieldCtrlEnter = () => {
+      const field = keyboardMathfieldRef.current as (MathfieldElementType & {
+        executeCommand?: (command: any) => unknown
+      }) | null
+      if (!field) return false
+
+      try {
+        field.focus()
+      } catch {}
+
+      try {
+        const keydown = new KeyboardEvent('keydown', {
+          key: 'Enter',
+          code: 'Enter',
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        })
+        field.dispatchEvent(keydown)
+      } catch {}
+
+      try {
+        const keyup = new KeyboardEvent('keyup', {
+          key: 'Enter',
+          code: 'Enter',
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        })
+        field.dispatchEvent(keyup)
+      } catch {}
+
+      try {
+        field.executeCommand?.('insertLineBreak')
+      } catch {}
+
+      syncKeyboardMathfieldState(field)
+      return true
+    }
 
     const handleKeyboardEnterLikeButton = (
       event: React.PointerEvent<HTMLButtonElement> | React.MouseEvent<HTMLButtonElement>,
     ) => {
       event.stopPropagation()
-      if (!canCreateTopPanelStepFromEnter) return
       event.preventDefault()
+      if (recognitionEngineRef.current === 'keyboard') {
+        if (!canCreateTopPanelStepFromEnter) {
+          void triggerMathfieldCtrlEnter()
+          return
+        }
+
+        const fieldLatex = keyboardMathfieldRef.current?.getValue('latex') || ''
+        const sourceLatex = fieldLatex || latexOutputRef.current || ''
+        const normalized = normalizeStepLatex(sourceLatex)
+        if (!normalized) return
+
+        if (useAdminStepComposer) {
+          setAdminSteps(prev => {
+            const next = [...prev]
+            if (adminEditIndex !== null && adminEditIndex >= 0 && adminEditIndex < next.length) {
+              next[adminEditIndex] = {
+                latex: normalized,
+                symbols: null,
+                jiix: null,
+                rawStrokes: null,
+                strokeGroups: null,
+              }
+            } else {
+              next.push({
+                latex: normalized,
+                symbols: null,
+                jiix: null,
+                rawStrokes: null,
+                strokeGroups: null,
+              })
+            }
+            return next
+          })
+          setAdminEditIndex(null)
+          setAdminDraftLatex('')
+          activeStepEditBaselineRef.current = null
+        }
+
+        if (useStudentStepComposer) {
+          setStudentSteps(prev => {
+            const next = [...prev]
+            if (studentEditIndex !== null && studentEditIndex >= 0 && studentEditIndex < next.length) {
+              next[studentEditIndex] = {
+                latex: normalized,
+                symbols: null,
+                jiix: null,
+                rawStrokes: null,
+                strokeGroups: null,
+              }
+            } else {
+              next.push({
+                latex: normalized,
+                symbols: null,
+                jiix: null,
+                rawStrokes: null,
+                strokeGroups: null,
+              })
+            }
+            return next
+          })
+          setStudentEditIndex(null)
+        }
+
+        setLatexOutput('')
+        latexOutputRef.current = ''
+        setKeyboardSelectionState({ start: 0, end: 0 })
+        clearTopPanelSelection()
+
+        const field = keyboardMathfieldRef.current
+        if (field) {
+          field.executeCommand('deleteAll')
+          syncKeyboardMathfieldState(field)
+        }
+        return
+      }
+
       if (adminSendingStep || lockedOutRef.current) return
       void handleSendStepClick()
     }

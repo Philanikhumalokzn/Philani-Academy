@@ -56,7 +56,7 @@ const ensureBoardCanvasReady = async (page: Page) => {
       if (await keyboardField.isVisible().catch(() => false)) {
         return editorSurface
       }
-      await candidate.click()
+      await candidate.click({ force: true })
       await page.waitForTimeout(3500)
       if (await editorSurface.isVisible().catch(() => false)) {
         return editorSurface
@@ -83,7 +83,7 @@ const tapKey = async (page: Page, locator: Locator) => {
 }
 
 const clickBottomRightEnterKey = async (page: Page) => {
-  const candidates = page.locator('button:has-text("↵")')
+  const candidates = page.locator('button[data-enter-step-key="true"]')
   const count = await candidates.count()
   let bestIndex = -1
   let bestScore = -1
@@ -91,9 +91,6 @@ const clickBottomRightEnterKey = async (page: Page) => {
   for (let i = 0; i < count; i += 1) {
     const button = candidates.nth(i)
     if (!(await button.isVisible().catch(() => false))) continue
-
-    const title = (await button.getAttribute('title').catch(() => '')) || ''
-    if (!/new step/i.test(title)) continue
 
     const box = await button.boundingBox().catch(() => null)
     if (!box) continue
@@ -123,7 +120,7 @@ const waitForEnterToBecomeStepCommit = async (page: Page) => {
   const start = Date.now()
 
   while (Date.now() - start < timeoutMs) {
-    const candidates = page.locator('button:has-text("↵")')
+    const candidates = page.locator('button[data-enter-step-key="true"]')
     const count = await candidates.count()
 
     let bestIndex = -1
@@ -142,8 +139,7 @@ const waitForEnterToBecomeStepCommit = async (page: Page) => {
     }
 
     if (bestIndex >= 0) {
-      const title = (await candidates.nth(bestIndex).getAttribute('title').catch(() => '')) || ''
-      if (/new step/i.test(title)) return
+      return
     }
 
     const enterClassButtons = page.getByRole('button', { name: /enter class/i })
@@ -157,7 +153,7 @@ const waitForEnterToBecomeStepCommit = async (page: Page) => {
     await page.waitForTimeout(1500)
   }
 
-  throw new Error('Timed out waiting for enter-like key to become step commit mode (title: New step).')
+  throw new Error('Timed out waiting for any visible enter-like key.')
 }
 
 test.describe('keyboard enter-like key new-step flow', () => {

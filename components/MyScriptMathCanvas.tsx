@@ -11475,15 +11475,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               })}
               <button
                 type="button"
+                data-enter-step-key="true"
                 className="inline-flex select-none items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-900 shadow-sm hover:bg-slate-100"
                 style={{ position: 'absolute', left: 276, top: 292, width: 40, height: 28, padding: 0 }}
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => {
                   event.stopPropagation()
-                  const field = keyboardMathfieldRef.current
-                  if (field) field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true }))
+                  void handleSendStepClick()
                 }}
-                title="Enter"
+                title="New step"
               >
                 <span className="text-sm font-normal leading-none">↵</span>
               </button>
@@ -11601,14 +11601,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     })}
                     <button
                       type="button"
+                      data-enter-step-key="true"
                       className="inline-flex h-10 min-w-0 flex-[1.25] select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-1.5 text-white shadow-sm sm:h-11 sm:px-2 hover:bg-slate-700"
                       onPointerDown={(event) => event.stopPropagation()}
                       onClick={(event) => {
                         event.stopPropagation()
-                        const field = keyboardMathfieldRef.current
-                        if (field) field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true }))
+                        void handleSendStepClick()
                       }}
-                      title="Enter"
+                      title="New step"
                     >
                       <span className="text-[1.05rem] font-normal leading-none">↵</span>
                     </button>

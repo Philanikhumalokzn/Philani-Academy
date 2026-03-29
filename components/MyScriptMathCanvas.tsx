@@ -2744,8 +2744,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const syncKeyboardMathfieldState = useCallback((mathfield?: MathfieldElementType | null) => {
     const field = mathfield ?? keyboardMathfieldRef.current
     if (!field) return
-    const nextValue = field.getValue('latex') || ''
+    const displayValue = field.getValue('latex') || ''
     const nextPosition = typeof field.position === 'number' ? field.position : 0
+    // Reconstruct the full accumulated value: keep all previous \\ segments and
+    // replace only the last segment with what the mathfield now contains.
+    const stored = latexOutputRef.current || ''
+    const storedSegments = stored.split(/\\\\/)
+    storedSegments[storedSegments.length - 1] = ` ${displayValue} `
+    const nextValue = storedSegments.length > 1
+      ? storedSegments.join(' \\\\ ')
+      : displayValue
     setLatexOutput(nextValue)
     latexOutputRef.current = nextValue
     if (useAdminStepComposerRef.current && canOrchestrateLesson) {
@@ -2848,11 +2856,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const currentValue = field.getValue('latex') || ''
     const nextValue = latexOutput || ''
-    if (currentValue === nextValue) return
+    // Show only the last segment after \\ separators so the mathfield never
+    // renders raw backslash tokens from the step-separator syntax.
+    const segments = nextValue.split(/\\\\/)
+    const displayValue = (segments[segments.length - 1] ?? '').trim()
+    if (currentValue === displayValue) return
 
     keyboardMathfieldSyncRef.current = true
     try {
-      field.setValue(nextValue)
+      field.setValue(displayValue)
       const nextPosition = typeof field.position === 'number' ? field.position : 0
       setKeyboardSelectionState({ start: nextPosition, end: nextPosition })
     } finally {

@@ -243,6 +243,7 @@ test.describe('keyboard enter-like key new-step flow', () => {
     const renderedAfterSecondCommit = renderedAfterSecondCommitRaw.replace(/\s+/g, '')
     expect(renderedAfterSecondCommit).toContain('x+x')
     expect(renderedAfterSecondCommit).toContain('y+y')
+    await topDisplay.screenshot({ path: 'test-results/keyboard-top-display-after-second-commit.png' })
 
     const committedLines = renderedAfterSecondCommitRaw
       .split(/\r?\n/)

@@ -11481,7 +11481,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => {
                   event.stopPropagation()
-                  void handleSendStepClick()
+                  onKeyboardEnterButtonClick()
                 }}
                 title="New step"
               >
@@ -11606,7 +11606,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       onPointerDown={(event) => event.stopPropagation()}
                       onClick={(event) => {
                         event.stopPropagation()
-                        void handleSendStepClick()
+                        onKeyboardEnterButtonClick()
                       }}
                       title="New step"
                     >
@@ -14199,11 +14199,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, clearTopPanelSelection, exportLatexFromEngine, forceEditableForAssignment, getLatexFromEngineModel, hasWriteAccess, invalidatePendingLatexPreviewWork, latexOutput, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, studentEditIndex, studentSteps, updateControlState, userDisplayName, userId])
 
-  const commitKeyboardStep = useCallback(async () => {
-    const step = latexOutputRef.current || ''
-    const normalized = normalizeStepLatex(step)
-    if (!normalized) return false
+  const onKeyboardEnterButtonClick = useCallback(() => {
+    const step = latexOutputRef.current?.trim()
+    if (!step) return
 
+    const normalized = normalizeStepLatex(step)
+    if (!normalized) return
+
+    // Append keyboard step to admin steps
     setAdminSteps(prev => [
       ...prev,
       {
@@ -14214,12 +14217,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         strokeGroups: null,
       }
     ])
-    setAdminDraftLatex('')
-    setAdminEditIndex(null)
+
+    // Clear keyboard state
     setLatexOutput('')
     latexOutputRef.current = ''
+    setAdminDraftLatex('')
+    setAdminEditIndex(null)
     clearTopPanelSelection()
-    return true
   }, [normalizeStepLatex, clearTopPanelSelection])
 
   const handleSendStepClick = useCallback(async () => {
@@ -14230,13 +14234,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     const editor = editorInstanceRef.current
-    // If no ink editor, try keyboard-only commit
-    if (!editor) {
-      await commitKeyboardStep()
-      return
-    }
-    if (lockedOutRef.current) return
-    if (adminSendingStep) return
+    if (!editor) return
 
     if (canOrchestrateLesson && !isAssignmentSolutionAuthoring) {
       const emptyCanvas = isEditorEmptyNow()
@@ -14396,7 +14394,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     getDefaultStackedScrollLeft,
     horizontalPanMax,
     studentQuizCommitOrSubmit,
-    commitKeyboardStep,
   ])
 
   useEffect(() => {

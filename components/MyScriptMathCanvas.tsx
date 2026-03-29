@@ -11161,6 +11161,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return <span className="text-sm font-normal">{action.label ?? action.title}</span>
     }
 
+    const canCreateTopPanelStepFromEnter = hasWriteAccess && (useAdminStepComposer || useStudentStepComposer)
+
+    const handleKeyboardEnterLikeButton = (
+      event: React.PointerEvent<HTMLButtonElement> | React.MouseEvent<HTMLButtonElement>,
+    ) => {
+      event.stopPropagation()
+      if (!canCreateTopPanelStepFromEnter) return
+      event.preventDefault()
+      void startNewTopPanelStepDraft()
+    }
+
     const buildAnchorFromElement = (keyId: string, element: HTMLElement): KeyboardOverlayAnchor => {
       const rootRect = keyboardSurfaceRef.current?.getBoundingClientRect()
       const elementRect = element.getBoundingClientRect()
@@ -11475,11 +11486,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               })}
               <button
                 type="button"
-                className="inline-flex cursor-default select-none items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-900 shadow-sm"
+                className={`inline-flex select-none items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-900 shadow-sm ${canCreateTopPanelStepFromEnter ? 'cursor-pointer hover:bg-slate-100' : 'cursor-default'}`}
                 style={{ position: 'absolute', left: 276, top: 292, width: 40, height: 28, padding: 0 }}
                 onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => event.stopPropagation()}
-                title="Enter"
+                onClick={handleKeyboardEnterLikeButton}
+                title={canCreateTopPanelStepFromEnter ? 'New step' : 'Enter'}
               >
                 <span className="text-sm font-normal leading-none">↵</span>
               </button>
@@ -11597,9 +11608,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     })}
                     <button
                       type="button"
-                      className="inline-flex h-10 min-w-0 flex-[1.25] cursor-default select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-1.5 text-white shadow-sm sm:h-11 sm:px-2"
+                      className={`inline-flex h-10 min-w-0 flex-[1.25] select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-1.5 text-white shadow-sm sm:h-11 sm:px-2 ${canCreateTopPanelStepFromEnter ? 'cursor-pointer hover:bg-slate-700' : 'cursor-default'}`}
                       onPointerDown={(event) => event.stopPropagation()}
-                      title="Enter"
+                      onClick={handleKeyboardEnterLikeButton}
+                      title={canCreateTopPanelStepFromEnter ? 'New step' : 'Enter'}
                     >
                       <span className="text-[1.05rem] font-normal leading-none">↵</span>
                     </button>

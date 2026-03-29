@@ -208,10 +208,13 @@ test.describe('keyboard enter-like key new-step flow', () => {
 
     // Enter-like key should use send/commit pipeline, not raw clear.
     await clickBottomRightEnterKey(page)
-    await page.waitForTimeout(1200)
+    await page.waitForTimeout(1500)
 
     const afterValue = (await keyboardDebugInput.inputValue().catch(() => '')).trim()
     expect(afterValue).toBe('')
+
+    // Wait for state update and rendering before checking step count
+    await page.waitForTimeout(800)
 
     await toggleEditingMode(page)
     const afterCount = await page.locator('[data-top-panel-step]').count()

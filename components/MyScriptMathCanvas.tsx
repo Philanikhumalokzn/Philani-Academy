@@ -11433,7 +11433,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 <div className="col-span-3 rounded-[1.4rem] bg-slate-900/70 p-2">
                   <div className="grid grid-cols-3 gap-2">
                     <div />
-                    {renderVisibleKeyboardButton({ actionId: buildDynamicClusterKeys().center.actionId, label: buildDynamicClusterKeys().center.label, representativeKeyId: 'letters' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
+                    {renderVisibleKeyboardButton(buildDynamicClusterKeys().center, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
                     {renderVisibleKeyboardButton({ actionId: 'y', representativeKeyId: 'letters' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
                     {renderVisibleKeyboardButton({ actionId: 'theta', label: 'θ', representativeKeyId: 'greek' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-base sm:text-lg font-medium' })}
                     {renderVisibleKeyboardButton({ actionId: 'pi', label: 'π', representativeKeyId: 'greek' }, { className: 'border-transparent bg-slate-600 text-white hover:bg-slate-500 rounded-[999px]', textClassName: 'text-base sm:text-lg font-medium' })}

@@ -11161,122 +11161,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return <span className="text-sm font-normal">{action.label ?? action.title}</span>
     }
 
-    const canCreateTopPanelStepFromEnter = canUseAdminSend && (useAdminStepComposer || useStudentStepComposer)
-
-    const appendMathfieldLatexLineBreak = () => {
-      const field = keyboardMathfieldRef.current
-      const currentValue = field?.getValue('latex') || latexOutputRef.current || ''
-      const lineBreakToken = ' \\\\ '
-      const next = insertKeyboardTextAtSelection(currentValue, lineBreakToken, keyboardSelectionRef.current)
-
-      latexOutputRef.current = next.value
-      setLatexOutput(next.value)
-      setKeyboardSelectionState({ start: next.selectionStart, end: next.selectionEnd })
-
-      if (field) {
-        keyboardMathfieldSyncRef.current = true
-        try {
-          field.setValue(next.value)
-          try {
-            ;(field as any).setSelection?.(next.selectionStart, next.selectionEnd)
-          } catch {}
-          try {
-            ;(field as any).position = next.selectionEnd
-          } catch {}
-        } finally {
-          keyboardMathfieldSyncRef.current = false
-        }
-        syncKeyboardMathfieldState(field)
-      }
-
-      return true
-    }
-
-    const handleKeyboardEnterLikeButton = (
-      event: React.PointerEvent<HTMLButtonElement> | React.MouseEvent<HTMLButtonElement>,
-    ) => {
-      event.stopPropagation()
-      event.preventDefault()
-      if (recognitionEngineRef.current === 'keyboard') {
-        if (!canCreateTopPanelStepFromEnter) {
-          void appendMathfieldLatexLineBreak()
-          return
-        }
-
-        const fieldLatex = keyboardMathfieldRef.current?.getValue('latex') || ''
-        const sourceLatex = fieldLatex || latexOutputRef.current || ''
-        const normalized = normalizeStepLatex(sourceLatex)
-        if (!normalized) return
-
-        if (useAdminStepComposer) {
-          setAdminSteps(prev => {
-            const next = [...prev]
-            if (adminEditIndex !== null && adminEditIndex >= 0 && adminEditIndex < next.length) {
-              next[adminEditIndex] = {
-                latex: normalized,
-                symbols: null,
-                jiix: null,
-                rawStrokes: null,
-                strokeGroups: null,
-              }
-            } else {
-              next.push({
-                latex: normalized,
-                symbols: null,
-                jiix: null,
-                rawStrokes: null,
-                strokeGroups: null,
-              })
-            }
-            return next
-          })
-          setAdminEditIndex(null)
-          setAdminDraftLatex('')
-          activeStepEditBaselineRef.current = null
-        }
-
-        if (useStudentStepComposer) {
-          setStudentSteps(prev => {
-            const next = [...prev]
-            if (studentEditIndex !== null && studentEditIndex >= 0 && studentEditIndex < next.length) {
-              next[studentEditIndex] = {
-                latex: normalized,
-                symbols: null,
-                jiix: null,
-                rawStrokes: null,
-                strokeGroups: null,
-              }
-            } else {
-              next.push({
-                latex: normalized,
-                symbols: null,
-                jiix: null,
-                rawStrokes: null,
-                strokeGroups: null,
-              })
-            }
-            return next
-          })
-          setStudentEditIndex(null)
-        }
-
-        setLatexOutput('')
-        latexOutputRef.current = ''
-        setKeyboardSelectionState({ start: 0, end: 0 })
-        clearTopPanelSelection()
-
-        const field = keyboardMathfieldRef.current
-        if (field) {
-          field.executeCommand('deleteAll')
-          syncKeyboardMathfieldState(field)
-        }
-        return
-      }
-
-      if (adminSendingStep || lockedOutRef.current) return
-      void handleSendStepClick()
-    }
-
     const buildAnchorFromElement = (keyId: string, element: HTMLElement): KeyboardOverlayAnchor => {
       const rootRect = keyboardSurfaceRef.current?.getBoundingClientRect()
       const elementRect = element.getBoundingClientRect()
@@ -11591,11 +11475,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               })}
               <button
                 type="button"
-                className={`inline-flex select-none items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-900 shadow-sm ${canCreateTopPanelStepFromEnter ? 'cursor-pointer hover:bg-slate-100' : 'cursor-default'}`}
+                className="inline-flex select-none items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-900 shadow-sm cursor-default"
                 style={{ position: 'absolute', left: 276, top: 292, width: 40, height: 28, padding: 0 }}
                 onPointerDown={(event) => event.stopPropagation()}
-                onClick={handleKeyboardEnterLikeButton}
-                title={canCreateTopPanelStepFromEnter ? 'New step' : 'Enter'}
+                title="Enter"
               >
                 <span className="text-sm font-normal leading-none">↵</span>
               </button>
@@ -11713,10 +11596,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     })}
                     <button
                       type="button"
-                      className={`inline-flex h-10 min-w-0 flex-[1.25] select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-1.5 text-white shadow-sm sm:h-11 sm:px-2 ${canCreateTopPanelStepFromEnter ? 'cursor-pointer hover:bg-slate-700' : 'cursor-default'}`}
+                      className="inline-flex h-10 min-w-0 flex-[1.25] select-none items-center justify-center rounded-xl border border-slate-700 bg-slate-800 px-1.5 text-white shadow-sm sm:h-11 sm:px-2 cursor-default"
                       onPointerDown={(event) => event.stopPropagation()}
-                      onClick={handleKeyboardEnterLikeButton}
-                      title={canCreateTopPanelStepFromEnter ? 'New step' : 'Enter'}
+                      title="Enter"
                     >
                       <span className="text-[1.05rem] font-normal leading-none">↵</span>
                     </button>

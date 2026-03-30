@@ -1387,7 +1387,7 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
   createWrappedLatexKeyboardAction('second-derivative', 'second derivative', 'second derivative', (baseSymbol) => `\\frac{d^{2}}{dx^{2}}\\left(${baseSymbol}\\right)`, (baseSymbol) => `d^2/dx^2(${baseSymbol})`),
   createWrappedLatexKeyboardAction('integral', 'integral', 'integral', (baseSymbol) => `\\int ${baseSymbol}\\,dx`, (baseSymbol) => `∫ ${baseSymbol} dx`),
   createWrappedLatexKeyboardAction('definite-integral', 'definite integral', 'definite integral', (baseSymbol) => `\\int_{a}^{b} ${baseSymbol}\\,dx`, (baseSymbol) => `∫[a,b] ${baseSymbol} dx`),
-  createWrappedLatexKeyboardAction('limit', 'limit', 'limit', (baseSymbol) => `\\lim_{x \\to a} ${baseSymbol}`, (baseSymbol) => `lim(x→a) ${baseSymbol}`),
+  createWrappedLatexKeyboardAction('limit', 'limit', 'limit', (baseSymbol) => `\\mathop{\\lim}\\limits_{x \\to a}\\,${baseSymbol}`, (baseSymbol) => `lim(x→a) ${baseSymbol}`),
   createWrappedLatexKeyboardAction('reciprocal', 'reciprocal', 'reciprocal', (baseSymbol) => `${baseSymbol}^{-1}`, (baseSymbol) => `${baseSymbol}^-1`),
   createAppendTextKeyboardAction('dx', ' dx', 'dx', 'dx'),
   createAppendTextKeyboardAction('partial', '∂', 'partial derivative symbol', 'partial derivative symbol'),
@@ -16813,6 +16813,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               <div
                   className="relative flex-1 min-h-0 w-full overflow-visible"
                   ref={(useAdminStepComposer || useStudentStepComposer) ? adminTopPanelRef : undefined}
+                  style={{
+                    paddingTop: 'max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px))',
+                  }}
                   onPointerDown={(e) => {
                     if ((useAdminStepComposer || useStudentStepComposer) && topPanelEditingMode) {
                       // Step-recall mode: tap a step line to restore its ink for editing.

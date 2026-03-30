@@ -11606,7 +11606,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   }}
                   title="New step"
                 >
-                  <span className="text-3xl font-medium leading-none">=</span>
+                  <span className="flex flex-col items-center justify-center gap-2 leading-none">
+                    <span className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-slate-500">Step</span>
+                    <span className="text-3xl font-medium leading-none">⏎</span>
+                  </span>
                 </button>
 
                 {['digit-4', 'digit-5', 'digit-6', lowerVariableColumnKeys[1]?.actionId || 'y'].map((actionId) =>

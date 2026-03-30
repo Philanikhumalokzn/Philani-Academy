@@ -98,10 +98,11 @@ test.describe('keyboard family key previews', () => {
     const keyboardPanel = page.locator('[data-keyboard-panel="true"]').first()
     const keyboardTopGrid = page.locator('[data-keyboard-top-grid="true"]').first()
     const keyboardBottomGrid = page.locator('[data-keyboard-bottom-grid="true"]').first()
-    const clusterButtons = page.locator('[data-keyboard-cluster-grid="true"]').first().locator('button')
+    const clusterButtons = keyboardTopGrid.locator('button')
     const topLeftClusterButton = clusterButtons.nth(0)
     const topMiddleClusterButton = clusterButtons.nth(1)
     const topRightClusterButton = clusterButtons.nth(2)
+    const digitSevenButton = page.locator('button[data-keyboard-action="digit-7"]').first()
 
     await expect(logsFamilyButton).toBeVisible({ timeout: 20_000 })
     await expect(enclosuresFamilyButton).toBeVisible({ timeout: 20_000 })
@@ -116,6 +117,7 @@ test.describe('keyboard family key previews', () => {
     await expect(topLeftClusterButton).toBeVisible({ timeout: 20_000 })
     await expect(topMiddleClusterButton).toBeVisible({ timeout: 20_000 })
     await expect(topRightClusterButton).toBeVisible({ timeout: 20_000 })
+    await expect(digitSevenButton).toBeVisible({ timeout: 20_000 })
 
     const logsHtml = await logsFamilyButton.innerHTML()
     const enclosuresHtml = await enclosuresFamilyButton.innerHTML()
@@ -169,6 +171,19 @@ test.describe('keyboard family key previews', () => {
     expect(Math.abs(topGridBox.x - bottomGridBox.x)).toBeLessThan(4)
     expect(Math.abs(topGridBox.width - bottomGridBox.width)).toBeLessThan(4)
 
+    const topLeftBox = await topLeftClusterButton.boundingBox()
+    const digitSevenBox = await digitSevenButton.boundingBox()
+    expect(topLeftBox).not.toBeNull()
+    expect(digitSevenBox).not.toBeNull()
+
+    if (!topLeftBox || !digitSevenBox) {
+      throw new Error('Expected top and bottom standard buttons to have measurable layout boxes.')
+    }
+
+    expect(Math.abs(topLeftBox.width - digitSevenBox.width)).toBeLessThan(4)
+    expect(Math.abs(topLeftBox.height - digitSevenBox.height)).toBeLessThan(4)
+    expect(Math.abs(topLeftBox.x - digitSevenBox.x)).toBeLessThan(4)
+
     const calculusBox = await calculusFamilyButton.boundingBox()
     const greekBox = await greekFamilyButton.boundingBox()
     const relationsBox = await relationsFamilyButton.boundingBox()
@@ -190,6 +205,6 @@ test.describe('keyboard family key previews', () => {
     await enclosuresFamilyButton.screenshot({ path: 'test-results/keyboard-family-enclosures-preview.png' })
     await topLeftClusterButton.screenshot({ path: 'test-results/keyboard-cluster-nth-root-preview.png' })
     await topMiddleClusterButton.screenshot({ path: 'test-results/keyboard-cluster-fraction-preview.png' })
-    await page.locator('[data-keyboard-cluster-grid="true"]').first().screenshot({ path: 'test-results/keyboard-cluster-middle-row-layout.png' })
+    await keyboardTopGrid.screenshot({ path: 'test-results/keyboard-cluster-middle-row-layout.png' })
   })
 })

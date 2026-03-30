@@ -4434,6 +4434,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const VIEW_ONLY_SPLIT_RATIO = 0.8
   const EDITABLE_SPLIT_RATIO = 0.2
   const KEYBOARD_STACKED_SPLIT_RATIO = 0.28
+  const KEYBOARD_BOTTOM_CHROME_MIN_HEIGHT_PX = 48
   const KEYBOARD_FIXED_PANEL_MIN_HEIGHT_PX = 348
   const KEYBOARD_MATHLIVE_MIN_HEIGHT_PX = 56
   const [studentSplitRatio, setStudentSplitRatio] = useState(EDITABLE_SPLIT_RATIO) // portion for LaTeX panel when stacked
@@ -5079,11 +5080,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const minRatio = Math.min(Math.max(120 / resolvedHeight, 0.16), 0.4)
     const maxRatio = Math.max(
       minRatio,
-      Math.min(0.72, 1 - ((KEYBOARD_FIXED_PANEL_MIN_HEIGHT_PX + KEYBOARD_MATHLIVE_MIN_HEIGHT_PX) / resolvedHeight)),
+      Math.min(0.72, 1 - ((KEYBOARD_BOTTOM_CHROME_MIN_HEIGHT_PX + KEYBOARD_FIXED_PANEL_MIN_HEIGHT_PX + KEYBOARD_MATHLIVE_MIN_HEIGHT_PX) / resolvedHeight)),
     )
 
     return Math.min(Math.max(nextRatio, minRatio), maxRatio)
-  }, [KEYBOARD_FIXED_PANEL_MIN_HEIGHT_PX, KEYBOARD_MATHLIVE_MIN_HEIGHT_PX, recognitionEngine])
+  }, [KEYBOARD_BOTTOM_CHROME_MIN_HEIGHT_PX, KEYBOARD_FIXED_PANEL_MIN_HEIGHT_PX, KEYBOARD_MATHLIVE_MIN_HEIGHT_PX, recognitionEngine])
 
   const updateSplitRatioFromClientY = useCallback((clientY: number) => {
     if (!splitDragActiveRef.current) return
@@ -11550,23 +11551,24 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return (
       <div
         data-keyboard-bottom-wrapper="true"
-        className="absolute inset-0 z-30 flex flex-col overflow-hidden bg-white select-none keyboard-symbol-font"
+        className="relative z-30 flex h-full min-h-0 w-full flex-col overflow-hidden bg-white select-none keyboard-symbol-font"
         style={{
           WebkitUserSelect: 'none',
           userSelect: 'none',
           touchAction: 'none',
-          paddingTop: 'max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px))',
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         }}
       >
-        <div className="shrink-0 border-b border-slate-200 bg-slate-50/80 px-0 py-3">
-          <div data-keyboard-mathlive-panel="true" className="h-[6.5rem] w-full sm:h-[7.5rem]">
+        <div className="flex min-h-[4rem] flex-1 border-b border-slate-200 bg-slate-50/80 px-0 py-0">
+          <div data-keyboard-mathlive-panel="true" className="h-full min-h-0 w-full">
             {renderKeyboardBottomPanelPreviewSurface()}
           </div>
         </div>
         <div
           ref={keyboardSurfaceRef}
-          className="relative flex-1 overflow-hidden"
+          className="relative h-[21.75rem] shrink-0 overflow-hidden sm:h-[24.25rem]"
+          style={{
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          }}
           onPointerDown={handleKeyboardSurfacePointerDown}
           onPointerMove={handleKeyboardSurfacePointerMove}
           onPointerUp={handleKeyboardSurfacePointerEnd}
@@ -17385,7 +17387,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               className="px-4 pb-3 flex flex-col min-h-0"
               style={{
                 flex: shouldCollapseStackedView ? 0 : (isRawInkMode ? 1 : Math.max(1 - studentSplitRatio, 0.2)),
-                minHeight: shouldCollapseStackedView ? 0 : '220px',
+                minHeight: shouldCollapseStackedView ? 0 : (recognitionEngine === 'keyboard'
+                  ? `${KEYBOARD_BOTTOM_CHROME_MIN_HEIGHT_PX + KEYBOARD_FIXED_PANEL_MIN_HEIGHT_PX + KEYBOARD_MATHLIVE_MIN_HEIGHT_PX}px`
+                  : '220px'),
                 maxHeight: shouldCollapseStackedView ? 0 : undefined,
                 opacity: shouldCollapseStackedView ? 0 : 1,
                 pointerEvents: shouldCollapseStackedView ? 'none' : undefined,
@@ -18138,42 +18142,39 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 ) : null}
               </div>
 
+              {recognitionEngine === 'keyboard' ? (
+                <div className="rounded bg-white relative overflow-hidden flex flex-col flex-1 min-h-0">
+                  {renderKeyboardCanvasSurface()}
+                </div>
+              ) : (
               <div className="rounded bg-white relative overflow-hidden flex flex-col flex-1 min-h-0">
                 <div
                   ref={studentViewportRef}
-                  className={`relative flex-1 min-h-0 ${recognitionEngine === 'keyboard' ? 'overflow-hidden' : 'overflow-auto'}`}
+                  className="relative flex-1 min-h-0 overflow-auto"
                   style={{
-                    touchAction: recognitionEngine === 'keyboard' ? 'none' : 'pan-x pan-y',
-                    WebkitOverflowScrolling: recognitionEngine === 'keyboard' ? undefined : 'touch',
-                    paddingBottom: recognitionEngine === 'keyboard'
-                      ? undefined
-                      : (showBottomHorizontalScrollbar
-                        ? `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px + ${STACKED_BOTTOM_OVERLAY_RESERVE_PX}px)`
-                        : undefined),
+                    touchAction: 'pan-x pan-y',
+                    WebkitOverflowScrolling: 'touch',
+                    paddingBottom: showBottomHorizontalScrollbar
+                      ? `calc(env(safe-area-inset-bottom) + ${viewportBottomOffsetPx}px + ${STACKED_BOTTOM_OVERLAY_RESERVE_PX}px)`
+                      : undefined,
                   }}
                 >
                   <div
                     ref={stackedZoomContentRef}
-                    className={`flex min-w-full flex-col ${recognitionEngine === 'keyboard' ? 'h-full w-full items-stretch justify-center gap-0 px-0 py-0 sm:px-0 sm:py-0' : 'w-max items-center gap-6 px-4 py-4 sm:px-6 sm:py-6'}`}
+                    className="flex min-w-full flex-col w-max items-center gap-6 px-4 py-4 sm:px-6 sm:py-6"
                     style={{
-                      zoom: recognitionEngine === 'keyboard' ? 1 : stackedLiveScale,
-                      paddingTop: recognitionEngine === 'keyboard'
-                        ? 0
-                        : 'calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 14px)',
+                      zoom: stackedLiveScale,
+                      paddingTop: 'calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 14px)',
                       willChange: stackedPinchStateRef.current.active ? 'transform' : undefined,
                     }}
                   >
-                    <div className={`w-full flex ${recognitionEngine === 'keyboard' ? 'h-full items-stretch justify-stretch' : 'items-start justify-center'}`}>
+                    <div className="w-full flex items-start justify-center">
                       <div
                         style={{
                           position: 'relative',
                           backgroundColor: '#ffffff',
-                          width: recognitionEngine === 'keyboard'
-                            ? '100%'
-                            : `${Math.max(320, Math.round(stackedSurfaceBaseSize.width * inkSurfaceWidthFactor))}px`,
-                          height: recognitionEngine === 'keyboard'
-                            ? '100%'
-                            : `${Math.max(320, stackedSurfaceBaseSize.height)}px`,
+                          width: `${Math.max(320, Math.round(stackedSurfaceBaseSize.width * inkSurfaceWidthFactor))}px`,
+                          height: `${Math.max(320, stackedSurfaceBaseSize.height)}px`,
                         }}
                       >
                         <div
@@ -18182,23 +18183,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           style={{
                             ...editorHostStyle,
                             height: '100%',
-                            opacity: recognitionEngine === 'keyboard' ? 0 : 1,
-                            pointerEvents: recognitionEngine === 'keyboard' ? 'none' : editorHostStyle.pointerEvents,
+                            opacity: 1,
+                            pointerEvents: editorHostStyle.pointerEvents,
                           }}
                           data-orientation={canvasOrientation}
                         />
-                        {recognitionEngine === 'keyboard' && renderKeyboardCanvasSurface()}
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {recognitionEngine !== 'keyboard' && !isRawInkMode && !editorReconnecting && (status === 'loading' || status === 'idle') && (
+                {!isRawInkMode && !editorReconnecting && (status === 'loading' || status === 'idle') && (
                   <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 bg-white/70">
                     Preparing collaborative canvas…
                   </div>
                 )}
-                {recognitionEngine !== 'keyboard' && isViewOnly && !forceEditableForAssignment && !(isSessionQuizMode && quizActive && !canOrchestrateLesson) && !(!canOrchestrateLesson && !useStackedStudentLayout && latexDisplayState.enabled) && (
+                {isViewOnly && !forceEditableForAssignment && !(isSessionQuizMode && quizActive && !canOrchestrateLesson) && !(!canOrchestrateLesson && !useStackedStudentLayout && latexDisplayState.enabled) && (
                   <div className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm text-white text-center px-4 bg-slate-900/40 pointer-events-none">
                     {controlOwnerLabel || 'Teacher'} locked the board. You're in view-only mode.
                   </div>
@@ -18222,7 +18222,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     <div>{stackedScrollDebugLabel.vertical}</div>
                   </div>
                 )}
-                {recognitionEngine !== 'keyboard' && !canOrchestrateLesson && !useStackedStudentLayout && latexDisplayState.enabled && (
+                {!canOrchestrateLesson && !useStackedStudentLayout && latexDisplayState.enabled && (
                   <div className="absolute inset-0 flex items-center justify-center text-center px-4 bg-white/95 backdrop-blur-sm overflow-auto">
                     {topPanelRenderPayload.markup ? (
                       <div
@@ -18270,6 +18270,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   </div>
                 )}
               </div>
+              )}
             </div>
           </div>
         )}

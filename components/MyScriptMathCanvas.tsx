@@ -11544,25 +11544,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           onPointerUp={handleKeyboardSurfacePointerEnd}
           onPointerCancel={handleKeyboardSurfacePointerEnd}
         >
-        <div className="flex h-full w-full items-center justify-center px-2 py-2 sm:px-4 sm:py-4">
-          <div className="w-full max-w-[26rem] rounded-[2rem] border border-slate-900/80 bg-[linear-gradient(180deg,#20252d_0%,#171b22_100%)] p-3 shadow-[0_20px_55px_rgba(15,23,42,0.45)] sm:p-4">
+        <div className="flex h-full w-full items-stretch justify-stretch px-2 py-2 sm:px-4 sm:py-4">
+          <div className="h-full w-full rounded-[2rem] border border-slate-900/80 bg-[linear-gradient(180deg,#20252d_0%,#171b22_100%)] p-3 shadow-[0_20px_55px_rgba(15,23,42,0.45)] sm:p-4">
             <div className="flex flex-col gap-2.5">
-              <div className="grid grid-cols-5 gap-2">
-                {renderVisibleKeyboardButton({ actionId: 'sin', label: 'sin', representativeKeyId: 'trig' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
-                {renderVisibleKeyboardButton({ actionId: 'cos', label: 'cos', representativeKeyId: 'trig' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
-                {renderVisibleKeyboardButton({ actionId: 'tan', label: 'tan', representativeKeyId: 'trig' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
-                {renderVisibleKeyboardButton({ actionId: 'ln', label: 'ln', representativeKeyId: 'logs' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
-                {renderVisibleKeyboardButton({ actionId: 'log', label: 'log', representativeKeyId: 'logs' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
-              </div>
-
-              <div className="grid grid-cols-5 gap-2">
-                {renderVisibleKeyboardButton({ actionId: 'paren', label: '()', representativeKeyId: 'enclosures' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-sm sm:text-base font-medium' })}
-                {renderVisibleKeyboardButton({ actionId: 'power2', label: 'x²', representativeKeyId: 'radicals' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-sm sm:text-base font-medium' })}
-                {renderVisibleKeyboardButton({ actionId: 'power3', label: 'x³', representativeKeyId: 'radicals' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-sm sm:text-base font-medium' })}
-                {renderVisibleKeyboardButton({ actionId: 'sqrt', label: '√', representativeKeyId: 'radicals' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-base sm:text-lg font-medium' })}
-                {renderVisibleKeyboardButton({ actionId: 'fraction', label: 'a/b', representativeKeyId: 'radicals' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
-              </div>
-
               <div className="grid grid-cols-[1.1fr_1.1fr_1.1fr_1fr_1fr] gap-2">
                 <div className="col-span-3 rounded-[1.4rem] bg-slate-900/70 p-2">
                   <div className="grid grid-cols-3 gap-2">

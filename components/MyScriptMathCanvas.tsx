@@ -2595,10 +2595,44 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const keyboardSurfaceRef = useRef<HTMLDivElement | null>(null)
   const keyboardExpressionSurfaceRef = useRef<HTMLInputElement | null>(null)
   const keyboardMathfieldHostRef = useRef<HTMLDivElement | null>(null)
+  const keyboardMathfieldViewportRef = useRef<HTMLDivElement | null>(null)
+  const keyboardMathfieldZoomSurfaceRef = useRef<HTMLDivElement | null>(null)
   const [keyboardMathfieldHostNode, setKeyboardMathfieldHostNode] = useState<HTMLDivElement | null>(null)
   const keyboardMathfieldRef = useRef<MathfieldElementType | null>(null)
   const keyboardMathfieldCleanupRef = useRef<(() => void) | null>(null)
   const keyboardMathfieldSyncRef = useRef(false)
+  const keyboardMathfieldZoomRef = useRef(1)
+  const keyboardMathfieldTouchGestureRef = useRef<{
+    singleTouchActive: boolean
+    pinchActive: boolean
+    selectionMode: boolean
+    longPressTimer: ReturnType<typeof setTimeout> | null
+    startX: number
+    startY: number
+    startScrollLeft: number
+    startScrollTop: number
+    startDist: number
+    startZoom: number
+    anchorX: number
+    anchorY: number
+    lastMidpointX: number
+    lastMidpointY: number
+  }>({
+    singleTouchActive: false,
+    pinchActive: false,
+    selectionMode: false,
+    longPressTimer: null,
+    startX: 0,
+    startY: 0,
+    startScrollLeft: 0,
+    startScrollTop: 0,
+    startDist: 0,
+    startZoom: 1,
+    anchorX: 0,
+    anchorY: 0,
+    lastMidpointX: 0,
+    lastMidpointY: 0,
+  })
   const keyboardTopTypesetPreviewRef = useRef<HTMLDivElement | null>(null)
   const keyboardBottomTypesetPreviewRef = useRef<HTMLDivElement | null>(null)
   const [keyboardSelection, setKeyboardSelection] = useState<KeyboardSelectionState>({ start: 0, end: 0 })
@@ -2642,6 +2676,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const setKeyboardMathfieldHostNodeRef = useCallback((node: HTMLDivElement | null) => {
     keyboardMathfieldHostRef.current = node
     setKeyboardMathfieldHostNode(node)
+  }, [])
+
+  const applyKeyboardMathfieldZoomStyle = useCallback((zoom: number) => {
+    keyboardMathfieldZoomRef.current = zoom
+    const surface = keyboardMathfieldZoomSurfaceRef.current
+    if (!surface) return
+    ;(surface.style as any).zoom = String(zoom)
+  }, [])
+
+  const getKeyboardMathfieldScrollTarget = useCallback(() => {
+    const field = keyboardMathfieldRef.current as unknown as HTMLElement | null
+    if (field) {
+      const maxLeft = Math.max(0, field.scrollWidth - field.clientWidth)
+      const maxTop = Math.max(0, field.scrollHeight - field.clientHeight)
+      if (maxLeft > 1 || maxTop > 1) {
+        return field
+      }
+    }
+    return keyboardMathfieldViewportRef.current
   }, [])
 
   const updateRecentLetters = useCallback((letter: string) => {
@@ -2844,6 +2897,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         field.smartSuperscript = true
         field.readOnly = false
         field.value = latexOutputRef.current || ''
+        ;(field.style as CSSStyleDeclaration).overflow = 'auto'
+        ;(field.style as CSSStyleDeclaration).touchAction = 'auto'
+        ;(field.style as CSSStyleDeclaration).webkitUserSelect = 'text'
+        ;(field.style as CSSStyleDeclaration).userSelect = 'text'
 
         const handleInput = () => {
           if (keyboardMathfieldSyncRef.current) return
@@ -2884,6 +2941,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (field.parentElement !== keyboardMathfieldHostNode) {
         keyboardMathfieldHostNode.replaceChildren(field)
       }
+      applyKeyboardMathfieldZoomStyle(keyboardMathfieldZoomRef.current)
     })()
 
     return () => {
@@ -2894,7 +2952,206 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         keyboardMathfieldHostNode.replaceChildren()
       }
     }
-  }, [hasMounted, keyboardMathfieldHostNode, setKeyboardSelectionState, syncKeyboardMathfieldState])
+  }, [applyKeyboardMathfieldZoomStyle, hasMounted, keyboardMathfieldHostNode, setKeyboardSelectionState, syncKeyboardMathfieldState])
+
+  useEffect(() => {
+    if (recognitionEngine !== 'keyboard') {
+      applyKeyboardMathfieldZoomStyle(1)
+    }
+  }, [applyKeyboardMathfieldZoomStyle, recognitionEngine])
+
+  useEffect(() => {
+    if (recognitionEngine !== 'keyboard') return
+
+    const viewport = keyboardMathfieldViewportRef.current
+    if (!viewport) return
+
+    const gesture = keyboardMathfieldTouchGestureRef.current
+    const LONG_PRESS_MS = 320
+    const SINGLE_FINGER_SCROLL_THRESHOLD_PX = 6
+    const PINCH_START_THRESHOLD = 0.025
+    const PAN_START_THRESHOLD_PX = 1.5
+    const ZOOM_UPDATE_THRESHOLD = 0.04
+    const PAN_UPDATE_THRESHOLD_PX = 0.8
+    const TWO_FINGER_PAN_GAIN = 0.4
+    const MIN_ZOOM = 1
+    const MAX_ZOOM = 4
+
+    const clearLongPress = () => {
+      if (gesture.longPressTimer) {
+        clearTimeout(gesture.longPressTimer)
+        gesture.longPressTimer = null
+      }
+    }
+
+    const getPinchDistance = (touches: TouchList) => {
+      const a = touches[0]
+      const b = touches[1]
+      if (!a || !b) return 0
+      return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+    }
+
+    const onTouchStart = (event: TouchEvent) => {
+      if (event.touches.length === 2) {
+        clearLongPress()
+        gesture.singleTouchActive = false
+        gesture.selectionMode = false
+        gesture.pinchActive = true
+
+        const rect = viewport.getBoundingClientRect()
+        const a = event.touches[0]
+        const b = event.touches[1]
+        const midpointX = rect ? ((a.clientX + b.clientX) / 2) - rect.left : viewport.clientWidth / 2
+        const midpointY = rect ? ((a.clientY + b.clientY) / 2) - rect.top : viewport.clientHeight / 2
+
+        gesture.startDist = getPinchDistance(event.touches)
+        gesture.startZoom = keyboardMathfieldZoomRef.current
+        gesture.startScrollLeft = viewport.scrollLeft
+        gesture.startScrollTop = viewport.scrollTop
+        gesture.anchorX = midpointX
+        gesture.anchorY = midpointY
+        gesture.lastMidpointX = midpointX
+        gesture.lastMidpointY = midpointY
+        return
+      }
+
+      if (event.touches.length !== 1) return
+      const touch = event.touches[0]
+      const scrollTarget = getKeyboardMathfieldScrollTarget()
+      gesture.singleTouchActive = true
+      gesture.pinchActive = false
+      gesture.selectionMode = false
+      gesture.startX = touch.clientX
+      gesture.startY = touch.clientY
+      gesture.startScrollLeft = scrollTarget?.scrollLeft ?? 0
+      gesture.startScrollTop = scrollTarget?.scrollTop ?? 0
+      clearLongPress()
+      gesture.longPressTimer = setTimeout(() => {
+        gesture.longPressTimer = null
+        gesture.selectionMode = true
+        keyboardMathfieldRef.current?.focus?.()
+      }, LONG_PRESS_MS)
+    }
+
+    const onTouchMove = (event: TouchEvent) => {
+      if (gesture.pinchActive && event.touches.length === 2) {
+        event.preventDefault()
+        const dist = getPinchDistance(event.touches)
+        if (!dist || !gesture.startDist) return
+
+        const rect = viewport.getBoundingClientRect()
+        const a = event.touches[0]
+        const b = event.touches[1]
+        const midpointX = rect ? ((a.clientX + b.clientX) / 2) - rect.left : gesture.anchorX
+        const midpointY = rect ? ((a.clientY + b.clientY) / 2) - rect.top : gesture.anchorY
+        const midpointStepDx = midpointX - gesture.lastMidpointX
+        const midpointStepDy = midpointY - gesture.lastMidpointY
+        const scale = dist / gesture.startDist
+        const midpointDx = midpointX - gesture.anchorX
+        const midpointDy = midpointY - gesture.anchorY
+        const panDistance = Math.hypot(midpointDx, midpointDy)
+
+        if (Math.abs(scale - 1) < PINCH_START_THRESHOLD && panDistance < PAN_START_THRESHOLD_PX) return
+
+        const nextZoom = Math.min(Math.max(gesture.startZoom * scale, MIN_ZOOM), MAX_ZOOM)
+        if (Math.abs(nextZoom - keyboardMathfieldZoomRef.current) < ZOOM_UPDATE_THRESHOLD && panDistance < PAN_UPDATE_THRESHOLD_PX) return
+
+        const prevZoom = Math.max(0.5, keyboardMathfieldZoomRef.current)
+        const ratioDelta = nextZoom / prevZoom
+        const currentLeft = viewport.scrollLeft
+        const currentTop = viewport.scrollTop
+
+        applyKeyboardMathfieldZoomStyle(nextZoom)
+
+        const maxLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+        const maxTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+        const zoomLeft = (ratioDelta * (currentLeft + midpointX)) - midpointX
+        const zoomTop = (ratioDelta * (currentTop + midpointY)) - midpointY
+        const nextLeft = zoomLeft - (midpointStepDx * TWO_FINGER_PAN_GAIN)
+        const nextTop = zoomTop - (midpointStepDy * TWO_FINGER_PAN_GAIN)
+
+        viewport.scrollLeft = Math.max(0, Math.min(nextLeft, maxLeft))
+        viewport.scrollTop = Math.max(0, Math.min(nextTop, maxTop))
+
+        gesture.lastMidpointX = midpointX
+        gesture.lastMidpointY = midpointY
+        return
+      }
+
+      if (!gesture.singleTouchActive || event.touches.length !== 1) return
+      if (gesture.selectionMode) return
+
+      const touch = event.touches[0]
+      const dx = touch.clientX - gesture.startX
+      const dy = touch.clientY - gesture.startY
+      if (Math.hypot(dx, dy) < SINGLE_FINGER_SCROLL_THRESHOLD_PX) return
+
+      clearLongPress()
+
+      const scrollTarget = getKeyboardMathfieldScrollTarget()
+      if (!scrollTarget) return
+      const maxLeft = Math.max(0, scrollTarget.scrollWidth - scrollTarget.clientWidth)
+      const maxTop = Math.max(0, scrollTarget.scrollHeight - scrollTarget.clientHeight)
+      if (maxLeft <= 1 && maxTop <= 1) return
+
+      event.preventDefault()
+      scrollTarget.scrollLeft = Math.max(0, Math.min(gesture.startScrollLeft - dx, maxLeft))
+      scrollTarget.scrollTop = Math.max(0, Math.min(gesture.startScrollTop - dy, maxTop))
+    }
+
+    const onTouchEnd = (event: TouchEvent) => {
+      if (gesture.pinchActive && event.touches.length < 2) {
+        gesture.pinchActive = false
+      }
+
+      if (event.touches.length === 0) {
+        gesture.singleTouchActive = false
+        gesture.selectionMode = false
+        clearLongPress()
+        return
+      }
+
+      if (event.touches.length === 1) {
+        const touch = event.touches[0]
+        const scrollTarget = getKeyboardMathfieldScrollTarget()
+        gesture.singleTouchActive = true
+        gesture.startX = touch.clientX
+        gesture.startY = touch.clientY
+        gesture.startScrollLeft = scrollTarget?.scrollLeft ?? 0
+        gesture.startScrollTop = scrollTarget?.scrollTop ?? 0
+        gesture.selectionMode = false
+        clearLongPress()
+        gesture.longPressTimer = setTimeout(() => {
+          gesture.longPressTimer = null
+          gesture.selectionMode = true
+          keyboardMathfieldRef.current?.focus?.()
+        }, LONG_PRESS_MS)
+      }
+    }
+
+    const onTouchCancel = () => {
+      gesture.singleTouchActive = false
+      gesture.pinchActive = false
+      gesture.selectionMode = false
+      clearLongPress()
+    }
+
+    viewport.addEventListener('touchstart', onTouchStart, { passive: true })
+    viewport.addEventListener('touchmove', onTouchMove, { passive: false })
+    viewport.addEventListener('touchend', onTouchEnd, { passive: true })
+    viewport.addEventListener('touchcancel', onTouchCancel, { passive: true })
+
+    return () => {
+      clearLongPress()
+      viewport.removeEventListener('touchstart', onTouchStart)
+      viewport.removeEventListener('touchmove', onTouchMove)
+      viewport.removeEventListener('touchend', onTouchEnd)
+      viewport.removeEventListener('touchcancel', onTouchCancel)
+      gesture.singleTouchActive = false
+      gesture.pinchActive = false
+      gesture.selectionMode = false
+    }
+  }, [applyKeyboardMathfieldZoomStyle, getKeyboardMathfieldScrollTarget, recognitionEngine])
 
   useEffect(() => {
     return () => {
@@ -12894,11 +13151,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (attachFocusRef) {
       return (
         <div className="flex h-full w-full items-center justify-center">
-          <div className={`relative h-full w-full ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}>
+          <div
+            ref={keyboardMathfieldViewportRef}
+            className={`relative h-full w-full overflow-auto rounded-[10px] border border-slate-200 bg-white ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
+            style={{
+              WebkitOverflowScrolling: 'touch',
+              overscrollBehavior: 'contain',
+              touchAction: 'pan-x pan-y',
+            }}
+          >
             <div
-              ref={setKeyboardMathfieldHostNodeRef}
-              className={`h-full w-full overflow-hidden rounded-[10px] border border-slate-200 bg-white ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
-            />
+              ref={keyboardMathfieldZoomSurfaceRef}
+              className={`relative h-full min-h-full w-full min-w-full ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
+              style={{
+                zoom: 1,
+                transformOrigin: 'top left',
+              }}
+            >
+              <div
+                ref={setKeyboardMathfieldHostNodeRef}
+                className={`h-full w-full overflow-visible bg-white ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
+                style={{
+                  touchAction: 'auto',
+                  WebkitUserSelect: 'text',
+                  userSelect: 'text',
+                }}
+              />
+            </div>
           </div>
         </div>
       )

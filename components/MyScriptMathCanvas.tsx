@@ -1116,6 +1116,17 @@ const isEmptyFractionDenominatorPlaceholderAtPosition = (value: string, position
   return false
 }
 
+const normalizeDisplayPlaceholdersToBoxes = (latex: string) => {
+  if (!latex) return ''
+  return latex
+    .replace(/#\?/g, '\\square')
+    .replace(/\\placeholder(?:\{[^{}]*\})?/g, '\\square')
+    .replace(/\\phantom\{a\}/g, '\\square')
+    .replace(/\\frac\{\}\{\}/g, '\\frac{\\square}{\\square}')
+    .replace(/\\frac\{([^{}]*)\}\{\}/g, '\\frac{$1}{\\square}')
+    .replace(/\\frac\{\}\{([^{}]*)\}/g, '\\frac{\\square}{$1}')
+}
+
 const isLatexCommandFragment = (symbol: string) => {
   // Reject partial or complete LaTeX structural command names that are
   // part of the expression syntax, not a mathematical quantity.
@@ -1298,16 +1309,16 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
     id: 'fraction',
     title: 'fraction',
     description: 'fraction',
-    latex: '\\frac{x}{\\phantom{a}}',
-    renderLatex: (baseSymbol) => `\\frac{${baseSymbol || 'x'}}{\\phantom{a}}`,
+    latex: '\\frac{x}{\\placeholder{}}',
+    renderLatex: (baseSymbol) => `\\frac{${baseSymbol || 'x'}}{\\placeholder{}}`,
     apply: (prev, baseSymbol) => `${prev}(${baseSymbol || 'x'})/()`,
   },
   {
     id: 'fraction-denominator',
     title: 'fraction denominator',
     description: 'fraction denominator',
-    latex: '\\frac{\\phantom{a}}{x}',
-    renderLatex: (baseSymbol) => `\\frac{\\phantom{a}}{${baseSymbol || 'x'}}`,
+    latex: '\\frac{\\placeholder{}}{x}',
+    renderLatex: (baseSymbol) => `\\frac{\\placeholder{}}{${baseSymbol || 'x'}}`,
     apply: (prev, baseSymbol) => `${prev}()/(${baseSymbol || 'x'})`,
   },
   {
@@ -1366,9 +1377,9 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
     id: 'log-base',
     title: 'logarithm with base',
     description: 'logarithm with arbitrary base',
-    latex: '\\log_{a}\\left(x\\right)',
-    renderLatex: () => `\\log_{a}\\left(x\\right)`,
-    apply: (prev) => `${prev}\\log_{a}\\left(x\\right)`,
+    latex: '\\log_{\\placeholder{}}\\left(\\placeholder{}\\right)',
+    renderLatex: () => `\\log_{\\placeholder{}}\\left(\\placeholder{}\\right)`,
+    apply: (prev) => `${prev}\\log_{\\placeholder{}}\\left(\\placeholder{}\\right)`,
   },
   createWrappedLatexKeyboardAction('log', 'logarithm', 'logarithm', (baseSymbol) => `\\log\\left(${baseSymbol}\\right)`, (baseSymbol) => `log(${baseSymbol})`),
   createWrappedLatexKeyboardAction('derivative', 'derivative', 'derivative', (baseSymbol) => `\\frac{d}{dx}\\left(${baseSymbol}\\right)`, (baseSymbol) => `d/dx(${baseSymbol})`),
@@ -1877,7 +1888,7 @@ const KEYBOARD_REPRESENTATIVE_KEYS: KeyboardRepresentativeKeyDefinition[] = [
     id: 'logs',
     title: 'logarithm',
     description: 'logarithm family',
-    latex: '\\log_{a}(x)',
+    latex: '\\log_{\\placeholder{}}\\left(\\placeholder{}\\right)',
     singleTapActionId: 'log-base',
     radialActionIds: [],
     familyRows: [['log-base', 'log', 'ln']],
@@ -10499,12 +10510,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (actionId === 'log-base') {
       if (hasSelectionRange) {
         const selected = selectableField.getValue(selection, 'latex') || ''
-        selectableField.insert(`\\log_{#?}\\left(${selected}\\right)`, {
+        selectableField.insert(`\\log_{\\placeholder{}}\\left(${selected || '\\placeholder{}'}\\right)`, {
           insertionMode: 'replaceSelection',
           selectionMode: 'placeholder',
         })
       } else {
-        selectableField.insert('\\log_{#?}\\left(#?\\right)', {
+        selectableField.insert('\\log_{\\placeholder{}}\\left(\\placeholder{}\\right)', {
           selectionMode: 'placeholder',
         })
       }
@@ -10550,10 +10561,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           wrapped = `\\sqrt[]{${selected}}`
           break
         case 'fraction':
-          wrapped = `\\frac{${selected}}{}`
+          wrapped = `\\frac{${selected}}{\\placeholder{}}`
           break
         case 'fraction-denominator':
-          wrapped = `\\frac{}{${selected}}`
+          wrapped = `\\frac{\\placeholder{}}{${selected}}`
           break
         case 'power2':
           wrapped = `${selected}^{2}`
@@ -10616,7 +10627,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (action.token) {
         insertion = action.token
       } else if (actionId === 'fraction' || actionId === 'fraction-denominator') {
-        insertion = '\\frac{}{}'
+        insertion = '\\frac{\\placeholder{}}{\\placeholder{}}'
       } else if (actionId === 'sqrt') {
         insertion = '\\sqrt{}'
       } else if (actionId === 'cuberoot') {
@@ -10694,7 +10705,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     } else if (actionId === 'clear') {
       result = { value: '', selectionStart: 0, selectionEnd: 0 }
     } else if (selection.start === selection.end && actionId === 'log-base') {
-      result = insertKeyboardStructureAtSelection(prev, '\\log_{a}\\left(x\\right)', selection, '\\log_{'.length)
+      result = insertKeyboardStructureAtSelection(prev, '\\log_{\\placeholder{}}\\left(\\placeholder{}\\right)', selection, '\\log_{'.length)
     } else if (selection.start === selection.end && ['paren', 'bracket', 'brace', 'absolute', 'floor', 'ceiling'].includes(actionId)) {
       let insertion = ''
       let caretOffset = 0
@@ -10958,8 +10969,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           return false
         }
         const replacement = axis === 'down'
-          ? `\\frac{${trimmedSelected}}{#?}`
-          : `\\frac{#?}{${trimmedSelected}}`
+          ? `\\frac{${trimmedSelected}}{\\placeholder{}}`
+          : `\\frac{\\placeholder{}}{${trimmedSelected}}`
         try {
           selectableField.insert(replacement, {
             insertionMode: 'replaceSelection',
@@ -10995,8 +11006,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         return tryExecute('moveDown', 'moveToDenominator', 'moveToNextPlaceholder')
       }
 
-      const numerator = axis === 'down' ? referenceTarget.symbol : '#?'
-      const denominator = axis === 'up' ? referenceTarget.symbol : '#?'
+      const numerator = axis === 'down' ? referenceTarget.symbol : '\\placeholder{}'
+      const denominator = axis === 'up' ? referenceTarget.symbol : '\\placeholder{}'
       const replacement = `\\frac{${numerator}}{${denominator}}`
       const nextValue = `${currentValue.slice(0, referenceTarget.start)}${replacement}${currentValue.slice(referenceTarget.end)}`
 
@@ -12502,7 +12513,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     if (!raw) return { markup: '', style }
 
-    let latexString = raw
+    let latexString = normalizeDisplayPlaceholdersToBoxes(raw)
     if (topPanelPayload.options.alignAtEquals && !/\\begin\{aligned}/.test(latexString)) {
       const lines = latexString.split(/\\\\/g).map(line => line.trim()).filter(Boolean)
       if (lines.length) {
@@ -12601,7 +12612,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const renderLatexStepInline = useCallback((latex: string) => {
     if (!latex) return ''
     try {
-      return renderToString(latex, { throwOnError: false, displayMode: false })
+      return renderToString(normalizeDisplayPlaceholdersToBoxes(latex), { throwOnError: false, displayMode: false })
     } catch {
       return ''
     }
@@ -12646,7 +12657,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       .replace(/\s+/g, ' ')
       .trim()
 
-    return normalized
+    return normalizeDisplayPlaceholdersToBoxes(normalized)
   }, [keyboardTopPanelExpression])
 
   const keyboardTypesetPreviewMarkup = useMemo(() => {
@@ -12882,7 +12893,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const latexString = (latexOutput || '').trim()
     if (!latexString) return ''
     try {
-      return renderToString(latexString, {
+      return renderToString(normalizeDisplayPlaceholdersToBoxes(latexString), {
         throwOnError: false,
         displayMode: true,
       })

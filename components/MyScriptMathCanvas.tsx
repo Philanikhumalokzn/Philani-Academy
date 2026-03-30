@@ -11556,19 +11556,35 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         style={{
           WebkitUserSelect: 'none',
           userSelect: 'none',
-          touchAction: 'none',
+          touchAction: 'auto',
           paddingBottom: 'env(safe-area-inset-bottom, 0px)',
           boxSizing: 'border-box',
         }}
       >
-        <div className="flex min-h-[4rem] flex-1 border-b border-slate-200 bg-slate-50/80 px-0 py-0">
-          <div data-keyboard-mathlive-panel="true" className="h-full min-h-0 w-full">
+        <div
+          className="flex min-h-[4rem] flex-1 border-b border-slate-200 bg-slate-50/80 px-0 py-0"
+          style={{
+            touchAction: 'auto',
+            WebkitUserSelect: 'text',
+            userSelect: 'text',
+          }}
+        >
+          <div
+            data-keyboard-mathlive-panel="true"
+            className="h-full min-h-0 w-full"
+            style={{
+              touchAction: 'auto',
+              WebkitUserSelect: 'text',
+              userSelect: 'text',
+            }}
+          >
             {renderKeyboardBottomPanelPreviewSurface()}
           </div>
         </div>
         <div
           ref={keyboardSurfaceRef}
           className="relative h-[21.75rem] shrink-0 overflow-hidden sm:h-[24.25rem]"
+          style={{ touchAction: 'none' }}
           onPointerDown={handleKeyboardSurfacePointerDown}
           onPointerMove={handleKeyboardSurfacePointerMove}
           onPointerUp={handleKeyboardSurfacePointerEnd}

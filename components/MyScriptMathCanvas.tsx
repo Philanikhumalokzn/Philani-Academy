@@ -4434,6 +4434,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const VIEW_ONLY_SPLIT_RATIO = 0.8
   const EDITABLE_SPLIT_RATIO = 0.2
   const KEYBOARD_STACKED_SPLIT_RATIO = 0.28
+  const KEYBOARD_FIXED_PANEL_MIN_HEIGHT_PX = 348
+  const KEYBOARD_MATHLIVE_MIN_HEIGHT_PX = 56
   const [studentSplitRatio, setStudentSplitRatio] = useState(EDITABLE_SPLIT_RATIO) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(EDITABLE_SPLIT_RATIO)
 
@@ -5065,6 +5067,24 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [editorReinitNonce, requestEditorResize])
 
+  const clampStudentSplitRatio = useCallback((nextRatio: number, containerHeight?: number) => {
+    if (recognitionEngine !== 'keyboard') {
+      return Math.min(Math.max(nextRatio, 0.2), 0.8)
+    }
+
+    const resolvedHeight = Math.max(
+      containerHeight ?? studentStackRef.current?.getBoundingClientRect().height ?? 0,
+      1,
+    )
+    const minRatio = Math.min(Math.max(120 / resolvedHeight, 0.16), 0.4)
+    const maxRatio = Math.max(
+      minRatio,
+      Math.min(0.72, 1 - ((KEYBOARD_FIXED_PANEL_MIN_HEIGHT_PX + KEYBOARD_MATHLIVE_MIN_HEIGHT_PX) / resolvedHeight)),
+    )
+
+    return Math.min(Math.max(nextRatio, minRatio), maxRatio)
+  }, [KEYBOARD_FIXED_PANEL_MIN_HEIGHT_PX, KEYBOARD_MATHLIVE_MIN_HEIGHT_PX, recognitionEngine])
+
   const updateSplitRatioFromClientY = useCallback((clientY: number) => {
     if (!splitDragActiveRef.current) return
     const stackEl = studentStackRef.current
@@ -5072,11 +5092,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const rect = stackEl.getBoundingClientRect()
     const delta = clientY - splitDragStartYRef.current
     const nextRatio = splitStartRatioRef.current + delta / Math.max(rect.height, 1)
-    const clamped = Math.min(Math.max(nextRatio, 0.2), 0.8)
+    const clamped = clampStudentSplitRatio(nextRatio, rect.height)
     setStudentSplitRatio(clamped)
     studentSplitRatioRef.current = clamped
     requestEditorResize()
-  }, [requestEditorResize])
+  }, [clampStudentSplitRatio, requestEditorResize])
 
   const handleSplitPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (!splitDragActiveRef.current) return
@@ -12361,9 +12381,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const next = recognitionEngine === 'keyboard'
       ? KEYBOARD_STACKED_SPLIT_RATIO
       : (viewOnlyMode ? VIEW_ONLY_SPLIT_RATIO : EDITABLE_SPLIT_RATIO)
-    setStudentSplitRatio(next)
-    studentSplitRatioRef.current = next
-  }, [EDITABLE_SPLIT_RATIO, KEYBOARD_STACKED_SPLIT_RATIO, VIEW_ONLY_SPLIT_RATIO, recognitionEngine, useStackedStudentLayout, viewOnlyMode])
+    const clamped = clampStudentSplitRatio(next)
+    setStudentSplitRatio(clamped)
+    studentSplitRatioRef.current = clamped
+  }, [EDITABLE_SPLIT_RATIO, KEYBOARD_STACKED_SPLIT_RATIO, VIEW_ONLY_SPLIT_RATIO, clampStudentSplitRatio, recognitionEngine, useStackedStudentLayout, viewOnlyMode])
 
   useEffect(() => {
     if (canOrchestrateLesson) return
@@ -15945,7 +15966,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     if (typeof editorState.interaction?.splitRatio === 'number' && Number.isFinite(editorState.interaction.splitRatio)) {
       const nextSplitRatio = recognitionEngineRef.current === 'keyboard'
-        ? KEYBOARD_STACKED_SPLIT_RATIO
+        ? clampStudentSplitRatio(editorState.interaction.splitRatio)
         : editorState.interaction.splitRatio
       setStudentSplitRatio(nextSplitRatio)
       studentSplitRatioRef.current = nextSplitRatio
@@ -15966,7 +15987,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setDiagramCanUndo(diagramUndoRef.current.length > 0)
     setDiagramCanRedo(diagramRedoRef.current.length > 0)
     setCanRedo(rawInkRedoStackRef.current.length > 0)
-  }, [cloneDiagramAnnotations, normalizeAnnotations, replaceRawInkState])
+  }, [clampStudentSplitRatio, cloneDiagramAnnotations, normalizeAnnotations, replaceRawInkState])
 
   const applySavedNotesRecord = useCallback(async (save: NotesSaveRecord, options?: { publish?: boolean; continuity?: boolean }) => {
     if (!save) return
@@ -16002,18 +16023,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     // Overwrite the current local state.
     suppressBroadcastUntilTsRef.current = Date.now() + 1200
     try {
-      editorInstanceRef.current?.clear?.()
     } catch {}
     lastSymbolCountRef.current = 0
     lastBroadcastBaseCountRef.current = 0
-
-    if (mergedSymbols.length) {
       if (mergedSymbols.length) {
         try {
           await importNotebookSymbolsForRestore(mergedSymbols)
         } catch (err) {
           console.warn('Failed to import continuity notes symbols', err)
-        }
       }
       lastSymbolCountRef.current = mergedSymbols.length
       lastBroadcastBaseCountRef.current = mergedSymbols.length
@@ -16037,7 +16054,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         ?? preservedEditingStepIndex
         ?? null
       const nextEditingStepIndex = savedAdminEditingStepIndex ?? preservedEditingStepIndex ?? null
-
       if (useAdminStepComposer && hasControllerRights()) {
         setAdminSteps(stepsForComposer)
         setAdminEditIndex(nextEditingStepIndex)

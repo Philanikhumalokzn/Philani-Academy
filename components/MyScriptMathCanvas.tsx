@@ -11566,16 +11566,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         <div
           ref={keyboardSurfaceRef}
           className="relative h-[21.75rem] shrink-0 overflow-hidden sm:h-[24.25rem]"
-          style={{
-            paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-          }}
           onPointerDown={handleKeyboardSurfacePointerDown}
           onPointerMove={handleKeyboardSurfacePointerMove}
           onPointerUp={handleKeyboardSurfacePointerEnd}
           onPointerCancel={handleKeyboardSurfacePointerEnd}
         >
         <div className="flex h-full w-full items-stretch justify-stretch px-0 py-0">
-          <div data-keyboard-panel="true" className="h-full w-full rounded-2xl border border-slate-900/80 bg-[linear-gradient(180deg,#20252d_0%,#171b22_100%)] p-2 shadow-[0_20px_55px_rgba(15,23,42,0.45)] sm:p-3">
+          <div
+            data-keyboard-panel="true"
+            className="h-full w-full rounded-2xl border border-slate-900/80 bg-[linear-gradient(180deg,#20252d_0%,#171b22_100%)] p-2 shadow-[0_20px_55px_rgba(15,23,42,0.45)] sm:p-3"
+            style={{
+              paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.5rem)',
+              boxSizing: 'border-box',
+            }}
+          >
             <div className="flex flex-col gap-2.5">
               <div data-keyboard-top-grid="true" className="grid grid-cols-[repeat(4,minmax(0,1fr))_1.12fr] auto-rows-[2.5rem] gap-2 sm:auto-rows-[2.8rem]">
                 {renderVisibleKeyboardButton({ actionId: 'nth-root', representativeKeyId: 'radicals' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-xs sm:text-sm font-medium' })}

@@ -90,9 +90,15 @@ test.describe('keyboard family key previews', () => {
 
     const logsFamilyButton = page.locator('button[data-keyboard-representative="logs"]').last()
     const enclosuresFamilyButton = page.locator('button[data-keyboard-representative="enclosures"]').last()
+    const calculusFamilyButton = page.locator('button[data-keyboard-representative="calculus"]').last()
+    const greekFamilyButton = page.locator('button[data-keyboard-representative="greek"]').last()
+    const relationsFamilyButton = page.locator('button[data-keyboard-representative="relations"]').last()
 
     await expect(logsFamilyButton).toBeVisible({ timeout: 20_000 })
     await expect(enclosuresFamilyButton).toBeVisible({ timeout: 20_000 })
+    await expect(calculusFamilyButton).toBeVisible({ timeout: 20_000 })
+    await expect(greekFamilyButton).toBeVisible({ timeout: 20_000 })
+    await expect(relationsFamilyButton).toBeVisible({ timeout: 20_000 })
 
     const logsHtml = await logsFamilyButton.innerHTML()
     const enclosuresHtml = await enclosuresFamilyButton.innerHTML()
@@ -106,7 +112,25 @@ test.describe('keyboard family key previews', () => {
     expect(logsText).not.toContain('placeholder')
     expect(enclosuresText).not.toContain('placeholder')
 
+    const calculusBox = await calculusFamilyButton.boundingBox()
+    const greekBox = await greekFamilyButton.boundingBox()
+    const relationsBox = await relationsFamilyButton.boundingBox()
+
+    expect(calculusBox).not.toBeNull()
+    expect(greekBox).not.toBeNull()
+    expect(relationsBox).not.toBeNull()
+
+    if (!calculusBox || !greekBox || !relationsBox) {
+      throw new Error('Expected calculus, greek, and relations family buttons to have visible layout boxes.')
+    }
+
+    expect(Math.abs(calculusBox.y - greekBox.y)).toBeLessThan(12)
+    expect(Math.abs(greekBox.y - relationsBox.y)).toBeLessThan(12)
+    expect(calculusBox.x).toBeLessThan(greekBox.x)
+    expect(greekBox.x).toBeLessThan(relationsBox.x)
+
     await logsFamilyButton.screenshot({ path: 'test-results/keyboard-family-logs-preview.png' })
     await enclosuresFamilyButton.screenshot({ path: 'test-results/keyboard-family-enclosures-preview.png' })
+    await page.locator('div.grid.grid-cols-3.gap-2').nth(2).screenshot({ path: 'test-results/keyboard-cluster-middle-row-layout.png' })
   })
 })

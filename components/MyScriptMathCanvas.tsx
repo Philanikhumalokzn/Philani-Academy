@@ -1856,6 +1856,16 @@ const KEYBOARD_REPRESENTATIVE_KEYS: KeyboardRepresentativeKeyDefinition[] = [
     familyTitle: 'Relation family',
   },
   {
+    id: 'calculus',
+    title: 'derivative',
+    description: 'calculus family',
+    latex: '\\frac{d}{dx}',
+    singleTapActionId: 'derivative',
+    radialActionIds: [],
+    familyRows: [['derivative', 'second-derivative', 'integral', 'definite-integral', 'limit', 'to', 'dx', 'partial']],
+    familyTitle: 'Calculus',
+  },
+  {
     id: 'enclosures',
     title: 'parentheses',
     description: 'enclosure family',
@@ -2686,8 +2696,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const [recentLetters, setRecentLetters] = useState<string[]>(['x', 'y', 'f', 'k', 't'])
   const recentLettersRef = useRef<string[]>(['x', 'y', 'f', 'k', 't'])
   const [recentRepresentativeActions, setRecentRepresentativeActions] = useState<Record<string, string[]>>({
+    calculus: ['derivative', 'second-derivative', 'integral', 'limit'],
+    relations: ['equals', 'neq', 'leq', 'geq'],
     trig: ['sin', 'cos', 'tan'],
     logs: ['log-base', 'log', 'ln'],
+    greek: ['theta', 'pi', 'infinity'],
     enclosures: ['paren', 'bracket', 'absolute', 'brace'],
   })
   const [activeKeyboardRadialTarget, setActiveKeyboardRadialTarget] = useState<KeyboardStageTarget | null>(null)
@@ -11506,6 +11519,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     const lowerVariableColumnKeys = buildLowerVariableColumnKeys()
+    const dynamicCalculusKey = buildDynamicRepresentativeKey('calculus') || { actionId: 'derivative', representativeKeyId: 'calculus' }
+    const dynamicRelationsKey = buildDynamicRepresentativeKey('relations') || { actionId: 'equals', representativeKeyId: 'relations' }
+    const dynamicGreekKey = buildDynamicRepresentativeKey('greek') || { actionId: 'theta', representativeKeyId: 'greek' }
     const dynamicTrigKey = buildDynamicRepresentativeKey('trig') || { actionId: 'sin', representativeKeyId: 'trig' }
     const dynamicLogsKey = buildDynamicRepresentativeKey('logs') || { actionId: 'log-base', representativeKeyId: 'logs' }
     const dynamicEnclosuresKey = buildDynamicRepresentativeKey('enclosures') || { actionId: 'paren', representativeKeyId: 'enclosures' }
@@ -11553,9 +11569,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     <div />
                     {renderVisibleKeyboardButton(buildDynamicClusterKeys().center, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
                     {renderVisibleKeyboardButton({ actionId: 'y', representativeKeyId: 'letters' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
-                    {renderVisibleKeyboardButton({ actionId: 'theta', label: 'θ', representativeKeyId: 'greek' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-base sm:text-lg font-medium' })}
-                    {renderVisibleKeyboardButton({ actionId: 'pi', label: 'π', representativeKeyId: 'greek' }, { className: 'border-transparent bg-slate-600 text-white hover:bg-slate-500 rounded-[999px]', textClassName: 'text-base sm:text-lg font-medium' })}
-                    {renderVisibleKeyboardButton({ actionId: 'equals', label: '=', representativeKeyId: 'relations' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
+                    {renderVisibleKeyboardButton(dynamicCalculusKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-sm sm:text-base font-medium' })}
+                    {renderVisibleKeyboardButton(dynamicGreekKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-base sm:text-lg font-medium' })}
+                    {renderVisibleKeyboardButton(dynamicRelationsKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
                     {renderVisibleKeyboardButton(dynamicTrigKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-base sm:text-lg font-medium' })}
                     {renderVisibleKeyboardButton(dynamicLogsKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-xs sm:text-sm font-medium' })}
                     {renderVisibleKeyboardButton(dynamicEnclosuresKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-base sm:text-lg font-medium' })}

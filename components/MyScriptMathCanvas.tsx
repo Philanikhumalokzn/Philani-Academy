@@ -4437,6 +4437,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const KEYBOARD_BOTTOM_CHROME_MIN_HEIGHT_PX = 48
   const KEYBOARD_FIXED_PANEL_MIN_HEIGHT_PX = 348
   const KEYBOARD_MATHLIVE_MIN_HEIGHT_PX = 56
+  const KEYBOARD_BOTTOM_SAFE_AREA_RESERVE_PX = 44
   const [studentSplitRatio, setStudentSplitRatio] = useState(EDITABLE_SPLIT_RATIO) // portion for LaTeX panel when stacked
   const studentSplitRatioRef = useRef(EDITABLE_SPLIT_RATIO)
 
@@ -5080,11 +5081,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const minRatio = Math.min(Math.max(120 / resolvedHeight, 0.16), 0.4)
     const maxRatio = Math.max(
       minRatio,
-      Math.min(0.72, 1 - ((KEYBOARD_BOTTOM_CHROME_MIN_HEIGHT_PX + KEYBOARD_FIXED_PANEL_MIN_HEIGHT_PX + KEYBOARD_MATHLIVE_MIN_HEIGHT_PX) / resolvedHeight)),
+      Math.min(0.72, 1 - ((KEYBOARD_BOTTOM_CHROME_MIN_HEIGHT_PX + KEYBOARD_FIXED_PANEL_MIN_HEIGHT_PX + KEYBOARD_MATHLIVE_MIN_HEIGHT_PX + KEYBOARD_BOTTOM_SAFE_AREA_RESERVE_PX) / resolvedHeight)),
     )
 
     return Math.min(Math.max(nextRatio, minRatio), maxRatio)
-  }, [KEYBOARD_BOTTOM_CHROME_MIN_HEIGHT_PX, KEYBOARD_FIXED_PANEL_MIN_HEIGHT_PX, KEYBOARD_MATHLIVE_MIN_HEIGHT_PX, recognitionEngine])
+  }, [KEYBOARD_BOTTOM_CHROME_MIN_HEIGHT_PX, KEYBOARD_BOTTOM_SAFE_AREA_RESERVE_PX, KEYBOARD_FIXED_PANEL_MIN_HEIGHT_PX, KEYBOARD_MATHLIVE_MIN_HEIGHT_PX, recognitionEngine])
 
   const updateSplitRatioFromClientY = useCallback((clientY: number) => {
     if (!splitDragActiveRef.current) return
@@ -11556,6 +11557,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           WebkitUserSelect: 'none',
           userSelect: 'none',
           touchAction: 'none',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          boxSizing: 'border-box',
         }}
       >
         <div className="flex min-h-[4rem] flex-1 border-b border-slate-200 bg-slate-50/80 px-0 py-0">
@@ -11575,10 +11578,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           <div
             data-keyboard-panel="true"
             className="h-full w-full rounded-2xl border border-slate-900/80 bg-[linear-gradient(180deg,#20252d_0%,#171b22_100%)] p-2 shadow-[0_20px_55px_rgba(15,23,42,0.45)] sm:p-3"
-            style={{
-              paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.5rem)',
-              boxSizing: 'border-box',
-            }}
           >
             <div className="flex flex-col gap-2.5">
               <div data-keyboard-top-grid="true" className="grid grid-cols-[repeat(4,minmax(0,1fr))_1.12fr] auto-rows-[2.5rem] gap-2 sm:auto-rows-[2.8rem]">
@@ -17392,7 +17391,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               style={{
                 flex: shouldCollapseStackedView ? 0 : (isRawInkMode ? 1 : Math.max(1 - studentSplitRatio, 0.2)),
                 minHeight: shouldCollapseStackedView ? 0 : (recognitionEngine === 'keyboard'
-                  ? `${KEYBOARD_BOTTOM_CHROME_MIN_HEIGHT_PX + KEYBOARD_FIXED_PANEL_MIN_HEIGHT_PX + KEYBOARD_MATHLIVE_MIN_HEIGHT_PX}px`
+                  ? `calc(${KEYBOARD_BOTTOM_CHROME_MIN_HEIGHT_PX + KEYBOARD_FIXED_PANEL_MIN_HEIGHT_PX + KEYBOARD_MATHLIVE_MIN_HEIGHT_PX}px + env(safe-area-inset-bottom, 0px))`
                   : '220px'),
                 maxHeight: shouldCollapseStackedView ? 0 : undefined,
                 opacity: shouldCollapseStackedView ? 0 : 1,

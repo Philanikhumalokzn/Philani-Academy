@@ -1262,8 +1262,8 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
     id: 'power2',
     title: 'square',
     description: 'square',
-    latex: 'x^{2}',
-    renderLatex: (baseSymbol) => `${baseSymbol || 'x'}^{2}`,
+    latex: '#?^{2}',
+    renderLatex: (baseSymbol) => `${baseSymbol || '#?'}^{2}`,
     apply: (prev, baseSymbol) => `${prev || (baseSymbol || 'x')}^2`,
   },
   {
@@ -1302,16 +1302,16 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
     id: 'nth-root',
     title: 'nth root',
     description: 'nth root',
-    latex: '\\sqrt[n]{x}',
-    renderLatex: (baseSymbol) => `\\sqrt[n]{${baseSymbol || 'x'}}`,
+    latex: '\\sqrt[#?]{#?}',
+    renderLatex: (baseSymbol) => `\\sqrt[#?]{${baseSymbol || '#?'}}`,
     apply: (prev, baseSymbol) => `${prev}root(${baseSymbol || 'x'}, n)`,
   },
   {
     id: 'fraction',
     title: 'fraction',
     description: 'fraction',
-    latex: '\\frac{x}{#?}',
-    renderLatex: (baseSymbol) => `\\frac{${baseSymbol || 'x'}}{#?}`,
+    latex: '\\frac{#?}{#?}',
+    renderLatex: (baseSymbol) => `\\frac{${baseSymbol || '#?'}}{#?}`,
     apply: (prev, baseSymbol) => `${prev}(${baseSymbol || 'x'})/()`,
   },
   {
@@ -11566,9 +11566,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               <div className="grid grid-cols-[1.1fr_1.1fr_1.1fr_1fr_1fr] gap-2">
                 <div className="col-span-3 rounded-[1.4rem] bg-slate-900/70 p-2">
                   <div className="grid grid-cols-3 gap-2">
-                    <div />
-                    {renderVisibleKeyboardButton(buildDynamicClusterKeys().center, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
-                    {renderVisibleKeyboardButton({ actionId: 'y', representativeKeyId: 'letters' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
+                    {renderVisibleKeyboardButton({ actionId: 'nth-root', representativeKeyId: 'radicals' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-xs sm:text-sm font-medium' })}
+                    {renderVisibleKeyboardButton({ actionId: 'fraction', representativeKeyId: 'radicals' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-sm sm:text-base font-medium' })}
+                    {renderVisibleKeyboardButton({ actionId: 'power2', representativeKeyId: 'radicals' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-sm sm:text-base font-medium' })}
                     {renderVisibleKeyboardButton(dynamicCalculusKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-sm sm:text-base font-medium' })}
                     {renderVisibleKeyboardButton(dynamicGreekKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-base sm:text-lg font-medium' })}
                     {renderVisibleKeyboardButton(dynamicRelationsKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}

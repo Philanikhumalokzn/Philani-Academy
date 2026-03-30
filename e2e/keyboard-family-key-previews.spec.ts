@@ -93,12 +93,19 @@ test.describe('keyboard family key previews', () => {
     const calculusFamilyButton = page.locator('button[data-keyboard-representative="calculus"]').last()
     const greekFamilyButton = page.locator('button[data-keyboard-representative="greek"]').last()
     const relationsFamilyButton = page.locator('button[data-keyboard-representative="relations"]').last()
+    const clusterButtons = page.locator('div.grid.grid-cols-3.gap-2').nth(2).locator('button')
+    const topLeftClusterButton = clusterButtons.nth(0)
+    const topMiddleClusterButton = clusterButtons.nth(1)
+    const topRightClusterButton = clusterButtons.nth(2)
 
     await expect(logsFamilyButton).toBeVisible({ timeout: 20_000 })
     await expect(enclosuresFamilyButton).toBeVisible({ timeout: 20_000 })
     await expect(calculusFamilyButton).toBeVisible({ timeout: 20_000 })
     await expect(greekFamilyButton).toBeVisible({ timeout: 20_000 })
     await expect(relationsFamilyButton).toBeVisible({ timeout: 20_000 })
+    await expect(topLeftClusterButton).toBeVisible({ timeout: 20_000 })
+    await expect(topMiddleClusterButton).toBeVisible({ timeout: 20_000 })
+    await expect(topRightClusterButton).toBeVisible({ timeout: 20_000 })
 
     const logsHtml = await logsFamilyButton.innerHTML()
     const enclosuresHtml = await enclosuresFamilyButton.innerHTML()
@@ -111,6 +118,17 @@ test.describe('keyboard family key previews', () => {
     expect(enclosuresHtml).not.toMatch(/placeholder/i)
     expect(logsText).not.toContain('placeholder')
     expect(enclosuresText).not.toContain('placeholder')
+
+    await expect(topLeftClusterButton).toHaveAttribute('data-keyboard-action', 'nth-root')
+    await expect(topMiddleClusterButton).toHaveAttribute('data-keyboard-action', 'fraction')
+    await expect(topRightClusterButton).toHaveAttribute('data-keyboard-action', 'power2')
+
+    const topLeftHtml = await topLeftClusterButton.innerHTML()
+    const topMiddleHtml = await topMiddleClusterButton.innerHTML()
+    expect(topLeftHtml).toContain('katex')
+    expect(topMiddleHtml).toContain('katex')
+    expect(topLeftHtml).not.toMatch(/placeholder/i)
+    expect(topMiddleHtml).not.toMatch(/placeholder/i)
 
     const calculusBox = await calculusFamilyButton.boundingBox()
     const greekBox = await greekFamilyButton.boundingBox()
@@ -131,6 +149,8 @@ test.describe('keyboard family key previews', () => {
 
     await logsFamilyButton.screenshot({ path: 'test-results/keyboard-family-logs-preview.png' })
     await enclosuresFamilyButton.screenshot({ path: 'test-results/keyboard-family-enclosures-preview.png' })
+    await topLeftClusterButton.screenshot({ path: 'test-results/keyboard-cluster-nth-root-preview.png' })
+    await topMiddleClusterButton.screenshot({ path: 'test-results/keyboard-cluster-fraction-preview.png' })
     await page.locator('div.grid.grid-cols-3.gap-2').nth(2).screenshot({ path: 'test-results/keyboard-cluster-middle-row-layout.png' })
   })
 })

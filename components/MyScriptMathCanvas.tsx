@@ -1362,6 +1362,14 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
   createWrappedLatexKeyboardAction('cos', 'cosine', 'cosine', (baseSymbol) => `\\cos\\left(${baseSymbol}\\right)`, (baseSymbol) => `cos(${baseSymbol})`),
   createWrappedLatexKeyboardAction('tan', 'tangent', 'tangent', (baseSymbol) => `\\tan\\left(${baseSymbol}\\right)`, (baseSymbol) => `tan(${baseSymbol})`),
   createWrappedLatexKeyboardAction('ln', 'natural logarithm', 'natural logarithm', (baseSymbol) => `\\ln\\left(${baseSymbol}\\right)`, (baseSymbol) => `ln(${baseSymbol})`),
+  {
+    id: 'log-base',
+    title: 'logarithm with base',
+    description: 'logarithm with arbitrary base',
+    latex: '\\log_{a}\\left(x\\right)',
+    renderLatex: () => `\\log_{a}\\left(x\\right)`,
+    apply: (prev) => `${prev}\\log_{a}\\left(x\\right)`,
+  },
   createWrappedLatexKeyboardAction('log', 'logarithm', 'logarithm', (baseSymbol) => `\\log\\left(${baseSymbol}\\right)`, (baseSymbol) => `log(${baseSymbol})`),
   createWrappedLatexKeyboardAction('derivative', 'derivative', 'derivative', (baseSymbol) => `\\frac{d}{dx}\\left(${baseSymbol}\\right)`, (baseSymbol) => `d/dx(${baseSymbol})`),
   createWrappedLatexKeyboardAction('second-derivative', 'second derivative', 'second derivative', (baseSymbol) => `\\frac{d^{2}}{dx^{2}}\\left(${baseSymbol}\\right)`, (baseSymbol) => `d^2/dx^2(${baseSymbol})`),
@@ -1862,8 +1870,18 @@ const KEYBOARD_REPRESENTATIVE_KEYS: KeyboardRepresentativeKeyDefinition[] = [
     latex: '\\sin(x)',
     singleTapActionId: 'sin',
     radialActionIds: [],
-    familyRows: [['sin', 'cos', 'tan'], ['ln', 'log']],
-    familyTitle: 'Trig and logs',
+    familyRows: [['sin', 'cos', 'tan']],
+    familyTitle: 'Trigonometry',
+  },
+  {
+    id: 'logs',
+    title: 'logarithm',
+    description: 'logarithm family',
+    latex: '\\log_{a}(x)',
+    singleTapActionId: 'log-base',
+    radialActionIds: [],
+    familyRows: [['log-base', 'log', 'ln']],
+    familyTitle: 'Logs',
   },
   {
     id: 'greek',
@@ -2612,6 +2630,20 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     })
   }, [])
 
+  const updateRecentRepresentativeAction = useCallback((actionId: string) => {
+    const representativeKeyId = KEYBOARD_ACTION_REPRESENTATIVE_MAP[actionId]
+    if (!representativeKeyId || representativeKeyId === 'letters') return
+
+    setRecentRepresentativeActions((prev) => {
+      const current = prev[representativeKeyId] || []
+      const next = [actionId, ...current.filter((candidate) => candidate !== actionId)].slice(0, 6)
+      return {
+        ...prev,
+        [representativeKeyId]: next,
+      }
+    })
+  }, [])
+
   const triggerKeyboardSwipeBlock = useCallback((message: string, blockedActionId?: string) => {
     setKeyboardTransientWarning(message)
     if (keyboardTransientWarningTimeoutRef.current) {
@@ -2641,6 +2673,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const [keyboardPaletteVisible, setKeyboardPaletteVisible] = useState(false)
   const [recentLetters, setRecentLetters] = useState<string[]>(['x', 'y', 'f', 'k', 't'])
   const recentLettersRef = useRef<string[]>(['x', 'y', 'f', 'k', 't'])
+  const [recentRepresentativeActions, setRecentRepresentativeActions] = useState<Record<string, string[]>>({
+    trig: ['sin', 'cos', 'tan'],
+    logs: ['log-base', 'log', 'ln'],
+    enclosures: ['paren', 'bracket', 'absolute', 'brace'],
+  })
   const [activeKeyboardRadialTarget, setActiveKeyboardRadialTarget] = useState<KeyboardStageTarget | null>(null)
   const [activeKeyboardFamilyTarget, setActiveKeyboardFamilyTarget] = useState<KeyboardStageTarget | null>(null)
   const activeKeyboardFamilyTargetRef = useRef<KeyboardStageTarget | null>(null)
@@ -10390,12 +10427,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     field.focus()
 
     if (actionId === 'backspace') {
+      updateRecentRepresentativeAction(actionId)
       field.executeCommand('deleteBackward')
       syncKeyboardMathfieldState(field)
       return true
     }
 
     if (actionId === 'clear') {
+      updateRecentRepresentativeAction(actionId)
       field.executeCommand('deleteAll')
       syncKeyboardMathfieldState(field)
       return true
@@ -10443,6 +10482,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           insertionMode: 'replaceSelection',
           selectionMode: 'item',
         })
+        updateRecentRepresentativeAction(actionId)
         syncKeyboardMathfieldState(field)
         return true
       }
@@ -10451,6 +10491,24 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         selectionMode: 'after',
       })
       field.executeCommand('moveToPreviousChar')
+      updateRecentRepresentativeAction(actionId)
+      syncKeyboardMathfieldState(field)
+      return true
+    }
+
+    if (actionId === 'log-base') {
+      if (hasSelectionRange) {
+        const selected = selectableField.getValue(selection, 'latex') || ''
+        selectableField.insert(`\\log_{#?}\\left(${selected}\\right)`, {
+          insertionMode: 'replaceSelection',
+          selectionMode: 'placeholder',
+        })
+      } else {
+        selectableField.insert('\\log_{#?}\\left(#?\\right)', {
+          selectionMode: 'placeholder',
+        })
+      }
+      updateRecentRepresentativeAction(actionId)
       syncKeyboardMathfieldState(field)
       return true
     }
@@ -10514,6 +10572,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           insertionMode: 'replaceSelection',
           selectionMode: 'after',
         })
+        updateRecentRepresentativeAction(actionId)
         syncKeyboardMathfieldState(field)
         return true
       }
@@ -10525,6 +10584,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       } else {
         field.executeCommand(['insert', '2'])
       }
+      updateRecentRepresentativeAction(actionId)
       syncKeyboardMathfieldState(field)
       return true
     }
@@ -10535,6 +10595,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       } else {
         field.executeCommand(['insert', '3'])
       }
+      updateRecentRepresentativeAction(actionId)
       syncKeyboardMathfieldState(field)
       return true
     }
@@ -10545,6 +10606,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       } else {
         field.executeCommand(['insert', 'i'])
       }
+      updateRecentRepresentativeAction(actionId)
       syncKeyboardMathfieldState(field)
       return true
     }
@@ -10580,9 +10642,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     if (!insertion) return false
     field.executeCommand(['insert', insertion])
+    updateRecentRepresentativeAction(actionId)
     syncKeyboardMathfieldState(field)
     return true
-  }, [syncKeyboardMathfieldState])
+  }, [syncKeyboardMathfieldState, updateRecentRepresentativeAction])
 
   const  applyKeyboardAction = useCallback((actionId: string, baseSymbol?: string) => {
     const action = KEYBOARD_ACTION_MAP[actionId]
@@ -10630,6 +10693,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       result = removeKeyboardTextAtSelection(prev, selection)
     } else if (actionId === 'clear') {
       result = { value: '', selectionStart: 0, selectionEnd: 0 }
+    } else if (selection.start === selection.end && actionId === 'log-base') {
+      result = insertKeyboardStructureAtSelection(prev, '\\log_{a}\\left(x\\right)', selection, '\\log_{'.length)
     } else if (selection.start === selection.end && ['paren', 'bracket', 'brace', 'absolute', 'floor', 'ceiling'].includes(actionId)) {
       let insertion = ''
       let caretOffset = 0
@@ -10704,6 +10769,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (useAdminStepComposerRef.current && hasControllerRights()) {
       setAdminDraftLatex(normalizeStepLatex(result.value))
     }
+    updateRecentRepresentativeAction(actionId)
     if (typeof window !== 'undefined') {
       window.setTimeout(() => {
         keyboardExpressionSurfaceRef.current?.focus()
@@ -10715,7 +10781,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     } else {
       setSelectedKeyboardKey(null)
     }
-  }, [applyMathfieldKeyboardAction, closeKeyboardTransientOverlays, hasControllerRights, keyboardUppercase, normalizeStepLatex, scheduleKeyboardFadeOut])
+  }, [applyMathfieldKeyboardAction, closeKeyboardTransientOverlays, hasControllerRights, keyboardUppercase, normalizeStepLatex, scheduleKeyboardFadeOut, updateRecentLetters, updateRecentRepresentativeAction])
 
   const applyKeyboardRadialAction = useCallback((actionId: string, target: KeyboardStageTarget) => {
     const action = KEYBOARD_ACTION_MAP[actionId]
@@ -10767,6 +10833,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (useAdminStepComposerRef.current && hasControllerRights()) {
       setAdminDraftLatex(normalizeStepLatex(result.value))
     }
+    updateRecentRepresentativeAction(actionId)
     if (typeof window !== 'undefined') {
       window.setTimeout(() => {
         keyboardExpressionSurfaceRef.current?.focus()
@@ -10778,7 +10845,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     } else {
       setSelectedKeyboardKey(null)
     }
-  }, [applyMathfieldKeyboardAction, closeKeyboardTransientOverlays, hasControllerRights, normalizeStepLatex, scheduleKeyboardFadeOut])
+  }, [applyMathfieldKeyboardAction, closeKeyboardTransientOverlays, hasControllerRights, normalizeStepLatex, scheduleKeyboardFadeOut, updateRecentRepresentativeAction])
 
   const moveKeyboardCaretBySwipe = useCallback((direction: KeyboardSwipeDirection, sourceActionId?: string) => {
     const field = keyboardMathfieldRef.current
@@ -11227,6 +11294,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       }))
     }
 
+    const buildDynamicRepresentativeKey = (representativeKeyId: string) => {
+      const representative = KEYBOARD_REPRESENTATIVE_MAP[representativeKeyId]
+      if (!representative) return null
+
+      const recent = recentRepresentativeActions[representativeKeyId] || []
+      const familyActionIds = representative.familyRows.flat()
+      const ordered = [...recent, representative.singleTapActionId, ...familyActionIds]
+      const selectedActionId = ordered.find((actionId, index) => ordered.indexOf(actionId) === index && Boolean(KEYBOARD_ACTION_MAP[actionId]))
+      if (!selectedActionId) return null
+
+      return {
+        actionId: selectedActionId,
+        representativeKeyId,
+      } as KeyboardVisibleKeyDefinition
+    }
+
     // Polar positioning helper for the radial symbol cluster.
     // Container is 320×320px, center at (160,160).
     // angle: degrees clockwise from East (0°=E, -90°=N, 90°=S, 180°=W).
@@ -11410,6 +11493,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     const lowerVariableColumnKeys = buildLowerVariableColumnKeys()
+    const dynamicTrigKey = buildDynamicRepresentativeKey('trig') || { actionId: 'sin', representativeKeyId: 'trig' }
+    const dynamicLogsKey = buildDynamicRepresentativeKey('logs') || { actionId: 'log-base', representativeKeyId: 'logs' }
+    const dynamicEnclosuresKey = buildDynamicRepresentativeKey('enclosures') || { actionId: 'paren', representativeKeyId: 'enclosures' }
 
     return (
       <div
@@ -11436,8 +11522,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 {renderVisibleKeyboardButton({ actionId: 'sin', label: 'sin', representativeKeyId: 'trig' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
                 {renderVisibleKeyboardButton({ actionId: 'cos', label: 'cos', representativeKeyId: 'trig' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
                 {renderVisibleKeyboardButton({ actionId: 'tan', label: 'tan', representativeKeyId: 'trig' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
-                {renderVisibleKeyboardButton({ actionId: 'ln', label: 'ln', representativeKeyId: 'trig' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
-                {renderVisibleKeyboardButton({ actionId: 'log', label: 'log', representativeKeyId: 'trig' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
+                {renderVisibleKeyboardButton({ actionId: 'ln', label: 'ln', representativeKeyId: 'logs' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
+                {renderVisibleKeyboardButton({ actionId: 'log', label: 'log', representativeKeyId: 'logs' }, { className: 'border-transparent bg-slate-800 text-white hover:bg-slate-700', textClassName: 'text-xs sm:text-sm font-medium' })}
               </div>
 
               <div className="grid grid-cols-5 gap-2">
@@ -11457,9 +11543,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     {renderVisibleKeyboardButton({ actionId: 'theta', label: 'θ', representativeKeyId: 'greek' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-base sm:text-lg font-medium' })}
                     {renderVisibleKeyboardButton({ actionId: 'pi', label: 'π', representativeKeyId: 'greek' }, { className: 'border-transparent bg-slate-600 text-white hover:bg-slate-500 rounded-[999px]', textClassName: 'text-base sm:text-lg font-medium' })}
                     {renderVisibleKeyboardButton({ actionId: 'equals', label: '=', representativeKeyId: 'relations' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
-                    {renderVisibleKeyboardButton({ actionId: 'x', representativeKeyId: 'letters' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
-                    {renderVisibleKeyboardButton({ actionId: 'digit-0', label: '0' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
-                    {renderVisibleKeyboardButton({ actionId: 'decimal', label: '.' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
+                    {renderVisibleKeyboardButton(dynamicTrigKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-base sm:text-lg font-medium' })}
+                    {renderVisibleKeyboardButton(dynamicLogsKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-xs sm:text-sm font-medium' })}
+                    {renderVisibleKeyboardButton(dynamicEnclosuresKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-base sm:text-lg font-medium' })}
                   </div>
                 </div>
 

@@ -11210,6 +11210,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       }
     }
 
+    const buildLowerVariableColumnKeys = () => {
+      const defaults = ['x', 'y', 'f', 't']
+      const seen = new Set<string>()
+      const ordered = [...recentLetters, ...defaults].filter((letter): letter is string => {
+        if (!letter || !/^[a-z]$/i.test(letter)) return false
+        const normalized = letter.toLowerCase()
+        if (seen.has(normalized)) return false
+        seen.add(normalized)
+        return true
+      })
+      return ordered.slice(0, 4).map((letter) => ({
+        actionId: letter,
+        label: letter,
+        representativeKeyId: 'letters',
+      }))
+    }
+
     // Polar positioning helper for the radial symbol cluster.
     // Container is 320×320px, center at (160,160).
     // angle: degrees clockwise from East (0°=E, -90°=N, 90°=S, 180°=W).
@@ -11392,6 +11409,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       applyKeyboardSwipeProgress(gesture, dx, dy)
     }
 
+    const lowerVariableColumnKeys = buildLowerVariableColumnKeys()
+
     return (
       <div
         className="absolute inset-0 z-30 flex flex-col overflow-hidden bg-white select-none keyboard-symbol-font"
@@ -11455,8 +11474,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               </div>
 
               <div className="grid grid-cols-[repeat(4,minmax(0,1fr))_1.1fr] gap-2">
-                {['digit-7', 'digit-8', 'digit-9', 'x'].map((actionId) =>
-                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : 'x', representativeKeyId: actionId === 'x' ? 'letters' : undefined }, {
+                {['digit-7', 'digit-8', 'digit-9', lowerVariableColumnKeys[0]?.actionId || 'x'].map((actionId) =>
+                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : actionId, representativeKeyId: /^[a-z]$/i.test(actionId) ? 'letters' : undefined }, {
                     className: actionId.startsWith('digit-') ? 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100' : 'border-transparent bg-slate-800 text-white hover:bg-slate-700',
                     textClassName: actionId.startsWith('digit-') ? 'text-2xl sm:text-[2rem] font-medium' : 'text-lg sm:text-xl font-medium',
                   })
@@ -11475,15 +11494,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   <span className="text-3xl font-medium leading-none">=</span>
                 </button>
 
-                {['digit-4', 'digit-5', 'digit-6', 'y'].map((actionId) =>
-                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : 'y', representativeKeyId: actionId === 'y' ? 'letters' : undefined }, {
+                {['digit-4', 'digit-5', 'digit-6', lowerVariableColumnKeys[1]?.actionId || 'y'].map((actionId) =>
+                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : actionId, representativeKeyId: /^[a-z]$/i.test(actionId) ? 'letters' : undefined }, {
                     className: actionId.startsWith('digit-') ? 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100' : 'border-transparent bg-slate-800 text-white hover:bg-slate-700',
                     textClassName: actionId.startsWith('digit-') ? 'text-2xl sm:text-[2rem] font-medium' : 'text-lg sm:text-xl font-medium',
                   })
                 )}
 
-                {['digit-1', 'digit-2', 'digit-3', 'f'].map((actionId) =>
-                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : 'f', representativeKeyId: actionId === 'f' ? 'letters' : undefined }, {
+                {['digit-1', 'digit-2', 'digit-3', lowerVariableColumnKeys[2]?.actionId || 'f'].map((actionId) =>
+                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : actionId, representativeKeyId: /^[a-z]$/i.test(actionId) ? 'letters' : undefined }, {
                     className: actionId.startsWith('digit-') ? 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100' : 'border-transparent bg-slate-800 text-white hover:bg-slate-700',
                     textClassName: actionId.startsWith('digit-') ? 'text-2xl sm:text-[2rem] font-medium' : 'text-lg sm:text-xl font-medium',
                   })
@@ -11491,7 +11510,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
                 {renderVisibleKeyboardButton({ actionId: 'digit-0', label: '0' }, { className: 'col-span-2 border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100', textClassName: 'text-2xl sm:text-[2rem] font-medium' })}
                 {renderVisibleKeyboardButton({ actionId: 'decimal', label: '.' }, { className: 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100', textClassName: 'text-2xl sm:text-[2rem] font-medium' })}
-                {renderVisibleKeyboardButton({ actionId: 't', label: 't', representativeKeyId: 'letters' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600', textClassName: 'text-lg sm:text-xl font-medium' })}
+                {renderVisibleKeyboardButton(lowerVariableColumnKeys[3] || { actionId: 't', label: 't', representativeKeyId: 'letters' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600', textClassName: 'text-lg sm:text-xl font-medium' })}
               </div>
             </div>
           </div>

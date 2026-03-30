@@ -1,0 +1,592 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - main [ref=e4]:
+      - generic [ref=e6]:
+        - generic [ref=e7]:
+          - generic [ref=e8]:
+            - generic [ref=e9]:
+              - button "Open menu" [ref=e10] [cursor=pointer]:
+                - img [ref=e11]
+              - img "Philani Academy logo" [ref=e13]
+            - generic [ref=e14]:
+              - button "Search and discover" [ref=e15] [cursor=pointer]:
+                - img [ref=e16]
+              - button "Notifications" [ref=e19] [cursor=pointer]:
+                - img [ref=e20]
+                - generic [ref=e22]: "6"
+              - link "Admin User" [ref=e23] [cursor=pointer]:
+                - /url: /profile
+                - img "Admin User" [ref=e24]
+          - generic [ref=e26]:
+            - button "Home" [ref=e27] [cursor=pointer]:
+              - img [ref=e28]
+            - button "Sessions" [ref=e30] [cursor=pointer]:
+              - img [ref=e31]
+            - button "Groups" [ref=e34] [cursor=pointer]:
+              - img [ref=e35]
+            - button "Discover" [ref=e40] [cursor=pointer]:
+              - img [ref=e41]
+            - button "Library" [ref=e44] [cursor=pointer]:
+              - img [ref=e46]
+        - generic [ref=e50]:
+          - generic [ref=e54]:
+            - generic [ref=e56]:
+              - img "Admin User" [ref=e58]
+              - button "What's on your mind, Admin?" [ref=e60] [cursor=pointer]
+              - button "Open posts menu" [ref=e61] [cursor=pointer]:
+                - img [ref=e62]
+            - button "Your posts My posts" [ref=e64] [cursor=pointer]:
+              - generic [ref=e65]:
+                - generic [ref=e66]: Your posts
+                - generic [ref=e67]: My posts
+              - img [ref=e69]
+            - generic [ref=e71]:
+              - generic [ref=e72]:
+                - generic [ref=e73]:
+                  - generic [ref=e74]:
+                    - generic [ref=e75]: Live now
+                    - generic [ref=e76]: Current lesson
+                  - generic [ref=e77]:
+                    - generic [ref=e78]: Grade
+                    - button "Select grade workspace" [ref=e79] [cursor=pointer]: "8"
+                - generic [ref=e81]:
+                  - generic [ref=e82]:
+                    - generic [ref=e83]: A
+                    - generic [ref=e84]:
+                      - generic [ref=e85]: Live now
+                      - generic [ref=e86]:
+                        - generic [ref=e87]: Admin
+                        - generic [ref=e88]: 27 Dec 25
+                      - generic [ref=e89]: Current lesson
+                  - generic [ref=e91]: Annuities
+                  - generic [ref=e92]:
+                    - button "Enter class" [ref=e93] [cursor=pointer]
+                    - button "Quizzes" [ref=e94] [cursor=pointer]
+                    - generic [ref=e95]:
+                      - generic [ref=e96]:
+                        - generic [ref=e97]: "Start:"
+                        - generic [ref=e98]: 27 Dec 25, 11:58
+                        - generic [ref=e99]: "End:"
+                        - generic [ref=e100]: 27 Dec 25, 12:58
+                      - button "Assignments" [ref=e101] [cursor=pointer]
+                  - generic [ref=e103]:
+                    - button "Like" [ref=e104] [cursor=pointer]:
+                      - img [ref=e106]
+                      - generic [ref=e109]: Like
+                    - button "Solve" [ref=e110] [cursor=pointer]:
+                      - generic [ref=e112]:
+                        - img [ref=e113]
+                        - img [ref=e115]
+                      - generic [ref=e118]: Solve
+                    - button "Share" [ref=e119] [cursor=pointer]:
+                      - img [ref=e121]
+                      - generic [ref=e124]: Share
+              - generic [ref=e125]:
+                - generic [ref=e126]:
+                  - generic [ref=e127]:
+                    - generic [ref=e128]: History
+                    - generic [ref=e129]: Past lessons
+                  - button "Open" [ref=e130] [cursor=pointer]
+                - generic [ref=e131]: 5 past lessons
+            - list [ref=e132]:
+              - listitem [ref=e133]:
+                - generic [ref=e134]:
+                  - generic [ref=e135]:
+                    - generic [ref=e136]:
+                      - link "PHILANI KHUMALO" [ref=e137] [cursor=pointer]:
+                        - /url: /u/cmibt5bun0000kv04nhywpu2k
+                        - img "PHILANI KHUMALO" [ref=e140]
+                      - generic [ref=e141]:
+                        - link "PHILANI KHUMALO" [ref=e143] [cursor=pointer]:
+                          - /url: /u/cmibt5bun0000kv04nhywpu2k
+                        - generic [ref=e144]: 21 Mar 26
+                    - generic [ref=e145]: "Solve for x: Difference of two cubes"
+                    - generic [ref=e146]: x² - 8 = 0
+                  - link "Solve" [ref=e148] [cursor=pointer]:
+                    - /url: /challenges/cmn0r16av000004l44pp7vhx1
+                - generic [ref=e150]:
+                  - button "Like" [ref=e151] [cursor=pointer]:
+                    - img [ref=e153]
+                    - generic [ref=e156]: Like
+                  - button "Solve" [ref=e157] [cursor=pointer]:
+                    - generic [ref=e159]:
+                      - img [ref=e160]
+                      - img [ref=e162]
+                    - generic [ref=e165]: Solve
+                  - button "Share" [ref=e166] [cursor=pointer]:
+                    - img [ref=e168]
+                    - generic [ref=e171]: Share
+              - listitem [ref=e172]:
+                - generic [ref=e173]:
+                  - generic [ref=e174]:
+                    - generic [ref=e175]:
+                      - link "Akhona Mtolo" [ref=e176] [cursor=pointer]:
+                        - /url: /u/cmks3omh60003l404i61dcixi
+                        - img "Akhona Mtolo" [ref=e179]
+                      - generic [ref=e180]:
+                        - link "Akhona Mtolo" [ref=e182] [cursor=pointer]:
+                          - /url: /u/cmks3omh60003l404i61dcixi
+                        - generic [ref=e183]: 24 Jan 26
+                    - generic [ref=e184]: W+1=2
+                    - generic [ref=e185]: Solve the problem
+                  - button "Solutions" [ref=e187] [cursor=pointer]
+                - generic [ref=e189]:
+                  - button "Like" [ref=e190] [cursor=pointer]:
+                    - img [ref=e192]
+                    - generic [ref=e195]: Like
+                  - button "1 solution" [ref=e196] [cursor=pointer]:
+                    - generic [ref=e198]:
+                      - img [ref=e199]
+                      - img [ref=e201]
+                    - generic [ref=e204]: 1 solution
+                  - button "Share" [ref=e205] [cursor=pointer]:
+                    - img [ref=e207]
+                    - generic [ref=e210]: Share
+          - generic [ref=e213]:
+            - generic [ref=e215]:
+              - generic [ref=e216]:
+                - img [ref=e219]
+                - generic [ref=e222]:
+                  - generic [ref=e223]: Learning Flow
+                  - generic [ref=e224]: Sessions
+                  - generic [ref=e225]: Lessons and schedule
+              - button "Library" [ref=e227] [cursor=pointer]
+            - generic [ref=e229]:
+              - generic [ref=e230]:
+                - generic [ref=e231]:
+                  - generic [ref=e232]:
+                    - heading "Current lesson" [level=2] [ref=e233]
+                    - generic [ref=e234]: Grade 8
+                  - generic [ref=e235]: Now
+                - generic [ref=e236]:
+                  - generic [ref=e237]:
+                    - generic [ref=e238]:
+                      - generic [ref=e239]:
+                        - generic [ref=e240]: Live now
+                        - generic [ref=e241]: (Sat) 12/27/2025, 11:58 AM -> (Sat) 12/27/2025, 12:58 PM
+                      - generic [ref=e242]: Annuities
+                    - button "Edit" [ref=e243] [cursor=pointer]
+                  - generic [ref=e244]:
+                    - button "Enter class" [ref=e245] [cursor=pointer]
+                    - generic [ref=e246]:
+                      - button "Quizzes" [ref=e247] [cursor=pointer]
+                      - button "Assignments" [ref=e248] [cursor=pointer]
+              - button "Create lesson Open" [ref=e250] [cursor=pointer]:
+                - generic [ref=e251]: Create lesson
+                - generic [ref=e252]: Open
+              - button "Live lesson selector Open" [ref=e254] [cursor=pointer]:
+                - generic [ref=e255]: Live lesson selector
+                - generic [ref=e256]: Open
+              - generic [ref=e257]:
+                - heading "Scheduled lesson - Grade 8" [level=2] [ref=e258]
+                - generic [ref=e259]:
+                  - generic [ref=e260]: Subscription gating
+                  - generic [ref=e261]:
+                    - checkbox "Require an active subscription for learners to join sessions and view assignments" [ref=e262]
+                    - generic [ref=e263]: Require an active subscription for learners to join sessions and view assignments
+                - generic [ref=e264]:
+                  - button "Browse past sessions" [ref=e265] [cursor=pointer]
+                  - list [ref=e266]:
+                    - listitem [ref=e267]:
+                      - generic [ref=e268]: No upcoming sessions right now.
+          - generic [ref=e271]:
+            - generic [ref=e273]:
+              - generic [ref=e274]:
+                - img [ref=e277]
+                - generic [ref=e282]:
+                  - generic [ref=e283]: Your Circle
+                  - generic [ref=e284]: Groups
+                  - generic [ref=e285]: Study circles
+              - button "Refresh" [ref=e287] [cursor=pointer]
+            - generic [ref=e289]:
+              - generic [ref=e290]:
+                - generic [ref=e291]: New group
+                - generic [ref=e292]:
+                  - textbox "e.g. Grade 12 Maths - Study Group" [ref=e293]
+                  - generic [ref=e294]:
+                    - combobox [ref=e295]:
+                      - option "Study group" [selected]
+                      - option "Class"
+                      - option "Cohort"
+                    - combobox [ref=e296]:
+                      - option "Grade (optional)" [selected]
+                      - option "Grade 8"
+                      - option "Grade 9"
+                      - option "Grade 10"
+                      - option "Grade 11"
+                      - option "Grade 12"
+                  - button "Create group" [disabled] [ref=e297]
+                  - generic [ref=e298]: Learners can create groups for their grade or below.
+              - generic [ref=e299]:
+                - generic [ref=e300]: Join group
+                - generic [ref=e301]:
+                  - textbox "Enter join code" [ref=e302]
+                  - button "Join" [disabled] [ref=e303]
+              - generic [ref=e304]:
+                - generic [ref=e305]:
+                  - generic [ref=e306]: Groups
+                  - button "Refresh" [ref=e307] [cursor=pointer]
+                - generic [ref=e308]: No groups yet.
+          - generic [ref=e311]:
+            - generic [ref=e314]:
+              - img [ref=e317]
+              - generic [ref=e320]:
+                - generic [ref=e321]: Search & Connect
+                - generic [ref=e322]: Discover
+                - generic [ref=e323]: Find people
+            - generic [ref=e326]:
+              - generic [ref=e327]: Search people
+              - generic [ref=e328]:
+                - textbox "Search by name, email, or school" [ref=e329]
+                - button "Search" [ref=e330] [cursor=pointer]
+              - generic [ref=e331]: People will appear here.
+        - generic [ref=e332]:
+          - generic [ref=e333]:
+            - link "Privacy" [ref=e334] [cursor=pointer]:
+              - /url: /privacy
+            - link "Terms" [ref=e335] [cursor=pointer]:
+              - /url: /terms
+            - link "Help" [ref=e336] [cursor=pointer]:
+              - /url: /help
+            - link "Contact" [ref=e337] [cursor=pointer]:
+              - /url: mailto:support@philaniacademy.org
+            - generic [ref=e338]:
+              - button "Normalization Lab" [ref=e339] [cursor=pointer]
+              - button "Keyboard" [ref=e340] [cursor=pointer]
+          - generic [ref=e341]: Educational platform. Use of the service is subject to platform policies and applicable law.
+          - generic [ref=e342]: © 2026 Philani Academy. All rights reserved.
+    - dialog [ref=e343]:
+      - generic [ref=e345]:
+        - iframe [ref=e349]:
+          - generic [active] [ref=f1e1]:
+            - main [ref=f1e2]:
+              - generic [ref=f1e5]:
+                - generic [ref=f1e8]:
+                  - button [ref=f1e10] [cursor=pointer]:
+                    - img [ref=f1e12]
+                  - generic [ref=f1e15]: Philani Cmjo 4 Nv 3 Z 0000 Lh 04 Ru 8 Txjbw 305961 Fa 821 D
+                  - generic [ref=f1e16]: 00:29
+                  - button "Performance settings" [ref=f1e17] [cursor=pointer]:
+                    - img [ref=f1e19]
+                    - generic [ref=f1e22]: Performance settings
+                - generic [ref=f1e23]:
+                  - generic [ref=f1e24]:
+                    - generic [ref=f1e30]: AU
+                    - generic:
+                      - generic: Admin User
+                  - generic [ref=f1e31]:
+                    - heading "Video thumbnails" [level=1] [ref=f1e32]
+                    - generic [ref=f1e34]:
+                      - generic [ref=f1e37]:
+                        - button "Admin User - Pin"
+                        - generic [ref=f1e41]:
+                          - img "Participant is muted" [ref=f1e45]
+                          - img "Moderator" [ref=f1e52]
+                          - generic [ref=f1e55]: Admin User
+                        - generic [ref=f1e59]: AU
+                      - generic [ref=f1e69]:
+                        - button "Admin User - Pin"
+                        - generic [ref=f1e72]:
+                          - img "Participant is muted" [ref=f1e76]
+                          - img "Moderator" [ref=f1e83]
+                          - generic [ref=f1e86]: Admin User
+                        - generic [ref=f1e91]: AU
+                - heading "Toolbar" [level=1] [ref=f1e99]
+                - generic [ref=f1e101]:
+                  - button "Unmute microphone" [pressed] [ref=f1e102] [cursor=pointer]:
+                    - img [ref=f1e105]
+                  - button "Start camera" [pressed] [ref=f1e109] [cursor=pointer]:
+                    - img [ref=f1e112]
+                  - button "Enter tile view" [ref=f1e115] [cursor=pointer]:
+                    - img [ref=f1e118]
+                  - button "Leave the meeting" [ref=f1e120] [cursor=pointer]:
+                    - img [ref=f1e123]
+            - status [ref=f1e126]:
+              - generic [ref=f1e128]:
+                - img [ref=f1e131]
+                - generic [ref=f1e133]:
+                  - generic [ref=f1e134]: You're now a moderator
+                  - generic:
+                    - paragraph
+                - img [ref=f1e136] [cursor=pointer]
+        - generic [ref=e350]:
+          - generic:
+            - generic:
+              - paragraph: Grade 8
+            - generic:
+              - button "Unmute your microphone":
+                - generic: Your microphone
+                - img
+              - button "Close canvas": ×
+          - generic [ref=e355]:
+            - generic [ref=e356]:
+              - generic [ref=e358]:
+                - button "Start quiz mode" [ref=e359] [cursor=pointer]
+                - paragraph [ref=e361]: Convert to notes to preview the typeset LaTeX here.
+              - separator [ref=e362]
+              - generic [ref=e364]:
+                - generic [ref=e365]:
+                  - generic [ref=e367]:
+                    - button "Open notes" [ref=e368] [cursor=pointer]:
+                      - generic [ref=e369]: Open notes
+                      - img [ref=e370]
+                    - button "Undo" [ref=e373] [cursor=pointer]:
+                      - generic [ref=e374]: Undo
+                      - img [ref=e375]
+                    - button "Redo" [ref=e378] [cursor=pointer]:
+                      - generic [ref=e379]: Redo
+                      - img [ref=e380]
+                    - button "Clear" [disabled] [ref=e383]:
+                      - generic [ref=e384]: Clear
+                      - img [ref=e385]
+                  - button "Compute" [ref=e389] [cursor=pointer]:
+                    - generic [ref=e390]: Compute
+                    - text: =
+                  - generic [ref=e391]:
+                    - button "Diagrams" [ref=e392] [cursor=pointer]:
+                      - generic [ref=e393]: Diagrams
+                      - img [ref=e394]
+                    - button "Text" [ref=e398] [cursor=pointer]:
+                      - generic [ref=e399]: Text
+                      - img [ref=e400]
+                    - button "Eraser" [ref=e401] [cursor=pointer]:
+                      - generic [ref=e402]: Eraser
+                      - img [ref=e403]
+                    - button "Send step" [disabled] [ref=e408]:
+                      - generic [ref=e409]: Send step
+                      - img [ref=e410]
+                - generic [ref=e413]:
+                  - generic [ref=e417]:
+                    - generic:
+                      - generic:
+                        - img
+                        - img
+                    - generic [ref=e418]:
+                      - generic "Keyboard expression" [ref=e424]:
+                        - generic:
+                          - textbox
+                          - generic [ref=e427]:
+                            - button "Toggle Virtual Keyboard Toggle Virtual Keyboard" [ref=e428] [cursor=pointer]:
+                              - img "Toggle Virtual Keyboard" [ref=e429]
+                              - text: Toggle Virtual Keyboard
+                            - text: Menu
+                          - generic:
+                            - status
+                      - generic [ref=e434]:
+                        - generic [ref=e435]:
+                          - generic [ref=e437]:
+                            - button "nth root" [ref=e438] [cursor=pointer]:
+                              - generic [ref=e441]:
+                                - math [ref=e443]:
+                                  - generic [ref=e446]:
+                                    - generic [ref=e447]: □
+                                    - generic [ref=e448]: □
+                                - generic [ref=e451]:
+                                  - generic [ref=e457]: □
+                                  - generic [ref=e460]:
+                                    - generic [ref=e461]: □
+                                    - img [ref=e463]
+                            - button "fraction" [ref=e468] [cursor=pointer]:
+                              - generic [ref=e471]:
+                                - math [ref=e473]:
+                                  - generic [ref=e476]:
+                                    - generic [ref=e477]: □
+                                    - generic [ref=e478]: □
+                                - generic [ref=e485]:
+                                  - generic [ref=e487]: □
+                                  - generic [ref=e490]: □
+                            - button "square" [ref=e494] [cursor=pointer]:
+                              - generic [ref=e497]:
+                                - math [ref=e499]:
+                                  - generic [ref=e502]:
+                                    - generic [ref=e503]: □
+                                    - generic [ref=e504]: "2"
+                                - generic [ref=e507]:
+                                  - text: □
+                                  - generic [ref=e513]: "2"
+                            - button "derivative" [ref=e514] [cursor=pointer]:
+                              - generic [ref=e517]:
+                                - math [ref=e519]:
+                                  - generic [ref=e521]:
+                                    - generic [ref=e522]:
+                                      - generic [ref=e523]: d
+                                      - generic [ref=e524]:
+                                        - generic [ref=e525]: d
+                                        - generic [ref=e526]: x
+                                    - generic [ref=e527]:
+                                      - generic [ref=e528]: (
+                                      - generic [ref=e529]: □
+                                      - generic [ref=e530]: )
+                                - generic [ref=e532]:
+                                  - generic [ref=e537]:
+                                    - generic [ref=e539]: dx
+                                    - generic [ref=e542]: d
+                                  - generic [ref=e546]: (□)
+                            - button "theta" [ref=e547] [cursor=pointer]:
+                              - generic [ref=e550]:
+                                - math [ref=e552]:
+                                  - generic [ref=e555]: θ
+                                - generic [ref=e557]: θ
+                            - button "equals" [ref=e558] [cursor=pointer]:
+                              - generic [ref=e561]:
+                                - math [ref=e563]:
+                                  - generic [ref=e566]: =
+                                - generic [ref=e568]: =
+                            - button "sine" [ref=e569] [cursor=pointer]:
+                              - generic [ref=e572]:
+                                - math [ref=e574]:
+                                  - generic [ref=e576]:
+                                    - generic [ref=e577]: sin
+                                    - generic: ⁡
+                                    - generic [ref=e578]:
+                                      - generic [ref=e579]: (
+                                      - generic [ref=e580]: □
+                                      - generic [ref=e581]: )
+                                - generic [ref=e583]:
+                                  - text: sin
+                                  - generic [ref=e584]: (□)
+                            - button "logarithm with base" [ref=e585] [cursor=pointer]:
+                              - generic [ref=e588]:
+                                - math [ref=e590]:
+                                  - generic [ref=e592]:
+                                    - generic [ref=e593]:
+                                      - generic [ref=e594]:
+                                        - generic [ref=e595]: log
+                                        - generic: ⁡
+                                      - generic [ref=e596]: □
+                                    - generic [ref=e597]:
+                                      - generic [ref=e598]: (
+                                      - generic [ref=e599]: □
+                                      - generic [ref=e600]: )
+                                - generic [ref=e602]:
+                                  - generic [ref=e603]:
+                                    - generic [ref=e604]: log
+                                    - generic [ref=e610]: □
+                                  - generic [ref=e614]: (□)
+                            - button "parentheses" [ref=e615] [cursor=pointer]:
+                              - generic [ref=e618]:
+                                - math [ref=e620]:
+                                  - generic [ref=e622]:
+                                    - generic [ref=e623]: (
+                                    - generic [ref=e624]: □
+                                    - generic [ref=e625]: )
+                                - generic [ref=e628]: (□)
+                          - generic [ref=e629]:
+                            - button "⌫" [ref=e630] [cursor=pointer]:
+                              - generic [ref=e631]: ⌫
+                            - button "AC" [ref=e632] [cursor=pointer]:
+                              - generic [ref=e633]: AC
+                            - button "×" [ref=e634] [cursor=pointer]:
+                              - generic [ref=e635]: ×
+                            - button "÷" [ref=e636] [cursor=pointer]:
+                              - generic [ref=e637]: ÷
+                            - button "plus" [ref=e638] [cursor=pointer]:
+                              - generic [ref=e641]:
+                                - math [ref=e643]:
+                                  - generic [ref=e646]: +
+                                - generic [ref=e648]: +
+                            - button "minus" [ref=e649] [cursor=pointer]:
+                              - generic [ref=e652]:
+                                - math [ref=e654]:
+                                  - generic [ref=e657]: −
+                                - generic [ref=e659]: −
+                        - generic [ref=e660]:
+                          - button "7" [ref=e661] [cursor=pointer]:
+                            - generic [ref=e662]: "7"
+                          - button "8" [ref=e663] [cursor=pointer]:
+                            - generic [ref=e664]: "8"
+                          - button "9" [ref=e665] [cursor=pointer]:
+                            - generic [ref=e666]: "9"
+                          - button "x" [ref=e667] [cursor=pointer]:
+                            - generic [ref=e668]: x
+                          - button "Step ⏎" [ref=e669] [cursor=pointer]:
+                            - generic [ref=e670]:
+                              - generic [ref=e671]: Step
+                              - generic [ref=e672]: ⏎
+                          - button "4" [ref=e673] [cursor=pointer]:
+                            - generic [ref=e674]: "4"
+                          - button "5" [ref=e675] [cursor=pointer]:
+                            - generic [ref=e676]: "5"
+                          - button "6" [ref=e677] [cursor=pointer]:
+                            - generic [ref=e678]: "6"
+                          - button "y" [ref=e679] [cursor=pointer]:
+                            - generic [ref=e680]: "y"
+                          - button "1" [ref=e681] [cursor=pointer]:
+                            - generic [ref=e682]: "1"
+                          - button "2" [ref=e683] [cursor=pointer]:
+                            - generic [ref=e684]: "2"
+                          - button "3" [ref=e685] [cursor=pointer]:
+                            - generic [ref=e686]: "3"
+                          - button "f" [ref=e687] [cursor=pointer]:
+                            - generic [ref=e688]: f
+                          - button "0" [ref=e689] [cursor=pointer]:
+                            - generic [ref=e690]: "0"
+                          - button "." [ref=e691] [cursor=pointer]:
+                            - generic [ref=e692]: .
+                          - button "k" [ref=e693] [cursor=pointer]:
+                            - generic [ref=e694]: k
+                  - generic:
+                    - generic:
+                      - paragraph: Canvas controls
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic: Recognition engine
+                            - combobox "Choose recognition engine":
+                              - option "Keyboard (default)" [selected]
+                              - option "MyScript (handwriting)"
+                              - option "Mathpix (backup)"
+                            - generic:
+                              - textbox "Keyboard latex input":
+                                - /placeholder: "Type LaTeX here, e.g. \\\\frac{x+1}{2}=y"
+                              - generic:
+                                - button "x"
+                                - button "y"
+                                - button "="
+                                - button "+"
+                                - button "-"
+                                - button "\\times"
+                                - button "\\div"
+                                - 'button "\\frac{}{}"'
+                                - 'button "\\sqrt{}"'
+                                - button "()"
+                                - button "[]"
+                                - 'button "^{}"'
+                          - button "Wipe All Student Canvases"
+                          - button "Toggle Display"
+                      - button "Return to drawing"
+            - generic:
+              - generic:
+                - paragraph: Canvas controls
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: Recognition engine
+                      - combobox "Choose recognition engine":
+                        - option "Keyboard (default)" [selected]
+                        - option "MyScript (handwriting)"
+                        - option "Mathpix (backup)"
+                      - generic:
+                        - textbox "Keyboard latex input":
+                          - /placeholder: "Type LaTeX here, e.g. \\\\frac{x+1}{2}=y"
+                        - generic:
+                          - button "x"
+                          - button "y"
+                          - button "="
+                          - button "+"
+                          - button "-"
+                          - button "\\times"
+                          - button "\\div"
+                          - 'button "\\frac{}{}"'
+                          - 'button "\\sqrt{}"'
+                          - button "()"
+                          - button "[]"
+                          - 'button "^{}"'
+                    - button "Wipe All Student Canvases"
+                    - button "Toggle Display"
+                - button "Return to drawing"
+  - alert [ref=e703]: Philani Academy
+```

@@ -11528,11 +11528,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     return (
       <div
+        data-keyboard-bottom-wrapper="true"
         className="absolute inset-0 z-30 flex flex-col overflow-hidden bg-white select-none keyboard-symbol-font"
         style={{ WebkitUserSelect: 'none', userSelect: 'none', touchAction: 'none' }}
       >
-        <div className="shrink-0 border-b border-slate-200 bg-slate-50/80 px-3 py-3">
-          <div className="h-[6.5rem] sm:h-[7.5rem]">
+        <div className="shrink-0 border-b border-slate-200 bg-slate-50/80 px-0 py-3">
+          <div data-keyboard-mathlive-panel="true" className="h-[6.5rem] w-full sm:h-[7.5rem]">
             {renderKeyboardBottomPanelPreviewSurface()}
           </div>
         </div>
@@ -11544,8 +11545,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           onPointerUp={handleKeyboardSurfacePointerEnd}
           onPointerCancel={handleKeyboardSurfacePointerEnd}
         >
-        <div className="flex h-full w-full items-stretch justify-stretch px-2 py-2 sm:px-4 sm:py-4">
-          <div className="h-full w-full rounded-[2rem] border border-slate-900/80 bg-[linear-gradient(180deg,#20252d_0%,#171b22_100%)] p-3 shadow-[0_20px_55px_rgba(15,23,42,0.45)] sm:p-4">
+        <div className="flex h-full w-full items-stretch justify-stretch px-0 py-2 sm:px-0 sm:py-4">
+          <div data-keyboard-panel="true" className="h-full w-full rounded-[2rem] border border-slate-900/80 bg-[linear-gradient(180deg,#20252d_0%,#171b22_100%)] px-0 py-3 shadow-[0_20px_55px_rgba(15,23,42,0.45)] sm:px-0 sm:py-4">
             <div className="flex flex-col gap-2.5">
               <div className="grid grid-cols-[1.1fr_1.1fr_1.1fr_1fr_1fr] gap-2">
                 <div className="col-span-3 rounded-[1.4rem] bg-slate-900/70 p-2">
@@ -18143,7 +18144,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       willChange: stackedPinchStateRef.current.active ? 'transform' : undefined,
                     }}
                   >
-                    <div className={`w-full flex ${recognitionEngine === 'keyboard' ? 'h-full items-center justify-center' : 'items-start justify-center'}`}>
+                    <div className={`w-full flex ${recognitionEngine === 'keyboard' ? 'h-full items-stretch justify-stretch' : 'items-start justify-center'}`}>
                       <div
                         style={{
                           position: 'relative',

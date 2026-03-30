@@ -93,6 +93,9 @@ test.describe('keyboard family key previews', () => {
     const calculusFamilyButton = page.locator('button[data-keyboard-representative="calculus"]').last()
     const greekFamilyButton = page.locator('button[data-keyboard-representative="greek"]').last()
     const relationsFamilyButton = page.locator('button[data-keyboard-representative="relations"]').last()
+    const keyboardBottomWrapper = page.locator('[data-keyboard-bottom-wrapper="true"]').first()
+    const keyboardMathlivePanel = page.locator('[data-keyboard-mathlive-panel="true"]').first()
+    const keyboardPanel = page.locator('[data-keyboard-panel="true"]').first()
     const clusterButtons = page.locator('div.grid.grid-cols-3.gap-2').nth(2).locator('button')
     const topLeftClusterButton = clusterButtons.nth(0)
     const topMiddleClusterButton = clusterButtons.nth(1)
@@ -103,6 +106,9 @@ test.describe('keyboard family key previews', () => {
     await expect(calculusFamilyButton).toBeVisible({ timeout: 20_000 })
     await expect(greekFamilyButton).toBeVisible({ timeout: 20_000 })
     await expect(relationsFamilyButton).toBeVisible({ timeout: 20_000 })
+    await expect(keyboardBottomWrapper).toBeVisible({ timeout: 20_000 })
+    await expect(keyboardMathlivePanel).toBeVisible({ timeout: 20_000 })
+    await expect(keyboardPanel).toBeVisible({ timeout: 20_000 })
     await expect(topLeftClusterButton).toBeVisible({ timeout: 20_000 })
     await expect(topMiddleClusterButton).toBeVisible({ timeout: 20_000 })
     await expect(topRightClusterButton).toBeVisible({ timeout: 20_000 })
@@ -129,6 +135,23 @@ test.describe('keyboard family key previews', () => {
     expect(topMiddleHtml).toContain('katex')
     expect(topLeftHtml).not.toMatch(/placeholder/i)
     expect(topMiddleHtml).not.toMatch(/placeholder/i)
+
+    const wrapperBox = await keyboardBottomWrapper.boundingBox()
+    const mathliveBox = await keyboardMathlivePanel.boundingBox()
+    const keyboardPanelBox = await keyboardPanel.boundingBox()
+
+    expect(wrapperBox).not.toBeNull()
+    expect(mathliveBox).not.toBeNull()
+    expect(keyboardPanelBox).not.toBeNull()
+
+    if (!wrapperBox || !mathliveBox || !keyboardPanelBox) {
+      throw new Error('Expected wrapper, MathLive panel, and keyboard panel to have measurable layout boxes.')
+    }
+
+    expect(Math.abs(wrapperBox.x - mathliveBox.x)).toBeLessThan(4)
+    expect(Math.abs(wrapperBox.x - keyboardPanelBox.x)).toBeLessThan(4)
+    expect(Math.abs(wrapperBox.width - mathliveBox.width)).toBeLessThan(4)
+    expect(Math.abs(wrapperBox.width - keyboardPanelBox.width)).toBeLessThan(4)
 
     const calculusBox = await calculusFamilyButton.boundingBox()
     const greekBox = await greekFamilyButton.boundingBox()

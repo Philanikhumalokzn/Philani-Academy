@@ -11545,12 +11545,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           onPointerUp={handleKeyboardSurfacePointerEnd}
           onPointerCancel={handleKeyboardSurfacePointerEnd}
         >
-        <div className="flex h-full w-full items-stretch justify-stretch px-0 py-2 sm:px-0 sm:py-4">
-          <div data-keyboard-panel="true" className="h-full w-full rounded-[2rem] border border-slate-900/80 bg-[linear-gradient(180deg,#20252d_0%,#171b22_100%)] px-0 py-3 shadow-[0_20px_55px_rgba(15,23,42,0.45)] sm:px-0 sm:py-4">
+        <div className="flex h-full w-full items-stretch justify-stretch px-0 py-0">
+          <div data-keyboard-panel="true" className="h-full w-full rounded-2xl border border-slate-900/80 bg-[linear-gradient(180deg,#20252d_0%,#171b22_100%)] p-2 shadow-[0_20px_55px_rgba(15,23,42,0.45)] sm:p-3">
             <div className="flex flex-col gap-2.5">
-              <div className="grid grid-cols-[1.1fr_1.1fr_1.1fr_1fr_1fr] gap-2">
-                <div className="col-span-3 rounded-[1.4rem] bg-slate-900/70 p-2">
-                  <div className="grid grid-cols-3 gap-2">
+              <div data-keyboard-top-grid="true" className="grid grid-cols-[repeat(4,minmax(0,1fr))_1.12fr] gap-2">
+                <div className="col-span-3 rounded-2xl bg-slate-900/70 p-2">
+                  <div data-keyboard-cluster-grid="true" className="grid grid-cols-3 gap-2">
                     {renderVisibleKeyboardButton({ actionId: 'nth-root', representativeKeyId: 'radicals' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-xs sm:text-sm font-medium' })}
                     {renderVisibleKeyboardButton({ actionId: 'fraction', representativeKeyId: 'radicals' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-sm sm:text-base font-medium' })}
                     {renderVisibleKeyboardButton({ actionId: 'power2', representativeKeyId: 'radicals' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-sm sm:text-base font-medium' })}
@@ -11573,7 +11573,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 </div>
               </div>
 
-              <div className="grid grid-cols-[repeat(4,minmax(0,1fr))_1.1fr] gap-2">
+              <div data-keyboard-bottom-grid="true" className="grid grid-cols-[repeat(4,minmax(0,1fr))_1.12fr] gap-2">
                 {['digit-7', 'digit-8', 'digit-9', lowerVariableColumnKeys[0]?.actionId || 'x'].map((actionId) =>
                   renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : actionId, representativeKeyId: /^[a-z]$/i.test(actionId) ? 'letters' : undefined }, {
                     className: actionId.startsWith('digit-') ? 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100' : 'border-transparent bg-slate-800 text-white hover:bg-slate-700',

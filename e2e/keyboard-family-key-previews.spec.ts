@@ -96,7 +96,9 @@ test.describe('keyboard family key previews', () => {
     const keyboardBottomWrapper = page.locator('[data-keyboard-bottom-wrapper="true"]').first()
     const keyboardMathlivePanel = page.locator('[data-keyboard-mathlive-panel="true"]').first()
     const keyboardPanel = page.locator('[data-keyboard-panel="true"]').first()
-    const clusterButtons = page.locator('div.grid.grid-cols-3.gap-2').nth(2).locator('button')
+    const keyboardTopGrid = page.locator('[data-keyboard-top-grid="true"]').first()
+    const keyboardBottomGrid = page.locator('[data-keyboard-bottom-grid="true"]').first()
+    const clusterButtons = page.locator('[data-keyboard-cluster-grid="true"]').first().locator('button')
     const topLeftClusterButton = clusterButtons.nth(0)
     const topMiddleClusterButton = clusterButtons.nth(1)
     const topRightClusterButton = clusterButtons.nth(2)
@@ -109,6 +111,8 @@ test.describe('keyboard family key previews', () => {
     await expect(keyboardBottomWrapper).toBeVisible({ timeout: 20_000 })
     await expect(keyboardMathlivePanel).toBeVisible({ timeout: 20_000 })
     await expect(keyboardPanel).toBeVisible({ timeout: 20_000 })
+    await expect(keyboardTopGrid).toBeVisible({ timeout: 20_000 })
+    await expect(keyboardBottomGrid).toBeVisible({ timeout: 20_000 })
     await expect(topLeftClusterButton).toBeVisible({ timeout: 20_000 })
     await expect(topMiddleClusterButton).toBeVisible({ timeout: 20_000 })
     await expect(topRightClusterButton).toBeVisible({ timeout: 20_000 })
@@ -153,6 +157,18 @@ test.describe('keyboard family key previews', () => {
     expect(Math.abs(wrapperBox.width - mathliveBox.width)).toBeLessThan(4)
     expect(Math.abs(wrapperBox.width - keyboardPanelBox.width)).toBeLessThan(4)
 
+    const topGridBox = await keyboardTopGrid.boundingBox()
+    const bottomGridBox = await keyboardBottomGrid.boundingBox()
+    expect(topGridBox).not.toBeNull()
+    expect(bottomGridBox).not.toBeNull()
+
+    if (!topGridBox || !bottomGridBox) {
+      throw new Error('Expected keyboard top and bottom grids to have measurable layout boxes.')
+    }
+
+    expect(Math.abs(topGridBox.x - bottomGridBox.x)).toBeLessThan(4)
+    expect(Math.abs(topGridBox.width - bottomGridBox.width)).toBeLessThan(4)
+
     const calculusBox = await calculusFamilyButton.boundingBox()
     const greekBox = await greekFamilyButton.boundingBox()
     const relationsBox = await relationsFamilyButton.boundingBox()
@@ -174,6 +190,6 @@ test.describe('keyboard family key previews', () => {
     await enclosuresFamilyButton.screenshot({ path: 'test-results/keyboard-family-enclosures-preview.png' })
     await topLeftClusterButton.screenshot({ path: 'test-results/keyboard-cluster-nth-root-preview.png' })
     await topMiddleClusterButton.screenshot({ path: 'test-results/keyboard-cluster-fraction-preview.png' })
-    await page.locator('div.grid.grid-cols-3.gap-2').nth(2).screenshot({ path: 'test-results/keyboard-cluster-middle-row-layout.png' })
+    await page.locator('[data-keyboard-cluster-grid="true"]').first().screenshot({ path: 'test-results/keyboard-cluster-middle-row-layout.png' })
   })
 })

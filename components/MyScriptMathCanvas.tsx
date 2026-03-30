@@ -304,6 +304,7 @@ function installIinkEraserPointerTypeShim(
         }
         return result
       }
+
       return undefined
     }
 
@@ -1192,8 +1193,8 @@ const createWrappedLatexKeyboardAction = (
   id,
   title,
   description,
-  renderLatex: (baseSymbol) => render(resolveKeyboardBaseSymbol(baseSymbol)),
-  apply: (prev, baseSymbol) => `${prev}${(insert ?? render)(resolveKeyboardBaseSymbol(baseSymbol))}`,
+  renderLatex: (baseSymbol) => render(resolveKeyboardBaseSymbol(baseSymbol, '#?')),
+  apply: (prev, baseSymbol) => `${prev}${(insert ?? render)(resolveKeyboardBaseSymbol(baseSymbol, '#?'))}`,
 })
 
 const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
@@ -1309,64 +1310,64 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
     id: 'fraction',
     title: 'fraction',
     description: 'fraction',
-    latex: '\\frac{x}{\\placeholder{}}',
-    renderLatex: (baseSymbol) => `\\frac{${baseSymbol || 'x'}}{\\placeholder{}}`,
+    latex: '\\frac{x}{#?}',
+    renderLatex: (baseSymbol) => `\\frac{${baseSymbol || 'x'}}{#?}`,
     apply: (prev, baseSymbol) => `${prev}(${baseSymbol || 'x'})/()`,
   },
   {
     id: 'fraction-denominator',
     title: 'fraction denominator',
     description: 'fraction denominator',
-    latex: '\\frac{\\placeholder{}}{x}',
-    renderLatex: (baseSymbol) => `\\frac{\\placeholder{}}{${baseSymbol || 'x'}}`,
+    latex: '\\frac{#?}{x}',
+    renderLatex: (baseSymbol) => `\\frac{#?}{${baseSymbol || 'x'}}`,
     apply: (prev, baseSymbol) => `${prev}()/(${baseSymbol || 'x'})`,
   },
   {
     id: 'paren',
     title: 'parentheses',
     description: 'parentheses',
-    latex: '\\left(x\\right)',
-    renderLatex: (baseSymbol) => `\\left(${baseSymbol || 'x'}\\right)`,
+    latex: '\\left(#?\\right)',
+    renderLatex: (baseSymbol) => `\\left(${baseSymbol || '#?'}\\right)`,
     apply: (prev, baseSymbol) => `${prev}(${baseSymbol || 'x'})`,
   },
   {
     id: 'bracket',
     title: 'square brackets',
     description: 'square brackets',
-    latex: '\\left[x\\right]',
-    renderLatex: (baseSymbol) => `\\left[${baseSymbol || 'x'}\\right]`,
+    latex: '\\left[#?\\right]',
+    renderLatex: (baseSymbol) => `\\left[${baseSymbol || '#?'}\\right]`,
     apply: (prev, baseSymbol) => `${prev}[${baseSymbol || 'x'}]`,
   },
   {
     id: 'brace',
     title: 'curly braces',
     description: 'curly braces',
-    latex: '\\left\\{x\\right\\}',
-    renderLatex: (baseSymbol) => `\\left\\{${baseSymbol || 'x'}\\right\\}`,
+    latex: '\\left\\{#?\\right\\}',
+    renderLatex: (baseSymbol) => `\\left\\{${baseSymbol || '#?'}\\right\\}`,
     apply: (prev, baseSymbol) => `${prev}{${baseSymbol || 'x'}}`,
   },
   {
     id: 'absolute',
     title: 'absolute value',
     description: 'absolute value',
-    latex: '\\left|x\\right|',
-    renderLatex: (baseSymbol) => `\\left|${baseSymbol || 'x'}\\right|`,
+    latex: '\\left|#?\\right|',
+    renderLatex: (baseSymbol) => `\\left|${baseSymbol || '#?'}\\right|`,
     apply: (prev, baseSymbol) => `${prev}\\left|${baseSymbol || 'x'}\\right|`,
   },
   {
     id: 'floor',
     title: 'floor',
     description: 'floor',
-    latex: '\\left\\lfloor x \\right\\rfloor',
-    renderLatex: (baseSymbol) => `\\left\\lfloor ${baseSymbol || 'x'} \\right\\rfloor`,
+    latex: '\\left\\lfloor #? \\right\\rfloor',
+    renderLatex: (baseSymbol) => `\\left\\lfloor ${baseSymbol || '#?'} \\right\\rfloor`,
     apply: (prev, baseSymbol) => `${prev}\\left\\lfloor ${baseSymbol || 'x'} \\right\\rfloor`,
   },
   {
     id: 'ceiling',
     title: 'ceiling',
     description: 'ceiling',
-    latex: '\\left\\lceil x \\right\\rceil',
-    renderLatex: (baseSymbol) => `\\left\\lceil ${baseSymbol || 'x'} \\right\\rceil`,
+    latex: '\\left\\lceil #? \\right\\rceil',
+    renderLatex: (baseSymbol) => `\\left\\lceil ${baseSymbol || '#?'} \\right\\rceil`,
     apply: (prev, baseSymbol) => `${prev}\\left\\lceil ${baseSymbol || 'x'} \\right\\rceil`,
   },
   createWrappedLatexKeyboardAction('sin', 'sine', 'sine', (baseSymbol) => `\\sin\\left(${baseSymbol}\\right)`, (baseSymbol) => `sin(${baseSymbol})`),
@@ -1377,9 +1378,9 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
     id: 'log-base',
     title: 'logarithm with base',
     description: 'logarithm with arbitrary base',
-    latex: '\\log_{\\placeholder{}}\\left(\\placeholder{}\\right)',
-    renderLatex: () => `\\log_{\\placeholder{}}\\left(\\placeholder{}\\right)`,
-    apply: (prev) => `${prev}\\log_{\\placeholder{}}\\left(\\placeholder{}\\right)`,
+    latex: '\\log_{#?}\\left(#?\\right)',
+    renderLatex: () => '\\log_{#?}\\left(#?\\right)',
+    apply: (prev) => `${prev}\\log_{#?}\\left(#?\\right)`,
   },
   createWrappedLatexKeyboardAction('log', 'logarithm', 'logarithm', (baseSymbol) => `\\log\\left(${baseSymbol}\\right)`, (baseSymbol) => `log(${baseSymbol})`),
   createWrappedLatexKeyboardAction('derivative', 'derivative', 'derivative', (baseSymbol) => `\\frac{d}{dx}\\left(${baseSymbol}\\right)`, (baseSymbol) => `d/dx(${baseSymbol})`),
@@ -10510,12 +10511,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (actionId === 'log-base') {
       if (hasSelectionRange) {
         const selected = selectableField.getValue(selection, 'latex') || ''
-        selectableField.insert(`\\log_{\\placeholder{}}\\left(${selected || '\\placeholder{}'}\\right)`, {
+        selectableField.insert(`\\log_{#?}\\left(${selected || '#?'}\\right)`, {
           insertionMode: 'replaceSelection',
           selectionMode: 'placeholder',
         })
       } else {
-        selectableField.insert('\\log_{\\placeholder{}}\\left(\\placeholder{}\\right)', {
+        selectableField.insert('\\log_{#?}\\left(#?\\right)', {
           selectionMode: 'placeholder',
         })
       }
@@ -10561,10 +10562,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           wrapped = `\\sqrt[]{${selected}}`
           break
         case 'fraction':
-          wrapped = `\\frac{${selected}}{\\placeholder{}}`
+          wrapped = `\\frac{${selected}}{#?}`
           break
         case 'fraction-denominator':
-          wrapped = `\\frac{\\placeholder{}}{${selected}}`
+          wrapped = `\\frac{#?}{${selected}}`
           break
         case 'power2':
           wrapped = `${selected}^{2}`
@@ -10627,7 +10628,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (action.token) {
         insertion = action.token
       } else if (actionId === 'fraction' || actionId === 'fraction-denominator') {
-        insertion = '\\frac{\\placeholder{}}{\\placeholder{}}'
+        insertion = '\\frac{#?}{#?}'
       } else if (actionId === 'sqrt') {
         insertion = '\\sqrt{}'
       } else if (actionId === 'cuberoot') {
@@ -10705,7 +10706,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     } else if (actionId === 'clear') {
       result = { value: '', selectionStart: 0, selectionEnd: 0 }
     } else if (selection.start === selection.end && actionId === 'log-base') {
-      result = insertKeyboardStructureAtSelection(prev, '\\log_{\\placeholder{}}\\left(\\placeholder{}\\right)', selection, '\\log_{'.length)
+      result = insertKeyboardStructureAtSelection(prev, '\\log_{#?}\\left(#?\\right)', selection, '\\log_{'.length)
     } else if (selection.start === selection.end && ['paren', 'bracket', 'brace', 'absolute', 'floor', 'ceiling'].includes(actionId)) {
       let insertion = ''
       let caretOffset = 0
@@ -11191,7 +11192,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       const latex = action.renderLatex?.(baseSymbol) ?? action.latex
       if (latex) {
         try {
-          return <span dangerouslySetInnerHTML={{ __html: renderToString(latex, { throwOnError: false }) }} />
+          return <span dangerouslySetInnerHTML={{ __html: renderToString(normalizeDisplayPlaceholdersToBoxes(latex), { throwOnError: false }) }} />
         } catch {
           return <span className="text-sm font-normal">{action.title}</span>
         }
@@ -11237,7 +11238,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       const latex = contextual?.previewLatex || action.renderLatex?.(fallbackBaseSymbol) || action.latex
       if (latex) {
         try {
-          return <span dangerouslySetInnerHTML={{ __html: renderToString(latex, { throwOnError: false }) }} />
+          return <span dangerouslySetInnerHTML={{ __html: renderToString(normalizeDisplayPlaceholdersToBoxes(latex), { throwOnError: false }) }} />
         } catch {
           return <span className="text-sm font-normal">{action.title}</span>
         }
@@ -11356,6 +11357,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           type="button"
           data-keyboard-row="simple-core"
           data-keyboard-action={key.actionId}
+          data-keyboard-representative={key.representativeKeyId || key.actionId}
           className={`inline-flex min-h-0 min-w-0 select-none items-center justify-center rounded-2xl border text-slate-900 shadow-sm transition-colors ${hasExplicitSize ? 'p-0' : 'px-3 py-2 sm:px-3.5 sm:py-2.5'} ${options?.className || 'border-slate-300 bg-white hover:bg-slate-100'} ${isBlocked ? 'border-red-300 bg-red-50 text-red-700' : isSelected ? (options?.activeClassName || 'border-sky-300 bg-sky-100 text-sky-700') : ''}`}
           style={options?.style}
           onPointerDown={(event) => handleMountedKeyPointerDown(event, key.actionId, key.representativeKeyId)}

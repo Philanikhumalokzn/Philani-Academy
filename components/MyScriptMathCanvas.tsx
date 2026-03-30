@@ -11455,10 +11455,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               </div>
 
               <div className="grid grid-cols-[repeat(4,minmax(0,1fr))_1.1fr] gap-2">
-                {['digit-7', 'digit-8', 'digit-9', 'power2'].map((actionId) =>
-                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : 'x²', representativeKeyId: actionId === 'power2' ? 'radicals' : undefined }, {
+                {['digit-7', 'digit-8', 'digit-9', 'x'].map((actionId) =>
+                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : 'x', representativeKeyId: actionId === 'x' ? 'letters' : undefined }, {
                     className: actionId.startsWith('digit-') ? 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100' : 'border-transparent bg-slate-800 text-white hover:bg-slate-700',
-                    textClassName: actionId.startsWith('digit-') ? 'text-2xl sm:text-[2rem] font-medium' : 'text-sm sm:text-base font-medium',
+                    textClassName: actionId.startsWith('digit-') ? 'text-2xl sm:text-[2rem] font-medium' : 'text-lg sm:text-xl font-medium',
                   })
                 )}
                 <button
@@ -11475,15 +11475,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   <span className="text-3xl font-medium leading-none">=</span>
                 </button>
 
-                {['digit-4', 'digit-5', 'digit-6', 'fraction'].map((actionId) =>
-                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : 'a/b', representativeKeyId: actionId === 'fraction' ? 'radicals' : undefined }, {
+                {['digit-4', 'digit-5', 'digit-6', 'y'].map((actionId) =>
+                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : 'y', representativeKeyId: actionId === 'y' ? 'letters' : undefined }, {
                     className: actionId.startsWith('digit-') ? 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100' : 'border-transparent bg-slate-800 text-white hover:bg-slate-700',
-                    textClassName: actionId.startsWith('digit-') ? 'text-2xl sm:text-[2rem] font-medium' : 'text-xs sm:text-sm font-medium',
+                    textClassName: actionId.startsWith('digit-') ? 'text-2xl sm:text-[2rem] font-medium' : 'text-lg sm:text-xl font-medium',
                   })
                 )}
 
-                {['digit-1', 'digit-2', 'digit-3', 'sqrt'].map((actionId) =>
-                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : '√', representativeKeyId: actionId === 'sqrt' ? 'radicals' : undefined }, {
+                {['digit-1', 'digit-2', 'digit-3', 'f'].map((actionId) =>
+                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : 'f', representativeKeyId: actionId === 'f' ? 'letters' : undefined }, {
                     className: actionId.startsWith('digit-') ? 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100' : 'border-transparent bg-slate-800 text-white hover:bg-slate-700',
                     textClassName: actionId.startsWith('digit-') ? 'text-2xl sm:text-[2rem] font-medium' : 'text-lg sm:text-xl font-medium',
                   })
@@ -11491,7 +11491,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
                 {renderVisibleKeyboardButton({ actionId: 'digit-0', label: '0' }, { className: 'col-span-2 border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100', textClassName: 'text-2xl sm:text-[2rem] font-medium' })}
                 {renderVisibleKeyboardButton({ actionId: 'decimal', label: '.' }, { className: 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100', textClassName: 'text-2xl sm:text-[2rem] font-medium' })}
-                {renderVisibleKeyboardButton({ actionId: 'ans', label: 'Ans' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600', textClassName: 'text-sm sm:text-base font-medium' })}
+                {renderVisibleKeyboardButton({ actionId: 't', label: 't', representativeKeyId: 'letters' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600', textClassName: 'text-lg sm:text-xl font-medium' })}
               </div>
             </div>
           </div>

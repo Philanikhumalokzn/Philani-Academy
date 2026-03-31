@@ -2604,6 +2604,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const keyboardMathfieldZoomRef = useRef(1)
   const keyboardMathfieldTouchGestureRef = useRef<{
     singleTouchActive: boolean
+    touchStartedOnGlyph: boolean
     dragScrollActive: boolean
     pinchActive: boolean
     selectionMode: boolean
@@ -2623,6 +2624,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     lastMidpointY: number
   }>({
     singleTouchActive: false,
+    touchStartedOnGlyph: false,
     dragScrollActive: false,
     pinchActive: false,
     selectionMode: false,
@@ -3042,6 +3044,44 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       }
     }
 
+    const isKeyboardMathfieldGlyphHit = (clientX: number, clientY: number) => {
+      const mathfield = keyboardMathfieldRef.current
+      if (!mathfield) return false
+
+      const fieldRect = (mathfield as unknown as HTMLElement).getBoundingClientRect()
+      if (
+        clientX < fieldRect.left ||
+        clientX > fieldRect.right ||
+        clientY < fieldRect.top ||
+        clientY > fieldRect.bottom
+      ) {
+        return false
+      }
+
+      const probeDelta = Math.max(10, Math.min(22, fieldRect.width * 0.04))
+      const clampedLeftX = Math.max(fieldRect.left + 1, clientX - probeDelta)
+      const clampedRightX = Math.min(fieldRect.right - 1, clientX + probeDelta)
+      const centerOffset = mathfield.getOffsetFromPoint(clientX, clientY, { bias: 0 })
+      const leftOffset = mathfield.getOffsetFromPoint(clampedLeftX, clientY, { bias: 0 })
+      const rightOffset = mathfield.getOffsetFromPoint(clampedRightX, clientY, { bias: 0 })
+
+      if (leftOffset !== rightOffset || centerOffset !== leftOffset || centerOffset !== rightOffset) {
+        return true
+      }
+
+      const shadowRootHost = mathfield as MathfieldElementType & { shadowRoot?: ShadowRoot | null }
+      const shadowHit = shadowRootHost.shadowRoot?.elementFromPoint(clientX, clientY) as HTMLElement | null
+      if (!shadowHit) return false
+
+      const hitPart = shadowHit.getAttribute('part') || ''
+      const hitClassName = typeof shadowHit.className === 'string' ? shadowHit.className : ''
+      if (hitPart === 'container' || hitClassName.includes('ML__container')) {
+        return false
+      }
+
+      return true
+    }
+
     const updateManualMathfieldSelection = (anchorOffset: number, focusOffset: number) => {
       const mathfield = keyboardMathfieldRef.current
       if (!mathfield) return
@@ -3099,11 +3139,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (event.touches.length !== 1) return
       const touch = event.touches[0]
       const scrollTarget = getKeyboardMathfieldScrollTarget()
+      const mathfield = keyboardMathfieldRef.current
       gesture.singleTouchActive = true
+      gesture.touchStartedOnGlyph = isKeyboardMathfieldGlyphHit(touch.clientX, touch.clientY)
       gesture.dragScrollActive = false
       gesture.pinchActive = false
       gesture.selectionMode = false
-      gesture.selectionAnchorOffset = 0
+      gesture.selectionAnchorOffset = mathfield && gesture.touchStartedOnGlyph
+        ? mathfield.getOffsetFromPoint(touch.clientX, touch.clientY, { bias: 0 })
+        : 0
       gesture.startX = touch.clientX
       gesture.startY = touch.clientY
       gesture.currentX = touch.clientX
@@ -3112,17 +3156,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       gesture.startScrollTop = scrollTarget?.scrollTop ?? 0
       setKeyboardMathfieldTouchSelectionEnabled(false)
       clearLongPress()
-      gesture.longPressTimer = setTimeout(() => {
-        gesture.longPressTimer = null
-        const mathfield = keyboardMathfieldRef.current
-        if (!mathfield) return
-        const anchorOffset = mathfield.getOffsetFromPoint(gesture.currentX, gesture.currentY, { bias: 0 })
-        gesture.selectionMode = true
-        gesture.selectionAnchorOffset = anchorOffset
-        gesture.dragScrollActive = false
-        keyboardMathfieldRef.current?.focus?.()
-        updateManualMathfieldSelection(anchorOffset, anchorOffset)
-      }, LONG_PRESS_MS)
     }
 
     const onTouchMove = (event: TouchEvent) => {
@@ -3176,15 +3209,25 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       gesture.currentX = touch.clientX
       gesture.currentY = touch.clientY
 
+      const dx = touch.clientX - gesture.startX
+      const dy = touch.clientY - gesture.startY
+      const movedFarEnough = Math.hypot(dx, dy) >= SINGLE_FINGER_SCROLL_THRESHOLD_PX
+
+      if (gesture.touchStartedOnGlyph && movedFarEnough) {
+        event.preventDefault()
+        clearLongPress()
+        gesture.selectionMode = true
+        updateManualMathfieldSelection(gesture.selectionAnchorOffset, keyboardMathfieldRef.current?.getOffsetFromPoint(touch.clientX, touch.clientY, { bias: 0 }) ?? gesture.selectionAnchorOffset)
+        return
+      }
+
       if (gesture.selectionMode) {
         event.preventDefault()
         updateManualMathfieldSelection(gesture.selectionAnchorOffset, keyboardMathfieldRef.current?.getOffsetFromPoint(touch.clientX, touch.clientY, { bias: 0 }) ?? gesture.selectionAnchorOffset)
         return
       }
 
-      const dx = touch.clientX - gesture.startX
-      const dy = touch.clientY - gesture.startY
-      if (Math.hypot(dx, dy) < SINGLE_FINGER_SCROLL_THRESHOLD_PX) return
+      if (!movedFarEnough) return
 
       clearLongPress()
       gesture.dragScrollActive = true
@@ -3218,6 +3261,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           }
         }
         gesture.singleTouchActive = false
+        gesture.touchStartedOnGlyph = false
         gesture.dragScrollActive = false
         gesture.selectionMode = false
         gesture.selectionAnchorOffset = 0
@@ -3230,6 +3274,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         const touch = event.touches[0]
         const scrollTarget = getKeyboardMathfieldScrollTarget()
         gesture.singleTouchActive = true
+        gesture.touchStartedOnGlyph = isKeyboardMathfieldGlyphHit(touch.clientX, touch.clientY)
         gesture.dragScrollActive = false
         gesture.startX = touch.clientX
         gesture.startY = touch.clientY
@@ -3238,24 +3283,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         gesture.startScrollLeft = scrollTarget?.scrollLeft ?? 0
         gesture.startScrollTop = scrollTarget?.scrollTop ?? 0
         gesture.selectionMode = false
-        gesture.selectionAnchorOffset = 0
+        gesture.selectionAnchorOffset = keyboardMathfieldRef.current && gesture.touchStartedOnGlyph
+          ? keyboardMathfieldRef.current.getOffsetFromPoint(touch.clientX, touch.clientY, { bias: 0 })
+          : 0
         setKeyboardMathfieldTouchSelectionEnabled(false)
         clearLongPress()
-        gesture.longPressTimer = setTimeout(() => {
-          gesture.longPressTimer = null
-          const mathfield = keyboardMathfieldRef.current
-          if (!mathfield) return
-          const anchorOffset = mathfield.getOffsetFromPoint(gesture.currentX, gesture.currentY, { bias: 0 })
-          gesture.selectionMode = true
-          gesture.selectionAnchorOffset = anchorOffset
-          keyboardMathfieldRef.current?.focus?.()
-          updateManualMathfieldSelection(anchorOffset, anchorOffset)
-        }, LONG_PRESS_MS)
       }
     }
 
     const onTouchCancel = () => {
       gesture.singleTouchActive = false
+      gesture.touchStartedOnGlyph = false
       gesture.dragScrollActive = false
       gesture.pinchActive = false
       gesture.selectionMode = false
@@ -3276,6 +3314,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       viewport.removeEventListener('touchend', onTouchEnd)
       viewport.removeEventListener('touchcancel', onTouchCancel)
       gesture.singleTouchActive = false
+      gesture.touchStartedOnGlyph = false
       gesture.dragScrollActive = false
       gesture.pinchActive = false
       gesture.selectionMode = false

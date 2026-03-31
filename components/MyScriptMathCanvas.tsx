@@ -2686,12 +2686,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setKeyboardMathfieldHostNode(node)
   }, [])
 
-  const setKeyboardMathfieldTouchSelectionEnabled = useCallback((enabled: boolean) => {
+  const setKeyboardMathfieldTouchSelectionEnabled = useCallback((_enabled: boolean) => {
     const field = keyboardMathfieldRef.current as (MathfieldElementType & { style: CSSStyleDeclaration }) | null
     if (!field) return
     field.style.touchAction = 'none'
-    ;(field.style as CSSStyleDeclaration).webkitUserSelect = enabled ? 'text' : 'none'
-    ;(field.style as CSSStyleDeclaration).userSelect = enabled ? 'text' : 'none'
+    ;(field.style as CSSStyleDeclaration).webkitUserSelect = 'none'
+    ;(field.style as CSSStyleDeclaration).userSelect = 'none'
     field.style.setProperty('-webkit-touch-callout', 'none')
   }, [])
 
@@ -3042,52 +3042,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       }
     }
 
-    const clampMathfieldOffset = (offset: number) => {
-      const mathfield = keyboardMathfieldRef.current as (MathfieldElementType & { lastOffset?: number }) | null
-      const lastOffset = typeof mathfield?.lastOffset === 'number' ? mathfield.lastOffset : Math.max(0, latexOutputRef.current.length)
-      return Math.max(0, Math.min(lastOffset, offset))
-    }
-
     const updateManualMathfieldSelection = (anchorOffset: number, focusOffset: number) => {
       const mathfield = keyboardMathfieldRef.current
       if (!mathfield) return
 
-      const nextAnchor = clampMathfieldOffset(anchorOffset)
-      const nextFocus = clampMathfieldOffset(focusOffset)
-
       try {
         const selectableField = mathfield as MathfieldElementType & {
-          selection: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
-          position: number
+          selection?: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
+          position?: number
         }
         selectableField.selection = {
-          ranges: [[nextAnchor, nextFocus]],
-          direction: nextFocus >= nextAnchor ? 'forward' : 'backward',
+          ranges: [[anchorOffset, focusOffset]],
+          direction: focusOffset >= anchorOffset ? 'forward' : 'backward',
         }
-        selectableField.position = nextFocus
+        if (typeof selectableField.position === 'number') {
+          selectableField.position = focusOffset
+        }
       } catch {
-        mathfield.position = nextFocus
+        mathfield.position = focusOffset
       }
 
-      setKeyboardSelectionState({ start: Math.min(nextAnchor, nextFocus), end: Math.max(nextAnchor, nextFocus) })
-    }
-
-    const armManualMathfieldSelection = (anchorOffset: number) => {
-      const mathfield = keyboardMathfieldRef.current as (MathfieldElementType & { lastOffset?: number }) | null
-      if (!mathfield) return
-
-      const clampedAnchor = clampMathfieldOffset(anchorOffset)
-      const lastOffset = typeof mathfield.lastOffset === 'number' ? mathfield.lastOffset : Math.max(0, latexOutputRef.current.length)
-      const initialFocus = lastOffset <= 0
-        ? clampedAnchor
-        : (clampedAnchor < lastOffset ? clampedAnchor + 1 : Math.max(0, clampedAnchor - 1))
-
-      gesture.selectionMode = true
-      gesture.selectionAnchorOffset = clampedAnchor
-      gesture.dragScrollActive = false
-      setKeyboardMathfieldTouchSelectionEnabled(true)
-      mathfield.focus()
-      updateManualMathfieldSelection(clampedAnchor, initialFocus)
+      setKeyboardSelectionState({ start: Math.min(anchorOffset, focusOffset), end: Math.max(anchorOffset, focusOffset) })
     }
 
     const getPinchDistance = (touches: TouchList) => {
@@ -3142,7 +3117,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         const mathfield = keyboardMathfieldRef.current
         if (!mathfield) return
         const anchorOffset = mathfield.getOffsetFromPoint(gesture.currentX, gesture.currentY, { bias: 0 })
-        armManualMathfieldSelection(anchorOffset)
+        gesture.selectionMode = true
+        gesture.selectionAnchorOffset = anchorOffset
+        gesture.dragScrollActive = false
+        keyboardMathfieldRef.current?.focus?.()
+        updateManualMathfieldSelection(anchorOffset, anchorOffset)
       }, LONG_PRESS_MS)
     }
 
@@ -3240,12 +3219,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         }
         gesture.singleTouchActive = false
         gesture.dragScrollActive = false
-        const endedWithSelection = gesture.selectionMode
         gesture.selectionMode = false
         gesture.selectionAnchorOffset = 0
-        if (!endedWithSelection) {
-          setKeyboardMathfieldTouchSelectionEnabled(false)
-        }
+        setKeyboardMathfieldTouchSelectionEnabled(false)
         clearLongPress()
         return
       }
@@ -3270,7 +3246,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           const mathfield = keyboardMathfieldRef.current
           if (!mathfield) return
           const anchorOffset = mathfield.getOffsetFromPoint(gesture.currentX, gesture.currentY, { bias: 0 })
-          armManualMathfieldSelection(anchorOffset)
+          gesture.selectionMode = true
+          gesture.selectionAnchorOffset = anchorOffset
+          keyboardMathfieldRef.current?.focus?.()
+          updateManualMathfieldSelection(anchorOffset, anchorOffset)
         }, LONG_PRESS_MS)
       }
     }

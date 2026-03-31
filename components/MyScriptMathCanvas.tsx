@@ -2604,16 +2604,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const keyboardMathfieldZoomRef = useRef(1)
   const keyboardMathfieldTouchGestureRef = useRef<{
     singleTouchActive: boolean
-    touchStartedOnGlyph: boolean
-    dragScrollActive: boolean
     pinchActive: boolean
     selectionMode: boolean
-    selectionAnchorOffset: number
     longPressTimer: ReturnType<typeof setTimeout> | null
     startX: number
     startY: number
-    currentX: number
-    currentY: number
     startScrollLeft: number
     startScrollTop: number
     startDist: number
@@ -2624,16 +2619,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     lastMidpointY: number
   }>({
     singleTouchActive: false,
-    touchStartedOnGlyph: false,
-    dragScrollActive: false,
     pinchActive: false,
     selectionMode: false,
-    selectionAnchorOffset: 0,
     longPressTimer: null,
     startX: 0,
     startY: 0,
-    currentX: 0,
-    currentY: 0,
     startScrollLeft: 0,
     startScrollTop: 0,
     startDist: 0,
@@ -2686,15 +2676,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const setKeyboardMathfieldHostNodeRef = useCallback((node: HTMLDivElement | null) => {
     keyboardMathfieldHostRef.current = node
     setKeyboardMathfieldHostNode(node)
-  }, [])
-
-  const setKeyboardMathfieldTouchSelectionEnabled = useCallback((enabled: boolean) => {
-    const field = keyboardMathfieldRef.current as (MathfieldElementType & { style: CSSStyleDeclaration }) | null
-    if (!field) return
-    field.style.touchAction = enabled ? 'auto' : 'none'
-    ;(field.style as CSSStyleDeclaration).webkitUserSelect = enabled ? 'text' : 'none'
-    ;(field.style as CSSStyleDeclaration).userSelect = enabled ? 'text' : 'none'
-    field.style.setProperty('-webkit-touch-callout', 'none')
   }, [])
 
   const applyKeyboardMathfieldZoomStyle = useCallback((zoom: number) => {
@@ -2912,10 +2893,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         ;(field.style as CSSStyleDeclaration).width = 'max-content'
         ;(field.style as CSSStyleDeclaration).minWidth = '100%'
         ;(field.style as CSSStyleDeclaration).minHeight = '100%'
-        ;(field.style as CSSStyleDeclaration).touchAction = 'none'
-        ;(field.style as CSSStyleDeclaration).webkitUserSelect = 'none'
-        ;(field.style as CSSStyleDeclaration).userSelect = 'none'
-        field.style.setProperty('-webkit-touch-callout', 'none')
+        ;(field.style as CSSStyleDeclaration).touchAction = 'auto'
+        ;(field.style as CSSStyleDeclaration).webkitUserSelect = 'text'
+        ;(field.style as CSSStyleDeclaration).userSelect = 'text'
 
         const shadowRootHost = field as MathfieldElementType & { shadowRoot?: ShadowRoot | null }
         const shadowRoot = shadowRootHost.shadowRoot
@@ -2958,11 +2938,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           syncKeyboardMathfieldState(field)
         }
 
-        const handleContextMenu = (event: Event) => {
-          event.preventDefault()
-          event.stopPropagation()
-        }
-
         const handleSelectionChange = () => {
           const selectableField = field as MathfieldElementType & {
             selection: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
@@ -2979,11 +2954,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
         field.addEventListener('input', handleInput)
         field.addEventListener('selection-change', handleSelectionChange)
-        field.addEventListener('contextmenu', handleContextMenu)
         keyboardMathfieldCleanupRef.current = () => {
           field?.removeEventListener('input', handleInput)
           field?.removeEventListener('selection-change', handleSelectionChange)
-          field?.removeEventListener('contextmenu', handleContextMenu)
           if (field?.parentElement) {
             try {
               field.parentElement.replaceChildren()
@@ -2999,7 +2972,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (field.parentElement !== keyboardMathfieldHostNode) {
         keyboardMathfieldHostNode.replaceChildren(field)
       }
-      setKeyboardMathfieldTouchSelectionEnabled(false)
       applyKeyboardMathfieldZoomStyle(keyboardMathfieldZoomRef.current)
     })()
 
@@ -3011,14 +2983,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         keyboardMathfieldHostNode.replaceChildren()
       }
     }
-  }, [applyKeyboardMathfieldZoomStyle, hasMounted, keyboardMathfieldHostNode, setKeyboardMathfieldTouchSelectionEnabled, setKeyboardSelectionState, syncKeyboardMathfieldState])
+  }, [applyKeyboardMathfieldZoomStyle, hasMounted, keyboardMathfieldHostNode, setKeyboardSelectionState, syncKeyboardMathfieldState])
 
   useEffect(() => {
     if (recognitionEngine !== 'keyboard') {
-      setKeyboardMathfieldTouchSelectionEnabled(false)
       applyKeyboardMathfieldZoomStyle(1)
     }
-  }, [applyKeyboardMathfieldZoomStyle, recognitionEngine, setKeyboardMathfieldTouchSelectionEnabled])
+  }, [applyKeyboardMathfieldZoomStyle, recognitionEngine])
 
   useEffect(() => {
     if (recognitionEngine !== 'keyboard') return
@@ -3042,67 +3013,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         clearTimeout(gesture.longPressTimer)
         gesture.longPressTimer = null
       }
-    }
-
-    const isKeyboardMathfieldGlyphHit = (clientX: number, clientY: number) => {
-      const mathfield = keyboardMathfieldRef.current
-      if (!mathfield) return false
-
-      const fieldRect = (mathfield as unknown as HTMLElement).getBoundingClientRect()
-      if (
-        clientX < fieldRect.left ||
-        clientX > fieldRect.right ||
-        clientY < fieldRect.top ||
-        clientY > fieldRect.bottom
-      ) {
-        return false
-      }
-
-      const probeDelta = Math.max(10, Math.min(22, fieldRect.width * 0.04))
-      const clampedLeftX = Math.max(fieldRect.left + 1, clientX - probeDelta)
-      const clampedRightX = Math.min(fieldRect.right - 1, clientX + probeDelta)
-      const centerOffset = mathfield.getOffsetFromPoint(clientX, clientY, { bias: 0 })
-      const leftOffset = mathfield.getOffsetFromPoint(clampedLeftX, clientY, { bias: 0 })
-      const rightOffset = mathfield.getOffsetFromPoint(clampedRightX, clientY, { bias: 0 })
-
-      if (leftOffset !== rightOffset || centerOffset !== leftOffset || centerOffset !== rightOffset) {
-        return true
-      }
-
-      const shadowRootHost = mathfield as MathfieldElementType & { shadowRoot?: ShadowRoot | null }
-      const shadowHit = shadowRootHost.shadowRoot?.elementFromPoint(clientX, clientY) as HTMLElement | null
-      if (!shadowHit) return false
-
-      const hitPart = shadowHit.getAttribute('part') || ''
-      const hitClassName = typeof shadowHit.className === 'string' ? shadowHit.className : ''
-      if (hitPart === 'container' || hitClassName.includes('ML__container')) {
-        return false
-      }
-
-      return true
-    }
-
-    const updateManualMathfieldSelection = (anchorOffset: number, focusOffset: number) => {
-      const mathfield = keyboardMathfieldRef.current
-      if (!mathfield) return
-
-      try {
-        const selectableField = mathfield as MathfieldElementType & {
-          selection?: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
-          position?: number
-        }
-        selectableField.selection = {
-          ranges: [[anchorOffset, focusOffset]],
-          direction: focusOffset >= anchorOffset ? 'forward' : 'backward',
-        }
-        if (typeof selectableField.position === 'number') {
-          selectableField.position = focusOffset
-        }
-      } catch {
-        mathfield.position = focusOffset
-      }
-
-      setKeyboardSelectionState({ start: Math.min(anchorOffset, focusOffset), end: Math.max(anchorOffset, focusOffset) })
     }
 
     const getPinchDistance = (touches: TouchList) => {
@@ -3139,23 +3049,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (event.touches.length !== 1) return
       const touch = event.touches[0]
       const scrollTarget = getKeyboardMathfieldScrollTarget()
-      const mathfield = keyboardMathfieldRef.current
       gesture.singleTouchActive = true
-      gesture.touchStartedOnGlyph = isKeyboardMathfieldGlyphHit(touch.clientX, touch.clientY)
-      gesture.dragScrollActive = false
       gesture.pinchActive = false
       gesture.selectionMode = false
-      gesture.selectionAnchorOffset = mathfield && gesture.touchStartedOnGlyph
-        ? mathfield.getOffsetFromPoint(touch.clientX, touch.clientY, { bias: 0 })
-        : 0
       gesture.startX = touch.clientX
       gesture.startY = touch.clientY
-      gesture.currentX = touch.clientX
-      gesture.currentY = touch.clientY
       gesture.startScrollLeft = scrollTarget?.scrollLeft ?? 0
       gesture.startScrollTop = scrollTarget?.scrollTop ?? 0
-      setKeyboardMathfieldTouchSelectionEnabled(gesture.touchStartedOnGlyph)
       clearLongPress()
+      gesture.longPressTimer = setTimeout(() => {
+        gesture.longPressTimer = null
+        gesture.selectionMode = true
+        keyboardMathfieldRef.current?.focus?.()
+      }, LONG_PRESS_MS)
     }
 
     const onTouchMove = (event: TouchEvent) => {
@@ -3204,31 +3110,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       }
 
       if (!gesture.singleTouchActive || event.touches.length !== 1) return
+      if (gesture.selectionMode) return
 
       const touch = event.touches[0]
-      gesture.currentX = touch.clientX
-      gesture.currentY = touch.clientY
-
-      if (gesture.touchStartedOnGlyph) {
-        clearLongPress()
-        return
-      }
-
       const dx = touch.clientX - gesture.startX
       const dy = touch.clientY - gesture.startY
-      const movedFarEnough = Math.hypot(dx, dy) >= SINGLE_FINGER_SCROLL_THRESHOLD_PX
-
-      if (gesture.selectionMode) {
-        event.preventDefault()
-        updateManualMathfieldSelection(gesture.selectionAnchorOffset, keyboardMathfieldRef.current?.getOffsetFromPoint(touch.clientX, touch.clientY, { bias: 0 }) ?? gesture.selectionAnchorOffset)
-        return
-      }
-
-      if (!movedFarEnough) return
+      if (Math.hypot(dx, dy) < SINGLE_FINGER_SCROLL_THRESHOLD_PX) return
 
       clearLongPress()
-      gesture.dragScrollActive = true
-      setKeyboardMathfieldTouchSelectionEnabled(false)
 
       const scrollTarget = getKeyboardMathfieldScrollTarget()
       if (!scrollTarget) return
@@ -3247,24 +3136,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       }
 
       if (event.touches.length === 0) {
-        const endedAsTap = gesture.singleTouchActive && !gesture.touchStartedOnGlyph && !gesture.dragScrollActive && !gesture.selectionMode && !gesture.pinchActive
-        if (endedAsTap) {
-          const mathfield = keyboardMathfieldRef.current
-          if (mathfield) {
-            const nextOffset = mathfield.getOffsetFromPoint(gesture.currentX, gesture.currentY, { bias: 0 })
-            mathfield.focus()
-            mathfield.position = nextOffset
-            setKeyboardSelectionState({ start: nextOffset, end: nextOffset })
-          }
-        }
         gesture.singleTouchActive = false
-        gesture.touchStartedOnGlyph = false
-        gesture.dragScrollActive = false
         gesture.selectionMode = false
-        gesture.selectionAnchorOffset = 0
-        if (!keyboardSelectionRef.current || keyboardSelectionRef.current.start === keyboardSelectionRef.current.end) {
-          setKeyboardMathfieldTouchSelectionEnabled(false)
-        }
         clearLongPress()
         return
       }
@@ -3273,31 +3146,24 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         const touch = event.touches[0]
         const scrollTarget = getKeyboardMathfieldScrollTarget()
         gesture.singleTouchActive = true
-        gesture.touchStartedOnGlyph = isKeyboardMathfieldGlyphHit(touch.clientX, touch.clientY)
-        gesture.dragScrollActive = false
         gesture.startX = touch.clientX
         gesture.startY = touch.clientY
-        gesture.currentX = touch.clientX
-        gesture.currentY = touch.clientY
         gesture.startScrollLeft = scrollTarget?.scrollLeft ?? 0
         gesture.startScrollTop = scrollTarget?.scrollTop ?? 0
         gesture.selectionMode = false
-        gesture.selectionAnchorOffset = keyboardMathfieldRef.current && gesture.touchStartedOnGlyph
-          ? keyboardMathfieldRef.current.getOffsetFromPoint(touch.clientX, touch.clientY, { bias: 0 })
-          : 0
-        setKeyboardMathfieldTouchSelectionEnabled(gesture.touchStartedOnGlyph)
         clearLongPress()
+        gesture.longPressTimer = setTimeout(() => {
+          gesture.longPressTimer = null
+          gesture.selectionMode = true
+          keyboardMathfieldRef.current?.focus?.()
+        }, LONG_PRESS_MS)
       }
     }
 
     const onTouchCancel = () => {
       gesture.singleTouchActive = false
-      gesture.touchStartedOnGlyph = false
-      gesture.dragScrollActive = false
       gesture.pinchActive = false
       gesture.selectionMode = false
-      gesture.selectionAnchorOffset = 0
-      setKeyboardMathfieldTouchSelectionEnabled(false)
       clearLongPress()
     }
 
@@ -3313,14 +3179,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       viewport.removeEventListener('touchend', onTouchEnd)
       viewport.removeEventListener('touchcancel', onTouchCancel)
       gesture.singleTouchActive = false
-      gesture.touchStartedOnGlyph = false
-      gesture.dragScrollActive = false
       gesture.pinchActive = false
       gesture.selectionMode = false
-      gesture.selectionAnchorOffset = 0
-      setKeyboardMathfieldTouchSelectionEnabled(false)
     }
-  }, [applyKeyboardMathfieldZoomStyle, getKeyboardMathfieldScrollTarget, recognitionEngine, setKeyboardMathfieldTouchSelectionEnabled, setKeyboardSelectionState])
+  }, [applyKeyboardMathfieldZoomStyle, getKeyboardMathfieldScrollTarget, recognitionEngine])
 
   useEffect(() => {
     return () => {
@@ -13323,7 +13185,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           <div
             ref={keyboardMathfieldViewportRef}
             className={`relative h-full w-full overflow-auto rounded-[10px] border border-slate-200 bg-white ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
-            onContextMenu={(event) => event.preventDefault()}
             style={{
               WebkitOverflowScrolling: 'touch',
               overscrollBehavior: 'contain',

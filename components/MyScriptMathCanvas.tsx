@@ -2847,19 +2847,36 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setCanClear(nextValue.trim().length > 0)
   }, [])
 
+  const getKeyboardMathfieldSelectionOffsets = useCallback((field: MathfieldElementType | null | undefined) => {
+    const selectableField = field as (MathfieldElementType & {
+      selection?: { ranges?: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
+    }) | null | undefined
+    const range = selectableField?.selection?.ranges?.[0]
+    if (range) {
+      const [rangeStart, rangeEnd] = range
+      return {
+        start: Math.min(rangeStart, rangeEnd),
+        end: Math.max(rangeStart, rangeEnd),
+      }
+    }
+
+    const nextPosition = typeof field?.position === 'number' ? field.position : 0
+    return { start: nextPosition, end: nextPosition }
+  }, [])
+
   const syncKeyboardMathfieldState = useCallback((mathfield?: MathfieldElementType | null) => {
     const field = mathfield ?? keyboardMathfieldRef.current
     if (!field) return
     const nextValue = field.getValue('latex') || ''
-    const nextPosition = typeof field.position === 'number' ? field.position : 0
+    const nextSelection = getKeyboardMathfieldSelectionOffsets(field)
     setLatexOutput(nextValue)
     latexOutputRef.current = nextValue
     if (useAdminStepComposerRef.current && canOrchestrateLesson) {
       setAdminDraftLatex(nextValue)
     }
-    setKeyboardSelectionState({ start: nextPosition, end: nextPosition })
+    setKeyboardSelectionState(nextSelection)
     syncKeyboardControlStripState(field, nextValue)
-  }, [canOrchestrateLesson, setKeyboardSelectionState, syncKeyboardControlStripState])
+  }, [canOrchestrateLesson, getKeyboardMathfieldSelectionOffsets, setKeyboardSelectionState, syncKeyboardControlStripState])
 
   useEffect(() => {
     if (recognitionEngine !== 'keyboard') return
@@ -2943,7 +2960,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             selection: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
             selectionIsCollapsed: boolean
           }
-          if (!selectableField.selectionIsCollapsed && selectableField.selection.ranges.length > 0) {
+          if (selectableField.selection.ranges.length > 0) {
             const [rangeStart, rangeEnd] = selectableField.selection.ranges[0]
             setKeyboardSelectionState({ start: Math.min(rangeStart, rangeEnd), end: Math.max(rangeStart, rangeEnd) })
           } else {
@@ -3202,12 +3219,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     keyboardMathfieldSyncRef.current = true
     try {
       field.setValue(nextValue)
-      const nextPosition = typeof field.position === 'number' ? field.position : 0
-      setKeyboardSelectionState({ start: nextPosition, end: nextPosition })
+      setKeyboardSelectionState(getKeyboardMathfieldSelectionOffsets(field))
     } finally {
       keyboardMathfieldSyncRef.current = false
     }
-  }, [latexOutput, setKeyboardSelectionState])
+  }, [getKeyboardMathfieldSelectionOffsets, latexOutput, setKeyboardSelectionState])
 
   const keyboardIdleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const keyboardRepresentativeTapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -11269,7 +11285,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const moveVertical = (axis: 'up' | 'down') => {
       const currentValue = field.getValue('latex') || ''
-      const currentPosition = typeof field.position === 'number' ? field.position : 0
+      const currentPosition = keyboardSelectionRef.current.start
       const selectableField = field as MathfieldElementType & {
         selection: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
         selectionIsCollapsed: boolean

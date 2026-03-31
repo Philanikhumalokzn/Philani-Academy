@@ -2686,12 +2686,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setKeyboardMathfieldHostNode(node)
   }, [])
 
-  const setKeyboardMathfieldTouchSelectionEnabled = useCallback((_enabled: boolean) => {
+  const setKeyboardMathfieldTouchSelectionEnabled = useCallback((enabled: boolean) => {
     const field = keyboardMathfieldRef.current as (MathfieldElementType & { style: CSSStyleDeclaration }) | null
     if (!field) return
     field.style.touchAction = 'none'
-    ;(field.style as CSSStyleDeclaration).webkitUserSelect = 'none'
-    ;(field.style as CSSStyleDeclaration).userSelect = 'none'
+    ;(field.style as CSSStyleDeclaration).webkitUserSelect = enabled ? 'text' : 'none'
+    ;(field.style as CSSStyleDeclaration).userSelect = enabled ? 'text' : 'none'
     field.style.setProperty('-webkit-touch-callout', 'none')
   }, [])
 
@@ -3085,6 +3085,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       gesture.selectionMode = true
       gesture.selectionAnchorOffset = clampedAnchor
       gesture.dragScrollActive = false
+      setKeyboardMathfieldTouchSelectionEnabled(true)
       mathfield.focus()
       updateManualMathfieldSelection(clampedAnchor, initialFocus)
     }
@@ -3239,9 +3240,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         }
         gesture.singleTouchActive = false
         gesture.dragScrollActive = false
+        const endedWithSelection = gesture.selectionMode
         gesture.selectionMode = false
         gesture.selectionAnchorOffset = 0
-        setKeyboardMathfieldTouchSelectionEnabled(false)
+        if (!endedWithSelection) {
+          setKeyboardMathfieldTouchSelectionEnabled(false)
+        }
         clearLongPress()
         return
       }

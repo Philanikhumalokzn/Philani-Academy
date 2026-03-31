@@ -2901,6 +2901,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         field.setAttribute('aria-label', 'Keyboard expression')
         field.setAttribute('spellcheck', 'false')
         field.mathVirtualKeyboardPolicy = 'manual'
+        ;(field as MathfieldElementType & { menuItems?: unknown[] }).menuItems = []
         field.smartFence = true
         field.smartMode = false
         field.smartSuperscript = true
@@ -2956,6 +2957,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           syncKeyboardMathfieldState(field)
         }
 
+        const handleContextMenu = (event: Event) => {
+          event.preventDefault()
+          event.stopPropagation()
+        }
+
         const handleSelectionChange = () => {
           const selectableField = field as MathfieldElementType & {
             selection: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
@@ -2972,9 +2978,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
         field.addEventListener('input', handleInput)
         field.addEventListener('selection-change', handleSelectionChange)
+        field.addEventListener('contextmenu', handleContextMenu)
         keyboardMathfieldCleanupRef.current = () => {
           field?.removeEventListener('input', handleInput)
           field?.removeEventListener('selection-change', handleSelectionChange)
+          field?.removeEventListener('contextmenu', handleContextMenu)
           if (field?.parentElement) {
             try {
               field.parentElement.replaceChildren()
@@ -13280,6 +13288,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           <div
             ref={keyboardMathfieldViewportRef}
             className={`relative h-full w-full overflow-auto rounded-[10px] border border-slate-200 bg-white ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
+            onContextMenu={(event) => event.preventDefault()}
             style={{
               WebkitOverflowScrolling: 'touch',
               overscrollBehavior: 'contain',

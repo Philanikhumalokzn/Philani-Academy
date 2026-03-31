@@ -23,6 +23,11 @@ math-field.keyboard-mathlive-field::part(container) {
   padding: 0;
 }
 
+math-field.keyboard-mathlive-field::part(menu-toggle),
+math-field.keyboard-mathlive-field::part(virtual-keyboard-toggle) {
+  display: none;
+}
+
 /* Use the same math-oriented glyph stack for keyboard symbol labels. */
 .keyboard-symbol-font {
   font-family: 'KaTeX_Main', 'KaTeX_Math', 'Latin Modern Math', 'Cambria Math', 'STIX Two Math', 'Times New Roman', serif;

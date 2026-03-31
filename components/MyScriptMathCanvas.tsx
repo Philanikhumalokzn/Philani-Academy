@@ -2897,6 +2897,42 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         ;(field.style as CSSStyleDeclaration).webkitUserSelect = 'text'
         ;(field.style as CSSStyleDeclaration).userSelect = 'text'
 
+        const shadowRootHost = field as MathfieldElementType & { shadowRoot?: ShadowRoot | null }
+        const shadowRoot = shadowRootHost.shadowRoot
+        if (shadowRoot && !shadowRoot.getElementById('keyboard-mathlive-shadow-overrides')) {
+          const overrideStyle = document.createElement('style')
+          overrideStyle.id = 'keyboard-mathlive-shadow-overrides'
+          overrideStyle.textContent = `
+            [part="menu-toggle"],
+            [part="virtual-keyboard-toggle"],
+            [part="menu-toggle-container"],
+            [part="virtual-keyboard-toggle-container"],
+            [part="toolbar"],
+            [part="controls"],
+            [part="control-strip"],
+            .ML__menu-toggle,
+            .ML__virtual-keyboard-toggle,
+            .ML__toolbar,
+            .ML__controls,
+            .ML__control-strip {
+              display: none !important;
+              width: 0 !important;
+              min-width: 0 !important;
+              max-width: 0 !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              border: 0 !important;
+            }
+
+            [part="container"],
+            .ML__container {
+              padding-right: 0 !important;
+              inset-inline-end: 0 !important;
+            }
+          `
+          shadowRoot.appendChild(overrideStyle)
+        }
+
         const handleInput = () => {
           if (keyboardMathfieldSyncRef.current) return
           syncKeyboardMathfieldState(field)

@@ -2686,13 +2686,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setKeyboardMathfieldHostNode(node)
   }, [])
 
-  const setKeyboardMathfieldTouchSelectionEnabled = useCallback((enabled: boolean) => {
+  const setKeyboardMathfieldTouchSelectionEnabled = useCallback((_enabled: boolean) => {
     const field = keyboardMathfieldRef.current as (MathfieldElementType & { style: CSSStyleDeclaration }) | null
     if (!field) return
-    field.style.touchAction = enabled ? 'auto' : 'none'
-    ;(field.style as CSSStyleDeclaration).webkitUserSelect = enabled ? 'text' : 'none'
-    ;(field.style as CSSStyleDeclaration).userSelect = enabled ? 'text' : 'none'
-    field.style.setProperty('-webkit-touch-callout', enabled ? 'default' : 'none')
+    field.style.touchAction = 'none'
+    ;(field.style as CSSStyleDeclaration).webkitUserSelect = 'none'
+    ;(field.style as CSSStyleDeclaration).userSelect = 'none'
+    field.style.setProperty('-webkit-touch-callout', 'none')
   }, [])
 
   const applyKeyboardMathfieldZoomStyle = useCallback((zoom: number) => {
@@ -2901,7 +2901,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         field.setAttribute('aria-label', 'Keyboard expression')
         field.setAttribute('spellcheck', 'false')
         field.mathVirtualKeyboardPolicy = 'manual'
-        ;(field as MathfieldElementType & { menuItems?: unknown[] }).menuItems = []
         field.smartFence = true
         field.smartMode = false
         field.smartSuperscript = true
@@ -3121,7 +3120,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         gesture.selectionMode = true
         gesture.selectionAnchorOffset = anchorOffset
         gesture.dragScrollActive = false
-        setKeyboardMathfieldTouchSelectionEnabled(true)
         keyboardMathfieldRef.current?.focus?.()
         updateManualMathfieldSelection(anchorOffset, anchorOffset)
       }, LONG_PRESS_MS)
@@ -3250,7 +3248,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           const anchorOffset = mathfield.getOffsetFromPoint(gesture.currentX, gesture.currentY, { bias: 0 })
           gesture.selectionMode = true
           gesture.selectionAnchorOffset = anchorOffset
-          setKeyboardMathfieldTouchSelectionEnabled(true)
           keyboardMathfieldRef.current?.focus?.()
           updateManualMathfieldSelection(anchorOffset, anchorOffset)
         }, LONG_PRESS_MS)

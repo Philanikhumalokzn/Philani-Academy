@@ -1117,6 +1117,69 @@ const isEmptyFractionDenominatorPlaceholderAtPosition = (value: string, position
   return false
 }
 
+const findKeyboardBalancedGroupEnd = (value: string, startIndex: number, openChar: string, closeChar: string) => {
+  let depth = 0
+  for (let index = startIndex; index < value.length; index += 1) {
+    const char = value[index]
+    if (char === openChar) {
+      depth += 1
+      continue
+    }
+    if (char === closeChar) {
+      depth -= 1
+      if (depth === 0) return index
+    }
+  }
+  return -1
+}
+
+const isKeyboardPlaceholderExpression = (symbol: string) => /^\s*(#\?|\\placeholder(?:\{[^{}]*\})?)\s*$/.test(symbol)
+
+const findKeyboardFractionDenominatorTargetAtPosition = (value: string, position: number): KeyboardReferenceTarget | null => {
+  let bestMatch: KeyboardReferenceTarget | null = null
+  let searchIndex = 0
+
+  while (searchIndex < value.length) {
+    const fracIndex = value.indexOf('\\frac', searchIndex)
+    if (fracIndex < 0) break
+
+    const numeratorOpen = fracIndex + '\\frac'.length
+    if (value[numeratorOpen] !== '{') {
+      searchIndex = fracIndex + 1
+      continue
+    }
+
+    const numeratorClose = findKeyboardBalancedGroupEnd(value, numeratorOpen, '{', '}')
+    const denominatorOpen = numeratorClose >= 0 ? numeratorClose + 1 : -1
+    if (numeratorClose < 0 || value[denominatorOpen] !== '{') {
+      searchIndex = fracIndex + 1
+      continue
+    }
+
+    const denominatorClose = findKeyboardBalancedGroupEnd(value, denominatorOpen, '{', '}')
+    if (denominatorClose < 0) {
+      searchIndex = fracIndex + 1
+      continue
+    }
+
+    const targetStart = denominatorOpen + 1
+    const targetEnd = denominatorClose
+    const containsPosition = position >= targetStart && position <= targetEnd
+    if (containsPosition) {
+      const symbol = value.slice(targetStart, targetEnd)
+      if (symbol.trim() && !isKeyboardPlaceholderExpression(symbol)) {
+        if (!bestMatch || (targetEnd - targetStart) <= (bestMatch.end - bestMatch.start)) {
+          bestMatch = { start: targetStart, end: targetEnd, symbol }
+        }
+      }
+    }
+
+    searchIndex = fracIndex + 1
+  }
+
+  return bestMatch
+}
+
 const normalizeDisplayPlaceholdersToBoxes = (latex: string) => {
   if (!latex) return ''
   return latex
@@ -11285,7 +11348,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const moveVertical = (axis: 'up' | 'down') => {
       const currentValue = field.getValue('latex') || ''
-      const currentPosition = keyboardSelectionRef.current.start
+      const currentSelection = getKeyboardMathfieldSelectionOffsets(field)
+      const currentPosition = currentSelection.start
+      setKeyboardSelectionState(currentSelection)
       const selectableField = field as MathfieldElementType & {
         selection: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
         selectionIsCollapsed: boolean
@@ -11321,6 +11386,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           } else {
             tryExecute('moveToNumerator', 'moveToPreviousPlaceholder')
           }
+          syncKeyboardMathfieldState(field)
           return true
         } catch {
           triggerKeyboardSwipeBlock('Select a valid term before creating a fraction.', sourceActionId)
@@ -11334,16 +11400,23 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       }
       // Use the selection ref first, but recover to expression-end targeting if
       // the live caret index does not map cleanly onto a LaTeX string offset.
-      const referenceTarget = resolveKeyboardSafeReferenceTarget(currentValue, keyboardSelectionRef.current, {
+      const denominatorTarget = axis === 'down' && currentSelection.start === currentSelection.end
+        ? findKeyboardFractionDenominatorTargetAtPosition(currentValue, currentPosition)
+        : null
+      const referenceTarget = denominatorTarget ?? resolveKeyboardSafeReferenceTarget(currentValue, currentSelection, {
         requireStructuralValidity: true,
         allowFallbackToExpressionEnd: true,
       })
 
       if (!referenceTarget) {
         if (axis === 'up') {
-          return tryExecute('moveUp', 'moveToNumerator', 'moveToPreviousPlaceholder')
+          const handled = tryExecute('moveUp', 'moveToNumerator', 'moveToPreviousPlaceholder')
+          if (handled) syncKeyboardMathfieldState(field)
+          return handled
         }
-        return tryExecute('moveDown', 'moveToDenominator', 'moveToNextPlaceholder')
+        const handled = tryExecute('moveDown', 'moveToDenominator', 'moveToNextPlaceholder')
+        if (handled) syncKeyboardMathfieldState(field)
+        return handled
       }
 
       const numerator = axis === 'down' ? referenceTarget.symbol : '\\placeholder{}'
@@ -11358,6 +11431,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       } else {
         tryExecute('moveToNumerator', 'moveToNextPlaceholder')
       }
+      syncKeyboardMathfieldState(field)
       return true
     }
 
@@ -11715,6 +11789,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     const handleMountedKeyPointerDown = (event: React.PointerEvent<HTMLButtonElement>, actionId: string, representativeKeyId?: string) => {
+      event.preventDefault()
       event.stopPropagation()
       stopKeyboardSwipeHold()
       clearKeyboardRepresentativeTapTimeout()

@@ -4,7 +4,8 @@
 @import 'mathlive/static.css';
 
 math-field.keyboard-mathlive-field {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   min-height: 100%;
   display: block;
   background: #fff;
@@ -16,6 +17,8 @@ math-field.keyboard-mathlive-field {
 }
 
 math-field.keyboard-mathlive-field::part(container) {
+  width: max-content;
+  min-width: 100%;
   min-height: 100%;
   padding: 0;
 }

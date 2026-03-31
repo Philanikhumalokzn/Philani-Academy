@@ -2686,14 +2686,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [])
 
   const getKeyboardMathfieldScrollTarget = useCallback(() => {
-    const field = keyboardMathfieldRef.current as unknown as HTMLElement | null
-    if (field) {
-      const maxLeft = Math.max(0, field.scrollWidth - field.clientWidth)
-      const maxTop = Math.max(0, field.scrollHeight - field.clientHeight)
-      if (maxLeft > 1 || maxTop > 1) {
-        return field
-      }
-    }
     return keyboardMathfieldViewportRef.current
   }, [])
 
@@ -2897,7 +2889,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         field.smartSuperscript = true
         field.readOnly = false
         field.value = latexOutputRef.current || ''
-        ;(field.style as CSSStyleDeclaration).overflow = 'auto'
+        ;(field.style as CSSStyleDeclaration).overflow = 'visible'
+        ;(field.style as CSSStyleDeclaration).width = 'max-content'
+        ;(field.style as CSSStyleDeclaration).minWidth = '100%'
+        ;(field.style as CSSStyleDeclaration).minHeight = '100%'
         ;(field.style as CSSStyleDeclaration).touchAction = 'auto'
         ;(field.style as CSSStyleDeclaration).webkitUserSelect = 'text'
         ;(field.style as CSSStyleDeclaration).userSelect = 'text'
@@ -13150,7 +13145,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   ) => {
     if (attachFocusRef) {
       return (
-        <div className="flex h-full w-full items-center justify-center">
+        <div className="h-full w-full">
           <div
             ref={keyboardMathfieldViewportRef}
             className={`relative h-full w-full overflow-auto rounded-[10px] border border-slate-200 bg-white ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
@@ -13162,19 +13157,24 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           >
             <div
               ref={keyboardMathfieldZoomSurfaceRef}
-              className={`relative h-full min-h-full w-full min-w-full ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
+              className={`relative inline-block min-h-full min-w-full ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
               style={{
                 zoom: 1,
                 transformOrigin: 'top left',
+                width: 'max-content',
+                minWidth: '100%',
               }}
             >
               <div
                 ref={setKeyboardMathfieldHostNodeRef}
-                className={`h-full w-full overflow-visible bg-white ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
+                className={`overflow-visible bg-white ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
                 style={{
                   touchAction: 'auto',
                   WebkitUserSelect: 'text',
                   userSelect: 'text',
+                  width: 'max-content',
+                  minWidth: '100%',
+                  minHeight: '100%',
                 }}
               />
             </div>

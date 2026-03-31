@@ -2901,7 +2901,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         field.setAttribute('aria-label', 'Keyboard expression')
         field.setAttribute('spellcheck', 'false')
         field.mathVirtualKeyboardPolicy = 'manual'
-        ;(field as MathfieldElementType & { menuItems?: unknown[] }).menuItems = []
         field.smartFence = true
         field.smartMode = false
         field.smartSuperscript = true

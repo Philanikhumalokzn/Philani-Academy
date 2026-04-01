@@ -14,6 +14,15 @@ const clickToolbarButton = async (locator: Locator) => {
   })
 }
 
+const getSendStepButton = (page: Page) =>
+  page.locator('button[title="Send step"], button[title="Update step"]').first()
+
+const openKeyboardEditingMode = async (page: Page) => {
+  const textButton = page.locator('button[title="Text"]').first()
+  await clickToolbarButton(textButton)
+  await page.waitForTimeout(320)
+}
+
 const readMathfieldValue = async (page: Page) => {
   const field = page.locator('math-field.keyboard-mathlive-field').first()
   await expect(field).toBeVisible({ timeout: 20_000 })
@@ -115,8 +124,7 @@ test.describe('keyboard toolbar actions', () => {
     const sevenKey = page.locator('button[title="7"]').first()
     const plusKey = page.locator('button[title="plus"]').first()
     const fiveKey = page.locator('button[title="5"]').first()
-    const textButton = page.locator('button[title="Text"]').first()
-    const sendButton = page.locator('button[title="Send step"]').first()
+    const sendButton = getSendStepButton(page)
 
     await expect(sendButton).toBeDisabled()
 
@@ -124,8 +132,7 @@ test.describe('keyboard toolbar actions', () => {
     await tapKey(page, plusKey)
     await tapKey(page, fiveKey)
 
-    await clickToolbarButton(textButton)
-    await page.waitForTimeout(320)
+    await openKeyboardEditingMode(page)
 
     await expect.poll(() => readMathfieldValue(page)).toContain('7+5')
     await expect(sendButton).toBeEnabled()
@@ -143,15 +150,13 @@ test.describe('keyboard toolbar actions', () => {
     const sevenKey = page.locator('button[title="7"]').first()
     const plusKey = page.locator('button[title="plus"]').first()
     const fiveKey = page.locator('button[title="5"]').first()
-    const textButton = page.locator('button[title="Text"]').first()
-    const sendButton = page.locator('button[title="Send step"]').first()
+    const sendButton = getSendStepButton(page)
     const computeButton = page.locator('button[title="Compute answer"]').first()
 
     await tapKey(page, sevenKey)
     await tapKey(page, plusKey)
     await tapKey(page, fiveKey)
-    await clickToolbarButton(textButton)
-    await page.waitForTimeout(320)
+    await openKeyboardEditingMode(page)
     await clickToolbarButton(sendButton)
 
     await expect(page.locator('[data-top-panel-step-shell]')).toHaveCount(1)
@@ -160,6 +165,62 @@ test.describe('keyboard toolbar actions', () => {
 
     await expect(page.locator('[data-top-panel-step-shell]')).toHaveCount(2)
     await expect(page.locator('[data-top-panel-step-shell]').nth(1)).toContainText('12')
+  })
+
+  test('Send step updates an existing keyboard step when a top-panel step is selected', async ({ page }) => {
+    await goToKeyboardToolbarLab(page)
+
+    const sevenKey = page.locator('button[title="7"]').first()
+    const plusKey = page.locator('button[title="plus"]').first()
+    const fiveKey = page.locator('button[title="5"]').first()
+    const oneKey = page.locator('button[title="1"]').first()
+    const sendButton = getSendStepButton(page)
+
+    await tapKey(page, sevenKey)
+    await tapKey(page, plusKey)
+    await tapKey(page, fiveKey)
+    await openKeyboardEditingMode(page)
+    await clickToolbarButton(sendButton)
+
+    const firstStepButton = page.locator('[data-top-panel-step]').first()
+    await clickToolbarButton(firstStepButton)
+    await expect.poll(() => readMathfieldValue(page)).toContain('7+5')
+    await expect(sendButton).toBeEnabled()
+    await expect(sendButton).toHaveAttribute('title', 'Update step')
+
+    await tapKey(page, plusKey)
+    await tapKey(page, oneKey)
+    await clickToolbarButton(sendButton)
+
+    await expect(page.locator('[data-top-panel-step-shell]')).toHaveCount(1)
+    await clickToolbarButton(firstStepButton)
+    await expect.poll(() => readMathfieldValue(page)).toContain('7+5+1')
+  })
+
+  test('Empty send opens the finish-question flow for committed keyboard steps', async ({ page }) => {
+    await goToKeyboardToolbarLab(page)
+
+    const sevenKey = page.locator('button[title="7"]').first()
+    const plusKey = page.locator('button[title="plus"]').first()
+    const fiveKey = page.locator('button[title="5"]').first()
+    const sendButton = getSendStepButton(page)
+
+    await tapKey(page, sevenKey)
+    await tapKey(page, plusKey)
+    await tapKey(page, fiveKey)
+    await openKeyboardEditingMode(page)
+    await clickToolbarButton(sendButton)
+
+    await expect.poll(() => readMathfieldValue(page)).toBe('')
+    await expect(sendButton).toBeEnabled()
+
+    await clickToolbarButton(sendButton)
+
+    await expect(page.getByText('Save As', { exact: true })).toBeVisible()
+    await expect(page.locator('input[placeholder="e.g. Solve for x"]')).toHaveValue(/.+/)
+    await expect(page.getByText('1 step')).toBeVisible()
+    await clickToolbarButton(page.getByRole('button', { name: 'Close' }))
+    await expect(page.getByText('Save As')).toBeHidden()
   })
 
   test('Text and Diagrams fire their keyboard-mode tray actions', async ({ page }) => {

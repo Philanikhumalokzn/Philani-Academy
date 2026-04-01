@@ -4815,13 +4815,28 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   const loadTopPanelStepForEditing = useCallback(async (index: number) => {
     if (useAdminStepComposer) {
+      if (recognitionEngineRef.current === 'keyboard') {
+        if (index < 0 || index >= keyboardSteps.length) return
+        const step = keyboardSteps[index]
+        const nextLatex = step?.latex || ''
+        setTopPanelSelectedStep(index)
+        setKeyboardEditIndex(index)
+        setLatexOutput(nextLatex)
+        latexOutputRef.current = nextLatex
+        if (useAdminStepComposerRef.current && hasControllerRights()) {
+          setAdminDraftLatex(nextLatex)
+        }
+        const caret = nextLatex.length
+        setKeyboardSelectionState({ start: caret, end: caret })
+        return
+      }
       await loadAdminStepForEditing(index)
       return
     }
     if (useStudentStepComposer) {
       await loadStudentStepForEditing(index)
     }
-  }, [loadAdminStepForEditing, loadStudentStepForEditing, useAdminStepComposer, useStudentStepComposer])
+  }, [hasControllerRights, keyboardSteps, loadAdminStepForEditing, loadStudentStepForEditing, setKeyboardSelectionState, useAdminStepComposer, useStudentStepComposer])
 
   const clearTopPanelComposerCanvas = useCallback(async () => {
     suppressBroadcastUntilTsRef.current = Date.now() + 1200
@@ -4836,6 +4851,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (lockedOutRef.current) return
     activeStepEditBaselineRef.current = null
 
+    if (useAdminStepComposer && recognitionEngineRef.current === 'keyboard') {
+      setKeyboardEditIndex(null)
+      setLatexOutput('')
+      latexOutputRef.current = ''
+      if (useAdminStepComposerRef.current && hasControllerRights()) {
+        setAdminDraftLatex('')
+      }
+      clearTopPanelSelection()
+      setKeyboardSelectionState({ start: 0, end: 0 })
+      setTopPanelSelectedStep(null)
+      return
+    }
+
     if (useAdminStepComposer) {
       setAdminEditIndex(null)
       setAdminDraftLatex('')
@@ -4847,15 +4875,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setLatexOutput('')
     clearTopPanelSelection()
     await clearTopPanelComposerCanvas()
-  }, [clearTopPanelComposerCanvas, clearTopPanelSelection, useAdminStepComposer, useStudentStepComposer])
+  }, [clearTopPanelComposerCanvas, clearTopPanelSelection, hasControllerRights, setKeyboardSelectionState, useAdminStepComposer, useStudentStepComposer])
 
   const duplicateTopPanelStepAsNew = useCallback(async (index: number) => {
     const sourceStep = useAdminStepComposer
-      ? adminSteps[index]
+      ? (recognitionEngineRef.current === 'keyboard' ? keyboardSteps[index] : adminSteps[index])
       : (useStudentStepComposer ? studentSteps[index] : null)
     if (!sourceStep) return
     if (lockedOutRef.current) return
     activeStepEditBaselineRef.current = null
+
+    if (useAdminStepComposer && recognitionEngineRef.current === 'keyboard') {
+      setKeyboardEditIndex(null)
+      setTopPanelSelectedStep(index)
+      const nextLatex = sourceStep.latex || ''
+      setLatexOutput(nextLatex)
+      latexOutputRef.current = nextLatex
+      if (useAdminStepComposerRef.current && hasControllerRights()) {
+        setAdminDraftLatex(nextLatex)
+      }
+      const caret = nextLatex.length
+      setKeyboardSelectionState({ start: caret, end: caret })
+      return
+    }
 
     if (useAdminStepComposer) {
       setAdminEditIndex(null)
@@ -4878,10 +4920,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         console.warn('Failed to duplicate step ink into composer', err)
       }
     }
-  }, [adminSteps, clearTopPanelComposerCanvas, importStoredStepInk, studentSteps, useAdminStepComposer, useStudentStepComposer])
+  }, [adminSteps, clearTopPanelComposerCanvas, hasControllerRights, importStoredStepInk, keyboardSteps, setKeyboardSelectionState, studentSteps, useAdminStepComposer, useStudentStepComposer])
 
   const deleteTopPanelStep = useCallback(async (index: number) => {
-    const sourceSteps = useAdminStepComposer ? adminSteps : (useStudentStepComposer ? studentSteps : [])
+    const sourceSteps = useAdminStepComposer
+      ? (recognitionEngineRef.current === 'keyboard' ? keyboardSteps : adminSteps)
+      : (useStudentStepComposer ? studentSteps : [])
     if (!sourceSteps.length) return
     if (index < 0 || index >= sourceSteps.length) return
 
@@ -4890,10 +4934,28 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       : window.confirm(`Delete step ${index + 1}?`)
     if (!confirmed) return
 
-    const deletingAdminEditTarget = useAdminStepComposer && adminEditIndex === index
+    const deletingAdminEditTarget = useAdminStepComposer && recognitionEngineRef.current !== 'keyboard' && adminEditIndex === index
+    const deletingKeyboardEditTarget = useAdminStepComposer && recognitionEngineRef.current === 'keyboard' && keyboardEditIndex === index
     const deletingStudentEditTarget = useStudentStepComposer && studentEditIndex === index
 
-    if (useAdminStepComposer) {
+    if (useAdminStepComposer && recognitionEngineRef.current === 'keyboard') {
+      setKeyboardSteps(prev => prev.filter((_, stepIndex) => stepIndex !== index))
+      setKeyboardEditIndex(prev => {
+        if (prev === null) return null
+        if (prev === index) return null
+        return prev > index ? prev - 1 : prev
+      })
+      if (deletingKeyboardEditTarget) {
+        setLatexOutput('')
+        latexOutputRef.current = ''
+        if (useAdminStepComposerRef.current && hasControllerRights()) {
+          setAdminDraftLatex('')
+        }
+        setKeyboardSelectionState({ start: 0, end: 0 })
+      }
+    }
+
+    if (useAdminStepComposer && recognitionEngineRef.current !== 'keyboard') {
       setAdminSteps(prev => prev.filter((_, stepIndex) => stepIndex !== index))
       setAdminEditIndex(prev => {
         if (prev === null) return null
@@ -4920,12 +4982,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return prev > index ? prev - 1 : prev
     })
 
-    if (deletingAdminEditTarget || deletingStudentEditTarget) {
+    if (deletingAdminEditTarget || deletingKeyboardEditTarget || deletingStudentEditTarget) {
       setLatexOutput('')
       clearTopPanelSelection()
-      await clearTopPanelComposerCanvas()
+      if (recognitionEngineRef.current !== 'keyboard') {
+        await clearTopPanelComposerCanvas()
+      }
     }
-  }, [adminEditIndex, adminSteps, clearTopPanelComposerCanvas, clearTopPanelSelection, studentEditIndex, studentSteps, useAdminStepComposer, useStudentStepComposer])
+  }, [adminEditIndex, adminSteps, clearTopPanelComposerCanvas, clearTopPanelSelection, hasControllerRights, keyboardEditIndex, keyboardSteps, setKeyboardSelectionState, studentEditIndex, studentSteps, useAdminStepComposer, useStudentStepComposer])
 
   const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
   const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
@@ -12992,6 +13056,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const canUsePresenterMiddleStripTools = canOrchestrateLesson || isSelfActivePresenter()
   const shouldShowMiddleStripActionCluster = canUsePresenterMiddleStripTools || isStudentSendContext
   const areMiddleStripEditorActionsReady = recognitionEngine === 'keyboard' || status === 'ready'
+  const canUseKeyboardSendAction = recognitionEngine === 'keyboard'
+    ? Boolean(normalizeStepLatex(latexOutput || '')) || keyboardSteps.length > 0
+    : Boolean(adminDraftLatex) || canClear || adminSteps.length > 0
 
   useEffect(() => {
     if (canvasMode !== 'raw-ink') return
@@ -13127,7 +13194,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     const hasInk = lastSymbolCountRef.current > 0
-    const hasSteps = useAdminStepComposer && adminSteps.length > 0
+    const hasSteps = useAdminStepComposer && (recognitionEngine === 'keyboard' ? keyboardSteps.length > 0 : adminSteps.length > 0)
     if (hasInk || hasSteps) {
       // Keep current stable preview.
       return
@@ -13137,7 +13204,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       stableAdminStackedLatexRenderSourceRef.current = ''
       setStableAdminStackedLatexRenderSource('')
     }
-  }, [adminSteps.length, latexRenderSource, useAdminStepComposer, useStackedStudentLayout])
+  }, [adminSteps.length, keyboardSteps.length, latexRenderSource, recognitionEngine, useAdminStepComposer, useStackedStudentLayout])
 
   const topPanelLatexSource = (useAdminStepComposer && useStackedStudentLayout)
     ? stableAdminStackedLatexRenderSource
@@ -13255,10 +13322,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [adminEditIndex, adminTopPanelStepItems, keyboardEditIndex, recognitionEngine, studentEditIndex, studentTopPanelStepItems, topPanelEditingMode, topPanelPayload.options, topPanelSelectedStep, useAdminStepComposer, useStudentStepComposer])
 
   const activeComposerEditIndex = useMemo(() => {
-    if (useAdminStepComposer) return adminEditIndex
+    if (useAdminStepComposer) return recognitionEngine === 'keyboard' ? keyboardEditIndex : adminEditIndex
     if (useStudentStepComposer) return studentEditIndex
     return null
-  }, [adminEditIndex, studentEditIndex, useAdminStepComposer, useStudentStepComposer])
+  }, [adminEditIndex, keyboardEditIndex, recognitionEngine, studentEditIndex, useAdminStepComposer, useStudentStepComposer])
 
   const isEditingExistingTopPanelStep = activeComposerEditIndex !== null && activeComposerEditIndex >= 0
 
@@ -13563,8 +13630,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [renderKeyboardTypesetEditorSurface])
 
   const finishQuestionSourceLatex = useMemo(() => {
+    if (recognitionEngine === 'keyboard') {
+      return normalizeStepLatex(keyboardSteps[0]?.latex || '')
+    }
     return normalizeStepLatex(adminSteps[0]?.latex || '')
-  }, [adminSteps, normalizeStepLatex])
+  }, [adminSteps, keyboardSteps, normalizeStepLatex, recognitionEngine])
 
   const finishQuestionSourcePreviewHtml = useMemo(() => {
     return renderLatexStepInline(finishQuestionSourceLatex)
@@ -18658,8 +18728,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           || (
                             isStudentSendContext
                               ? quizSubmitting
-                              : (canUseAdminSend
-                                ? (adminSendingStep || (!adminDraftLatex && !canClear && !(adminSteps.length > 0)))
+                                : (canUseAdminSend
+                                ? (adminSendingStep || !canUseKeyboardSendAction)
                                 : true)
                           )
                         }

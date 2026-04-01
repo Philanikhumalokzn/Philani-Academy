@@ -8378,7 +8378,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const raw = normalizeStepLatex(value)
     if (!raw) return ''
     const eqIndex = raw.lastIndexOf('=')
-    if (eqIndex < 0) return ''
+    if (eqIndex < 0) return raw
     const rhs = raw.slice(eqIndex + 1).trim()
     return rhs || ''
   }, [normalizeStepLatex])
@@ -8401,9 +8401,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const raw = normalizeStepLatex(value)
     if (!raw) return ''
     const eqIndex = raw.lastIndexOf('=')
-    if (eqIndex < 0) return ''
-
-    let rhs = raw.slice(eqIndex + 1).trim()
+    let rhs = eqIndex < 0 ? raw : raw.slice(eqIndex + 1).trim()
     if (!rhs) return ''
 
     rhs = rhs
@@ -8636,7 +8634,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const computedLine = `=${formatComputedValue(value)}`
     if (useAdminStepComposerRef.current) {
-      setAdminSteps(prev => [...prev, { latex: computedLine, symbols: null, jiix: null, rawStrokes: null, strokeGroups: null }])
+      if (recognitionEngineRef.current === 'keyboard') {
+        const now = Date.now()
+        setKeyboardSteps(prev => [...prev, {
+          latex: computedLine,
+          symbols: [],
+          jiix: null,
+          createdAt: now,
+          updatedAt: now,
+        }])
+      } else {
+        setAdminSteps(prev => [...prev, { latex: computedLine, symbols: null, jiix: null, rawStrokes: null, strokeGroups: null }])
+      }
     } else {
       setLatexDisplayState(prev => {
         const existing = (prev.latex || '').trim()
@@ -10738,7 +10747,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [applySnapshotCore, captureFullSnapshot, collectEditorSnapshot, channelName, enqueueSnapshot, canOrchestrateLesson, lessonRoleProfile.capabilities.canOrchestrateLesson, lessonRoleProfile.platformRole, lessonRoleProfile.technicalUserType, status, updateControlState, userDisplayName])
 
-  const isEditorEmptyNow = () => lastSymbolCountRef.current <= 0
+  const isEditorEmptyNow = () => {
+    if (recognitionEngineRef.current === 'keyboard') {
+      return !((latexOutputRef.current || '').trim())
+    }
+    return lastSymbolCountRef.current <= 0
+  }
 
   const isCurrentLineEmptyNow = () => {
     if (useAdminStepComposer && hasBoardWriteRights()) {
@@ -10765,6 +10779,29 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (pageIndex === sharedPageIndexRef.current) {
         broadcastSnapshot(true, { force: true, reason: 'clear' })
       }
+      return
+    }
+
+    if (recognitionEngineRef.current === 'keyboard') {
+      const field = keyboardMathfieldRef.current
+      if (field) {
+        field.focus()
+        field.executeCommand('deleteAll')
+        syncKeyboardMathfieldState(field)
+      } else {
+        syncKeyboardDraftLatex('')
+        setKeyboardSelectionState({ start: 0, end: 0 })
+        syncKeyboardControlStripState(null, '')
+      }
+
+      setAdminSteps([])
+      setAdminDraftLatex('')
+      setAdminSendingStep(false)
+      setAdminEditIndex(null)
+      setKeyboardSteps([])
+      setKeyboardEditIndex(null)
+      clearTopPanelSelection()
+      stepNavRedoStackRef.current = []
       return
     }
 
@@ -10808,6 +10845,24 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       cacheModeSnapshotForPage(pageIndexRef.current, nextSnapshot)
       if (pageIndex === sharedPageIndexRef.current) {
         broadcastSnapshot(true, { force: true, reason: 'clear' })
+      }
+      return
+    }
+
+    if (recognitionEngineRef.current === 'keyboard') {
+      const field = keyboardMathfieldRef.current
+      if (field) {
+        field.focus()
+        field.executeCommand('deleteAll')
+        syncKeyboardMathfieldState(field)
+      } else {
+        syncKeyboardDraftLatex('')
+        setKeyboardSelectionState({ start: 0, end: 0 })
+        syncKeyboardControlStripState(null, '')
+      }
+      if (useAdminStepComposer && hasControllerRights()) {
+        setAdminDraftLatex('')
+        clearTopPanelSelection()
       }
       return
     }
@@ -12936,6 +12991,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const canUseAdminSend = canOrchestrateLesson || hasWriteAccess
   const canUsePresenterMiddleStripTools = canOrchestrateLesson || isSelfActivePresenter()
   const shouldShowMiddleStripActionCluster = canUsePresenterMiddleStripTools || isStudentSendContext
+  const areMiddleStripEditorActionsReady = recognitionEngine === 'keyboard' || status === 'ready'
 
   useEffect(() => {
     if (canvasMode !== 'raw-ink') return
@@ -13156,11 +13212,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const adminTopPanelStepItems = useMemo(() => {
     if (!useAdminStepComposer) return [] as TopPanelStepItem[]
     if (!topPanelEditingMode) return [] as TopPanelStepItem[]
+    if (recognitionEngine === 'keyboard') {
+      return keyboardSteps.map((s, index) => {
+        const latex = (keyboardEditIndex === index ? (latexOutput || '') : (s?.latex || '')).trimEnd()
+        return { index, latex, isEditing: keyboardEditIndex === index }
+      })
+    }
     return adminSteps.map((s, index) => {
       const latex = (adminEditIndex === index ? adminDraftLatex : (s?.latex || '')).trimEnd()
       return { index, latex, isEditing: adminEditIndex === index }
     })
-  }, [adminDraftLatex, adminEditIndex, adminSteps, topPanelEditingMode, useAdminStepComposer])
+  }, [adminDraftLatex, adminEditIndex, adminSteps, keyboardEditIndex, keyboardSteps, latexOutput, recognitionEngine, topPanelEditingMode, useAdminStepComposer])
 
   const studentTopPanelStepItems = useMemo(() => {
     if (!useStudentStepComposer) return [] as TopPanelStepItem[]
@@ -13173,12 +13235,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   const topPanelStepsPayload: TopPanelStepsPayload | null = useMemo(() => {
     if (!topPanelEditingMode) return null
-    if (recognitionEngine === 'keyboard') return null
     if (useAdminStepComposer) {
       return {
         steps: adminTopPanelStepItems,
         selectedIndex: topPanelSelectedStep,
-        editingIndex: adminEditIndex,
+        editingIndex: recognitionEngine === 'keyboard' ? keyboardEditIndex : adminEditIndex,
         options: topPanelPayload.options,
       }
     }
@@ -13191,7 +13252,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       }
     }
     return null
-  }, [adminEditIndex, adminTopPanelStepItems, recognitionEngine, studentEditIndex, studentTopPanelStepItems, topPanelEditingMode, topPanelPayload.options, topPanelSelectedStep, useAdminStepComposer, useStudentStepComposer])
+  }, [adminEditIndex, adminTopPanelStepItems, keyboardEditIndex, recognitionEngine, studentEditIndex, studentTopPanelStepItems, topPanelEditingMode, topPanelPayload.options, topPanelSelectedStep, useAdminStepComposer, useStudentStepComposer])
 
   const activeComposerEditIndex = useMemo(() => {
     if (useAdminStepComposer) return adminEditIndex
@@ -15024,6 +15085,58 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return
     }
 
+    if (recognitionEngineRef.current === 'keyboard') {
+      if (lockedOutRef.current) return
+
+      if (canOrchestrateLesson && !isAssignmentSolutionAuthoring) {
+        const emptyCanvas = isEditorEmptyNow()
+        const emptyLine = isCurrentLineEmptyNow()
+        if (emptyCanvas && emptyLine && keyboardSteps.length > 0) {
+          const noteId = activeNotebookSolutionId || finishQuestionNoteId || createSessionNoteId()
+          setFinishQuestionNoteId(noteId)
+          setActiveNotebookSolutionId(noteId)
+          setFinishQuestionTitle(prettyPrintTitleFromLatex(keyboardSteps[0]?.latex || ''))
+          setLatexSaveError(null)
+          setFinishQuestionModalOpen(true)
+          return
+        }
+      }
+
+      const step = normalizeStepLatex(latexOutputRef.current || adminDraftLatex || '')
+      if (!step) return
+
+      const now = Date.now()
+      setKeyboardSteps(prev => {
+        const nextRecord: NotebookStepRecord = {
+          latex: step,
+          symbols: [],
+          jiix: null,
+          createdAt: keyboardEditIndex !== null && prev[keyboardEditIndex]?.createdAt != null
+            ? prev[keyboardEditIndex].createdAt
+            : now,
+          updatedAt: now,
+        }
+
+        if (keyboardEditIndex !== null && keyboardEditIndex >= 0 && keyboardEditIndex < prev.length) {
+          const next = [...prev]
+          next[keyboardEditIndex] = {
+            ...prev[keyboardEditIndex],
+            ...nextRecord,
+          }
+          return next
+        }
+
+        return [...prev, nextRecord]
+      })
+
+      setKeyboardEditIndex(null)
+      syncKeyboardDraftLatex('')
+      clearTopPanelSelection()
+      setKeyboardSelectionState({ start: 0, end: 0 })
+      syncKeyboardControlStripState(null, '')
+      return
+    }
+
     const editor = editorInstanceRef.current
     if (!editor) return
 
@@ -15176,15 +15289,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     getLatexFromEngineModel,
     canOrchestrateLesson,
     isAssignmentSolutionAuthoring,
+    keyboardEditIndex,
+    keyboardSteps,
     clearTopPanelSelection,
     clearMathEditorForLocalReload,
     isCurrentLineEmptyNow,
     isEditorEmptyNow,
     invalidatePendingLatexPreviewWork,
     normalizeStepLatex,
+    prettyPrintTitleFromLatex,
     getDefaultStackedScrollLeft,
     horizontalPanMax,
+    setKeyboardSelectionState,
     studentQuizCommitOrSubmit,
+    syncKeyboardControlStripState,
+    syncKeyboardDraftLatex,
   ])
 
   useEffect(() => {
@@ -16113,7 +16232,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         return null
       }
 
-      const steps = (Array.isArray(options.stepsOverride) ? options.stepsOverride : adminSteps
+      const keyboardSourceSteps = keyboardSteps
         .filter(s => s && typeof s === 'object')
         .map(s => ({
           latex: normalizeStepLatex((s as any).latex || ''),
@@ -16121,7 +16240,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           jiix: typeof (s as any).jiix === 'string' ? (s as any).jiix : null,
           rawStrokes: Array.isArray((s as any).rawStrokes) ? (s as any).rawStrokes : undefined,
           strokeGroups: Array.isArray((s as any).strokeGroups) ? (s as any).strokeGroups : undefined,
-        })))
+        }))
+      const defaultStepsSource = recognitionEngineRef.current === 'keyboard' ? keyboardSourceSteps : adminSteps
+      const steps = (Array.isArray(options.stepsOverride) ? options.stepsOverride : defaultStepsSource)
         .map(s => ({
           latex: normalizeStepLatex((s as any)?.latex || ''),
           symbols: Array.isArray((s as any)?.symbols) ? (s as any).symbols : [],
@@ -16184,7 +16305,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         setIsSavingLatex(false)
       }
     },
-    [adminSteps, canPersistLatex, canOrchestrateLesson, isLessonAuthoring, normalizeStepLatex, sessionKey]
+    [adminSteps, canPersistLatex, canOrchestrateLesson, isLessonAuthoring, keyboardSteps, normalizeStepLatex, sessionKey]
   )
 
   // Silent "Finish Question" save (no modal) used when the admin is switching presenter context.
@@ -16199,7 +16320,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const remotePresenterActive = Boolean(activePresenterUserKeyRef.current) && !isSelfActivePresenter()
 
-    const stepsFromAdmin = adminSteps
+    const stepsFromAdmin = (recognitionEngineRef.current === 'keyboard' ? keyboardSteps : adminSteps)
       .filter(s => s && typeof s === 'object')
       .map(s => ({
         latex: normalizeStepLatex((s as any)?.latex || ''),
@@ -16266,7 +16387,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       revisionKind: 'checkpoint',
       status: 'draft',
     })
-  }, [adminSteps, canPersistLatex, createSessionNoteId, canOrchestrateLesson, isLessonAuthoring, isCurrentLineEmptyNow, isEditorEmptyNow, isSelfActivePresenter, latexOutput, normalizeStepLatex, prettyPrintTitleFromLatex, saveQuestionAsNotes, sessionKey])
+  }, [adminSteps, canPersistLatex, createSessionNoteId, canOrchestrateLesson, isLessonAuthoring, isCurrentLineEmptyNow, isEditorEmptyNow, isSelfActivePresenter, keyboardSteps, latexOutput, normalizeStepLatex, prettyPrintTitleFromLatex, saveQuestionAsNotes, sessionKey])
 
   useEffect(() => {
     autoSaveCurrentQuestionAsNotesRef.current = async (options?: { requireEmptyBottom?: boolean }) => {
@@ -18044,9 +18165,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                               className="px-2 py-1 text-slate-700 transition-colors hover:text-slate-900 disabled:opacity-50"
                               title="Undo"
                               onClick={() => runCanvasAction(handleUndo)}
-                              disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canUndo && !(useAdminStepComposer && hasWriteAccess))}
+                              disabled={!areMiddleStripEditorActionsReady || Boolean(fatalError) || isViewOnly || (!canUndo && !(useAdminStepComposer && hasWriteAccess))}
                               onPointerDown={(e) => {
-                                if ((status !== 'ready') || Boolean(fatalError) || isViewOnly) return
+                                if (!areMiddleStripEditorActionsReady || Boolean(fatalError) || isViewOnly) return
                                 if (!canUndo && !(useAdminStepComposer && hasWriteAccess)) return
                                 pressRepeatTriggeredRef.current = false
                                 pressRepeatActiveRef.current = true
@@ -18117,9 +18238,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                               className="px-2 py-1 text-slate-700 transition-colors hover:text-slate-900 disabled:opacity-50"
                               title="Redo"
                               onClick={() => runCanvasAction(handleRedo)}
-                              disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canRedo && !(useAdminStepComposer && hasWriteAccess))}
+                              disabled={!areMiddleStripEditorActionsReady || Boolean(fatalError) || isViewOnly || (!canRedo && !(useAdminStepComposer && hasWriteAccess))}
                               onPointerDown={(e) => {
-                                if ((status !== 'ready') || Boolean(fatalError) || isViewOnly) return
+                                if (!areMiddleStripEditorActionsReady || Boolean(fatalError) || isViewOnly) return
                                 if (!canRedo && !(useAdminStepComposer && hasWriteAccess)) return
                                 pressRepeatTriggeredRef.current = false
                                 pressRepeatActiveRef.current = true
@@ -18199,9 +18320,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                                 }
                                 runCanvasAction(handleClear)
                               }}
-                              disabled={!canClear || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                              disabled={!canClear || !areMiddleStripEditorActionsReady || Boolean(fatalError) || isViewOnly}
                               onPointerDown={(e) => {
-                                if ((status !== 'ready') || Boolean(fatalError) || isViewOnly) return
+                                if (!areMiddleStripEditorActionsReady || Boolean(fatalError) || isViewOnly) return
                                 binLongPressTriggeredRef.current = false
                                 if (binLongPressTimeoutRef.current) {
                                   clearTimeout(binLongPressTimeoutRef.current)
@@ -18451,9 +18572,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                           if (isViewOnly) return
                           setIsEraserMode(prev => !prev)
                         }}
-                        disabled={status !== 'ready' || Boolean(fatalError) || isViewOnly}
+                          disabled={!areMiddleStripEditorActionsReady || Boolean(fatalError) || isViewOnly}
                         onPointerDown={(e) => {
-                          if ((status !== 'ready') || Boolean(fatalError) || isViewOnly) return
+                            if (!areMiddleStripEditorActionsReady || Boolean(fatalError) || isViewOnly) return
                           eraserLongPressTriggeredRef.current = false
                           if (eraserLongPressTimeoutRef.current) {
                             clearTimeout(eraserLongPressTimeoutRef.current)
@@ -18519,7 +18640,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                             onClick={() => {
                               void startNewTopPanelStepDraft()
                             }}
-                            disabled={status !== 'ready' || Boolean(fatalError)}
+                            disabled={!areMiddleStripEditorActionsReady || Boolean(fatalError)}
                           >
                             New step
                           </button>
@@ -18532,7 +18653,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                         title={isAssignmentSolutionAuthoring ? 'Commit / Save' : (isEditingExistingTopPanelStep ? 'Update step' : 'Send step')}
                         onClick={handleSendStepClick}
                         disabled={
-                          status !== 'ready'
+                          !areMiddleStripEditorActionsReady
                           || Boolean(fatalError)
                           || (
                             isStudentSendContext
@@ -20139,7 +20260,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     <div className="mt-1 text-sm text-slate-600">Readable title, typeset math, and clearer save choices.</div>
                   </div>
                   <div className="inline-flex items-center rounded-full border border-slate-200 bg-white/85 px-3 py-1 text-[11px] font-medium text-slate-600 shadow-sm">
-                    {adminSteps.length} step{adminSteps.length === 1 ? '' : 's'}
+                    {(recognitionEngine === 'keyboard' ? keyboardSteps.length : adminSteps.length)} step{(recognitionEngine === 'keyboard' ? keyboardSteps.length : adminSteps.length) === 1 ? '' : 's'}
                   </div>
                 </div>
 

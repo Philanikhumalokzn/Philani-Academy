@@ -1135,7 +1135,7 @@ const findKeyboardBalancedGroupEnd = (value: string, startIndex: number, openCha
 
 const isKeyboardPlaceholderExpression = (symbol: string) => /^\s*(#\?|\\placeholder(?:\{[^{}]*\})?)\s*$/.test(symbol)
 
-const findKeyboardFractionDenominatorTargetAtPosition = (value: string, position: number): KeyboardReferenceTarget | null => {
+const findKeyboardFractionDenominatorRegionAtPosition = (value: string, position: number): KeyboardReferenceTarget | null => {
   let bestMatch: KeyboardReferenceTarget | null = null
   let searchIndex = 0
 
@@ -1822,6 +1822,40 @@ const resolveKeyboardSafeReferenceTarget = (
     const endSelection = { start: value.length, end: value.length }
     const endTarget = findKeyboardReferenceTarget(value, endSelection)
     if (isTargetSafe(endTarget)) return endTarget
+  }
+
+  return null
+}
+
+const findKeyboardFractionDenominatorTargetAtPosition = (value: string, position: number): KeyboardReferenceTarget | null => {
+  const denominatorRegion = findKeyboardFractionDenominatorRegionAtPosition(value, position)
+  if (!denominatorRegion) return null
+
+  const relativePosition = Math.max(0, Math.min(position - denominatorRegion.start, denominatorRegion.symbol.length))
+  const relativeTarget = findKeyboardReferenceTarget(denominatorRegion.symbol, {
+    start: relativePosition,
+    end: relativePosition,
+  })
+
+  if (
+    relativeTarget &&
+    relativeTarget.symbol.trim() &&
+    !isKeyboardPlaceholderExpression(relativeTarget.symbol) &&
+    isValidKeyboardStructuralReferenceTarget(relativeTarget)
+  ) {
+    return {
+      start: denominatorRegion.start + relativeTarget.start,
+      end: denominatorRegion.start + relativeTarget.end,
+      symbol: relativeTarget.symbol,
+    }
+  }
+
+  if (
+    denominatorRegion.symbol.trim() &&
+    !isKeyboardPlaceholderExpression(denominatorRegion.symbol) &&
+    isValidKeyboardStructuralReferenceTarget(denominatorRegion)
+  ) {
+    return denominatorRegion
   }
 
   return null
@@ -2910,6 +2944,56 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setCanClear(nextValue.trim().length > 0)
   }, [])
 
+  const getKeyboardMathfieldLatexOffsetFromModelOffset = useCallback((field: MathfieldElementType | null | undefined, modelOffset: number) => {
+    if (!field || typeof modelOffset !== 'number' || !Number.isFinite(modelOffset) || modelOffset <= 0) {
+      return 0
+    }
+
+    const offsetReadableField = field as MathfieldElementType & {
+      getValue(start: number, end: number, format?: 'latex'): string
+    }
+
+    try {
+      return offsetReadableField.getValue(0, Math.max(0, modelOffset), 'latex').length
+    } catch {
+      return 0
+    }
+  }, [])
+
+  const getKeyboardMathfieldModelOffsetFromLatexOffset = useCallback((field: MathfieldElementType | null | undefined, latexOffset: number) => {
+    if (!field || typeof latexOffset !== 'number' || !Number.isFinite(latexOffset) || latexOffset <= 0) {
+      return 0
+    }
+
+    const currentValue = field.getValue('latex') || ''
+    const normalizedLatexOffset = Math.max(0, Math.min(latexOffset, currentValue.length))
+    const offsetReadableField = field as MathfieldElementType & {
+      getValue(start: number, end: number, format?: 'latex'): string
+    }
+    let low = 0
+    let high = currentValue.length
+    let bestOffset = 0
+
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2)
+      let prefixLength = 0
+      try {
+        prefixLength = offsetReadableField.getValue(0, mid, 'latex').length
+      } catch {
+        prefixLength = 0
+      }
+
+      if (prefixLength <= normalizedLatexOffset) {
+        bestOffset = mid
+        low = mid + 1
+      } else {
+        high = mid - 1
+      }
+    }
+
+    return bestOffset
+  }, [])
+
   const getKeyboardMathfieldSelectionOffsets = useCallback((field: MathfieldElementType | null | undefined) => {
     const selectableField = field as (MathfieldElementType & {
       selection?: { ranges?: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
@@ -2917,14 +3001,77 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const range = selectableField?.selection?.ranges?.[0]
     if (range) {
       const [rangeStart, rangeEnd] = range
+      const rawStart = getKeyboardMathfieldLatexOffsetFromModelOffset(field, Math.min(rangeStart, rangeEnd))
+      const rawEnd = getKeyboardMathfieldLatexOffsetFromModelOffset(field, Math.max(rangeStart, rangeEnd))
       return {
-        start: Math.min(rangeStart, rangeEnd),
-        end: Math.max(rangeStart, rangeEnd),
+        start: rawStart,
+        end: rawEnd,
       }
     }
 
     const nextPosition = typeof field?.position === 'number' ? field.position : 0
-    return { start: nextPosition, end: nextPosition }
+    const rawPosition = getKeyboardMathfieldLatexOffsetFromModelOffset(field, nextPosition)
+    return { start: rawPosition, end: rawPosition }
+  }, [getKeyboardMathfieldLatexOffsetFromModelOffset])
+
+  const getKeyboardMathfieldPreviousModelTerm = useCallback((field: MathfieldElementType | null | undefined) => {
+    if (!field) return null
+
+    const offsetReadableField = field as MathfieldElementType & {
+      getValue(start: number, end: number, format?: 'latex'): string
+    }
+    const modelPosition = typeof field.position === 'number' ? field.position : 0
+    if (!Number.isFinite(modelPosition) || modelPosition <= 0) return null
+
+    let bestMatch: { start: number; end: number; symbol: string } | null = null
+    let sawStableBestSlice = false
+    const minStart = Math.max(0, modelPosition - 24)
+
+    for (let start = modelPosition - 1; start >= minStart; start -= 1) {
+      let slice = ''
+      try {
+        slice = offsetReadableField.getValue(start, modelPosition, 'latex') || ''
+      } catch {
+        slice = ''
+      }
+      if (!slice.trim()) continue
+
+      const sliceTarget = findKeyboardReferenceTarget(slice, {
+        start: slice.length,
+        end: slice.length,
+      })
+      const isWholeSliceTarget = Boolean(
+        sliceTarget &&
+        sliceTarget.start === 0 &&
+        sliceTarget.end === slice.length &&
+        isKeyboardReferenceTargetCommandBoundarySafe(slice, sliceTarget) &&
+        isValidKeyboardStructuralReferenceTarget(sliceTarget) &&
+        !isKeyboardPlaceholderExpression(sliceTarget.symbol),
+      )
+
+      if (!isWholeSliceTarget) {
+        if (bestMatch) break
+        continue
+      }
+
+      if (bestMatch && slice === bestMatch.symbol) {
+        sawStableBestSlice = true
+        continue
+      }
+
+      if (bestMatch && sawStableBestSlice) {
+        break
+      }
+
+      bestMatch = {
+        start,
+        end: modelPosition,
+        symbol: slice,
+      }
+      sawStableBestSlice = false
+    }
+
+    return bestMatch
   }, [])
 
   const syncKeyboardMathfieldState = useCallback((mathfield?: MathfieldElementType | null) => {
@@ -3019,17 +3166,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         }
 
         const handleSelectionChange = () => {
-          const selectableField = field as MathfieldElementType & {
-            selection: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
-            selectionIsCollapsed: boolean
-          }
-          if (selectableField.selection.ranges.length > 0) {
-            const [rangeStart, rangeEnd] = selectableField.selection.ranges[0]
-            setKeyboardSelectionState({ start: Math.min(rangeStart, rangeEnd), end: Math.max(rangeStart, rangeEnd) })
-          } else {
-            const nextPosition = typeof field.position === 'number' ? field.position : 0
-            setKeyboardSelectionState({ start: nextPosition, end: nextPosition })
-          }
+          setKeyboardSelectionState(getKeyboardMathfieldSelectionOffsets(field))
         }
 
         field.addEventListener('input', handleInput)
@@ -3063,7 +3200,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         keyboardMathfieldHostNode.replaceChildren()
       }
     }
-  }, [applyKeyboardMathfieldZoomStyle, hasMounted, keyboardMathfieldHostNode, setKeyboardSelectionState, syncKeyboardMathfieldState])
+  }, [applyKeyboardMathfieldZoomStyle, getKeyboardMathfieldSelectionOffsets, hasMounted, keyboardMathfieldHostNode, setKeyboardSelectionState, syncKeyboardMathfieldState])
 
   useEffect(() => {
     if (recognitionEngine !== 'keyboard') {
@@ -11403,6 +11540,41 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       const denominatorTarget = axis === 'down' && currentSelection.start === currentSelection.end
         ? findKeyboardFractionDenominatorTargetAtPosition(currentValue, currentPosition)
         : null
+      if (denominatorTarget) {
+        const replacement = `\\frac{${denominatorTarget.symbol}}{\\placeholder{}}`
+        const nextValue = `${currentValue.slice(0, denominatorTarget.start)}${replacement}${currentValue.slice(denominatorTarget.end)}`
+
+        field.setValue(nextValue)
+        field.position = getKeyboardMathfieldModelOffsetFromLatexOffset(field, denominatorTarget.start)
+        tryExecute('moveToDenominator', 'moveToNextPlaceholder')
+        syncKeyboardMathfieldState(field)
+        return true
+      }
+
+      const previousModelTerm = getKeyboardMathfieldPreviousModelTerm(field)
+      if (previousModelTerm) {
+        const replacement = axis === 'down'
+          ? `\\frac{${previousModelTerm.symbol}}{\\placeholder{}}`
+          : `\\frac{\\placeholder{}}{${previousModelTerm.symbol}}`
+        try {
+          selectableField.selection = {
+            ranges: [[previousModelTerm.start, previousModelTerm.end]],
+            direction: 'none',
+          }
+          selectableField.insert(replacement, {
+            insertionMode: 'replaceSelection',
+            selectionMode: 'placeholder',
+          })
+          if (axis === 'down') {
+            tryExecute('moveToDenominator', 'moveToNextPlaceholder')
+          } else {
+            tryExecute('moveToNumerator', 'moveToPreviousPlaceholder')
+          }
+          syncKeyboardMathfieldState(field)
+          return true
+        } catch {}
+      }
+
       const referenceTarget = denominatorTarget ?? resolveKeyboardSafeReferenceTarget(currentValue, currentSelection, {
         requireStructuralValidity: true,
         allowFallbackToExpressionEnd: true,
@@ -11425,7 +11597,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       const nextValue = `${currentValue.slice(0, referenceTarget.start)}${replacement}${currentValue.slice(referenceTarget.end)}`
 
       field.setValue(nextValue)
-      field.position = referenceTarget.start
+      field.position = getKeyboardMathfieldModelOffsetFromLatexOffset(field, referenceTarget.start)
       if (axis === 'down') {
         tryExecute('moveToDenominator', 'moveToNextPlaceholder')
       } else {
@@ -11463,7 +11635,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     closeKeyboardTransientOverlays()
     scheduleKeyboardFadeOut()
     return true
-  }, [closeKeyboardTransientOverlays, scheduleKeyboardFadeOut, syncKeyboardMathfieldState, triggerKeyboardSwipeBlock])
+  }, [closeKeyboardTransientOverlays, getKeyboardMathfieldModelOffsetFromLatexOffset, getKeyboardMathfieldPreviousModelTerm, getKeyboardMathfieldSelectionOffsets, scheduleKeyboardFadeOut, syncKeyboardMathfieldState, triggerKeyboardSwipeBlock])
 
   const getKeyboardSwipeContinuationDirection = useCallback((direction: KeyboardSwipeDirection): KeyboardSwipeDirection => {
     return direction

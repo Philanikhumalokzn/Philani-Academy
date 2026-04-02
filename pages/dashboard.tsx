@@ -641,7 +641,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [lessonAuthoringDiagramCloseSignal, setLessonAuthoringDiagramCloseSignal] = useState(0)
 
   const [createOverlayOpen, setCreateOverlayOpen] = useState(false)
-  const [createKind, setCreateKind] = useState<DashboardCreateKind>('quiz')
+  const [createKind, setCreateKind] = useState<DashboardCreateKind>('post')
   const [editingChallengeId, setEditingChallengeId] = useState<string | null>(null)
   const [editingPostId, setEditingPostId] = useState<string | null>(null)
   const [challengeAudiencePickerOpen, setChallengeAudiencePickerOpen] = useState(false)
@@ -659,10 +659,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const challengeUploadInputRef = useRef<HTMLInputElement | null>(null)
 
   const openCreateChallengeComposer = useCallback(() => {
+    setCreateKind('post')
+    setEditingChallengeId(null)
+    setEditingPostId(null)
     setCreateOverlayOpen(true)
   }, [])
 
   const openCreateChallengeScreenshotPicker = useCallback(() => {
+    setCreateKind('post')
+    setEditingChallengeId(null)
+    setEditingPostId(null)
     setCreateOverlayOpen(true)
     if (typeof window === 'undefined') return
     let attempts = 0
@@ -885,7 +891,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           prompt,
           imageUrl: challengeImageUrl,
           audience,
-          ...(isQuiz ? { maxAttempts } : {}),
+          maxAttempts,
           ...(isEditing ? {} : { grade }),
         }),
       })
@@ -903,7 +909,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           prompt,
           imageUrl: challengeImageUrl,
           audience,
-          ...(isQuiz ? { maxAttempts } : {}),
+          maxAttempts,
         }
         if (isQuiz) {
           setSelectedChallengeData((prev: any) => (prev && String(prev?.id) === id ? { ...prev, ...patch } : prev))
@@ -947,7 +953,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       discardRestore()
       closeCreateOverlay()
-      setCreateKind('quiz')
+      setCreateKind('post')
       setChallengeTitleDraft('')
       setChallengePromptDraft('')
       setChallengeAudienceDraft('public')
@@ -4150,7 +4156,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setPdfViewerOpen(true)
     })
     setPdfViewerOpen(false)
-    setCreateKind('quiz')
+    setCreateKind('post')
     setEditingChallengeId(null)
     setEditingPostId(null)
     setChallengeAudiencePickerOpen(false)
@@ -4463,7 +4469,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setChallengeTitleDraft(String(post?.title || ''))
     setChallengePromptDraft(String(post?.prompt || ''))
     setChallengeAudienceDraft(audience)
-    setChallengeMaxAttempts('unlimited')
+    setChallengeMaxAttempts(typeof post?.maxAttempts === 'number' ? String(post.maxAttempts) : 'unlimited')
     setChallengeImageUrl(typeof post?.imageUrl === 'string' ? post.imageUrl : null)
     setChallengeParsedJsonText(null)
     setChallengeParsedOpen(false)
@@ -5136,6 +5142,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         const prompt = typeof c?.prompt === 'string' ? c.prompt.trim() : ''
 
         const isOwner = viewerId && c?.createdById && String(c.createdById) === String(viewerId)
+        const usesAttemptRules = Boolean(c?.usesAttemptRules || maxAttempts !== null || c?.attemptsOpen === false || c?.solutionsVisible === true)
         const hasAttempted = myAttemptCount > 0
         const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
         const href = c?.id ? `/challenges/${encodeURIComponent(String(c.id))}` : '#'
@@ -5168,6 +5175,28 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           Delete
                         </button>
                       </>
+                    ) : usesAttemptRules ? (
+                      canAttempt && !hasAttempted ? (
+                        <button
+                          type="button"
+                          className="btn btn-primary shrink-0"
+                          onClick={() => void openPostSolveComposer(c)}
+                        >
+                          Solve
+                        </button>
+                      ) : hasAttempted ? (
+                        <button
+                          type="button"
+                          className="btn btn-primary shrink-0"
+                          onClick={() => void openPostThread(c)}
+                        >
+                          Solutions
+                        </button>
+                      ) : (
+                        <button type="button" className="btn btn-ghost shrink-0" disabled>
+                          Closed
+                        </button>
+                      )
                     ) : (
                       <button
                         type="button"
@@ -5242,7 +5271,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           <button
             type="button"
             className="btn btn-primary text-xs"
-            onClick={() => setCreateOverlayOpen(true)}
+            onClick={openCreateChallengeComposer}
           >
             Create
           </button>
@@ -6036,6 +6065,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const attemptsOpen = p?.attemptsOpen !== false
                 
                 const isOwner = viewerId && p?.createdById && String(p.createdById) === String(viewerId)
+                const usesAttemptRules = Boolean(p?.usesAttemptRules || maxAttempts !== null || p?.attemptsOpen === false || p?.solutionsVisible === true)
                 const hasAttempted = myAttemptCount > 0
                 const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
                 const itemId = p?.id ? String(p.id) : ''
@@ -6133,6 +6163,28 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                   Delete
                                 </button>
                               </>
+                            ) : usesAttemptRules ? (
+                              canAttempt && !hasAttempted ? (
+                                <button
+                                  type="button"
+                                  className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
+                                  onClick={() => void openPostSolveComposer(p)}
+                                >
+                                  Solve
+                                </button>
+                              ) : hasAttempted ? (
+                                <button
+                                  type="button"
+                                  className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
+                                  onClick={() => void openPostThread(p)}
+                                >
+                                  Solutions
+                                </button>
+                              ) : (
+                                <button type="button" className="btn btn-ghost shrink-0" disabled>
+                                  Closed
+                                </button>
+                              )
                             ) : (
                               <button
                                 type="button"
@@ -6208,10 +6260,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         })}
                         {renderSocialActionButton({
                           label: isPost
-                            ? (p?.hasOwnResponse ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve')
+                            ? (usesAttemptRules
+                              ? (hasAttempted ? formatSolutionsLabel((p as any)?.solutionCount) : (canAttempt ? 'Solve' : 'Closed'))
+                              : (p?.hasOwnResponse ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve'))
                             : (hasAttempted ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve'),
                           onClick: () => {
                             if (isPost) {
+                              if (usesAttemptRules) {
+                                if (hasAttempted) {
+                                  void openPostThread(p)
+                                  return
+                                }
+                                if (canAttempt) {
+                                  void openPostSolveComposer(p)
+                                }
+                                return
+                              }
                               if (p?.hasOwnResponse) {
                                 void openPostThread(p)
                                 return
@@ -6227,7 +6291,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               void router.push(href)
                             }
                           },
-                          disabled: !itemId,
+                          disabled: !itemId || (isPost && usesAttemptRules && !hasAttempted && !canAttempt),
                           icon: (
                             <span className="flex items-center gap-1" aria-hidden="true">
                               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
@@ -8129,25 +8193,27 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [])
 
   const applyOwnPostResponseToFeeds = useCallback((draft: Pick<PostSolveOverlayState, 'postId'>, responseData: any) => {
+    const applyOwnResponse = (item: any) => {
+      const previousOwnResponseId = String(item?.ownResponse?.id || '')
+      const nextOwnResponseId = String(responseData?.id || '')
+      const isNewResponseRecord = !previousOwnResponseId || (nextOwnResponseId && nextOwnResponseId !== previousOwnResponseId)
+      const previousAttemptCount = typeof item?.myAttemptCount === 'number' ? item.myAttemptCount : 0
+      const previousSolutionCount = Number(item?.solutionCount || 0)
+
+      return {
+        ...(item as any),
+        hasOwnResponse: true,
+        ownResponse: responseData || (item as any)?.ownResponse || null,
+        myAttemptCount: isNewResponseRecord ? previousAttemptCount + 1 : Math.max(previousAttemptCount, 1),
+        solutionCount: isNewResponseRecord ? Math.max(1, previousSolutionCount + 1) : Math.max(1, previousSolutionCount),
+      }
+    }
+
     setStudentFeedPosts((prev: any[]) => (Array.isArray(prev)
-      ? prev.map((item) => getDashboardItemKey(item) === `post:${draft.postId}`
-        ? {
-          ...(item as any),
-          hasOwnResponse: true,
-          ownResponse: responseData || (item as any)?.ownResponse || null,
-          solutionCount: Math.max(1, Number((item as any)?.solutionCount || 0) + ((item as any)?.hasOwnResponse ? 0 : 1)),
-        }
-        : item)
+      ? prev.map((item) => getDashboardItemKey(item) === `post:${draft.postId}` ? applyOwnResponse(item) : item)
       : prev))
     setTimelineChallenges((prev: any[]) => (Array.isArray(prev)
-      ? prev.map((item) => getDashboardItemKey(item) === `post:${draft.postId}`
-        ? {
-          ...(item as any),
-          hasOwnResponse: true,
-          ownResponse: responseData || (item as any)?.ownResponse || null,
-          solutionCount: Math.max(1, Number((item as any)?.solutionCount || 0) + ((item as any)?.hasOwnResponse ? 0 : 1)),
-        }
-        : item)
+      ? prev.map((item) => getDashboardItemKey(item) === `post:${draft.postId}` ? applyOwnResponse(item) : item)
       : prev))
   }, [])
 
@@ -9180,7 +9246,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <button
                 type="button"
                 className="w-full flex items-center justify-between gap-3 text-left"
-                onClick={() => setCreateOverlayOpen(true)}
+                onClick={openCreateChallengeComposer}
               >
                 <span className="text-lg font-semibold">Create</span>
                 <span className="text-sm muted">Open</span>
@@ -9225,7 +9291,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <button
               type="button"
               className="w-full flex items-center justify-between gap-3 text-left"
-              onClick={() => setCreateOverlayOpen(true)}
+              onClick={openCreateChallengeComposer}
             >
               <span className="text-lg font-semibold">Create</span>
               <span className="text-sm muted">Open</span>
@@ -12577,7 +12643,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 <button
                   type="button"
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 text-sm font-medium text-white/88 transition hover:border-white/20 hover:bg-white/10"
-                  onClick={() => setCreateOverlayOpen(true)}
+                  onClick={openCreateChallengeComposer}
                 >
                   <span>Create</span>
                 </button>
@@ -12689,7 +12755,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   <button
                     type="button"
                     className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#0f172a] shadow-[0_14px_32px_rgba(255,255,255,0.18)] transition hover:bg-blue-50"
-                    onClick={() => setCreateOverlayOpen(true)}
+                    onClick={openCreateChallengeComposer}
                   >
                     Create Post
                   </button>
@@ -13084,7 +13150,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   className="mobile-menu-item"
                   onClick={() => {
                     closeMobileMenu()
-                    setCreateOverlayOpen(true)
+                    openCreateChallengeComposer()
                   }}
                 >
                   <span>
@@ -14047,7 +14113,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       {createOverlayOpen && (
         <OverlayPortal>
           <FullScreenGlassOverlay
-            title={createKind === 'post' ? 'Post' : 'Challenge'}
+            title={editingChallengeId ? 'Challenge' : 'Post'}
             onClose={closeCreateOverlay}
             onBackdropClick={closeCreateOverlay}
             zIndexClassName="z-[70]"
@@ -14084,7 +14150,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm text-slate-700 font-semibold">{createKind === 'post' ? 'Share a post' : 'Post a challenge'}</div>
+                    <div className="text-sm text-slate-700 font-semibold">{editingChallengeId ? 'Edit challenge' : (editingPostId ? 'Edit post' : 'Share a post')}</div>
                   </div>
                 </div>
 
@@ -14101,18 +14167,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-slate-600">
                         <path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                       </svg>
-                      <span className="text-xs text-slate-500">Type</span>
-                      <select
-                        className="bg-transparent text-sm text-[#1c1e21] focus:outline-none"
-                        value={createKind}
-                        onChange={(e) => setCreateKind(e.target.value as any)}
-                      >
-                        <option value="post">Post</option>
-                        <option value="quiz">Quiz</option>
-                      </select>
+                      <span className="text-xs text-slate-500">Mode</span>
+                      <span className="text-sm text-[#1c1e21]">{editingChallengeId ? 'Legacy challenge' : 'Post'}</span>
                     </div>
 
-                    {createKind === 'quiz' ? (
                     <div className="flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-slate-600">
                         <path d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364-2.121 2.121M7.757 16.243l-2.121 2.121m12.728 0-2.121-2.121M7.757 7.757 5.636 5.636" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -14131,7 +14189,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         <option value="10">10</option>
                       </select>
                     </div>
-                    ) : null}
                   </div>
                 </div>
               </div>
@@ -14141,7 +14198,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto">
                     <textarea
                       className="w-full min-h-[160px] resize-none bg-transparent text-[15px] leading-relaxed text-[#1c1e21] placeholder:text-slate-500 focus:outline-none"
-                      placeholder={createKind === 'post' ? 'Share what you are working on, stuck on, or proud of... or attach a screenshot below' : 'Write the question (LaTeX supported)... or attach a screenshot below'}
+                      placeholder={editingChallengeId ? 'Write the question (LaTeX supported)... or attach a screenshot below' : 'Share what you are working on, stuck on, or proud of... or attach a screenshot below'}
                       value={challengePromptDraft}
                       onChange={(e) => setChallengePromptDraft(e.target.value)}
                     />
@@ -14429,7 +14486,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left hover:bg-slate-50"
                 onClick={() => {
                   setPostToolsSheetOpen(false)
-                  setCreateOverlayOpen(true)
+                  openCreateChallengeComposer()
                 }}
               >
                 <span>

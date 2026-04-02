@@ -91,9 +91,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // Session key format is "challenge:<challengeId>".
   const isChallengeSession = sessionKey.startsWith('challenge:')
   const challengeId = isChallengeSession ? sessionKey.slice('challenge:'.length).trim() : ''
+  const isPostSession = sessionKey.startsWith('post:')
+  const postId = isPostSession ? sessionKey.slice('post:'.length).trim() : ''
   let challengeOwnerId: string | null = null
   let challengeMaxAttempts: number | null = null
   let challengeTitle: string | null = null
+  let postOwnerId: string | null = null
+  let postMaxAttempts: number | null = null
+  let postTitle: string | null = null
+  let postAttemptsOpen = true
+  let postSolutionsVisible = false
   if (req.method === 'POST' && isChallengeSession) {
     if (!challengeId) return res.status(400).json({ message: 'Invalid challenge session id' })
 
@@ -112,6 +119,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     challengeMaxAttempts = typeof challenge?.maxAttempts === 'number' ? challenge.maxAttempts : null
     challengeTitle = challenge?.title ? String(challenge.title) : null
   }
+
+  if ((req.method === 'POST' || req.method === 'GET') && isPostSession && postId) {
+    const socialPost = (prisma as any).socialPost as typeof prisma extends { socialPost: infer T } ? T : any
+    const post = await socialPost.findUnique({
+      where: { id: postId },
+      select: {
+        id: true,
+        title: true,
+        createdById: true,
+        attemptsOpen: true,
+        solutionsVisible: true,
+        maxAttempts: true,
+      },
+    }).catch(() => null)
+
+    if (post) {
+      postOwnerId = post?.createdById ? String(post.createdById) : null
+      postMaxAttempts = typeof post?.maxAttempts === 'number' ? post.maxAttempts : null
+      postTitle = post?.title ? String(post.title) : null
+      postAttemptsOpen = post?.attemptsOpen !== false
+      postSolutionsVisible = post?.solutionsVisible === true
+    }
+
+    if (req.method === 'POST') {
+      if (!post) return res.status(404).json({ message: 'Post not found' })
+      if (!postAttemptsOpen) {
+        return res.status(403).json({ message: 'Attempts are closed for this post' })
+      }
+    }
+  }
+
+  const isAttemptScopedPostSession = isPostSession && (
+    postAttemptsOpen === false
+    || postSolutionsVisible === true
+    || postMaxAttempts !== null
+  )
 
   // Subscription gating: learners must be subscribed to access session content.
   if (!isAdmin && role === 'student') {
@@ -184,7 +227,54 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    if (!isChallengeSession) {
+    if (isAttemptScopedPostSession && postId) {
+      try {
+        const ownAttemptCount = await learnerResponse.count({
+          where: { sessionKey: { in: responseThreadKeys }, userId },
+        })
+        const canViewSharedPostThread = Boolean(postOwnerId && String(postOwnerId) === String(userId))
+          || isAdmin
+          || postSolutionsVisible
+          || ownAttemptCount > 0
+
+        if (canViewSharedPostThread) {
+          const records = await learnerResponse.findMany({
+            where: { sessionKey: { in: responseThreadKeys } },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  avatar: true,
+                },
+              },
+            },
+            orderBy: { updatedAt: 'desc' },
+            take: 200,
+          })
+          return res.status(200).json({
+            responses: records.map((record: any) => ({
+              ...record,
+              userName: String(record?.user?.name || record?.user?.email || 'Learner'),
+              userAvatar: record?.user?.avatar || null,
+            })),
+          })
+        }
+
+        if (postMaxAttempts === null) {
+          const latest = await learnerResponse.findFirst({
+            where: { sessionKey: { in: responseThreadKeys }, userId },
+            orderBy: { updatedAt: 'desc' },
+          })
+          return res.status(200).json({ responses: latest ? [latest] : [] })
+        }
+      } catch {
+        // Fall back to standard listing if post lookup fails.
+      }
+    }
+
+    if (!isChallengeSession && !isAttemptScopedPostSession) {
       const records = await learnerResponse.findMany({
         where: { sessionKey: { in: responseThreadKeys } },
         include: {
@@ -363,6 +453,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : null
 
     let shouldNotifyOwner = false
+    const responseOwnerId = isChallengeSession ? challengeOwnerId : (isAttemptScopedPostSession ? postOwnerId : null)
     if (isChallengeSession && challengeId) {
       if (!challengeOwnerId || challengeTitle == null) {
         const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any
@@ -381,20 +472,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
+    if (isAttemptScopedPostSession && postOwnerId && postOwnerId !== userId) {
+      shouldNotifyOwner = true
+    }
+
     const notifyOwner = async (responseId: string) => {
-      if (!shouldNotifyOwner || !challengeOwnerId || challengeOwnerId === userId) return
+      const targetOwnerId = isChallengeSession ? challengeOwnerId : responseOwnerId
+      if (!shouldNotifyOwner || !targetOwnerId || targetOwnerId === userId) return
       try {
         await prisma.notification.create({
           data: {
-            userId: challengeOwnerId,
-            type: 'challenge_response',
+            userId: targetOwnerId,
+            type: isChallengeSession ? 'challenge_response' : 'post_response',
             title: 'New response',
-            body: `Attempted${challengeTitle ? ` ${challengeTitle}` : ' your challenge'}`,
-            data: { responseId, challengeId, responderId: userId },
+            body: isChallengeSession
+              ? `Attempted${challengeTitle ? ` ${challengeTitle}` : ' your challenge'}`
+              : `Responded${postTitle ? ` to ${postTitle}` : ' to your post'}`,
+            data: isChallengeSession
+              ? { responseId, challengeId, responderId: userId }
+              : { responseId, postId, responderId: userId },
           },
         })
       } catch (notifyErr) {
-        if (process.env.DEBUG === '1') console.error('Failed to create challenge response notification', notifyErr)
+        if (process.env.DEBUG === '1') console.error('Failed to create response notification', notifyErr)
       }
     }
 
@@ -403,7 +503,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         data: {
           sessionKey,
           userId,
-          ownerId: challengeOwnerId,
+          ownerId: responseOwnerId,
           userEmail,
           quizId: quizIdToUse,
           prompt: safePrompt,
@@ -438,7 +538,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           quizPhaseKey: safeQuizPhaseKey,
           quizPointId: safeQuizPointId,
           quizPointIndex: safeQuizPointIndex,
-          ownerId: challengeOwnerId,
+          ownerId: responseOwnerId,
           ...(opts?.resetChallengeFeedback ? { gradingJson: null, feedback: null } : {}),
           ...(opts?.bumpCreatedAt ? { createdAt: new Date() } : {}),
         },
@@ -454,7 +554,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
-      if (!isChallengeSession) {
+      if (!isChallengeSession && !isAttemptScopedPostSession) {
         const updated = await updateLatestRecord()
         if (updated) {
           return res.status(200).json(updated)
@@ -464,6 +564,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Unlimited attempts: overwrite the latest response instead of appending.
       if (isChallengeSession && challengeMaxAttempts === null) {
         const updated = await updateLatestRecord({ resetChallengeFeedback: true, bumpCreatedAt: true })
+        if (updated) {
+          await notifyOwner(updated?.id || '')
+          return res.status(200).json(updated)
+        }
+      }
+
+      if (isAttemptScopedPostSession && postMaxAttempts === null) {
+        const updated = await updateLatestRecord({ bumpCreatedAt: true })
         if (updated) {
           await notifyOwner(updated?.id || '')
           return res.status(200).json(updated)
@@ -500,7 +608,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         try {
           const updated = await updateLatestRecord({
             resetChallengeFeedback: isChallengeSession && challengeMaxAttempts === null,
-            bumpCreatedAt: isChallengeSession && challengeMaxAttempts === null,
+            bumpCreatedAt: (isChallengeSession && challengeMaxAttempts === null) || (isAttemptScopedPostSession && postMaxAttempts === null),
           })
           if (updated) {
             await notifyOwner(updated?.id || '')

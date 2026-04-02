@@ -12,6 +12,10 @@ function isMissingSocialPostsTableError(err: unknown) {
   return /socialpost/i.test(message) && /(does not exist|not exist|no such table|relation)/i.test(message)
 }
 
+function isAttemptScopedPost(item: any) {
+  return item?.attemptsOpen === false || item?.solutionsVisible === true || typeof item?.maxAttempts === 'number'
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const requesterId = await getUserIdFromReq(req)
   if (!requesterId) return res.status(401).json({ message: 'Unauthorized' })
@@ -85,6 +89,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         imageUrl: true,
         grade: true,
         audience: true,
+        attemptsOpen: true,
+        solutionsVisible: true,
+        maxAttempts: true,
+        closedAt: true,
+        revealedAt: true,
         createdAt: true,
         createdById: true,
         createdBy: {
@@ -110,7 +119,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const userResponses = postKeys.length ? await learnerResponse.findMany({
     where: { sessionKey: { in: postKeys }, userId: requesterId },
     orderBy: { updatedAt: 'desc' },
-    select: { id: true, sessionKey: true, excalidrawScene: true, updatedAt: true },
+    select: { id: true, sessionKey: true, latex: true, studentText: true, excalidrawScene: true, updatedAt: true, createdAt: true },
+  }).catch(() => []) : []
+
+  const userAttemptCounts = postKeys.length ? await learnerResponse.groupBy({
+    by: ['sessionKey'],
+    where: { sessionKey: { in: postKeys }, userId: requesterId },
+    _count: { id: true },
   }).catch(() => []) : []
 
   const solutionCounts = new Map<string, number>()
@@ -132,6 +147,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ownResponseByKey.set(key, response)
   }
 
+  const attemptCountByKey = new Map<string, number>()
+  for (const row of userAttemptCounts as any[]) {
+    const key = String(row?.sessionKey || '')
+    if (!key) continue
+    attemptCountByKey.set(key, Number(row?._count?.id || 0))
+  }
+
   return res.status(200).json({
     posts: items.map((item: any) => ({
       ...item,
@@ -139,6 +161,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       threadKey: `post:${item.id}`,
       ownResponse: ownResponseByKey.get(`post:${item.id}`) || null,
       hasOwnResponse: ownResponseByKey.has(`post:${item.id}`),
+      myAttemptCount: attemptCountByKey.get(`post:${item.id}`) || 0,
+      usesAttemptRules: isAttemptScopedPost(item),
       solutionCount: solutionCounts.get(`post:${item.id}`) || 0,
     })),
   })

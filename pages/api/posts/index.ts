@@ -9,6 +9,12 @@ const MAX_IMAGE_URL_LENGTH = 2000
 
 const AUDIENCES = new Set(['public', 'grade', 'private'])
 
+function parseMaxAttempts(value: unknown) {
+  if (value == null || value === '' || value === 'unlimited') return null
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return Math.min(100, Math.max(1, Math.floor(value)))
+}
+
 function isMissingSocialPostsTableError(err: unknown) {
   const message = err instanceof Error ? err.message : String(err || '')
   return /socialpost/i.test(message) && /(does not exist|not exist|no such table|relation)/i.test(message)
@@ -28,6 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const imageUrl = (typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '').slice(0, MAX_IMAGE_URL_LENGTH) || null
     const audienceRaw = typeof body.audience === 'string' ? body.audience.trim().toLowerCase() : 'public'
     const audience = AUDIENCES.has(audienceRaw) ? audienceRaw : 'public'
+    const maxAttempts = parseMaxAttempts(body.maxAttempts)
     const tokenGrade = normalizeGradeInput(await getUserGrade(req))
     const bodyGrade = normalizeGradeInput(typeof body.grade === 'string' ? body.grade : undefined)
     const grade = bodyGrade || tokenGrade || null
@@ -45,6 +52,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           imageUrl,
           audience,
           grade,
+          maxAttempts,
         },
       })
 

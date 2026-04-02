@@ -7,6 +7,12 @@ const MAX_TITLE_LENGTH = 120
 const MAX_PROMPT_LENGTH = 5000
 const MAX_IMAGE_URL_LENGTH = 2000
 
+function parseMaxAttempts(value: unknown) {
+  if (value == null || value === '' || value === 'unlimited') return null
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return Math.min(100, Math.max(1, Math.floor(value)))
+}
+
 function clampAudience(audience: unknown) {
   const v = typeof audience === 'string' ? audience.trim().toLowerCase() : ''
   if (v === 'public' || v === 'grade' || v === 'private') return v
@@ -45,6 +51,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         imageUrl: true,
         grade: true,
         audience: true,
+        attemptsOpen: true,
+        solutionsVisible: true,
+        maxAttempts: true,
+        closedAt: true,
+        revealedAt: true,
         createdAt: true,
         updatedAt: true,
         createdById: true,
@@ -102,6 +113,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const hasPrompt = Object.prototype.hasOwnProperty.call(body, 'prompt')
     const hasImageUrl = Object.prototype.hasOwnProperty.call(body, 'imageUrl')
     const hasAudience = Object.prototype.hasOwnProperty.call(body, 'audience')
+    const hasAttemptsOpen = Object.prototype.hasOwnProperty.call(body, 'attemptsOpen')
+    const hasSolutionsVisible = Object.prototype.hasOwnProperty.call(body, 'solutionsVisible')
+    const hasMaxAttempts = Object.prototype.hasOwnProperty.call(body, 'maxAttempts')
 
     if (hasTitle) updateData.title = (typeof body.title === 'string' ? body.title.trim() : '').slice(0, MAX_TITLE_LENGTH)
 
@@ -124,6 +138,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       updateData.audience = clampAudience(body.audience)
       const tokenGrade = normalizeGradeInput(await getUserGrade(req))
       updateData.grade = updateData.audience === 'grade' ? tokenGrade : null
+    }
+
+    if (hasAttemptsOpen) {
+      updateData.attemptsOpen = typeof body.attemptsOpen === 'boolean' ? body.attemptsOpen : post.attemptsOpen
+      updateData.closedAt = updateData.attemptsOpen ? null : (post.closedAt ?? new Date())
+    }
+
+    if (hasSolutionsVisible) {
+      updateData.solutionsVisible = typeof body.solutionsVisible === 'boolean' ? body.solutionsVisible : post.solutionsVisible
+      updateData.revealedAt = updateData.solutionsVisible ? (post.revealedAt ?? new Date()) : null
+    }
+
+    if (hasMaxAttempts) {
+      updateData.maxAttempts = parseMaxAttempts(body.maxAttempts)
     }
 
     try {

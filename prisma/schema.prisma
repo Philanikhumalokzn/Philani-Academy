@@ -591,6 +591,11 @@ model SocialPost {
   imageUrl    String?
   grade       Grade?
   audience    String   @default("public")
+  attemptsOpen    Boolean  @default(true)
+  solutionsVisible Boolean @default(false)
+  maxAttempts     Int?
+  closedAt        DateTime?
+  revealedAt      DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

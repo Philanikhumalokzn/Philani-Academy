@@ -223,16 +223,37 @@ test.describe('keyboard toolbar actions', () => {
     await expect(page.getByText('Save As')).toBeHidden()
   })
 
-  test('Text and Diagrams fire their keyboard-mode tray actions', async ({ page }) => {
+  test('Text enters keyboard recall mode and Diagrams keep their tray actions', async ({ page }) => {
     await goToKeyboardToolbarLab(page)
 
+    const sevenKey = page.locator('button[title="7"]').first()
+    const plusKey = page.locator('button[title="plus"]').first()
+    const fiveKey = page.locator('button[title="5"]').first()
+    const sendButton = getSendStepButton(page)
     const textButton = page.locator('button[title="Text"]').first()
     const diagramsButton = page.locator('button[title="Diagrams"]').first()
+    const firstStepButton = page.locator('[data-top-panel-step]').first()
+
+    await tapKey(page, sevenKey)
+    await tapKey(page, plusKey)
+    await tapKey(page, fiveKey)
+    await openKeyboardEditingMode(page)
+    await clickToolbarButton(sendButton)
+
+    await expect(page.locator('[data-top-panel-step-shell]')).toHaveCount(1)
+    await expect.poll(() => readMathfieldValue(page)).toBe('')
 
     await clickToolbarButton(textButton)
-    await page.waitForTimeout(80)
-    await clickToolbarButton(textButton)
     await page.waitForTimeout(350)
+
+    await expect(firstStepButton).toBeVisible()
+    await expect.poll(() => readToolbarEventCapture(page)).toMatchObject({
+      textToggle: 0,
+    })
+
+    await clickToolbarButton(firstStepButton)
+    await expect.poll(() => readMathfieldValue(page)).toContain('7+5')
+    await expect(sendButton).toHaveAttribute('title', 'Update step')
 
     await clickToolbarButton(diagramsButton)
     await page.waitForTimeout(350)
@@ -242,7 +263,6 @@ test.describe('keyboard toolbar actions', () => {
     await page.waitForTimeout(120)
 
     await expect.poll(() => readToolbarEventCapture(page)).toMatchObject({
-      textToggle: 1,
       diagramToggle: 1,
       diagramOpenGrid: 1,
     })

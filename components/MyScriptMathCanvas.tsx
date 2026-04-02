@@ -13115,6 +13115,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const shouldShowMiddleStripActionCluster = canUsePresenterMiddleStripTools || isStudentSendContext
   const areMiddleStripEditorActionsReady = recognitionEngine === 'keyboard' || status === 'ready'
   const canUseTeacherKeyboardLocalToolbarActions = recognitionEngine === 'keyboard' && canOrchestrateLesson
+  const canUseTeacherKeyboardTopPanelComposerUi = hasWriteAccess || canUseTeacherKeyboardLocalToolbarActions
   const canUseKeyboardTextRecallMode = recognitionEngine === 'keyboard' && (useAdminStepComposer || useStudentStepComposer)
   const canUseKeyboardSendAction = recognitionEngine === 'keyboard'
     ? Boolean(normalizeStepLatex(latexOutput || adminDraftLatex || '')) || keyboardSteps.length > 0
@@ -17968,7 +17969,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                       </div>
                     </div>
                   )}
-                  {hasWriteAccess ? (
+                  {canUseTeacherKeyboardTopPanelComposerUi ? (
                     topPanelStepsPayload ? (
                       topPanelStepsPayload.steps.length ? (
                         <div

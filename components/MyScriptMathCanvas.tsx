@@ -18688,6 +18688,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                         title="Text"
                         onClick={() => {
                           if (canUseKeyboardTextRecallMode) {
+                            if (topPanelEditingMode) {
+                              if (textIconTapTimeoutRef.current) {
+                                clearTimeout(textIconTapTimeoutRef.current)
+                                textIconTapTimeoutRef.current = null
+                              }
+
+                              textIconLastTapRef.current = null
+                              setTopPanelEditingMode(false)
+                              clearTopPanelSelection()
+                              setMobileTopPanelActionStepIndex(null)
+
+                              if (useAdminStepComposer) {
+                                setKeyboardEditIndex(null)
+                              }
+                              if (useStudentStepComposer) {
+                                setStudentEditIndex(null)
+                              }
+                              return
+                            }
+
                             const keyboardRecallSteps = useAdminStepComposer
                               ? keyboardSteps
                               : (studentSteps.length ? studentSteps : derivedStudentCommittedSteps)

@@ -88,7 +88,7 @@ test.describe('dashboard keyboard text recall', () => {
   test.use({ viewport: { width: 390, height: 844 } })
   test.setTimeout(180_000)
 
-  test('Text enters recall mode for the real dashboard overlay keyboard', async ({ page }) => {
+  test('Text toggles recall mode for the real dashboard overlay keyboard', async ({ page }) => {
     test.skip(!baseUrl || !email || !password, 'Set E2E_BASE_URL, E2E_USER_A_EMAIL, E2E_USER_A_PASSWORD')
 
     await page.goto(toAbsoluteUrl('/auth/signin'), { waitUntil: 'domcontentloaded' })
@@ -132,5 +132,11 @@ test.describe('dashboard keyboard text recall', () => {
 
     await expect.poll(() => readMathfieldValue(page)).toContain('7+5')
     await expect(sendButton).toHaveAttribute('title', 'Update step')
+
+    await clickToolbarButton(textButton)
+    await page.waitForTimeout(350)
+
+    await expect(firstStepButton).toBeHidden({ timeout: 20_000 })
+    await expect(sendButton).toHaveAttribute('title', 'Send step')
   })
 })

@@ -44,6 +44,215 @@ const PUBLIC_SOLVE_VIEWER_AUTO_FIT_MAX_ZOOM = 2.6
 
 type PublicSolvePromptMode = 'passive' | 'active'
 
+export function PublicSolvePromptReferenceLayer({
+  title,
+  prompt,
+  imageUrl,
+  authorName,
+  authorAvatarUrl,
+  children,
+}: {
+  title: string
+  prompt?: string | null
+  imageUrl?: string | null
+  authorName?: string | null
+  authorAvatarUrl?: string | null
+  children: React.ReactNode
+}) {
+  const promptDismissDragRef = useRef<{ pointerId: number | null; startY: number; dragOffsetY: number }>({
+    pointerId: null,
+    startY: 0,
+    dragOffsetY: 0,
+  })
+  const [promptMode, setPromptMode] = useState<PublicSolvePromptMode>('passive')
+  const [promptZoom, setPromptZoom] = useState(1)
+  const [promptDismissDragOffset, setPromptDismissDragOffset] = useState(0)
+
+  const resolvedAuthorName = useMemo(() => {
+    const normalized = String(authorName || '').trim()
+    return normalized || 'Original post'
+  }, [authorName])
+
+  const resolvedAuthorAvatarUrl = useMemo(() => {
+    const normalized = String(authorAvatarUrl || '').trim()
+    return normalized || ''
+  }, [authorAvatarUrl])
+
+  const resolvedAuthorInitial = useMemo(() => {
+    const parts = resolvedAuthorName
+      .split(/\s+/)
+      .map((part) => part.trim())
+      .filter(Boolean)
+    if (parts.length === 0) return 'P'
+    if (parts.length === 1) {
+      return parts[0].slice(0, 2).toUpperCase() || 'P'
+    }
+    return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase() || 'P'
+  }, [resolvedAuthorName])
+
+  useEffect(() => {
+    setPromptMode('passive')
+    setPromptZoom(1)
+    setPromptDismissDragOffset(0)
+    promptDismissDragRef.current = { pointerId: null, startY: 0, dragOffsetY: 0 }
+  }, [title, prompt, imageUrl])
+
+  const enterActivePromptMode = useCallback(() => {
+    setPromptDismissDragOffset(0)
+    promptDismissDragRef.current = { pointerId: null, startY: 0, dragOffsetY: 0 }
+    setPromptMode('active')
+  }, [])
+
+  const handlePromptWheel = useCallback((event: any) => {
+    if (promptMode !== 'active') return
+    if (!event.ctrlKey && !event.metaKey) return
+    event.preventDefault()
+    const delta = Number(event.deltaY || 0)
+    const nextZoom = Math.min(
+      PUBLIC_SOLVE_MAX_PROMPT_ZOOM,
+      Math.max(PUBLIC_SOLVE_MIN_PROMPT_ZOOM, promptZoom + (delta < 0 ? 0.08 : -0.08))
+    )
+    setPromptZoom(Number(nextZoom.toFixed(2)))
+  }, [promptMode, promptZoom])
+
+  const handlePromptDismissPointerDown = useCallback((event: any) => {
+    if (promptMode !== 'active') return
+    promptDismissDragRef.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      dragOffsetY: 0,
+    }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }, [promptMode])
+
+  const handlePromptDismissPointerMove = useCallback((event: any) => {
+    const state = promptDismissDragRef.current
+    if (promptMode !== 'active') return
+    if (state.pointerId !== event.pointerId) return
+    const rawDelta = Number(event.clientY || 0) - state.startY
+    const nextOffset = Math.min(0, rawDelta)
+    state.dragOffsetY = nextOffset
+    setPromptDismissDragOffset(nextOffset)
+  }, [promptMode])
+
+  const handlePromptDismissPointerEnd = useCallback((event: any) => {
+    const state = promptDismissDragRef.current
+    if (state.pointerId !== event.pointerId) return
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    const shouldDismiss = state.dragOffsetY <= -72
+    promptDismissDragRef.current = { pointerId: null, startY: 0, dragOffsetY: 0 }
+    setPromptDismissDragOffset(0)
+    if (shouldDismiss) {
+      setPromptMode('passive')
+    }
+  }, [])
+
+  const promptViewportStyle = useMemo(() => {
+    const transition = promptMode === 'active' && promptDismissDragRef.current.pointerId != null
+      ? 'none'
+      : 'transform 180ms ease, opacity 180ms ease'
+    return {
+      transform: `translateY(${promptDismissDragOffset}px)`,
+      transition,
+      touchAction: promptMode === 'active' ? 'pan-x pan-y pinch-zoom' : 'none',
+      opacity: promptMode === 'active' ? 1 : 0.98,
+      pointerEvents: promptMode === 'active' ? 'auto' : 'none',
+    } as any
+  }, [promptDismissDragOffset, promptMode])
+
+  const promptDocumentStyle = useMemo(() => {
+    const safeZoom = Math.min(PUBLIC_SOLVE_MAX_PROMPT_ZOOM, Math.max(PUBLIC_SOLVE_MIN_PROMPT_ZOOM, promptZoom))
+    return {
+      zoom: safeZoom,
+    } as any
+  }, [promptZoom])
+
+  return (
+    <div className="relative min-h-0 flex-1 overflow-hidden bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.96))]">
+      <div
+        className={`absolute inset-0 overflow-auto ${promptMode === 'active' ? 'z-[6]' : 'z-[1]'}`}
+        onWheel={handlePromptWheel}
+        style={promptViewportStyle}
+      >
+        <div className="mx-auto min-h-full w-full max-w-3xl px-5 py-6 pb-28 sm:px-8" style={promptDocumentStyle}>
+          <article
+            className="overflow-hidden rounded-[24px] border border-black/10 bg-white text-left shadow-[0_18px_40px_rgba(15,23,42,0.08)]"
+            onClick={promptMode === 'passive' ? enterActivePromptMode : undefined}
+            onKeyDown={promptMode === 'passive' ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                enterActivePromptMode()
+              }
+            } : undefined}
+            role={promptMode === 'passive' ? 'button' : undefined}
+            tabIndex={promptMode === 'passive' ? 0 : undefined}
+            style={{ minHeight: `${PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT}px` }}
+          >
+            <div className="px-4 py-4 sm:px-5">
+              <div className="flex items-start gap-3">
+                <div className="relative shrink-0 overflow-visible">
+                  <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f0f2f5] text-xs font-semibold text-[#1c1e21]">
+                    {resolvedAuthorAvatarUrl ? (
+                      <img src={resolvedAuthorAvatarUrl} alt={resolvedAuthorName} className="h-full w-full object-cover" />
+                    ) : (
+                      <span>{resolvedAuthorInitial}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[15px] font-semibold tracking-[-0.015em] text-[#1c1e21]">{resolvedAuthorName}</div>
+                </div>
+              </div>
+
+              {prompt ? (
+                <div className="mt-3 whitespace-pre-wrap text-[14px] leading-6 text-[#334155] break-words">{prompt}</div>
+              ) : null}
+            </div>
+
+            {imageUrl ? (
+              <div className="overflow-hidden border-t border-black/10 bg-[#f8fafc]">
+                <img src={imageUrl} alt={title} className="max-h-[720px] w-full object-contain" />
+              </div>
+            ) : null}
+          </article>
+        </div>
+
+        {promptMode === 'active' ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[7] flex justify-center pb-4">
+            <div className="pointer-events-auto flex flex-col items-center gap-2 rounded-[24px] border border-slate-200 bg-white/94 px-4 py-3 shadow-[0_16px_34px_rgba(15,23,42,0.12)] backdrop-blur-xl">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Drag up to return</div>
+              <div
+                role="button"
+                tabIndex={0}
+                className="flex h-9 w-24 items-center justify-center rounded-full border border-slate-200 bg-slate-100/90"
+                onPointerDown={handlePromptDismissPointerDown}
+                onPointerMove={handlePromptDismissPointerMove}
+                onPointerUp={handlePromptDismissPointerEnd}
+                onPointerCancel={handlePromptDismissPointerEnd}
+              >
+                <span className="h-1.5 w-10 rounded-full bg-slate-400" />
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div
+        className={`absolute inset-0 ${promptMode === 'active' ? 'z-[2]' : 'z-[4]'}`}
+        style={{
+          transition: 'top 160ms ease',
+          pointerEvents: promptMode === 'active' ? 'none' : 'auto',
+          top: promptMode === 'active' ? 0 : `${PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT}px`,
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
 const PUBLIC_SOLVE_PERSISTED_APP_STATE_KEYS = [
   'scrollX',
   'scrollY',
@@ -562,11 +771,6 @@ export function PublicSolveComposer({
   const excalidrawApiRef = useRef<any>(null)
   const sceneRef = useRef<PublicSolveScene>(normalizePublicSolveScene(initialScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() })
   const lastAppliedInitialSceneKeyRef = useRef(buildPublicSolveSceneResetKey(sceneRef.current))
-  const promptDismissDragRef = useRef<{ pointerId: number | null; startY: number; dragOffsetY: number }>({
-    pointerId: null,
-    startY: 0,
-    dragOffsetY: 0,
-  })
   const [composerInstanceKey, setComposerInstanceKey] = useState(0)
   const [composerInitialData, setComposerInitialData] = useState(() => buildInitialData(sceneRef.current))
   const [isReady, setIsReady] = useState(false)
@@ -576,32 +780,7 @@ export function PublicSolveComposer({
     const sceneMeta = normalizePublicSolveSceneMeta(sceneRef.current.sceneMeta)
     return resolveSceneGuideSpacing(sceneRef.current.elements, sceneMeta, getAppStateZoomValue(sceneRef.current.appState))
   })
-  const [promptMode, setPromptMode] = useState<PublicSolvePromptMode>('passive')
   const [canvasOpacityPercent, setCanvasOpacityPercent] = useState(100)
-  const [promptZoom, setPromptZoom] = useState(1)
-  const [promptDismissDragOffset, setPromptDismissDragOffset] = useState(0)
-
-  const resolvedAuthorName = useMemo(() => {
-    const normalized = String(authorName || '').trim()
-    return normalized || 'Original post'
-  }, [authorName])
-
-  const resolvedAuthorAvatarUrl = useMemo(() => {
-    const normalized = String(authorAvatarUrl || '').trim()
-    return normalized || ''
-  }, [authorAvatarUrl])
-
-  const resolvedAuthorInitial = useMemo(() => {
-    const parts = resolvedAuthorName
-      .split(/\s+/)
-      .map((part) => part.trim())
-      .filter(Boolean)
-    if (parts.length === 0) return 'P'
-    if (parts.length === 1) {
-      return parts[0].slice(0, 2).toUpperCase() || 'P'
-    }
-    return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase() || 'P'
-  }, [resolvedAuthorName])
 
   const canvasOpacity = canvasOpacityPercent / 100
 
@@ -636,11 +815,7 @@ export function PublicSolveComposer({
   }, [applySceneSnapshot, initialScene])
 
   useEffect(() => {
-    setPromptMode('passive')
     setCanvasOpacityPercent(100)
-    setPromptZoom(1)
-    setPromptDismissDragOffset(0)
-    promptDismissDragRef.current = { pointerId: null, startY: 0, dragOffsetY: 0 }
   }, [title, prompt, imageUrl])
 
   useEffect(() => {
@@ -670,78 +845,6 @@ export function PublicSolveComposer({
     return () => window.clearTimeout(settle)
   }, [isReady])
 
-  const enterActivePromptMode = useCallback(() => {
-    setPromptDismissDragOffset(0)
-    promptDismissDragRef.current = { pointerId: null, startY: 0, dragOffsetY: 0 }
-    setPromptMode('active')
-  }, [])
-
-  const handlePromptWheel = useCallback((event: any) => {
-    if (promptMode !== 'active') return
-    if (!event.ctrlKey && !event.metaKey) return
-    event.preventDefault()
-    const delta = Number(event.deltaY || 0)
-    const nextZoom = Math.min(
-      PUBLIC_SOLVE_MAX_PROMPT_ZOOM,
-      Math.max(PUBLIC_SOLVE_MIN_PROMPT_ZOOM, promptZoom + (delta < 0 ? 0.08 : -0.08))
-    )
-    setPromptZoom(Number(nextZoom.toFixed(2)))
-  }, [promptMode, promptZoom])
-
-  const handlePromptDismissPointerDown = useCallback((event: any) => {
-    if (promptMode !== 'active') return
-    promptDismissDragRef.current = {
-      pointerId: event.pointerId,
-      startY: event.clientY,
-      dragOffsetY: 0,
-    }
-    event.currentTarget.setPointerCapture?.(event.pointerId)
-  }, [promptMode])
-
-  const handlePromptDismissPointerMove = useCallback((event: any) => {
-    const state = promptDismissDragRef.current
-    if (promptMode !== 'active') return
-    if (state.pointerId !== event.pointerId) return
-    const rawDelta = Number(event.clientY || 0) - state.startY
-    const nextOffset = Math.min(0, rawDelta)
-    state.dragOffsetY = nextOffset
-    setPromptDismissDragOffset(nextOffset)
-  }, [promptMode])
-
-  const handlePromptDismissPointerEnd = useCallback((event: any) => {
-    const state = promptDismissDragRef.current
-    if (state.pointerId !== event.pointerId) return
-    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-    const shouldDismiss = state.dragOffsetY <= -72
-    promptDismissDragRef.current = { pointerId: null, startY: 0, dragOffsetY: 0 }
-    setPromptDismissDragOffset(0)
-    if (shouldDismiss) {
-      setPromptMode('passive')
-    }
-  }, [])
-
-  const promptViewportStyle = useMemo(() => {
-    const transition = promptMode === 'active' && promptDismissDragRef.current.pointerId != null
-      ? 'none'
-      : 'transform 180ms ease, opacity 180ms ease'
-    return {
-      transform: `translateY(${promptDismissDragOffset}px)`,
-      transition,
-      touchAction: promptMode === 'active' ? 'pan-x pan-y pinch-zoom' : 'none',
-      opacity: promptMode === 'active' ? 1 : 0.98,
-      pointerEvents: promptMode === 'active' ? 'auto' : 'none',
-    } as any
-  }, [promptDismissDragOffset, promptMode])
-
-  const promptDocumentStyle = useMemo(() => {
-    const safeZoom = Math.min(PUBLIC_SOLVE_MAX_PROMPT_ZOOM, Math.max(PUBLIC_SOLVE_MIN_PROMPT_ZOOM, promptZoom))
-    return {
-      zoom: safeZoom,
-    } as any
-  }, [promptZoom])
-
   return (
     <div className="flex h-full flex-col bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_32%),linear-gradient(180deg,#eef4ff_0%,#f8fbff_28%,#ffffff_100%)] text-slate-900">
       <div className="relative flex-1 min-h-0 px-3 py-2 sm:px-6 sm:py-4">
@@ -765,125 +868,58 @@ export function PublicSolveComposer({
         </div>
 
         <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.10)]">
-          <div className="relative min-h-0 flex-1 overflow-hidden bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.96))]">
+          <PublicSolvePromptReferenceLayer
+            title={title}
+            prompt={prompt}
+            imageUrl={imageUrl}
+            authorName={authorName}
+            authorAvatarUrl={authorAvatarUrl}
+          >
             <div
-              className={`absolute inset-0 overflow-auto ${promptMode === 'active' ? 'z-[6]' : 'z-[1]'}`}
-              onWheel={handlePromptWheel}
-              style={promptViewportStyle}
-            >
-              <div className="mx-auto min-h-full w-full max-w-3xl px-5 py-6 pb-28 sm:px-8" style={promptDocumentStyle}>
-                <article
-                  className="overflow-hidden rounded-[24px] border border-black/10 bg-white text-left shadow-[0_18px_40px_rgba(15,23,42,0.08)]"
-                  onClick={promptMode === 'passive' ? enterActivePromptMode : undefined}
-                  onKeyDown={promptMode === 'passive' ? (event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      enterActivePromptMode()
-                    }
-                  } : undefined}
-                  role={promptMode === 'passive' ? 'button' : undefined}
-                  tabIndex={promptMode === 'passive' ? 0 : undefined}
-                  style={{ minHeight: `${PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT}px` }}
-                >
-                  <div className="px-4 py-4 sm:px-5">
-                    <div className="flex items-start gap-3">
-                      <div className="relative shrink-0 overflow-visible">
-                        <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f0f2f5] text-xs font-semibold text-[#1c1e21]">
-                          {resolvedAuthorAvatarUrl ? (
-                            <img src={resolvedAuthorAvatarUrl} alt={resolvedAuthorName} className="h-full w-full object-cover" />
-                          ) : (
-                            <span>{resolvedAuthorInitial}</span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-[15px] font-semibold tracking-[-0.015em] text-[#1c1e21]">{resolvedAuthorName}</div>
-                      </div>
-                    </div>
-
-                    {prompt ? (
-                      <div className="mt-3 whitespace-pre-wrap text-[14px] leading-6 text-[#334155] break-words">{prompt}</div>
-                    ) : null}
-                  </div>
-
-                  {imageUrl ? (
-                    <div className="overflow-hidden border-t border-black/10 bg-[#f8fafc]">
-                      <img src={imageUrl} alt={title} className="max-h-[720px] w-full object-contain" />
-                    </div>
-                  ) : null}
-                </article>
-              </div>
-
-              {promptMode === 'active' ? (
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[7] flex justify-center pb-4">
-                  <div className="pointer-events-auto flex flex-col items-center gap-2 rounded-[24px] border border-slate-200 bg-white/94 px-4 py-3 shadow-[0_16px_34px_rgba(15,23,42,0.12)] backdrop-blur-xl">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Drag up to return</div>
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      className="flex h-9 w-24 items-center justify-center rounded-full border border-slate-200 bg-slate-100/90"
-                      onPointerDown={handlePromptDismissPointerDown}
-                      onPointerMove={handlePromptDismissPointerMove}
-                      onPointerUp={handlePromptDismissPointerEnd}
-                      onPointerCancel={handlePromptDismissPointerEnd}
-                    >
-                      <span className="h-1.5 w-10 rounded-full bg-slate-400" />
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
-            <div
-              className={`absolute inset-0 ${promptMode === 'active' ? 'z-[2]' : 'z-[4]'}`}
+              className="flex h-full min-h-0 flex-col bg-white/96"
               style={{
                 opacity: canvasOpacity,
                 transition: 'opacity 160ms ease',
-                pointerEvents: promptMode === 'active' ? 'none' : 'auto',
-                top: promptMode === 'active' ? 0 : `${PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT}px`,
               }}
             >
-              <div className="flex h-full min-h-0 flex-col bg-white/96">
-                <div className="relative min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>
-                  <LessonStyledExcalidraw
-                    key={`public-solve-composer-${composerInstanceKey}`}
-                    className="h-full"
-                    initialData={composerInitialData}
-                    UIOptions={editorUiOptions}
-                    zenModeEnabled={false}
-                    gridModeEnabled={false}
-                    onChange={(elements: any[], appState: any, files: any) => {
-                      const previousScene = normalizePublicSolveScene(sceneRef.current) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
-                      const previousMeta = normalizePublicSolveSceneMeta(previousScene.sceneMeta)
-                      const nextElements = cloneScenePart(Array.isArray(elements) ? elements : [])
-                      let nextMeta = cloneSceneMeta(previousMeta)
-                      const currentZoom = getAppStateZoomValue(appState)
+              <div className="relative min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>
+                <LessonStyledExcalidraw
+                  key={`public-solve-composer-${composerInstanceKey}`}
+                  className="h-full"
+                  initialData={composerInitialData}
+                  UIOptions={editorUiOptions}
+                  zenModeEnabled={false}
+                  gridModeEnabled={false}
+                  onChange={(elements: any[], appState: any, files: any) => {
+                    const previousScene = normalizePublicSolveScene(sceneRef.current) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
+                    const previousMeta = normalizePublicSolveSceneMeta(previousScene.sceneMeta)
+                    const nextElements = cloneScenePart(Array.isArray(elements) ? elements : [])
+                    let nextMeta = cloneSceneMeta(previousMeta)
+                    const currentZoom = getAppStateZoomValue(appState)
 
-                      if (currentZoom != null) {
-                        nextMeta.lastObservedZoom = currentZoom
-                      }
-                      nextMeta.guideSpacing = resolveSceneGuideSpacing(nextElements, nextMeta, currentZoom ?? nextMeta.lastObservedZoom)
-                      const nextScene: PublicSolveScene = {
-                        elements: nextElements,
-                        appState: pickPersistedPublicSolveAppState(appState),
-                        files: files && typeof files === 'object' ? cloneScenePart(files) : undefined,
-                        updatedAt: new Date().toISOString(),
-                        sceneMeta: nextMeta,
-                      }
-                      applySceneSnapshot(nextScene)
-                    }}
-                    excalidrawAPI={(api: any) => {
-                      excalidrawApiRef.current = api
-                      if (!isReady) setIsReady(true)
-                    }}
-                    renderTopRightUI={() => null}
-                  />
-                  <NotebookGuidesOverlay zoom={guideViewportState.zoom} scrollY={guideViewportState.scrollY} guideSpacing={guideSpacing} />
-                </div>
+                    if (currentZoom != null) {
+                      nextMeta.lastObservedZoom = currentZoom
+                    }
+                    nextMeta.guideSpacing = resolveSceneGuideSpacing(nextElements, nextMeta, currentZoom ?? nextMeta.lastObservedZoom)
+                    const nextScene: PublicSolveScene = {
+                      elements: nextElements,
+                      appState: pickPersistedPublicSolveAppState(appState),
+                      files: files && typeof files === 'object' ? cloneScenePart(files) : undefined,
+                      updatedAt: new Date().toISOString(),
+                      sceneMeta: nextMeta,
+                    }
+                    applySceneSnapshot(nextScene)
+                  }}
+                  excalidrawAPI={(api: any) => {
+                    excalidrawApiRef.current = api
+                    if (!isReady) setIsReady(true)
+                  }}
+                  renderTopRightUI={() => null}
+                />
+                <NotebookGuidesOverlay zoom={guideViewportState.zoom} scrollY={guideViewportState.scrollY} guideSpacing={guideSpacing} />
               </div>
             </div>
-
-          </div>
+          </PublicSolvePromptReferenceLayer>
         </div>
       </div>
 

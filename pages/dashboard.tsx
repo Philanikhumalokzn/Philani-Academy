@@ -13,7 +13,7 @@ import AppFooter from '../components/AppFooter'
 import HandwritingNormalizationOverlay from '../components/HandwritingNormalizationOverlay'
 import MathKeyboardOverlay from '../components/MathKeyboardOverlay'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
-import { PublicSolveCanvasViewer, PublicSolveComposer, normalizePublicSolveScene, type PublicSolveScene } from '../components/PublicSolveCanvas'
+import { PublicSolveCanvasViewer, PublicSolveComposer, PublicSolvePromptReferenceLayer, normalizePublicSolveScene, type PublicSolveScene } from '../components/PublicSolveCanvas'
 import TaskManageMenu from '../components/TaskManageMenu'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
 import ScriptPhotosEditor from '../components/ScriptPhotosEditor'
@@ -15703,18 +15703,26 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </div>
               </div>
               <div className="min-h-0 flex-1">
-                <StackedCanvasWindow
-                  isVisible
-                  gradeLabel={activeGradeLabel}
-                  roomId={`post-compose:${postTypedSolveOverlay.postId}:${currentViewerId || 'anon'}`}
-                  userId={currentViewerId || 'anon'}
-                  userDisplayName={currentViewerPostAuthor.name}
-                  canOrchestrateLesson={false}
-                  roleProfile={currentLessonRoleProfile}
-                  forceEditable
-                  initialComposedLatex={postTypedSolveOverlay.initialLatex || ''}
-                  onComposedLatexChange={setPostTypedSolveLatex}
-                />
+                <PublicSolvePromptReferenceLayer
+                  title={postTypedSolveOverlay.title || 'Post'}
+                  prompt={postTypedSolveOverlay.prompt || ''}
+                  imageUrl={postTypedSolveOverlay.imageUrl || null}
+                  authorName={postTypedSolveOverlay.authorName || null}
+                  authorAvatarUrl={postTypedSolveOverlay.authorAvatarUrl || null}
+                >
+                  <StackedCanvasWindow
+                    isVisible
+                    gradeLabel={activeGradeLabel}
+                    roomId={`post-compose:${postTypedSolveOverlay.postId}:${currentViewerId || 'anon'}`}
+                    userId={currentViewerId || 'anon'}
+                    userDisplayName={currentViewerPostAuthor.name}
+                    canOrchestrateLesson={false}
+                    roleProfile={currentLessonRoleProfile}
+                    forceEditable
+                    initialComposedLatex={postTypedSolveOverlay.initialLatex || ''}
+                    onComposedLatexChange={setPostTypedSolveLatex}
+                  />
+                </PublicSolvePromptReferenceLayer>
               </div>
             </div>
             {postSolveError ? (

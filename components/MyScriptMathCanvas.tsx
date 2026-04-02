@@ -927,7 +927,9 @@ type MyScriptMathCanvasProps = {
   defaultOrientation?: CanvasOrientation
   overlayControlsHandleRef?: Ref<OverlayControlsHandle>
   onOverlayChromeVisibilityChange?: (visible: boolean) => void
+  initialComposedLatex?: string
   onLatexOutputChange?: (latex: string) => void
+  onComposedLatexChange?: (latex: string) => void
   onRequestVideoOverlay?: () => void
   lessonAuthoring?: { phaseKey: string; pointId: string }
 }
@@ -2565,7 +2567,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOrchestrateLesson: legacyCanOrchestrateLesson, roleProfile, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, onLatexOutputChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps): React.JSX.Element => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOrchestrateLesson: legacyCanOrchestrateLesson, roleProfile, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, initialComposedLatex, onLatexOutputChange, onComposedLatexChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps): React.JSX.Element => {
   const lessonRoleProfile = useMemo(() => {
     if (roleProfile) return roleProfile
     return createLessonRoleProfile({ platformRole: legacyCanOrchestrateLesson ? 'teacher' : 'learner' })
@@ -3715,6 +3717,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (typeof onLatexOutputChange !== 'function') return
     onLatexOutputChange(latexOutput)
   }, [latexOutput, onLatexOutputChange])
+
+  useEffect(() => {
+    if (initialQuiz || isAssignmentView) return
+    const seedLatex = typeof initialComposedLatex === 'string' ? initialComposedLatex.trim() : ''
+    setLatexOutput(seedLatex)
+    latexOutputRef.current = seedLatex
+  }, [initialComposedLatex, initialQuiz, isAssignmentView])
 
   const isStudentView = !canOrchestrateLesson
   const isQuizMode = Boolean(quizMode)
@@ -13235,6 +13244,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   useEffect(() => {
     latexRenderSourceRef.current = latexRenderSource || ''
   }, [latexRenderSource])
+
+  useEffect(() => {
+    if (typeof onComposedLatexChange !== 'function') return
+    onComposedLatexChange(latexRenderSource)
+  }, [latexRenderSource, onComposedLatexChange])
 
   // In stacked (split) mode, recognition can briefly report an empty LaTeX string after each stroke.
   // If we render that directly, the top panel flashes the placeholder message. Keep the last non-empty

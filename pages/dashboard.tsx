@@ -576,6 +576,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     authorName?: string | null
     authorAvatarUrl?: string | null
     initialScene?: any | null
+    initialLatex?: string | null
     postRecord?: any | null
   }
 
@@ -1060,7 +1061,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [lessonSolveOverlay, setLessonSolveOverlay] = useState<null | { sessionId: string; threadKey: string; title: string; prompt: string; imageUrl?: string | null; initialScene?: any | null }>(null)
   const [lessonSolveSubmitting, setLessonSolveSubmitting] = useState(false)
   const [lessonSolveError, setLessonSolveError] = useState<string | null>(null)
+  const [postSolveModeOverlay, setPostSolveModeOverlay] = useState<PostSolveOverlayState | null>(null)
   const [postSolveOverlay, setPostSolveOverlay] = useState<PostSolveOverlayState | null>(null)
+  const [postTypedSolveOverlay, setPostTypedSolveOverlay] = useState<PostSolveOverlayState | null>(null)
+  const [postTypedSolveLatex, setPostTypedSolveLatex] = useState('')
   const [postSolveSubmitting, setPostSolveSubmitting] = useState(false)
   const [postSolveError, setPostSolveError] = useState<string | null>(null)
   const [postSolvePreviewOverlay, setPostSolvePreviewOverlay] = useState<PostSolvePreviewState | null>(null)
@@ -6387,7 +6391,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               options.onOwnPostEditSolution(response)
                               return
                             }
-                            void openPostSolveComposer(item, { initialScene: response?.excalidrawScene || null })
+                            void openPostSolveComposer(item, {
+                              initialScene: response?.excalidrawScene || null,
+                              initialLatex: typeof response?.latex === 'string' ? response.latex : '',
+                            })
                           }}
                         >
                           Edit solution
@@ -7978,7 +7985,25 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [pendingFeedThreadJumpKey])
 
-  const openPostSolveComposer = useCallback(async (post: any, options?: { initialScene?: any | null }) => {
+  const openHandwrittenPostSolveComposer = useCallback((draft: PostSolveOverlayState | null) => {
+    if (!draft) return
+    setPostSolveModeOverlay(null)
+    setPostTypedSolveOverlay(null)
+    setPostSolveError(null)
+    setPostSolveOverlay(draft)
+  }, [])
+
+  const openTypedPostSolveComposer = useCallback((draft: PostSolveOverlayState | null) => {
+    if (!draft) return
+    setPostSolveModeOverlay(null)
+    setPostSolvePreviewOverlay(null)
+    setPostSolveOverlay(null)
+    setPostSolveError(null)
+    setPostTypedSolveLatex(typeof draft.initialLatex === 'string' ? draft.initialLatex.trim() : '')
+    setPostTypedSolveOverlay(draft)
+  }, [])
+
+  const openPostSolveComposer = useCallback(async (post: any, options?: { initialScene?: any | null; initialLatex?: string | null }) => {
     const postId = String(post?.id || '')
     const threadKey = typeof post?.threadKey === 'string' ? post.threadKey : `post:${postId}`
     if (!postId || !threadKey) return
@@ -8001,19 +8026,26 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     ).trim()
 
     setPostSolveError(null)
+    setPostSolvePreviewOverlay(null)
     let initialScene = options?.initialScene ?? null
+    let initialLatex = typeof options?.initialLatex === 'string' ? options.initialLatex.trim() : ''
     if (!initialScene) {
       try {
         const responses = await fetchPublicThreadResponses(threadKey)
         const effectiveCurrentUserId = String(currentUserId || viewerId || '')
         const mine = responses.find((response: any) => String(response?.userId || '') === effectiveCurrentUserId)
         initialScene = mine?.excalidrawScene || null
+        if (!initialLatex) {
+          initialLatex = typeof mine?.latex === 'string' ? mine.latex.trim() : ''
+        }
       } catch {
         // ignore prefill failures and still open the composer
       }
     }
 
-    setPostSolveOverlay({
+    setPostTypedSolveOverlay(null)
+    setPostSolveOverlay(null)
+    setPostSolveModeOverlay({
       postId,
       threadKey,
       title: String(post?.title || 'Post'),
@@ -8022,6 +8054,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       authorName,
       authorAvatarUrl,
       initialScene,
+      initialLatex,
       postRecord: post,
     })
   }, [currentUserId, fetchPublicThreadResponses, viewerId])
@@ -8082,6 +8115,29 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setPostSolvePreviewOverlay((prev) => (prev ? { ...prev, draftScene: scene } : prev))
   }, [])
 
+  const applyOwnPostResponseToFeeds = useCallback((draft: Pick<PostSolveOverlayState, 'postId'>, responseData: any) => {
+    setStudentFeedPosts((prev: any[]) => (Array.isArray(prev)
+      ? prev.map((item) => getDashboardItemKey(item) === `post:${draft.postId}`
+        ? {
+          ...(item as any),
+          hasOwnResponse: true,
+          ownResponse: responseData || (item as any)?.ownResponse || null,
+          solutionCount: Math.max(1, Number((item as any)?.solutionCount || 0) + ((item as any)?.hasOwnResponse ? 0 : 1)),
+        }
+        : item)
+      : prev))
+    setTimelineChallenges((prev: any[]) => (Array.isArray(prev)
+      ? prev.map((item) => getDashboardItemKey(item) === `post:${draft.postId}`
+        ? {
+          ...(item as any),
+          hasOwnResponse: true,
+          ownResponse: responseData || (item as any)?.ownResponse || null,
+          solutionCount: Math.max(1, Number((item as any)?.solutionCount || 0) + ((item as any)?.hasOwnResponse ? 0 : 1)),
+        }
+        : item)
+      : prev))
+  }, [])
+
   const submitPostSolve = useCallback(async (scene: any) => {
     const activeDraft = postSolveOverlay || postSolvePreviewOverlay?.draft || null
     if (!activeDraft?.postId || !activeDraft?.threadKey) return
@@ -8109,26 +8165,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         rememberInteractiveViewportScenes([{ id: data.id, excalidrawScene: scene }])
       }
 
-      setStudentFeedPosts((prev: any[]) => (Array.isArray(prev)
-        ? prev.map((item) => getDashboardItemKey(item) === `post:${activeDraft.postId}`
-          ? {
-            ...(item as any),
-            hasOwnResponse: true,
-            ownResponse: data || (item as any)?.ownResponse || null,
-            solutionCount: Math.max(1, Number((item as any)?.solutionCount || 0) + ((item as any)?.hasOwnResponse ? 0 : 1)),
-          }
-          : item)
-        : prev))
-      setTimelineChallenges((prev: any[]) => (Array.isArray(prev)
-        ? prev.map((item) => getDashboardItemKey(item) === `post:${activeDraft.postId}`
-          ? {
-            ...(item as any),
-            hasOwnResponse: true,
-            ownResponse: data || (item as any)?.ownResponse || null,
-            solutionCount: Math.max(1, Number((item as any)?.solutionCount || 0) + ((item as any)?.hasOwnResponse ? 0 : 1)),
-          }
-          : item)
-        : prev))
+      applyOwnPostResponseToFeeds(activeDraft, data)
 
       const overlayPost = {
         id: activeDraft.postId,
@@ -8147,7 +8184,54 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setPostSolveSubmitting(false)
     }
-  }, [openPostThread, postSolveOverlay, postSolvePreviewOverlay, rememberInteractiveViewportScenes])
+  }, [applyOwnPostResponseToFeeds, openPostThread, postSolveOverlay, postSolvePreviewOverlay, rememberInteractiveViewportScenes])
+
+  const submitTypedPostSolve = useCallback(async () => {
+    const activeDraft = postTypedSolveOverlay
+    const latex = String(postTypedSolveLatex || '').trim()
+    if (!activeDraft?.postId || !activeDraft?.threadKey) return
+    if (!latex) {
+      setPostSolveError('Write a typed response before submitting.')
+      return
+    }
+    setPostSolveSubmitting(true)
+    setPostSolveError(null)
+    try {
+      const res = await fetch(`/api/threads/${encodeURIComponent(activeDraft.threadKey)}/responses`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          latex,
+          quizId: activeDraft.threadKey,
+          quizLabel: activeDraft.title,
+          prompt: activeDraft.prompt,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to submit solve (${res.status})`)
+      }
+
+      applyOwnPostResponseToFeeds(activeDraft, data)
+      setPostTypedSolveOverlay(null)
+      setPostTypedSolveLatex('')
+
+      await openPostThread({
+        id: activeDraft.postId,
+        threadKey: activeDraft.threadKey,
+        title: activeDraft.title,
+        prompt: activeDraft.prompt,
+        imageUrl: activeDraft.imageUrl || null,
+        authorName: activeDraft.authorName || null,
+        authorAvatarUrl: activeDraft.authorAvatarUrl || null,
+      }, { forceOpen: true })
+    } catch (err: any) {
+      setPostSolveError(err?.message || 'Failed to submit solve')
+    } finally {
+      setPostSolveSubmitting(false)
+    }
+  }, [applyOwnPostResponseToFeeds, openPostThread, postTypedSolveLatex, postTypedSolveOverlay])
 
   const openLessonSolveComposer = useCallback((sessionId: string, options?: { initialScene?: any | null }) => {
     if (!sessionId) return
@@ -15236,6 +15320,57 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </OverlayPortal>
       )}
 
+      {postSolveModeOverlay && (
+        <OverlayPortal>
+          <div
+            className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.58)] backdrop-blur-sm p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Choose solve mode"
+          >
+            <div className="mx-auto flex min-h-full max-w-xl items-center justify-center">
+              <div className="w-full rounded-[28px] border border-white/15 bg-[#07111f] p-6 text-white shadow-[0_30px_80px_rgba(2,6,23,0.36)] sm:p-8">
+                <div className="space-y-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-sky-200/80">Solve This Post</div>
+                  <h2 className="text-2xl font-semibold text-white">Choose how you'd like to write your response</h2>
+                  <p className="text-sm leading-6 text-white/70">Handwritten keeps the current canvas flow. Typed opens the full keyboard workspace in this post context.</p>
+                </div>
+                <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    className="rounded-3xl border border-white/15 bg-white/6 p-5 text-left transition hover:border-sky-300/50 hover:bg-white/10"
+                    onClick={() => openHandwrittenPostSolveComposer(postSolveModeOverlay)}
+                  >
+                    <div className="text-base font-semibold text-white">Handwritten</div>
+                    <div className="mt-2 text-sm leading-6 text-white/70">Use the existing public solve canvas with sketching, annotation, and preview.</div>
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-3xl border border-sky-300/30 bg-sky-400/10 p-5 text-left transition hover:border-sky-200/60 hover:bg-sky-400/15"
+                    onClick={() => openTypedPostSolveComposer(postSolveModeOverlay)}
+                  >
+                    <div className="text-base font-semibold text-white">Typed</div>
+                    <div className="mt-2 text-sm leading-6 text-white/70">Open the full math keyboard experience instead of an inline reply box.</div>
+                  </button>
+                </div>
+                <div className="mt-6 flex justify-end">
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      setPostSolveModeOverlay(null)
+                      setPostSolveError(null)
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      )}
+
       {postSolveOverlay && (
         <OverlayPortal>
           <div
@@ -15255,12 +15390,79 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 submitting={postSolveSubmitting}
                 onCancel={() => {
                   if (postSolveSubmitting) return
+                  setPostSolveModeOverlay(null)
                   setPostSolvePreviewOverlay(null)
                   setPostSolveOverlay(null)
                   setPostSolveError(null)
                 }}
                 onSubmit={submitPostSolve}
               />
+            </div>
+            {postSolveError ? (
+              <div className="pointer-events-none absolute left-4 right-4 top-4 z-[69] mx-auto max-w-3xl rounded-2xl border border-red-200 bg-red-50/95 px-4 py-3 text-sm font-medium text-red-700 shadow-[0_18px_40px_rgba(220,38,38,0.12)] backdrop-blur-xl">
+                {postSolveError}
+              </div>
+            ) : null}
+          </div>
+        </OverlayPortal>
+      )}
+
+      {postTypedSolveOverlay && (
+        <OverlayPortal>
+          <div
+            className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.7)] backdrop-blur-sm p-2 sm:p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Typed post response"
+          >
+            <div className="mx-auto flex h-full w-full max-w-7xl flex-col overflow-hidden rounded-[32px] border border-white/15 bg-[#030712] shadow-[0_30px_80px_rgba(2,6,23,0.36)]">
+              <div className="flex flex-col gap-4 border-b border-white/10 px-4 py-4 text-white sm:px-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0 space-y-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-sky-200/80">Typed Response</div>
+                    <div className="text-xl font-semibold text-white">{postTypedSolveOverlay.title || 'Post'}</div>
+                    {postTypedSolveOverlay.prompt ? (
+                      <p className="max-w-3xl text-sm leading-6 text-white/70">{postTypedSolveOverlay.prompt}</p>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        if (postSolveSubmitting) return
+                        setPostTypedSolveOverlay(null)
+                        setPostTypedSolveLatex('')
+                        setPostSolveError(null)
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => void submitTypedPostSolve()}
+                      disabled={postSolveSubmitting || !String(postTypedSolveLatex || '').trim()}
+                    >
+                      {postSolveSubmitting ? 'Posting...' : 'Post response'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="min-h-0 flex-1">
+                <StackedCanvasWindow
+                  isVisible
+                  gradeLabel={activeGradeLabel}
+                  roomId={`post-compose:${postTypedSolveOverlay.postId}:${currentViewerId || 'anon'}`}
+                  userId={currentViewerId || 'anon'}
+                  userDisplayName={currentViewerPostAuthor.name}
+                  canOrchestrateLesson={false}
+                  roleProfile={currentLessonRoleProfile}
+                  forceEditable
+                  initialComposedLatex={postTypedSolveOverlay.initialLatex || ''}
+                  onComposedLatexChange={setPostTypedSolveLatex}
+                />
+              </div>
             </div>
             {postSolveError ? (
               <div className="pointer-events-none absolute left-4 right-4 top-4 z-[69] mx-auto max-w-3xl rounded-2xl border border-red-200 bg-red-50/95 px-4 py-3 text-sm font-medium text-red-700 shadow-[0_18px_40px_rgba(220,38,38,0.12)] backdrop-blur-xl">
@@ -15293,7 +15495,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 className="btn btn-primary"
                 onClick={() => {
                   const ownResponse = postThreadResponses.find((response: any) => String(response?.userId || '') === String(currentUserId || viewerId || ''))
-                  void openPostSolveComposer(postThreadOverlay, { initialScene: ownResponse?.excalidrawScene || null })
+                  void openPostSolveComposer(postThreadOverlay, {
+                    initialScene: ownResponse?.excalidrawScene || null,
+                    initialLatex: typeof ownResponse?.latex === 'string' ? ownResponse.latex : '',
+                  })
                 }}
               >
                 {postThreadResponses.some((response: any) => String(response?.userId || '') === String(currentUserId || viewerId || '')) ? 'Edit solution' : 'Share solution'}
@@ -15324,6 +15529,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     const responseUserId = response?.user?.id ? String(response.user.id) : null
                     const responseCreatedAt = response?.updatedAt || response?.createdAt
                     const isMine = String(response?.userId || '') === String(currentUserId || viewerId || '')
+                    const responseLatex = String(response?.latex || '').trim()
+                    const responseLatexSteps = responseLatex ? splitLatexIntoSteps(responseLatex) : []
                     return (
                       <div key={String(response?.id || Math.random())} className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
                         <div className="flex items-center justify-between gap-3">
@@ -15343,7 +15550,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             <button
                               type="button"
                               className="btn btn-ghost text-xs"
-                              onClick={() => void openPostSolveComposer(postThreadOverlay, { initialScene: response?.excalidrawScene || null })}
+                              onClick={() => void openPostSolveComposer(postThreadOverlay, {
+                                initialScene: response?.excalidrawScene || null,
+                                initialLatex: typeof response?.latex === 'string' ? response.latex : '',
+                              })}
                             >
                               Edit
                             </button>
@@ -15356,6 +15566,24 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               ? (scene) => queueInteractiveViewportSave(String(postThreadOverlay?.threadKey || ''), String(response.id), scene)
                               : undefined}
                           />
+                        ) : responseLatex ? (
+                          <div className="space-y-2 rounded-2xl border border-white/10 bg-black/10 p-4 text-white/90">
+                            {responseLatexSteps.length > 1 ? responseLatexSteps.map((step: string, stepIndex: number) => {
+                              const stepHtml = renderKatexDisplayHtml(step)
+                              if (!stepHtml) return null
+                              return (
+                                <div
+                                  key={`post-response-step-${String(response?.id || 'draft')}-${stepIndex}`}
+                                  className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 leading-relaxed"
+                                  dangerouslySetInnerHTML={{ __html: stepHtml }}
+                                />
+                              )
+                            }) : (() => {
+                              const latexHtml = renderKatexDisplayHtml(responseLatex)
+                              if (!latexHtml) return <div className="text-sm text-white/60">Unable to render typed response.</div>
+                              return <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
+                            })()}
+                          </div>
                         ) : (
                           <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-white/70">No canvas attached.</div>
                         )}

@@ -588,6 +588,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     error: string | null
   }
 
+  type LessonSolveOverlayState = {
+    sessionId: string
+    threadKey: string
+    title: string
+    prompt: string
+    imageUrl?: string | null
+    initialScene?: any | null
+    initialLatex?: string | null
+  }
+
   const LESSON_AUTHORING_STORAGE_KEY = 'philani:lesson-authoring:draft-v2'
   const buildLessonAuthoringBoardId = (kind: 'diagram' | 'latex' | 'canvas', phaseKey: LessonPhaseKey, pointId: string) => {
     return `lesson-author-${kind}-${phaseKey}-${pointId}`
@@ -1058,7 +1068,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [myResponses, setMyResponses] = useState<any[]>([])
   const [myResponsesLoading, setMyResponsesLoading] = useState(false)
   const [myResponsesError, setMyResponsesError] = useState<string | null>(null)
-  const [lessonSolveOverlay, setLessonSolveOverlay] = useState<null | { sessionId: string; threadKey: string; title: string; prompt: string; imageUrl?: string | null; initialScene?: any | null }>(null)
+  const [lessonSolveModeOverlay, setLessonSolveModeOverlay] = useState<LessonSolveOverlayState | null>(null)
+  const [lessonSolveOverlay, setLessonSolveOverlay] = useState<LessonSolveOverlayState | null>(null)
+  const [lessonTypedSolveOverlay, setLessonTypedSolveOverlay] = useState<LessonSolveOverlayState | null>(null)
+  const [lessonTypedSolveLatex, setLessonTypedSolveLatex] = useState('')
   const [lessonSolveSubmitting, setLessonSolveSubmitting] = useState(false)
   const [lessonSolveError, setLessonSolveError] = useState<string | null>(null)
   const [postSolveModeOverlay, setPostSolveModeOverlay] = useState<PostSolveOverlayState | null>(null)
@@ -8233,17 +8246,37 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [applyOwnPostResponseToFeeds, openPostThread, postTypedSolveLatex, postTypedSolveOverlay])
 
-  const openLessonSolveComposer = useCallback((sessionId: string, options?: { initialScene?: any | null }) => {
+  const openHandwrittenLessonSolveComposer = useCallback((draft: LessonSolveOverlayState | null) => {
+    if (!draft) return
+    setLessonSolveModeOverlay(null)
+    setLessonTypedSolveOverlay(null)
+    setLessonSolveError(null)
+    setLessonSolveOverlay(draft)
+  }, [])
+
+  const openTypedLessonSolveComposer = useCallback((draft: LessonSolveOverlayState | null) => {
+    if (!draft) return
+    setLessonSolveModeOverlay(null)
+    setLessonSolveOverlay(null)
+    setLessonSolveError(null)
+    setLessonTypedSolveLatex(typeof draft.initialLatex === 'string' ? draft.initialLatex.trim() : '')
+    setLessonTypedSolveOverlay(draft)
+  }, [])
+
+  const openLessonSolveComposer = useCallback((sessionId: string, options?: { initialScene?: any | null; initialLatex?: string | null }) => {
     if (!sessionId) return
     const sessionRecord = sessionById.get(String(sessionId))
     setLessonSolveError(null)
-    setLessonSolveOverlay({
+    setLessonTypedSolveOverlay(null)
+    setLessonSolveOverlay(null)
+    setLessonSolveModeOverlay({
       sessionId: String(sessionId),
       threadKey: buildLessonResponseThreadKey(sessionId),
       title: String(sessionRecord?.title || 'Lesson'),
       prompt: String((sessionRecord as any)?.description || sessionRecord?.title || 'Share your solve for this lesson.'),
       imageUrl: null,
       initialScene: options?.initialScene ?? null,
+      initialLatex: typeof options?.initialLatex === 'string' ? options.initialLatex.trim() : '',
     })
   }, [buildLessonResponseThreadKey, sessionById])
 
@@ -8274,6 +8307,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         throw new Error(data?.message || `Failed to submit solve (${res.status})`)
       }
       await fetchMyResponses(lessonSolveOverlay.sessionId)
+      setLessonSolveModeOverlay(null)
       setLessonSolveOverlay(null)
       openSessionDetails([lessonSolveOverlay.sessionId], 0, 'responses')
     } catch (err: any) {
@@ -8282,6 +8316,44 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setLessonSolveSubmitting(false)
     }
   }, [fetchMyResponses, lessonSolveOverlay, openSessionDetails])
+
+  const submitTypedLessonSolve = useCallback(async () => {
+    if (!lessonTypedSolveOverlay?.sessionId) return
+    const latex = String(lessonTypedSolveLatex || '').trim()
+    if (!latex) {
+      setLessonSolveError('Write a typed response before submitting.')
+      return
+    }
+    setLessonSolveSubmitting(true)
+    setLessonSolveError(null)
+    try {
+      const res = await fetch(`/api/threads/${encodeURIComponent(lessonTypedSolveOverlay.threadKey)}/responses`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          latex,
+          studentText: null,
+          quizId: lessonTypedSolveOverlay.threadKey,
+          quizLabel: lessonTypedSolveOverlay.title,
+          prompt: lessonTypedSolveOverlay.prompt,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to submit solve (${res.status})`)
+      }
+      await fetchMyResponses(lessonTypedSolveOverlay.sessionId)
+      setLessonSolveModeOverlay(null)
+      setLessonTypedSolveOverlay(null)
+      setLessonTypedSolveLatex('')
+      openSessionDetails([lessonTypedSolveOverlay.sessionId], 0, 'responses')
+    } catch (err: any) {
+      setLessonSolveError(err?.message || 'Failed to submit solve')
+    } finally {
+      setLessonSolveSubmitting(false)
+    }
+  }, [fetchMyResponses, lessonTypedSolveLatex, lessonTypedSolveOverlay, openSessionDetails])
 
   const sessionDetailsSessionId = sessionDetailsIds[sessionDetailsIndex] || null
   const sessionDetailsSession = sessionDetailsSessionId ? sessionById.get(sessionDetailsSessionId) : null
@@ -10293,7 +10365,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               <button
                                 type="button"
                                 className="text-xs font-semibold text-[#1877f2] hover:text-[#176ad8] disabled:opacity-50"
-                                onClick={() => openLessonSolveComposer(expandedSessionId, { initialScene: ownResponse?.excalidrawScene || null })}
+                                onClick={() => openLessonSolveComposer(expandedSessionId, {
+                                  initialScene: ownResponse?.excalidrawScene || null,
+                                  initialLatex: typeof ownResponse?.latex === 'string' ? ownResponse.latex : '',
+                                })}
                                 disabled={myResponsesLoading}
                               >
                                 {ownResponse ? 'Edit your solution' : 'Share a solution'}
@@ -10336,7 +10411,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                   <button
                                     type="button"
                                     className="shrink-0 text-xs font-semibold text-[#1877f2] hover:text-[#176ad8]"
-                                    onClick={() => openLessonSolveComposer(String(expandedSessionId || ''), { initialScene: r?.excalidrawScene || null })}
+                                    onClick={() => openLessonSolveComposer(String(expandedSessionId || ''), {
+                                      initialScene: r?.excalidrawScene || null,
+                                      initialLatex: typeof r?.latex === 'string' ? r.latex : '',
+                                    })}
                                   >
                                     Edit
                                   </button>
@@ -15288,6 +15366,57 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </OverlayPortal>
       )}
 
+      {lessonSolveModeOverlay && (
+        <OverlayPortal>
+          <div
+            className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.58)] backdrop-blur-sm p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Choose quiz solve mode"
+          >
+            <div className="mx-auto flex min-h-full max-w-xl items-center justify-center">
+              <div className="w-full rounded-[28px] border border-white/15 bg-[#07111f] p-6 text-white shadow-[0_30px_80px_rgba(2,6,23,0.36)] sm:p-8">
+                <div className="space-y-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-sky-200/80">Quiz Solution</div>
+                  <h2 className="text-2xl font-semibold text-white">Choose how you'd like to write your response</h2>
+                  <p className="text-sm leading-6 text-white/70">Handwritten keeps the current solve canvas. Typed opens the full keyboard workspace for this quiz.</p>
+                </div>
+                <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    className="rounded-3xl border border-white/15 bg-white/6 p-5 text-left transition hover:border-sky-300/50 hover:bg-white/10"
+                    onClick={() => openHandwrittenLessonSolveComposer(lessonSolveModeOverlay)}
+                  >
+                    <div className="text-base font-semibold text-white">Handwritten</div>
+                    <div className="mt-2 text-sm leading-6 text-white/70">Use the existing solve canvas and share a handwritten solution.</div>
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-3xl border border-sky-300/30 bg-sky-400/10 p-5 text-left transition hover:border-sky-200/60 hover:bg-sky-400/15"
+                    onClick={() => openTypedLessonSolveComposer(lessonSolveModeOverlay)}
+                  >
+                    <div className="text-base font-semibold text-white">Typed</div>
+                    <div className="mt-2 text-sm leading-6 text-white/70">Open the full math keyboard instead of a small inline field.</div>
+                  </button>
+                </div>
+                <div className="mt-6 flex justify-end">
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      setLessonSolveModeOverlay(null)
+                      setLessonSolveError(null)
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </OverlayPortal>
+      )}
+
       {lessonSolveOverlay && (
         <OverlayPortal>
           <div
@@ -15305,11 +15434,78 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 submitting={lessonSolveSubmitting}
                 onCancel={() => {
                   if (lessonSolveSubmitting) return
+                  setLessonSolveModeOverlay(null)
                   setLessonSolveOverlay(null)
                   setLessonSolveError(null)
                 }}
                 onSubmit={submitLessonSolve}
               />
+            </div>
+            {lessonSolveError ? (
+              <div className="pointer-events-none absolute left-4 right-4 top-4 z-[69] mx-auto max-w-3xl rounded-2xl border border-red-200 bg-red-50/95 px-4 py-3 text-sm font-medium text-red-700 shadow-[0_18px_40px_rgba(220,38,38,0.12)] backdrop-blur-xl">
+                {lessonSolveError}
+              </div>
+            ) : null}
+          </div>
+        </OverlayPortal>
+      )}
+
+      {lessonTypedSolveOverlay && (
+        <OverlayPortal>
+          <div
+            className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.7)] backdrop-blur-sm p-2 sm:p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Typed quiz response"
+          >
+            <div className="mx-auto flex h-full w-full max-w-7xl flex-col overflow-hidden rounded-[32px] border border-white/15 bg-[#030712] shadow-[0_30px_80px_rgba(2,6,23,0.36)]">
+              <div className="flex flex-col gap-4 border-b border-white/10 px-4 py-4 text-white sm:px-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0 space-y-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-sky-200/80">Typed Quiz Response</div>
+                    <div className="text-xl font-semibold text-white">{lessonTypedSolveOverlay.title || 'Lesson'}</div>
+                    {lessonTypedSolveOverlay.prompt ? (
+                      <p className="max-w-3xl text-sm leading-6 text-white/70">{lessonTypedSolveOverlay.prompt}</p>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        if (lessonSolveSubmitting) return
+                        setLessonTypedSolveOverlay(null)
+                        setLessonTypedSolveLatex('')
+                        setLessonSolveError(null)
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => void submitTypedLessonSolve()}
+                      disabled={lessonSolveSubmitting || !String(lessonTypedSolveLatex || '').trim()}
+                    >
+                      {lessonSolveSubmitting ? 'Posting...' : 'Post response'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="min-h-0 flex-1">
+                <StackedCanvasWindow
+                  isVisible
+                  gradeLabel={activeGradeLabel}
+                  roomId={`lesson-compose:${lessonTypedSolveOverlay.sessionId}:${currentViewerId || 'anon'}`}
+                  userId={currentViewerId || 'anon'}
+                  userDisplayName={currentViewerPostAuthor.name}
+                  canOrchestrateLesson={false}
+                  roleProfile={currentLessonRoleProfile}
+                  forceEditable
+                  initialComposedLatex={lessonTypedSolveOverlay.initialLatex || ''}
+                  onComposedLatexChange={setLessonTypedSolveLatex}
+                />
+              </div>
             </div>
             {lessonSolveError ? (
               <div className="pointer-events-none absolute left-4 right-4 top-4 z-[69] mx-auto max-w-3xl rounded-2xl border border-red-200 bg-red-50/95 px-4 py-3 text-sm font-medium text-red-700 shadow-[0_18px_40px_rgba(220,38,38,0.12)] backdrop-blur-xl">

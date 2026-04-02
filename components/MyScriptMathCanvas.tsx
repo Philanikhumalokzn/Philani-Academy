@@ -4210,16 +4210,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const useAdminStepComposer = Boolean(
     useStackedStudentLayout
     && (canOrchestrateLesson || hasBoardWriteRights())
+    && !isAssignmentView
+    && !isChallengeBoard
     // Do not enable the admin step-composer on single-user canvases (assignments/challenges).
     // Those flows use `studentCommittedLatex` + `latexOutput` and should append steps as new lines.
-    && (canOrchestrateLesson || (!forceEditableForAssignment && !forceEditable))
+    && (canOrchestrateLesson || !forceEditable)
   )
   useEffect(() => {
     useAdminStepComposerRef.current = useAdminStepComposer
   }, [useAdminStepComposer])
 
-  const allowStudentTextTray = !canOrchestrateLesson && (isAssignmentView || isChallengeBoard)
-  const useStudentStepComposer = !canOrchestrateLesson && useStackedStudentLayout && (isAssignmentView || isChallengeBoard)
+  const allowStudentTextTray = (!canOrchestrateLesson || isAssignmentSolutionAuthoring) && (isAssignmentView || isChallengeBoard)
+  const useStudentStepComposer = useStackedStudentLayout && (
+    (!canOrchestrateLesson && (isAssignmentView || isChallengeBoard))
+    || (isAssignmentSolutionAuthoring && isAssignmentView)
+  )
   const showTextIcon = useAdminStepComposer || useStudentStepComposer || allowStudentTextTray
 
   const [selectedClientId, setSelectedClientId] = useState<string>('all')
@@ -4413,11 +4418,34 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [])
 
-  type StudentStep = { latex: string; symbols: any[] | null; jiix?: string | null; rawStrokes?: any[] | null; strokeGroups?: any[] | null }
+  type StudentStep = { latex: string; symbols: any[] | null; jiix?: string | null; rawStrokes?: any[] | null; strokeGroups?: any[] | null; createdAt?: string | number; updatedAt?: string | number }
   const [studentSteps, setStudentSteps] = useState<StudentStep[]>([])
   const [studentEditIndex, setStudentEditIndex] = useState<number | null>(null)
   const [keyboardSteps, setKeyboardSteps] = useState<NotebookStepRecord[]>([])
   const [keyboardEditIndex, setKeyboardEditIndex] = useState<number | null>(null)
+  const parseCommittedStudentSteps = useCallback((source: string): StudentStep[] => {
+    const committed = (source || '').trim()
+    if (!committed) return []
+    return committed
+      .replace(/\r\n/g, '\n')
+      .replace(/\\/g, '\n')
+      .split('\n')
+      .map(step => step.trim())
+      .filter(Boolean)
+      .map(latex => ({ latex, symbols: null, jiix: null, rawStrokes: null, strokeGroups: null }))
+  }, [])
+  const derivedStudentCommittedSteps = useMemo(
+    () => parseCommittedStudentSteps(studentCommittedLatex),
+    [parseCommittedStudentSteps, studentCommittedLatex]
+  )
+  useEffect(() => {
+    if (!useStudentStepComposer) return
+    if (recognitionEngine !== 'keyboard') return
+    if (studentSteps.length > 0) return
+    if (!derivedStudentCommittedSteps.length) return
+
+    setStudentSteps(derivedStudentCommittedSteps)
+  }, [derivedStudentCommittedSteps, recognitionEngine, studentSteps.length, useStudentStepComposer])
   const studentEditIndexRef = useRef<number | null>(null)
   useEffect(() => {
     studentEditIndexRef.current = studentEditIndex
@@ -4748,7 +4776,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [adminSteps, clearMathEditorForLocalReload, importStoredStepInk, syncMathEditorGeometryForLocalReload, useAdminStepComposer, useStackedStudentLayout])
 
   const loadStudentStepForEditing = useCallback(async (index: number) => {
-    if (index < 0 || index >= studentSteps.length) return
+    const sourceSteps = studentSteps.length ? studentSteps : derivedStudentCommittedSteps
+    if (index < 0 || index >= sourceSteps.length) return
+
+    if (recognitionEngineRef.current === 'keyboard') {
+      const stepLatex = sourceSteps[index]?.latex || ''
+      setTopPanelSelectedStep(index)
+      setStudentEditIndex(index)
+      setLatexOutput(stepLatex)
+      latexOutputRef.current = stepLatex
+      const caret = stepLatex.length
+      setKeyboardSelectionState({ start: caret, end: caret })
+      return
+    }
 
     const editor = editorInstanceRef.current
     if (!editor) return
@@ -4762,18 +4802,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       await syncMathEditorGeometryForLocalReload()
     }
 
-    const stepSymbols = studentSteps[index]?.symbols
-    const stepJiix = studentSteps[index]?.jiix || null
-    const stepLatex = studentSteps[index]?.latex || ''
+    const stepSymbols = sourceSteps[index]?.symbols
+    const stepJiix = sourceSteps[index]?.jiix || null
+    const stepLatex = sourceSteps[index]?.latex || ''
     activeStepEditBaselineRef.current = {
       symbols: Array.isArray(stepSymbols) ? JSON.parse(JSON.stringify(stepSymbols)) : null,
       jiix: stepJiix,
-      rawStrokes: Array.isArray(studentSteps[index]?.rawStrokes) ? JSON.parse(JSON.stringify(studentSteps[index]?.rawStrokes)) : null,
-      strokeGroups: Array.isArray(studentSteps[index]?.strokeGroups) ? JSON.parse(JSON.stringify(studentSteps[index]?.strokeGroups)) : null,
+      rawStrokes: Array.isArray(sourceSteps[index]?.rawStrokes) ? JSON.parse(JSON.stringify(sourceSteps[index]?.rawStrokes)) : null,
+      strokeGroups: Array.isArray(sourceSteps[index]?.strokeGroups) ? JSON.parse(JSON.stringify(sourceSteps[index]?.strokeGroups)) : null,
     }
     let symbolCount = 0
     try {
-      symbolCount = await importStoredStepInk(studentSteps[index])
+      symbolCount = await importStoredStepInk(sourceSteps[index])
     } catch (err) {
       console.warn('Failed to load step ink for editing', err)
     }
@@ -4811,7 +4851,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     setStudentEditIndex(index)
     setLatexOutput(stepLatex)
-  }, [clearMathEditorForLocalReload, importStoredStepInk, studentSteps, syncMathEditorGeometryForLocalReload, useStackedStudentLayout])
+  }, [clearMathEditorForLocalReload, derivedStudentCommittedSteps, importStoredStepInk, setKeyboardSelectionState, studentSteps, syncMathEditorGeometryForLocalReload, useStackedStudentLayout])
 
   const loadTopPanelStepForEditing = useCallback(async (index: number) => {
     if (useAdminStepComposer) {
@@ -4851,8 +4891,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (lockedOutRef.current) return
     activeStepEditBaselineRef.current = null
 
-    if (useAdminStepComposer && recognitionEngineRef.current === 'keyboard') {
-      setKeyboardEditIndex(null)
+    if (recognitionEngineRef.current === 'keyboard' && (useAdminStepComposer || useStudentStepComposer)) {
+      if (useAdminStepComposer) {
+        setKeyboardEditIndex(null)
+      }
+      if (useStudentStepComposer) {
+        setStudentEditIndex(null)
+      }
       setLatexOutput('')
       latexOutputRef.current = ''
       if (useAdminStepComposerRef.current && hasControllerRights()) {
@@ -4878,15 +4923,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }, [clearTopPanelComposerCanvas, clearTopPanelSelection, hasControllerRights, setKeyboardSelectionState, useAdminStepComposer, useStudentStepComposer])
 
   const duplicateTopPanelStepAsNew = useCallback(async (index: number) => {
+    const studentSourceSteps = studentSteps.length ? studentSteps : derivedStudentCommittedSteps
     const sourceStep = useAdminStepComposer
       ? (recognitionEngineRef.current === 'keyboard' ? keyboardSteps[index] : adminSteps[index])
-      : (useStudentStepComposer ? studentSteps[index] : null)
+      : (useStudentStepComposer ? studentSourceSteps[index] : null)
     if (!sourceStep) return
     if (lockedOutRef.current) return
     activeStepEditBaselineRef.current = null
 
-    if (useAdminStepComposer && recognitionEngineRef.current === 'keyboard') {
-      setKeyboardEditIndex(null)
+    if (recognitionEngineRef.current === 'keyboard' && (useAdminStepComposer || useStudentStepComposer)) {
+      if (useAdminStepComposer) {
+        setKeyboardEditIndex(null)
+      }
+      if (useStudentStepComposer) {
+        setStudentEditIndex(null)
+      }
       setTopPanelSelectedStep(index)
       const nextLatex = sourceStep.latex || ''
       setLatexOutput(nextLatex)
@@ -4920,12 +4971,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         console.warn('Failed to duplicate step ink into composer', err)
       }
     }
-  }, [adminSteps, clearTopPanelComposerCanvas, hasControllerRights, importStoredStepInk, keyboardSteps, setKeyboardSelectionState, studentSteps, useAdminStepComposer, useStudentStepComposer])
+  }, [adminSteps, clearTopPanelComposerCanvas, derivedStudentCommittedSteps, hasControllerRights, importStoredStepInk, keyboardSteps, setKeyboardSelectionState, studentSteps, useAdminStepComposer, useStudentStepComposer])
 
   const deleteTopPanelStep = useCallback(async (index: number) => {
+    const studentSourceSteps = studentSteps.length ? studentSteps : derivedStudentCommittedSteps
     const sourceSteps = useAdminStepComposer
       ? (recognitionEngineRef.current === 'keyboard' ? keyboardSteps : adminSteps)
-      : (useStudentStepComposer ? studentSteps : [])
+      : (useStudentStepComposer ? studentSourceSteps : [])
     if (!sourceSteps.length) return
     if (index < 0 || index >= sourceSteps.length) return
 
@@ -4937,6 +4989,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const deletingAdminEditTarget = useAdminStepComposer && recognitionEngineRef.current !== 'keyboard' && adminEditIndex === index
     const deletingKeyboardEditTarget = useAdminStepComposer && recognitionEngineRef.current === 'keyboard' && keyboardEditIndex === index
     const deletingStudentEditTarget = useStudentStepComposer && studentEditIndex === index
+    const deletingKeyboardStudentEditTarget = useStudentStepComposer && recognitionEngineRef.current === 'keyboard' && studentEditIndex === index
 
     if (useAdminStepComposer && recognitionEngineRef.current === 'keyboard') {
       setKeyboardSteps(prev => prev.filter((_, stepIndex) => stepIndex !== index))
@@ -4974,6 +5027,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         if (prev === index) return null
         return prev > index ? prev - 1 : prev
       })
+      if (deletingKeyboardStudentEditTarget) {
+        setLatexOutput('')
+        latexOutputRef.current = ''
+        setKeyboardSelectionState({ start: 0, end: 0 })
+      }
     }
 
     setTopPanelSelectedStep(prev => {
@@ -4982,14 +5040,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return prev > index ? prev - 1 : prev
     })
 
-    if (deletingAdminEditTarget || deletingKeyboardEditTarget || deletingStudentEditTarget) {
+    if (deletingAdminEditTarget || deletingKeyboardEditTarget || deletingStudentEditTarget || deletingKeyboardStudentEditTarget) {
       setLatexOutput('')
       clearTopPanelSelection()
       if (recognitionEngineRef.current !== 'keyboard') {
         await clearTopPanelComposerCanvas()
       }
     }
-  }, [adminEditIndex, adminSteps, clearTopPanelComposerCanvas, clearTopPanelSelection, hasControllerRights, keyboardEditIndex, keyboardSteps, setKeyboardSelectionState, studentEditIndex, studentSteps, useAdminStepComposer, useStudentStepComposer])
+  }, [adminEditIndex, adminSteps, clearTopPanelComposerCanvas, clearTopPanelSelection, derivedStudentCommittedSteps, hasControllerRights, keyboardEditIndex, keyboardSteps, setKeyboardSelectionState, studentEditIndex, studentSteps, useAdminStepComposer, useStudentStepComposer])
 
   const [lessonScriptResolved, setLessonScriptResolved] = useState<any | null>(null)
   const [lessonScriptLoading, setLessonScriptLoading] = useState(false)
@@ -13293,16 +13351,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   const studentTopPanelStepItems = useMemo(() => {
     if (!useStudentStepComposer) return [] as TopPanelStepItem[]
-    if (!topPanelEditingMode) return [] as TopPanelStepItem[]
-    return studentSteps.map((s, index) => {
+    const sourceSteps = studentSteps.length ? studentSteps : derivedStudentCommittedSteps
+    const shouldShowCommittedKeyboardSteps = recognitionEngine === 'keyboard' && sourceSteps.length > 0
+    if (!topPanelEditingMode && !shouldShowCommittedKeyboardSteps) return [] as TopPanelStepItem[]
+    return sourceSteps.map((s, index) => {
       const latex = (studentEditIndex === index ? (latexOutput || '') : (s?.latex || '')).trimEnd()
       return { index, latex, isEditing: studentEditIndex === index }
     })
-  }, [latexOutput, studentEditIndex, studentSteps, topPanelEditingMode, useStudentStepComposer])
+  }, [derivedStudentCommittedSteps, latexOutput, recognitionEngine, studentEditIndex, studentSteps, topPanelEditingMode, useStudentStepComposer])
 
   const topPanelStepsPayload: TopPanelStepsPayload | null = useMemo(() => {
-    if (!topPanelEditingMode) return null
     if (useAdminStepComposer) {
+      if (!topPanelEditingMode) return null
       return {
         steps: adminTopPanelStepItems,
         selectedIndex: topPanelSelectedStep,
@@ -13311,6 +13371,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       }
     }
     if (useStudentStepComposer) {
+      if (!topPanelEditingMode && !(recognitionEngine === 'keyboard' && studentTopPanelStepItems.length > 0)) return null
       return {
         steps: studentTopPanelStepItems,
         selectedIndex: topPanelSelectedStep,
@@ -14793,16 +14854,59 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       alert('This quiz session is missing a session id (boardId).')
       return
     }
-    const editor = editorInstanceRef.current
-    if (!editor) return
-
     const forceSubmit = Boolean(opts?.forceSubmit)
     const skipConfirm = Boolean(opts?.skipConfirm)
 
     setQuizSubmitting(true)
     try {
+      const commitKeyboardStudentStep = (step: string) => {
+        const now = Date.now()
+        let nextCombined = ''
+        setStudentSteps(prev => {
+          const current = prev.length ? prev : parseCommittedStudentSteps(quizCombinedLatexRef.current || studentCommittedLatex)
+          const next = [...current]
+          const nextRecord: NotebookStepRecord = {
+            latex: step,
+            symbols: [],
+            jiix: null,
+            createdAt: studentEditIndex !== null && current[studentEditIndex]?.createdAt != null
+              ? current[studentEditIndex].createdAt
+              : now,
+            updatedAt: now,
+          }
+          if (studentEditIndex !== null && studentEditIndex >= 0 && studentEditIndex < next.length) {
+            next[studentEditIndex] = {
+              ...current[studentEditIndex],
+              ...nextRecord,
+            }
+          } else {
+            next.push(nextRecord)
+          }
+          nextCombined = next.map(s => s.latex).filter(Boolean).join(' \\ ')
+          return next
+        })
+        quizCombinedLatexRef.current = nextCombined
+        quizHasCommittedRef.current = Boolean(nextCombined)
+        setStudentCommittedLatex(nextCombined)
+        setStudentEditIndex(null)
+        if (typeof window !== 'undefined') {
+          window.setTimeout(() => {
+            setTopPanelEditingMode(true)
+          }, 360)
+        } else {
+          setTopPanelEditingMode(true)
+        }
+        activeStepEditBaselineRef.current = null
+        clearTopPanelSelection()
+        setLatexOutput('')
+        latexOutputRef.current = ''
+        setKeyboardSelectionState({ start: 0, end: 0 })
+      }
+
+      const editor = editorInstanceRef.current
+
       try {
-        if (typeof editor.waitForIdle === 'function') {
+        if (typeof editor?.waitForIdle === 'function') {
           await editor.waitForIdle()
         }
       } catch {}
@@ -14812,6 +14916,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       const symbolCount = countSymbols(snap?.symbols)
       const hasInk = symbolCount > 0
       const studentTextSnapshot = (studentQuizTextResponseRef.current || '').trim()
+      const keyboardDraft = normalizeStepLatex(latexOutputRef.current || latexOutput || '')
+      const isKeyboardStudentComposer = recognitionEngineRef.current === 'keyboard' && useStudentStepComposer
 
       const getStepLatex = async () => {
         let step = ''
@@ -14875,6 +14981,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         clearTopPanelSelection()
       }
 
+      if (isKeyboardStudentComposer && keyboardDraft && !forceSubmit) {
+        commitKeyboardStudentStep(keyboardDraft)
+        if (isAssignment || isChallengeBoard) return
+      }
+
       if (hasInk && !forceSubmit) {
         // First-stage send: commit this line into combined latex and clear bottom canvas.
         const step = await getStepLatex()
@@ -14918,6 +15029,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
             commitSnapshot ?? snap,
           )
         }
+      }
+
+      if (isKeyboardStudentComposer && keyboardDraft && forceSubmit) {
+        commitKeyboardStudentStep(keyboardDraft)
       }
 
       // Second-stage send: if blank, prompt to submit (only after at least one commit).
@@ -15146,7 +15261,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     } finally {
       setQuizSubmitting(false)
     }
-  }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, clearTopPanelSelection, exportLatexFromEngine, forceEditableForAssignment, getLatexFromEngineModel, hasWriteAccess, invalidatePendingLatexPreviewWork, latexOutput, normalizeStepLatex, playSnapSound, quizSubmitting, setQuizActiveState, studentEditIndex, studentSteps, updateControlState, userDisplayName, userId])
+  }, [applyPageSnapshot, assignmentSubmission, boardId, captureFullSnapshot, clearQuizCountdown, clearTopPanelSelection, exportLatexFromEngine, forceEditableForAssignment, getLatexFromEngineModel, hasWriteAccess, invalidatePendingLatexPreviewWork, latexOutput, normalizeStepLatex, parseCommittedStudentSteps, playSnapSound, quizSubmitting, setKeyboardSelectionState, setQuizActiveState, studentCommittedLatex, studentEditIndex, studentSteps, updateControlState, useStudentStepComposer, userDisplayName, userId])
 
   const handleSendStepClick = useCallback(async () => {
     if ((!canOrchestrateLesson || isAssignmentSolutionAuthoring) && (quizActiveRef.current || isAssignmentViewRef.current)) {

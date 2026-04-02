@@ -13115,6 +13115,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const shouldShowMiddleStripActionCluster = canUsePresenterMiddleStripTools || isStudentSendContext
   const areMiddleStripEditorActionsReady = recognitionEngine === 'keyboard' || status === 'ready'
   const canUseTeacherKeyboardLocalToolbarActions = recognitionEngine === 'keyboard' && canOrchestrateLesson
+  const canUseKeyboardTextRecallMode = recognitionEngine === 'keyboard' && (useAdminStepComposer || useStudentStepComposer)
   const canUseKeyboardSendAction = recognitionEngine === 'keyboard'
     ? Boolean(normalizeStepLatex(latexOutput || adminDraftLatex || '')) || keyboardSteps.length > 0
     : Boolean(adminDraftLatex) || canClear || adminSteps.length > 0
@@ -18685,6 +18686,28 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                         className="px-2 py-1 text-slate-700 transition-colors hover:text-slate-900 disabled:opacity-50"
                         title="Text"
                         onClick={() => {
+                          if (canUseKeyboardTextRecallMode) {
+                            const keyboardRecallSteps = useAdminStepComposer
+                              ? keyboardSteps
+                              : (studentSteps.length ? studentSteps : derivedStudentCommittedSteps)
+                            const fallbackIndex = keyboardRecallSteps.length > 0 ? keyboardRecallSteps.length - 1 : null
+                            const preferredIndex = activeComposerEditIndex ?? topPanelSelectedStep ?? fallbackIndex
+
+                            if (textIconTapTimeoutRef.current) {
+                              clearTimeout(textIconTapTimeoutRef.current)
+                              textIconTapTimeoutRef.current = null
+                            }
+
+                            textIconLastTapRef.current = null
+                            setTopPanelEditingMode(true)
+                            if (preferredIndex !== null && preferredIndex >= 0) {
+                              setTopPanelSelectedStep(preferredIndex)
+                            } else {
+                              clearTopPanelSelection()
+                            }
+                            return
+                          }
+
                           const canOpenTray = canOrchestrateLesson || allowStudentTextTray
                           const now = Date.now()
                           const last = textIconLastTapRef.current

@@ -10884,7 +10884,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }
 
   const clearEverything = () => {
-    if (lockedOutRef.current) return
+    if (lockedOutRef.current && !canUseTeacherKeyboardLocalToolbarActions) return
 
     setActiveNotebookSolutionId(null)
     setLoadedNotebookRevision(null)
@@ -10955,7 +10955,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   }
 
   const clearCurrentOnly = () => {
-    if (lockedOutRef.current) return
+    if (lockedOutRef.current && !canUseTeacherKeyboardLocalToolbarActions) return
 
     if (canvasModeRef.current === 'raw-ink') {
       const nextSnapshot = makeRawInkSnapshot([], localVersionRef.current, `${clientIdRef.current}-${Date.now()}-raw-clear`)
@@ -11044,7 +11044,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   const handleUndo = async () => {
     if (recognitionEngineRef.current === 'keyboard') {
-      if (lockedOutRef.current) return
+      if (lockedOutRef.current && !canOrchestrateLesson) return
       const field = keyboardMathfieldRef.current
       if (!field) return
       field.focus()
@@ -11095,7 +11095,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   const handleRedo = async () => {
     if (recognitionEngineRef.current === 'keyboard') {
-      if (lockedOutRef.current) return
+      if (lockedOutRef.current && !canOrchestrateLesson) return
       const field = keyboardMathfieldRef.current
       if (!field) return
       field.focus()
@@ -13114,6 +13114,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const canUsePresenterMiddleStripTools = canOrchestrateLesson || isSelfActivePresenter()
   const shouldShowMiddleStripActionCluster = canUsePresenterMiddleStripTools || isStudentSendContext
   const areMiddleStripEditorActionsReady = recognitionEngine === 'keyboard' || status === 'ready'
+  const canUseTeacherKeyboardLocalToolbarActions = recognitionEngine === 'keyboard' && canOrchestrateLesson
   const canUseKeyboardSendAction = recognitionEngine === 'keyboard'
     ? Boolean(normalizeStepLatex(latexOutput || adminDraftLatex || '')) || keyboardSteps.length > 0
     : Boolean(adminDraftLatex) || canClear || adminSteps.length > 0
@@ -17254,7 +17255,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           className="btn"
           type="button"
           onClick={() => runCanvasAction(handleUndo)}
-          disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canUndo && !(useAdminStepComposer && hasWriteAccess))}
+          disabled={(status !== 'ready') || Boolean(fatalError) || (!canUseTeacherKeyboardLocalToolbarActions && isViewOnly) || (!canUndo && !(useAdminStepComposer && hasWriteAccess))}
         >
           Undo
         </button>
@@ -17262,7 +17263,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           className="btn"
           type="button"
           onClick={() => runCanvasAction(handleRedo)}
-          disabled={(status !== 'ready') || Boolean(fatalError) || isViewOnly || (!canRedo && !(useAdminStepComposer && hasWriteAccess))}
+          disabled={(status !== 'ready') || Boolean(fatalError) || (!canUseTeacherKeyboardLocalToolbarActions && isViewOnly) || (!canRedo && !(useAdminStepComposer && hasWriteAccess))}
         >
           Redo
         </button>
@@ -17270,7 +17271,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           className="btn"
           type="button"
           onClick={() => runCanvasAction(handleClear)}
-          disabled={!canClear || status !== 'ready' || Boolean(fatalError) || isViewOnly}
+          disabled={!canClear || status !== 'ready' || Boolean(fatalError) || (!canUseTeacherKeyboardLocalToolbarActions && isViewOnly)}
         >
           Clear
         </button>
@@ -18350,9 +18351,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                               className="px-2 py-1 text-slate-700 transition-colors hover:text-slate-900 disabled:opacity-50"
                               title="Undo"
                               onClick={() => runCanvasAction(handleUndo)}
-                              disabled={!areMiddleStripEditorActionsReady || Boolean(fatalError) || isViewOnly || (!canUndo && !(useAdminStepComposer && hasWriteAccess))}
+                              disabled={!areMiddleStripEditorActionsReady || Boolean(fatalError) || (!canUseTeacherKeyboardLocalToolbarActions && isViewOnly) || (!canUndo && !(useAdminStepComposer && hasWriteAccess))}
                               onPointerDown={(e) => {
-                                if (!areMiddleStripEditorActionsReady || Boolean(fatalError) || isViewOnly) return
+                                if (!areMiddleStripEditorActionsReady || Boolean(fatalError) || (!canUseTeacherKeyboardLocalToolbarActions && isViewOnly)) return
                                 if (!canUndo && !(useAdminStepComposer && hasWriteAccess)) return
                                 pressRepeatTriggeredRef.current = false
                                 pressRepeatActiveRef.current = true
@@ -18423,9 +18424,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                               className="px-2 py-1 text-slate-700 transition-colors hover:text-slate-900 disabled:opacity-50"
                               title="Redo"
                               onClick={() => runCanvasAction(handleRedo)}
-                              disabled={!areMiddleStripEditorActionsReady || Boolean(fatalError) || isViewOnly || (!canRedo && !(useAdminStepComposer && hasWriteAccess))}
+                              disabled={!areMiddleStripEditorActionsReady || Boolean(fatalError) || (!canUseTeacherKeyboardLocalToolbarActions && isViewOnly) || (!canRedo && !(useAdminStepComposer && hasWriteAccess))}
                               onPointerDown={(e) => {
-                                if (!areMiddleStripEditorActionsReady || Boolean(fatalError) || isViewOnly) return
+                                if (!areMiddleStripEditorActionsReady || Boolean(fatalError) || (!canUseTeacherKeyboardLocalToolbarActions && isViewOnly)) return
                                 if (!canRedo && !(useAdminStepComposer && hasWriteAccess)) return
                                 pressRepeatTriggeredRef.current = false
                                 pressRepeatActiveRef.current = true
@@ -18505,9 +18506,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                                 }
                                 runCanvasAction(handleClear)
                               }}
-                              disabled={!canClear || !areMiddleStripEditorActionsReady || Boolean(fatalError) || isViewOnly}
+                              disabled={!canClear || !areMiddleStripEditorActionsReady || Boolean(fatalError) || (!canUseTeacherKeyboardLocalToolbarActions && isViewOnly)}
                               onPointerDown={(e) => {
-                                if (!areMiddleStripEditorActionsReady || Boolean(fatalError) || isViewOnly) return
+                                if (!areMiddleStripEditorActionsReady || Boolean(fatalError) || (!canUseTeacherKeyboardLocalToolbarActions && isViewOnly)) return
                                 binLongPressTriggeredRef.current = false
                                 if (binLongPressTimeoutRef.current) {
                                   clearTimeout(binLongPressTimeoutRef.current)
@@ -18744,7 +18745,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                     {isOverlayMode && canUsePresenterMiddleStripTools && (
                       <button
                         type="button"
-                        className={`px-2 py-1 transition-colors hover:text-slate-900 ${isEraserMode ? 'text-slate-900' : 'text-slate-700'} ${isViewOnly ? 'opacity-50' : ''}`}
+                        className={`px-2 py-1 transition-colors hover:text-slate-900 ${isEraserMode ? 'text-slate-900' : 'text-slate-700'} ${(!canUseTeacherKeyboardLocalToolbarActions && isViewOnly) ? 'opacity-50' : ''}`}
                         title={isEraserMode ? (eraserShimReady ? 'Eraser (on)' : 'Eraser (on, initializing)') : (eraserShimReady ? 'Eraser' : 'Eraser (initializing)')}
                         aria-pressed={isEraserMode}
                         onClick={(e) => {
@@ -18754,12 +18755,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                             e.stopPropagation()
                             return
                           }
-                          if (isViewOnly) return
+                          if (!canUseTeacherKeyboardLocalToolbarActions && isViewOnly) return
                           setIsEraserMode(prev => !prev)
                         }}
-                          disabled={!areMiddleStripEditorActionsReady || Boolean(fatalError) || isViewOnly}
+                          disabled={!areMiddleStripEditorActionsReady || Boolean(fatalError) || (!canUseTeacherKeyboardLocalToolbarActions && isViewOnly)}
                         onPointerDown={(e) => {
-                            if (!areMiddleStripEditorActionsReady || Boolean(fatalError) || isViewOnly) return
+                            if (!areMiddleStripEditorActionsReady || Boolean(fatalError) || (!canUseTeacherKeyboardLocalToolbarActions && isViewOnly)) return
                           eraserLongPressTriggeredRef.current = false
                           if (eraserLongPressTimeoutRef.current) {
                             clearTimeout(eraserLongPressTimeoutRef.current)

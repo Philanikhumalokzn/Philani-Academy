@@ -13115,7 +13115,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const shouldShowMiddleStripActionCluster = canUsePresenterMiddleStripTools || isStudentSendContext
   const areMiddleStripEditorActionsReady = recognitionEngine === 'keyboard' || status === 'ready'
   const canUseKeyboardSendAction = recognitionEngine === 'keyboard'
-    ? Boolean(normalizeStepLatex(latexOutput || '')) || keyboardSteps.length > 0
+    ? Boolean(normalizeStepLatex(latexOutput || adminDraftLatex || '')) || keyboardSteps.length > 0
     : Boolean(adminDraftLatex) || canClear || adminSteps.length > 0
 
   useEffect(() => {
@@ -15271,7 +15271,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     if (recognitionEngineRef.current === 'keyboard') {
-      if (lockedOutRef.current) return
+      if (lockedOutRef.current && !canOrchestrateLesson) return
 
       if (canOrchestrateLesson && !isAssignmentSolutionAuthoring) {
         const emptyCanvas = isEditorEmptyNow()

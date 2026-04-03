@@ -15666,7 +15666,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       {postTypedSolveOverlay && (
         <OverlayPortal>
           <div
-            className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.7)] backdrop-blur-sm p-2 sm:p-4"
+            className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.7)] backdrop-blur-sm p-0 sm:p-4"
             role="dialog"
             aria-modal="true"
             aria-label="Typed post response"
@@ -15674,8 +15674,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             {(() => {
               const typedPostActionsVisible = !isMobile || postTypedOverlayChromeVisible
               return (
-            <div className="relative mx-auto flex h-full w-full max-w-7xl flex-col overflow-hidden rounded-[32px] border border-white/15 bg-[#030712] shadow-[0_30px_80px_rgba(2,6,23,0.36)]">
-              <div className="pointer-events-none absolute inset-x-0 top-0 z-[5] flex justify-end p-3 sm:p-4">
+            <div className="relative mx-auto flex h-full w-full max-w-none sm:max-w-7xl flex-col overflow-hidden rounded-none sm:rounded-[32px] border-0 sm:border sm:border-white/15 bg-transparent sm:bg-[#030712] shadow-none sm:shadow-[0_30px_80px_rgba(2,6,23,0.36)]">
+              <div
+                className="pointer-events-none absolute inset-x-0 top-0 z-[5] flex justify-end sm:p-4"
+                style={{
+                  paddingTop: 'calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 8px)',
+                  paddingRight: 'calc(max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px)) + 8px)',
+                  paddingLeft: 'calc(max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px)) + 8px)',
+                }}
+              >
                 <div
                   className={`pointer-events-auto flex items-center gap-3 rounded-full border border-white/10 bg-[rgba(3,7,18,0.78)] px-3 py-2 shadow-[0_18px_40px_rgba(2,6,23,0.28)] backdrop-blur-xl transition-[opacity,transform] duration-300 ${typedPostActionsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}
                 >
@@ -15713,9 +15720,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   referencePresentation="background"
                   resetKey={postTypedSolveOverlay.postId}
                   outerClassName="bg-transparent"
-                  contentPaddingClassName="relative flex-1 min-h-0 px-3 py-2 sm:px-6 sm:py-4"
-                  frameClassName="relative flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-white/10 bg-white shadow-[0_22px_60px_rgba(2,6,23,0.24)]"
-                  canvasSurfaceClassName="flex h-full min-h-0 flex-col bg-white/96"
+                  contentPaddingClassName="relative flex-1 min-h-0 px-0 py-0 sm:px-6 sm:py-4"
+                  frameClassName="relative flex h-full min-h-0 flex-col overflow-hidden rounded-none sm:rounded-[28px] border-0 sm:border sm:border-white/10 bg-white shadow-none sm:shadow-[0_22px_60px_rgba(2,6,23,0.24)]"
+                  canvasSurfaceClassName="flex h-full min-h-0 flex-col bg-white"
                 >
                   <div className="h-full min-h-0 bg-white">
                     <StackedCanvasWindow

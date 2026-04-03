@@ -106,7 +106,7 @@ test.afterAll(async () => {
 test.describe('typed post reply reference layer', () => {
   test.setTimeout(240_000)
 
-  test('admin can keep opening the original post while typing a reply', async ({ browser }) => {
+  test('admin can see the original post behind the full-height typed workspace', async ({ browser }) => {
     const uniqueTitle = `Playwright typed reference ${Date.now()}`
     const uniquePrompt = `Solve this and keep referring back to it. ${Date.now()}`
     const seededPost = await seedPublicPostForAdminSolve(uniqueTitle, uniquePrompt)
@@ -127,30 +127,17 @@ test.describe('typed post reply reference layer', () => {
     await adminPage.getByRole('button', { name: /Typed/i }).click()
 
     const referenceCard = adminPage.getByTestId('public-solve-reference-card')
-    const referenceDismiss = adminPage.getByTestId('public-solve-reference-dismiss')
+    const opacitySlider = adminPage.getByLabel('Canvas opacity')
     const keyboardField = adminPage.locator('math-field.keyboard-mathlive-field').first()
 
     await expect(referenceCard).toBeVisible({ timeout: 20_000 })
     await expect(referenceCard).toContainText(uniquePrompt)
+    await expect(opacitySlider).toBeVisible({ timeout: 20_000 })
     await expect(keyboardField).toBeVisible({ timeout: 30_000 })
 
-    const beforeExpandBox = await referenceCard.boundingBox()
-    if (!beforeExpandBox) throw new Error('Reference card is missing before expand')
-
-    await referenceCard.click()
-    await expect(referenceDismiss).toBeVisible({ timeout: 10_000 })
-
-    const expandedCardBox = await referenceCard.boundingBox()
-    if (!expandedCardBox) throw new Error('Reference card is missing in expanded mode')
-    expect(expandedCardBox.height).toBeGreaterThan(beforeExpandBox.height)
-
-    await referenceDismiss.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'mouse', button: 0, clientY: 300, bubbles: true })
-    await referenceDismiss.dispatchEvent('pointermove', { pointerId: 1, pointerType: 'mouse', button: 0, clientY: 180, bubbles: true })
-    await referenceDismiss.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'mouse', button: 0, clientY: 180, bubbles: true })
-
-    await expect(referenceDismiss).toBeHidden({ timeout: 10_000 })
+    await opacitySlider.fill('35')
+    await expect(opacitySlider).toHaveValue('35')
     await expect(keyboardField).toBeVisible({ timeout: 20_000 })
-    await expect(referenceCard).toContainText(uniquePrompt)
 
     await adminContext.close()
     await prisma.socialPost.delete({ where: { id: seededPost.id } })

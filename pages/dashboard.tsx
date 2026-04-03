@@ -15709,6 +15709,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   imageUrl={postTypedSolveOverlay.imageUrl || null}
                   authorName={postTypedSolveOverlay.authorName || null}
                   authorAvatarUrl={postTypedSolveOverlay.authorAvatarUrl || null}
+                  referencePresentation="background"
                   resetKey={postTypedSolveOverlay.postId}
                   outerClassName="bg-transparent"
                   contentPaddingClassName="relative flex-1 min-h-0 px-3 py-2 sm:px-6 sm:py-4"

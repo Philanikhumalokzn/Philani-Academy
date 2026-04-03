@@ -43,6 +43,7 @@ const PUBLIC_SOLVE_VIEWER_VERTICAL_PADDING_MAX = 96
 const PUBLIC_SOLVE_VIEWER_AUTO_FIT_MAX_ZOOM = 2.6
 
 type PublicSolvePromptMode = 'passive' | 'active'
+type PublicSolveReferencePresentation = 'interactive' | 'background'
 
 export function PublicSolvePromptReferenceLayer({
   title,
@@ -50,6 +51,7 @@ export function PublicSolvePromptReferenceLayer({
   imageUrl,
   authorName,
   authorAvatarUrl,
+  presentation = 'interactive',
   children,
 }: {
   title: string
@@ -57,6 +59,7 @@ export function PublicSolvePromptReferenceLayer({
   imageUrl?: string | null
   authorName?: string | null
   authorAvatarUrl?: string | null
+  presentation?: PublicSolveReferencePresentation
   children: React.ReactNode
 }) {
   const promptDismissDragRef = useRef<{ pointerId: number | null; startY: number; dragOffsetY: number }>({
@@ -202,6 +205,35 @@ export function PublicSolvePromptReferenceLayer({
 
   const promptPassivePreview = (prompt || title || 'Open original post').trim()
 
+  if (presentation === 'background') {
+    return (
+      <div className="relative isolate flex min-h-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.96))]" data-testid="public-solve-reference-layer">
+        <div
+          data-testid="public-solve-reference-viewport"
+          className="absolute inset-0 z-[1] overflow-auto"
+          style={{ pointerEvents: 'none' }}
+        >
+          <div className="mx-auto min-h-full w-full max-w-3xl px-5 py-6 pb-28 sm:px-8" style={promptDocumentStyle}>
+            <article
+              data-testid="public-solve-reference-card"
+              className="overflow-hidden rounded-[24px] border border-black/10 bg-white text-left shadow-[0_18px_40px_rgba(15,23,42,0.08)]"
+            >
+              {promptCardInner}
+            </article>
+          </div>
+        </div>
+
+        <div
+          data-testid="public-solve-reference-workspace"
+          className="relative z-[2] min-h-0 flex-1"
+          style={{ pointerEvents: 'auto' }}
+        >
+          {children}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="relative isolate flex min-h-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.96))]" data-testid="public-solve-reference-layer">
       {promptMode === 'passive' ? (
@@ -304,6 +336,7 @@ export function PublicSolveOpacityWorkspace({
   contentPaddingClassName = 'relative flex-1 min-h-0 px-3 py-2 sm:px-6 sm:py-4',
   frameClassName = 'relative flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.10)]',
   canvasSurfaceClassName = 'flex h-full min-h-0 flex-col bg-white/96',
+  referencePresentation = 'interactive',
   resetKey,
 }: {
   title: string
@@ -317,6 +350,7 @@ export function PublicSolveOpacityWorkspace({
   contentPaddingClassName?: string
   frameClassName?: string
   canvasSurfaceClassName?: string
+  referencePresentation?: PublicSolveReferencePresentation
   resetKey?: string | number | null
 }) {
   const [canvasOpacityPercent, setCanvasOpacityPercent] = useState(100)
@@ -356,6 +390,7 @@ export function PublicSolveOpacityWorkspace({
             imageUrl={imageUrl}
             authorName={authorName}
             authorAvatarUrl={authorAvatarUrl}
+            presentation={referencePresentation}
           >
             <div
               className={canvasSurfaceClassName}

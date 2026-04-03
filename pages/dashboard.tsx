@@ -13,7 +13,7 @@ import AppFooter from '../components/AppFooter'
 import HandwritingNormalizationOverlay from '../components/HandwritingNormalizationOverlay'
 import MathKeyboardOverlay from '../components/MathKeyboardOverlay'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
-import { PublicSolveCanvasViewer, PublicSolveComposer, PublicSolvePromptReferenceLayer, normalizePublicSolveScene, type PublicSolveScene } from '../components/PublicSolveCanvas'
+import { PublicSolveCanvasViewer, PublicSolveComposer, PublicSolveOpacityWorkspace, normalizePublicSolveScene, type PublicSolveScene } from '../components/PublicSolveCanvas'
 import TaskManageMenu from '../components/TaskManageMenu'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
 import ScriptPhotosEditor from '../components/ScriptPhotosEditor'
@@ -15703,26 +15703,33 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </div>
               </div>
               <div className="min-h-0 flex-1">
-                <PublicSolvePromptReferenceLayer
+                <PublicSolveOpacityWorkspace
                   title={postTypedSolveOverlay.title || 'Post'}
                   prompt={postTypedSolveOverlay.prompt || ''}
                   imageUrl={postTypedSolveOverlay.imageUrl || null}
                   authorName={postTypedSolveOverlay.authorName || null}
                   authorAvatarUrl={postTypedSolveOverlay.authorAvatarUrl || null}
+                  resetKey={postTypedSolveOverlay.postId}
+                  outerClassName="bg-transparent"
+                  contentPaddingClassName="relative flex-1 min-h-0 px-3 py-2 sm:px-6 sm:py-4"
+                  frameClassName="relative flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-white/10 bg-white shadow-[0_22px_60px_rgba(2,6,23,0.24)]"
+                  canvasSurfaceClassName="flex h-full min-h-0 flex-col bg-white/96"
                 >
-                  <StackedCanvasWindow
-                    isVisible
-                    gradeLabel={activeGradeLabel}
-                    roomId={`post-compose:${postTypedSolveOverlay.postId}:${currentViewerId || 'anon'}`}
-                    userId={currentViewerId || 'anon'}
-                    userDisplayName={currentViewerPostAuthor.name}
-                    canOrchestrateLesson={false}
-                    roleProfile={currentLessonRoleProfile}
-                    forceEditable
-                    initialComposedLatex={postTypedSolveOverlay.initialLatex || ''}
-                    onComposedLatexChange={setPostTypedSolveLatex}
-                  />
-                </PublicSolvePromptReferenceLayer>
+                  <div className="h-full min-h-0 bg-white">
+                    <StackedCanvasWindow
+                      isVisible
+                      gradeLabel={activeGradeLabel}
+                      roomId={`post-compose:${postTypedSolveOverlay.postId}:${currentViewerId || 'anon'}`}
+                      userId={currentViewerId || 'anon'}
+                      userDisplayName={currentViewerPostAuthor.name}
+                      canOrchestrateLesson={false}
+                      roleProfile={currentLessonRoleProfile}
+                      forceEditable
+                      initialComposedLatex={postTypedSolveOverlay.initialLatex || ''}
+                      onComposedLatexChange={setPostTypedSolveLatex}
+                    />
+                  </div>
+                </PublicSolveOpacityWorkspace>
               </div>
             </div>
             {postSolveError ? (

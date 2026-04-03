@@ -149,18 +149,18 @@ export function PublicSolvePromptReferenceLayer({
     }
   }, [])
 
-  const promptViewportStyle = useMemo(() => {
-    const transition = promptMode === 'active' && promptDismissDragRef.current.pointerId != null
+  const activePromptViewportStyle = useMemo(() => {
+    const transition = promptDismissDragRef.current.pointerId != null
       ? 'none'
       : 'transform 180ms ease, opacity 180ms ease'
     return {
       transform: `translateY(${promptDismissDragOffset}px)`,
       transition,
-      touchAction: promptMode === 'active' ? 'pan-x pan-y pinch-zoom' : 'none',
-      opacity: promptMode === 'active' ? 1 : 0.98,
-      pointerEvents: promptMode === 'active' ? 'auto' : 'none',
+      touchAction: 'pan-x pan-y pinch-zoom',
+      opacity: 1,
+      pointerEvents: 'auto',
     } as any
-  }, [promptDismissDragOffset, promptMode])
+  }, [promptDismissDragOffset])
 
   const promptDocumentStyle = useMemo(() => {
     const safeZoom = Math.min(PUBLIC_SOLVE_MAX_PROMPT_ZOOM, Math.max(PUBLIC_SOLVE_MIN_PROMPT_ZOOM, promptZoom))
@@ -169,61 +169,101 @@ export function PublicSolvePromptReferenceLayer({
     } as any
   }, [promptZoom])
 
-  return (
-    <div className="relative min-h-0 flex-1 overflow-hidden bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.96))]">
-      <div
-        className={`absolute inset-0 overflow-auto ${promptMode === 'active' ? 'z-[6]' : 'z-[1]'}`}
-        onWheel={handlePromptWheel}
-        style={promptViewportStyle}
-      >
-        <div className="mx-auto min-h-full w-full max-w-3xl px-5 py-6 pb-28 sm:px-8" style={promptDocumentStyle}>
-          <article
-            className="overflow-hidden rounded-[24px] border border-black/10 bg-white text-left shadow-[0_18px_40px_rgba(15,23,42,0.08)]"
-            onClick={promptMode === 'passive' ? enterActivePromptMode : undefined}
-            onKeyDown={promptMode === 'passive' ? (event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                enterActivePromptMode()
-              }
-            } : undefined}
-            role={promptMode === 'passive' ? 'button' : undefined}
-            tabIndex={promptMode === 'passive' ? 0 : undefined}
-            style={{ minHeight: `${PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT}px` }}
-          >
-            <div className="px-4 py-4 sm:px-5">
-              <div className="flex items-start gap-3">
-                <div className="relative shrink-0 overflow-visible">
-                  <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f0f2f5] text-xs font-semibold text-[#1c1e21]">
-                    {resolvedAuthorAvatarUrl ? (
-                      <img src={resolvedAuthorAvatarUrl} alt={resolvedAuthorName} className="h-full w-full object-cover" />
-                    ) : (
-                      <span>{resolvedAuthorInitial}</span>
-                    )}
-                  </div>
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[15px] font-semibold tracking-[-0.015em] text-[#1c1e21]">{resolvedAuthorName}</div>
-                </div>
-              </div>
-
-              {prompt ? (
-                <div className="mt-3 whitespace-pre-wrap text-[14px] leading-6 text-[#334155] break-words">{prompt}</div>
-              ) : null}
+  const promptCardInner = (
+    <>
+      <div className="px-4 py-4 sm:px-5">
+        <div className="flex items-start gap-3">
+          <div className="relative shrink-0 overflow-visible">
+            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f0f2f5] text-xs font-semibold text-[#1c1e21]">
+              {resolvedAuthorAvatarUrl ? (
+                <img src={resolvedAuthorAvatarUrl} alt={resolvedAuthorName} className="h-full w-full object-cover" />
+              ) : (
+                <span>{resolvedAuthorInitial}</span>
+              )}
             </div>
-
-            {imageUrl ? (
-              <div className="overflow-hidden border-t border-black/10 bg-[#f8fafc]">
-                <img src={imageUrl} alt={title} className="max-h-[720px] w-full object-contain" />
-              </div>
-            ) : null}
-          </article>
+          </div>
+          <div className="min-w-0">
+            <div className="text-[15px] font-semibold tracking-[-0.015em] text-[#1c1e21]">{resolvedAuthorName}</div>
+          </div>
         </div>
 
-        {promptMode === 'active' ? (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[7] flex justify-center pb-4">
+        {prompt ? (
+          <div className="mt-3 whitespace-pre-wrap text-[14px] leading-6 text-[#334155] break-words">{prompt}</div>
+        ) : null}
+      </div>
+
+      {imageUrl ? (
+        <div className="overflow-hidden border-t border-black/10 bg-[#f8fafc]">
+          <img src={imageUrl} alt={title} className="max-h-[720px] w-full object-contain" />
+        </div>
+      ) : null}
+    </>
+  )
+
+  const promptPassivePreview = (prompt || title || 'Open original post').trim()
+
+  return (
+    <div className="relative isolate flex min-h-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.96))]" data-testid="public-solve-reference-layer">
+      {promptMode === 'passive' ? (
+        <div className="pointer-events-none relative z-[20] flex h-[112px] flex-none justify-center px-5 py-6 sm:px-8" data-testid="public-solve-reference-viewport">
+          <div className="mx-auto w-full max-w-3xl">
+            <article
+              data-testid="public-solve-reference-card"
+              className="pointer-events-auto relative z-[21] overflow-hidden rounded-[24px] border border-black/10 bg-white text-left shadow-[0_18px_40px_rgba(15,23,42,0.08)]"
+              onClick={enterActivePromptMode}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  enterActivePromptMode()
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              style={{
+                minHeight: `${PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT}px`,
+                height: `${PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT}px`,
+              }}
+            >
+              <div className="flex h-full items-center gap-3 px-4 py-3 sm:px-5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f0f2f5] text-xs font-semibold text-[#1c1e21]">
+                  {resolvedAuthorAvatarUrl ? (
+                    <img src={resolvedAuthorAvatarUrl} alt={resolvedAuthorName} className="h-full w-full object-cover" />
+                  ) : (
+                    <span>{resolvedAuthorInitial}</span>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[14px] font-semibold tracking-[-0.015em] text-[#1c1e21]">{resolvedAuthorName}</div>
+                  <div className="truncate text-[13px] leading-5 text-[#475569]">{promptPassivePreview}</div>
+                </div>
+                <div className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  Open
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      ) : (
+        <div
+          data-testid="public-solve-reference-viewport"
+          className="absolute inset-0 z-[20] overflow-auto"
+          onWheel={handlePromptWheel}
+          style={activePromptViewportStyle}
+        >
+          <div className="mx-auto min-h-full w-full max-w-3xl px-5 py-6 pb-28 sm:px-8" style={promptDocumentStyle}>
+            <article
+              data-testid="public-solve-reference-card"
+              className="overflow-hidden rounded-[24px] border border-black/10 bg-white text-left shadow-[0_18px_40px_rgba(15,23,42,0.08)]"
+            >
+              {promptCardInner}
+            </article>
+          </div>
+
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[21] flex justify-center pb-4">
             <div className="pointer-events-auto flex flex-col items-center gap-2 rounded-[24px] border border-slate-200 bg-white/94 px-4 py-3 shadow-[0_16px_34px_rgba(15,23,42,0.12)] backdrop-blur-xl">
               <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Drag up to return</div>
               <div
+                data-testid="public-solve-reference-dismiss"
                 role="button"
                 tabIndex={0}
                 className="flex h-9 w-24 items-center justify-center rounded-full border border-slate-200 bg-slate-100/90"
@@ -236,18 +276,98 @@ export function PublicSolvePromptReferenceLayer({
               </div>
             </div>
           </div>
-        ) : null}
-      </div>
+        </div>
+      )}
 
       <div
-        className={`absolute inset-0 ${promptMode === 'active' ? 'z-[2]' : 'z-[4]'}`}
+        data-testid="public-solve-reference-workspace"
+        className={promptMode === 'active' ? 'absolute inset-0 z-[1]' : 'relative z-[1] min-h-0 flex-1'}
         style={{
-          transition: 'top 160ms ease',
           pointerEvents: promptMode === 'active' ? 'none' : 'auto',
-          top: promptMode === 'active' ? 0 : `${PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT}px`,
         }}
       >
         {children}
+      </div>
+    </div>
+  )
+}
+
+export function PublicSolveOpacityWorkspace({
+  title,
+  prompt,
+  imageUrl,
+  authorName,
+  authorAvatarUrl,
+  children,
+  canvasLabel = 'Canvas',
+  outerClassName = '',
+  contentPaddingClassName = 'relative flex-1 min-h-0 px-3 py-2 sm:px-6 sm:py-4',
+  frameClassName = 'relative flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.10)]',
+  canvasSurfaceClassName = 'flex h-full min-h-0 flex-col bg-white/96',
+  resetKey,
+}: {
+  title: string
+  prompt?: string | null
+  imageUrl?: string | null
+  authorName?: string | null
+  authorAvatarUrl?: string | null
+  children: React.ReactNode
+  canvasLabel?: string
+  outerClassName?: string
+  contentPaddingClassName?: string
+  frameClassName?: string
+  canvasSurfaceClassName?: string
+  resetKey?: string | number | null
+}) {
+  const [canvasOpacityPercent, setCanvasOpacityPercent] = useState(100)
+
+  useEffect(() => {
+    setCanvasOpacityPercent(100)
+  }, [imageUrl, prompt, resetKey, title])
+
+  const canvasOpacity = canvasOpacityPercent / 100
+
+  return (
+    <div className={`flex h-full flex-col ${outerClassName}`.trim()}>
+      <div className={contentPaddingClassName}>
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-[7] flex items-center pl-2 sm:pl-3">
+          <div className="pointer-events-auto flex h-[232px] w-11 flex-col items-center justify-center gap-2 rounded-full border border-slate-200/90 bg-white/92 px-1 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 [writing-mode:vertical-rl] rotate-180">
+              {canvasLabel}
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={canvasOpacityPercent}
+              onChange={(event) => setCanvasOpacityPercent(Number(event.target.value || 0))}
+              aria-label="Canvas opacity"
+              className="h-36 w-5 cursor-pointer bg-transparent [-webkit-appearance:slider-vertical] [appearance:slider-vertical]"
+            />
+            <div className="text-[10px] font-semibold text-slate-500">{canvasOpacityPercent}%</div>
+          </div>
+        </div>
+
+        <div className={frameClassName}>
+          <PublicSolvePromptReferenceLayer
+            title={title}
+            prompt={prompt}
+            imageUrl={imageUrl}
+            authorName={authorName}
+            authorAvatarUrl={authorAvatarUrl}
+          >
+            <div
+              className={canvasSurfaceClassName}
+              style={{
+                opacity: canvasOpacity,
+                transition: 'opacity 160ms ease',
+              }}
+            >
+              {children}
+            </div>
+          </PublicSolvePromptReferenceLayer>
+        </div>
       </div>
     </div>
   )
@@ -780,9 +900,6 @@ export function PublicSolveComposer({
     const sceneMeta = normalizePublicSolveSceneMeta(sceneRef.current.sceneMeta)
     return resolveSceneGuideSpacing(sceneRef.current.elements, sceneMeta, getAppStateZoomValue(sceneRef.current.appState))
   })
-  const [canvasOpacityPercent, setCanvasOpacityPercent] = useState(100)
-
-  const canvasOpacity = canvasOpacityPercent / 100
 
   const applySceneSnapshot = useCallback((nextScene: PublicSolveScene, options?: { syncApi?: boolean }) => {
     const normalized = normalizePublicSolveScene(nextScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
@@ -815,10 +932,6 @@ export function PublicSolveComposer({
   }, [applySceneSnapshot, initialScene])
 
   useEffect(() => {
-    setCanvasOpacityPercent(100)
-  }, [title, prompt, imageUrl])
-
-  useEffect(() => {
     const api = excalidrawApiRef.current
     if (!api?.setActiveTool || !api?.updateScene) return
 
@@ -847,81 +960,52 @@ export function PublicSolveComposer({
 
   return (
     <div className="flex h-full flex-col bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_32%),linear-gradient(180deg,#eef4ff_0%,#f8fbff_28%,#ffffff_100%)] text-slate-900">
-      <div className="relative flex-1 min-h-0 px-3 py-2 sm:px-6 sm:py-4">
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-[7] flex items-center pl-2 sm:pl-3">
-          <div className="pointer-events-auto flex h-[232px] w-11 flex-col items-center justify-center gap-2 rounded-full border border-slate-200/90 bg-white/92 px-1 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 [writing-mode:vertical-rl] rotate-180">
-              Canvas
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={canvasOpacityPercent}
-              onChange={(event) => setCanvasOpacityPercent(Number(event.target.value || 0))}
-              aria-label="Canvas opacity"
-              className="h-36 w-5 cursor-pointer bg-transparent [-webkit-appearance:slider-vertical] [appearance:slider-vertical]"
-            />
-            <div className="text-[10px] font-semibold text-slate-500">{canvasOpacityPercent}%</div>
-          </div>
-        </div>
+      <PublicSolveOpacityWorkspace
+        title={title}
+        prompt={prompt}
+        imageUrl={imageUrl}
+        authorName={authorName}
+        authorAvatarUrl={authorAvatarUrl}
+        resetKey={composerInstanceKey}
+        outerClassName="bg-transparent"
+      >
+        <div className="relative min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>
+          <LessonStyledExcalidraw
+            key={`public-solve-composer-${composerInstanceKey}`}
+            className="h-full"
+            initialData={composerInitialData}
+            UIOptions={editorUiOptions}
+            zenModeEnabled={false}
+            gridModeEnabled={false}
+            onChange={(elements: any[], appState: any, files: any) => {
+              const previousScene = normalizePublicSolveScene(sceneRef.current) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
+              const previousMeta = normalizePublicSolveSceneMeta(previousScene.sceneMeta)
+              const nextElements = cloneScenePart(Array.isArray(elements) ? elements : [])
+              let nextMeta = cloneSceneMeta(previousMeta)
+              const currentZoom = getAppStateZoomValue(appState)
 
-        <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.10)]">
-          <PublicSolvePromptReferenceLayer
-            title={title}
-            prompt={prompt}
-            imageUrl={imageUrl}
-            authorName={authorName}
-            authorAvatarUrl={authorAvatarUrl}
-          >
-            <div
-              className="flex h-full min-h-0 flex-col bg-white/96"
-              style={{
-                opacity: canvasOpacity,
-                transition: 'opacity 160ms ease',
-              }}
-            >
-              <div className="relative min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>
-                <LessonStyledExcalidraw
-                  key={`public-solve-composer-${composerInstanceKey}`}
-                  className="h-full"
-                  initialData={composerInitialData}
-                  UIOptions={editorUiOptions}
-                  zenModeEnabled={false}
-                  gridModeEnabled={false}
-                  onChange={(elements: any[], appState: any, files: any) => {
-                    const previousScene = normalizePublicSolveScene(sceneRef.current) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
-                    const previousMeta = normalizePublicSolveSceneMeta(previousScene.sceneMeta)
-                    const nextElements = cloneScenePart(Array.isArray(elements) ? elements : [])
-                    let nextMeta = cloneSceneMeta(previousMeta)
-                    const currentZoom = getAppStateZoomValue(appState)
-
-                    if (currentZoom != null) {
-                      nextMeta.lastObservedZoom = currentZoom
-                    }
-                    nextMeta.guideSpacing = resolveSceneGuideSpacing(nextElements, nextMeta, currentZoom ?? nextMeta.lastObservedZoom)
-                    const nextScene: PublicSolveScene = {
-                      elements: nextElements,
-                      appState: pickPersistedPublicSolveAppState(appState),
-                      files: files && typeof files === 'object' ? cloneScenePart(files) : undefined,
-                      updatedAt: new Date().toISOString(),
-                      sceneMeta: nextMeta,
-                    }
-                    applySceneSnapshot(nextScene)
-                  }}
-                  excalidrawAPI={(api: any) => {
-                    excalidrawApiRef.current = api
-                    if (!isReady) setIsReady(true)
-                  }}
-                  renderTopRightUI={() => null}
-                />
-                <NotebookGuidesOverlay zoom={guideViewportState.zoom} scrollY={guideViewportState.scrollY} guideSpacing={guideSpacing} />
-              </div>
-            </div>
-          </PublicSolvePromptReferenceLayer>
+              if (currentZoom != null) {
+                nextMeta.lastObservedZoom = currentZoom
+              }
+              nextMeta.guideSpacing = resolveSceneGuideSpacing(nextElements, nextMeta, currentZoom ?? nextMeta.lastObservedZoom)
+              const nextScene: PublicSolveScene = {
+                elements: nextElements,
+                appState: pickPersistedPublicSolveAppState(appState),
+                files: files && typeof files === 'object' ? cloneScenePart(files) : undefined,
+                updatedAt: new Date().toISOString(),
+                sceneMeta: nextMeta,
+              }
+              applySceneSnapshot(nextScene)
+            }}
+            excalidrawAPI={(api: any) => {
+              excalidrawApiRef.current = api
+              if (!isReady) setIsReady(true)
+            }}
+            renderTopRightUI={() => null}
+          />
+          <NotebookGuidesOverlay zoom={guideViewportState.zoom} scrollY={guideViewportState.scrollY} guideSpacing={guideSpacing} />
         </div>
-      </div>
+      </PublicSolveOpacityWorkspace>
 
       <div className="border-t border-slate-200 bg-white/92 px-4 py-3 backdrop-blur-xl sm:px-6">
         <div className="flex items-center justify-between gap-3">

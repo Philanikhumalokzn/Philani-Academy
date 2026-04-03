@@ -331,7 +331,7 @@ export function PublicSolveOpacityWorkspace({
   authorName,
   authorAvatarUrl,
   children,
-  canvasLabel = 'Canvas',
+  canvasLabel = 'Adjust to see post',
   outerClassName = '',
   contentPaddingClassName = 'relative flex-1 min-h-0 px-3 py-2 sm:px-6 sm:py-4',
   frameClassName = 'relative flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.10)]',
@@ -354,20 +354,84 @@ export function PublicSolveOpacityWorkspace({
   resetKey?: string | number | null
 }) {
   const [canvasOpacityPercent, setCanvasOpacityPercent] = useState(100)
+  const [sliderVisible, setSliderVisible] = useState(true)
+  const interactionScopeRef = useRef<HTMLDivElement | null>(null)
+  const sliderRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     setCanvasOpacityPercent(100)
+    setSliderVisible(true)
   }, [imageUrl, prompt, resetKey, title])
+
+  useEffect(() => {
+    const scopeNode = interactionScopeRef.current
+    if (!scopeNode || typeof window === 'undefined') return
+
+    const clearSliderRevealTimeout = () => {
+      if (sliderRevealTimeoutRef.current) {
+        clearTimeout(sliderRevealTimeoutRef.current)
+        sliderRevealTimeoutRef.current = null
+      }
+    }
+
+    const nodeMatchesInteractionSurface = (node: EventTarget | null) => {
+      if (!(node instanceof Element)) return false
+      if (node.closest('[data-public-solve-opacity-slider="true"]')) return false
+      if (node.closest('[data-keyboard-panel="true"]')) return true
+      if (node.closest('[data-keyboard-mathlive-panel="true"]')) return true
+      if (node.closest('math-field')) return true
+      return false
+    }
+
+    const eventMatchesInteractionSurface = (event: Event) => {
+      if (nodeMatchesInteractionSurface(event.target)) return true
+      const path = typeof event.composedPath === 'function' ? event.composedPath() : []
+      return path.some(nodeMatchesInteractionSurface)
+    }
+
+    const hideThenScheduleReveal = (event: Event) => {
+      if (!eventMatchesInteractionSurface(event)) return
+      setSliderVisible(false)
+      clearSliderRevealTimeout()
+      sliderRevealTimeoutRef.current = setTimeout(() => {
+        setSliderVisible(true)
+        sliderRevealTimeoutRef.current = null
+      }, 2000)
+    }
+
+    scopeNode.addEventListener('pointerdown', hideThenScheduleReveal, true)
+    scopeNode.addEventListener('focusin', hideThenScheduleReveal, true)
+    scopeNode.addEventListener('input', hideThenScheduleReveal, true)
+    scopeNode.addEventListener('keydown', hideThenScheduleReveal, true)
+
+    return () => {
+      clearSliderRevealTimeout()
+      scopeNode.removeEventListener('pointerdown', hideThenScheduleReveal, true)
+      scopeNode.removeEventListener('focusin', hideThenScheduleReveal, true)
+      scopeNode.removeEventListener('input', hideThenScheduleReveal, true)
+      scopeNode.removeEventListener('keydown', hideThenScheduleReveal, true)
+    }
+  }, [])
 
   const canvasOpacity = canvasOpacityPercent / 100
 
   return (
     <div className={`flex h-full flex-col ${outerClassName}`.trim()}>
-      <div className={contentPaddingClassName}>
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-[7] flex items-center pl-2 sm:pl-3">
-          <div className="pointer-events-auto flex h-[232px] w-11 flex-col items-center justify-center gap-2 rounded-full border border-slate-200/90 bg-white/92 px-1 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 [writing-mode:vertical-rl] rotate-180">
-              {canvasLabel}
+      <div ref={interactionScopeRef} className={contentPaddingClassName}>
+        <div
+          className="pointer-events-none absolute inset-y-0 right-0 z-[7] flex items-center pr-2 sm:pr-3"
+          style={{
+            paddingRight: 'calc(max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px)) + 8px)',
+          }}
+        >
+          <div
+            data-public-solve-opacity-slider="true"
+            className={`pointer-events-auto flex h-[232px] w-11 flex-col items-center justify-center gap-2 rounded-full border border-slate-200/90 bg-white/92 px-1 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-[opacity,transform] duration-200 ${sliderVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2 pointer-events-none'}`}
+          >
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+              <div className="text-center text-[8px] font-semibold uppercase leading-[1.05] tracking-[0.08em] text-slate-500 [writing-mode:vertical-rl] rotate-180">
+                {canvasLabel}
+              </div>
             </div>
             <input
               type="range"
@@ -376,8 +440,8 @@ export function PublicSolveOpacityWorkspace({
               step={1}
               value={canvasOpacityPercent}
               onChange={(event) => setCanvasOpacityPercent(Number(event.target.value || 0))}
-              aria-label="Canvas opacity"
-              className="h-36 w-5 cursor-pointer bg-transparent [-webkit-appearance:slider-vertical] [appearance:slider-vertical]"
+              aria-label="Prompt blend"
+              className="h-32 w-5 cursor-pointer bg-transparent [-webkit-appearance:slider-vertical] [appearance:slider-vertical]"
             />
             <div className="text-[10px] font-semibold text-slate-500">{canvasOpacityPercent}%</div>
           </div>

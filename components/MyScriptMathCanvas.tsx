@@ -12301,7 +12301,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         }}
       >
         <div
-          className="flex min-h-[4rem] flex-1 border-b border-slate-200 bg-slate-50/80 px-0 py-0"
+          className={`flex min-h-[4rem] flex-1 border-b border-slate-200 bg-slate-50/80 px-0 py-0 ${useCompactEdgeToEdge ? '-mx-2 sm:mx-0' : ''}`}
           style={{
             touchAction: 'auto',
             WebkitUserSelect: 'text',
@@ -12329,11 +12329,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           onPointerUp={handleKeyboardSurfacePointerEnd}
           onPointerCancel={handleKeyboardSurfacePointerEnd}
         >
-        <div className="flex h-full w-full items-stretch justify-stretch px-0 py-0">
+        <div className={`flex h-full items-stretch justify-stretch px-0 py-0 ${useCompactEdgeToEdge ? '-mx-2 w-[calc(100%+1rem)] sm:mx-0 sm:w-full' : 'w-full'}`}>
           <div
             data-keyboard-panel="true"
             className={useCompactEdgeToEdge
-              ? 'h-full w-full border-0 rounded-none bg-[linear-gradient(180deg,#20252d_0%,#171b22_100%)] p-0 shadow-none'
+              ? 'h-full w-full border-0 rounded-none bg-[linear-gradient(180deg,#20252d_0%,#171b22_100%)] p-2 shadow-none sm:p-0'
               : 'h-full w-full rounded-2xl border border-slate-900/80 bg-[linear-gradient(180deg,#20252d_0%,#171b22_100%)] p-2 shadow-[0_20px_55px_rgba(15,23,42,0.45)] sm:p-3'}
           >
             <div className="flex flex-col gap-2.5">
@@ -13657,7 +13657,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         <div className="h-full w-full">
           <div
             ref={keyboardMathfieldViewportRef}
-            className={`relative h-full w-full overflow-auto rounded-[10px] border border-slate-200 bg-white ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
+            className={`relative h-full w-full overflow-auto bg-white ${useCompactEdgeToEdge ? 'rounded-none border-0' : 'rounded-[10px] border border-slate-200'} ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
             style={{
               WebkitOverflowScrolling: 'touch',
               overscrollBehavior: 'contain',
@@ -13694,14 +13694,14 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     return (
       <div className="flex h-full w-full items-center justify-center">
-        <div className={`relative flex h-full w-full items-center justify-center overflow-hidden px-2 py-1 text-center text-slate-600 outline-none select-none ${compact ? 'min-h-[2.75rem]' : ''}`}>
+        <div className={`relative flex h-full w-full items-center justify-center overflow-hidden text-center text-slate-600 outline-none select-none ${useCompactEdgeToEdge ? 'px-0 py-0' : 'px-2 py-1'} ${compact ? 'min-h-[2.75rem]' : ''}`}>
           <span className={`text-center ${compact ? 'text-xs' : 'text-sm'}`}>
             Use the math field below to edit the current step.
           </span>
         </div>
       </div>
     )
-  }, [])
+  }, [useCompactEdgeToEdge])
 
   const renderKeyboardTopPanelEditorSurface = useCallback(() => {
     return renderKeyboardTypesetEditorSurface(false, true)

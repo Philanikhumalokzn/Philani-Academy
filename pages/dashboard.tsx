@@ -15686,7 +15686,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 >
                   <button
                     type="button"
-                    className="live-call-overlay__canvas-toggle pointer-events-auto"
+                    className="pointer-events-auto rounded-full border border-white/15 bg-white/6 px-3 py-1.5 text-[0.85rem] font-semibold leading-none text-white transition hover:bg-white/10 disabled:opacity-50"
                     onClick={() => void submitTypedPostSolve()}
                     disabled={postSolveSubmitting || !String(postTypedSolveLatex || '').trim()}
                   >

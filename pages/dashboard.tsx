@@ -15675,39 +15675,40 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               const typedPostActionsVisible = !isMobile || postTypedOverlayChromeVisible
               return (
             <div className="relative mx-auto flex h-full w-full max-w-none sm:max-w-7xl flex-col overflow-hidden rounded-none sm:rounded-[32px] border-0 sm:border sm:border-white/15 bg-transparent sm:bg-[#030712] shadow-none sm:shadow-[0_30px_80px_rgba(2,6,23,0.36)]">
-              <div
-                className="pointer-events-none absolute inset-x-0 top-0 z-[5] flex justify-end sm:p-4"
-                style={{
-                  paddingTop: 'calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 8px)',
-                  paddingRight: 'calc(max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px)) + 8px)',
-                  paddingLeft: 'calc(max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px)) + 8px)',
-                }}
-              >
+              <div className={`pointer-events-none absolute inset-0 z-[5] live-window--canvas ${typedPostActionsVisible ? 'live-window--chrome-visible' : ''}`}>
                 <div
-                  className={`pointer-events-auto flex items-center gap-3 rounded-full border border-white/10 bg-[rgba(3,7,18,0.78)] px-3 py-2 shadow-[0_18px_40px_rgba(2,6,23,0.28)] backdrop-blur-xl transition-[opacity,transform] duration-300 ${typedPostActionsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}
+                  className="live-window__header"
+                  style={{
+                    top: 'calc(10px + max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)))',
+                    left: 'calc(12px + max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px)))',
+                    right: 'calc(12px + max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px)))',
+                  }}
                 >
                   <button
                     type="button"
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/6 text-xl leading-none text-white transition hover:bg-white/12 disabled:opacity-50"
-                    aria-label="Close typed response"
-                    onClick={() => {
-                      if (postSolveSubmitting) return
-                      setPostTypedSolveOverlay(null)
-                      setPostTypedOverlayChromeVisible(false)
-                      setPostTypedSolveLatex('')
-                      setPostSolveError(null)
-                    }}
-                  >
-                    ×
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
+                    className="live-call-overlay__canvas-toggle pointer-events-auto"
                     onClick={() => void submitTypedPostSolve()}
                     disabled={postSolveSubmitting || !String(postTypedSolveLatex || '').trim()}
                   >
-                    {postSolveSubmitting ? 'Posting...' : 'Post response'}
+                    {postSolveSubmitting ? 'Finishing...' : 'Finish'}
                   </button>
+
+                  <div className="live-window__header-controls pointer-events-auto">
+                    <button
+                      type="button"
+                      title="Close typed response"
+                      aria-label="Close typed response"
+                      onClick={() => {
+                        if (postSolveSubmitting) return
+                        setPostTypedSolveOverlay(null)
+                        setPostTypedOverlayChromeVisible(false)
+                        setPostTypedSolveLatex('')
+                        setPostSolveError(null)
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
                 </div>
               </div>
               <div className="min-h-0 flex-1">

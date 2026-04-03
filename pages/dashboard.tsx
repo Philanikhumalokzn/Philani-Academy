@@ -15668,38 +15668,29 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             aria-modal="true"
             aria-label="Typed post response"
           >
-            <div className="mx-auto flex h-full w-full max-w-7xl flex-col overflow-hidden rounded-[32px] border border-white/15 bg-[#030712] shadow-[0_30px_80px_rgba(2,6,23,0.36)]">
-              <div className="flex flex-col gap-4 border-b border-white/10 px-4 py-4 text-white sm:px-6">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0 space-y-2">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-sky-200/80">Typed Response</div>
-                    <div className="text-xl font-semibold text-white">{postTypedSolveOverlay.title || 'Post'}</div>
-                    {postTypedSolveOverlay.prompt ? (
-                      <p className="max-w-3xl text-sm leading-6 text-white/70">{postTypedSolveOverlay.prompt}</p>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => {
-                        if (postSolveSubmitting) return
-                        setPostTypedSolveOverlay(null)
-                        setPostTypedSolveLatex('')
-                        setPostSolveError(null)
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={() => void submitTypedPostSolve()}
-                      disabled={postSolveSubmitting || !String(postTypedSolveLatex || '').trim()}
-                    >
-                      {postSolveSubmitting ? 'Posting...' : 'Post response'}
-                    </button>
-                  </div>
+            <div className="relative mx-auto flex h-full w-full max-w-7xl flex-col overflow-hidden rounded-[32px] border border-white/15 bg-[#030712] shadow-[0_30px_80px_rgba(2,6,23,0.36)]">
+              <div className="pointer-events-none absolute inset-x-0 top-0 z-[5] flex justify-end p-3 sm:p-4">
+                <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-white/10 bg-[rgba(3,7,18,0.78)] px-3 py-2 shadow-[0_18px_40px_rgba(2,6,23,0.28)] backdrop-blur-xl">
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      if (postSolveSubmitting) return
+                      setPostTypedSolveOverlay(null)
+                      setPostTypedSolveLatex('')
+                      setPostSolveError(null)
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => void submitTypedPostSolve()}
+                    disabled={postSolveSubmitting || !String(postTypedSolveLatex || '').trim()}
+                  >
+                    {postSolveSubmitting ? 'Posting...' : 'Post response'}
+                  </button>
                 </div>
               </div>
               <div className="min-h-0 flex-1">

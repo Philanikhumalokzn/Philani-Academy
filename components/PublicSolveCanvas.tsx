@@ -396,7 +396,7 @@ export function PublicSolveOpacityWorkspace({
       sliderRevealTimeoutRef.current = setTimeout(() => {
         setSliderVisible(true)
         sliderRevealTimeoutRef.current = null
-      }, 1000)
+      }, 2000)
     }
 
     scopeNode.addEventListener('pointerdown', hideThenScheduleReveal, true)
@@ -426,7 +426,7 @@ export function PublicSolveOpacityWorkspace({
         >
           <div
             data-public-solve-opacity-slider="true"
-            className={`pointer-events-auto flex h-[232px] w-11 flex-col items-center justify-center gap-2 rounded-full border border-slate-200/90 bg-white/92 px-1 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-[opacity,transform] duration-500 ${sliderVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2 pointer-events-none'}`}
+            className={`pointer-events-auto flex h-[232px] w-11 flex-col items-center justify-center gap-2 rounded-full border border-slate-200/90 bg-white/92 px-1 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-[opacity,transform] duration-200 ${sliderVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2 pointer-events-none'}`}
           >
             <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
               <div className="text-center text-[8px] font-semibold uppercase leading-[1.05] tracking-[0.08em] text-slate-500 [writing-mode:vertical-rl] rotate-180">

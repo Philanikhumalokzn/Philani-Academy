@@ -1128,6 +1128,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [liveOverlayOpen, setLiveOverlayOpen] = useState(false)
   const [liveOverlayDismissed, setLiveOverlayDismissed] = useState(false)
   const [liveOverlayChromeVisible, setLiveOverlayChromeVisible] = useState(false)
+  const [postTypedOverlayChromeVisible, setPostTypedOverlayChromeVisible] = useState(false)
   const [closeLiveOverlayOnCanvasClose, setCloseLiveOverlayOnCanvasClose] = useState(false)
   const [liveControls, setLiveControls] = useState<JitsiControls | null>(null)
   const [liveMuteState, setLiveMuteState] = useState<JitsiMuteState>({ audioMuted: true, videoMuted: true })
@@ -8076,9 +8077,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setPostSolvePreviewOverlay(null)
     setPostSolveOverlay(null)
     setPostSolveError(null)
+    setPostTypedOverlayChromeVisible(!isMobile)
     setPostTypedSolveLatex(typeof draft.initialLatex === 'string' ? draft.initialLatex.trim() : '')
     setPostTypedSolveOverlay(draft)
-  }, [])
+  }, [isMobile])
 
   const openPostSolveComposer = useCallback(async (post: any, options?: { initialScene?: any | null; initialLatex?: string | null }) => {
     const postId = String(post?.id || '')
@@ -8294,6 +8296,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       applyOwnPostResponseToFeeds(activeDraft, data)
       setPostTypedSolveOverlay(null)
+      setPostTypedOverlayChromeVisible(false)
       setPostTypedSolveLatex('')
 
       await openPostThread({
@@ -15668,20 +15671,27 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             aria-modal="true"
             aria-label="Typed post response"
           >
+            {(() => {
+              const typedPostActionsVisible = !isMobile || postTypedOverlayChromeVisible
+              return (
             <div className="relative mx-auto flex h-full w-full max-w-7xl flex-col overflow-hidden rounded-[32px] border border-white/15 bg-[#030712] shadow-[0_30px_80px_rgba(2,6,23,0.36)]">
               <div className="pointer-events-none absolute inset-x-0 top-0 z-[5] flex justify-end p-3 sm:p-4">
-                <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-white/10 bg-[rgba(3,7,18,0.78)] px-3 py-2 shadow-[0_18px_40px_rgba(2,6,23,0.28)] backdrop-blur-xl">
+                <div
+                  className={`pointer-events-auto flex items-center gap-3 rounded-full border border-white/10 bg-[rgba(3,7,18,0.78)] px-3 py-2 shadow-[0_18px_40px_rgba(2,6,23,0.28)] backdrop-blur-xl transition-[opacity,transform] duration-300 ${typedPostActionsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}
+                >
                   <button
                     type="button"
-                    className="btn btn-ghost"
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/6 text-xl leading-none text-white transition hover:bg-white/12 disabled:opacity-50"
+                    aria-label="Close typed response"
                     onClick={() => {
                       if (postSolveSubmitting) return
                       setPostTypedSolveOverlay(null)
+                      setPostTypedOverlayChromeVisible(false)
                       setPostTypedSolveLatex('')
                       setPostSolveError(null)
                     }}
                   >
-                    Cancel
+                    ×
                   </button>
                   <button
                     type="button"
@@ -15717,6 +15727,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       canOrchestrateLesson={false}
                       roleProfile={currentLessonRoleProfile}
                       forceEditable
+                      onOverlayChromeVisibilityChange={setPostTypedOverlayChromeVisible}
                       initialComposedLatex={postTypedSolveOverlay.initialLatex || ''}
                       onComposedLatexChange={setPostTypedSolveLatex}
                     />
@@ -15724,6 +15735,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </PublicSolveOpacityWorkspace>
               </div>
             </div>
+              )
+            })()}
             {postSolveError ? (
               <div className="pointer-events-none absolute left-4 right-4 top-4 z-[69] mx-auto max-w-3xl rounded-2xl border border-red-200 bg-red-50/95 px-4 py-3 text-sm font-medium text-red-700 shadow-[0_18px_40px_rgba(220,38,38,0.12)] backdrop-blur-xl">
                 {postSolveError}

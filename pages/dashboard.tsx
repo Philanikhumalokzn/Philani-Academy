@@ -15734,6 +15734,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       canOrchestrateLesson={false}
                       roleProfile={currentLessonRoleProfile}
                       forceEditable
+                      compactEdgeToEdge
                       onOverlayChromeVisibilityChange={setPostTypedOverlayChromeVisible}
                       initialComposedLatex={postTypedSolveOverlay.initialLatex || ''}
                       onComposedLatexChange={setPostTypedSolveLatex}

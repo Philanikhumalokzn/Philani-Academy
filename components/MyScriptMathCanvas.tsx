@@ -932,6 +932,7 @@ type MyScriptMathCanvasProps = {
   onComposedLatexChange?: (latex: string) => void
   onRequestVideoOverlay?: () => void
   lessonAuthoring?: { phaseKey: string; pointId: string }
+  compactEdgeToEdge?: boolean
 }
 
 type LessonScriptPhaseKey = 'engage' | 'explore' | 'explain' | 'elaborate' | 'evaluate'
@@ -2567,7 +2568,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOrchestrateLesson: legacyCanOrchestrateLesson, roleProfile, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, initialComposedLatex, onLatexOutputChange, onComposedLatexChange, onRequestVideoOverlay, lessonAuthoring }: MyScriptMathCanvasProps): React.JSX.Element => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOrchestrateLesson: legacyCanOrchestrateLesson, roleProfile, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, initialComposedLatex, onLatexOutputChange, onComposedLatexChange, onRequestVideoOverlay, lessonAuthoring, compactEdgeToEdge }: MyScriptMathCanvasProps): React.JSX.Element => {
   const lessonRoleProfile = useMemo(() => {
     if (roleProfile) return roleProfile
     return createLessonRoleProfile({ platformRole: legacyCanOrchestrateLesson ? 'teacher' : 'learner' })
@@ -3733,6 +3734,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   )
   const isSessionQuizMode = !isAssignmentView && !forceEditableForAssignment && !isChallengeBoard
   const useStackedStudentLayout = isStudentView || (canOrchestrateLesson && isCompactViewport)
+  const useCompactEdgeToEdge = Boolean(compactEdgeToEdge && isOverlayMode && isCompactViewport)
   // Note: `useAdminStepComposer` is defined later once controller/presenter rights are available.
 
   const [quizSubmitting, setQuizSubmitting] = useState(false)
@@ -12330,7 +12332,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         <div className="flex h-full w-full items-stretch justify-stretch px-0 py-0">
           <div
             data-keyboard-panel="true"
-            className="h-full w-full rounded-2xl border border-slate-900/80 bg-[linear-gradient(180deg,#20252d_0%,#171b22_100%)] p-2 shadow-[0_20px_55px_rgba(15,23,42,0.45)] sm:p-3"
+            className={useCompactEdgeToEdge
+              ? 'h-full w-full border-0 rounded-none bg-[linear-gradient(180deg,#20252d_0%,#171b22_100%)] p-0 shadow-none'
+              : 'h-full w-full rounded-2xl border border-slate-900/80 bg-[linear-gradient(180deg,#20252d_0%,#171b22_100%)] p-2 shadow-[0_20px_55px_rgba(15,23,42,0.45)] sm:p-3'}
           >
             <div className="flex flex-col gap-2.5">
               <div data-keyboard-top-grid="true" className="grid grid-cols-[repeat(4,minmax(0,1fr))_1.12fr] auto-rows-[2.5rem] gap-2 sm:auto-rows-[2.8rem]">
@@ -19105,7 +19109,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               </div>
 
               {recognitionEngine === 'keyboard' ? (
-                <div className="rounded bg-white relative overflow-hidden flex flex-col flex-1 min-h-0">
+                <div className={`${useCompactEdgeToEdge ? 'rounded-none' : 'rounded'} bg-white relative overflow-hidden flex flex-col flex-1 min-h-0`}>
                   {renderKeyboardCanvasSurface()}
                 </div>
               ) : (

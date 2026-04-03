@@ -49,6 +49,7 @@ type Props = {
   onRequestVideoOverlay?: () => void
   autoOpenDiagramTray?: boolean
   lessonAuthoring?: { phaseKey: string; pointId: string }
+  compactEdgeToEdge?: boolean
 }
 
 type OverlayControlsHandle = {
@@ -57,7 +58,7 @@ type OverlayControlsHandle = {
   toggle: () => void
 }
 
-export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realtimeScopeId, userId, userDisplayName, canOrchestrateLesson, roleProfile, forceEditable, quizMode, initialQuiz, assignmentSubmission, isVisible, defaultOrientation = 'portrait', onOverlayChromeVisibilityChange, initialComposedLatex, onComposedLatexChange, onRequestVideoOverlay, autoOpenDiagramTray, lessonAuthoring }: Props) {
+export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realtimeScopeId, userId, userDisplayName, canOrchestrateLesson, roleProfile, forceEditable, quizMode, initialQuiz, assignmentSubmission, isVisible, defaultOrientation = 'portrait', onOverlayChromeVisibilityChange, initialComposedLatex, onComposedLatexChange, onRequestVideoOverlay, autoOpenDiagramTray, lessonAuthoring, compactEdgeToEdge }: Props) {
   const controlsHandleRef = useRef<OverlayControlsHandle | null>(null)
   const hasTeacherPrivileges = Boolean(roleProfile?.capabilities.canOrchestrateLesson ?? canOrchestrateLesson)
 
@@ -100,6 +101,7 @@ export default function StackedCanvasWindow({ gradeLabel, roomId, boardId, realt
           onOverlayChromeVisibilityChange={onOverlayChromeVisibilityChange}
           initialComposedLatex={initialComposedLatex}
           onComposedLatexChange={onComposedLatexChange}
+          compactEdgeToEdge={compactEdgeToEdge}
         />
 
         {boardId && (

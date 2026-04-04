@@ -319,6 +319,66 @@ const sortDashboardItemsByCreatedAt = (items: any[]) => {
   })
 }
 
+const CollapsibleReplyText = ({ text, className }: { text: string; className?: string }) => {
+  const [expanded, setExpanded] = useState(false)
+  const [truncated, setTruncated] = useState(false)
+  const textRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (expanded) return
+    const textElement = textRef.current
+    if (!textElement) return
+
+    const updateTruncation = () => {
+      setTruncated(textElement.scrollHeight > textElement.clientHeight + 1)
+    }
+
+    updateTruncation()
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateTruncation)
+      observer.observe(textElement)
+      return () => observer.disconnect()
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', updateTruncation)
+      return () => window.removeEventListener('resize', updateTruncation)
+    }
+  }, [expanded, text])
+
+  return (
+    <div>
+      <div
+        ref={textRef}
+        className={className}
+        style={expanded
+          ? undefined
+          : {
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 3,
+              overflow: 'hidden',
+            }}
+      >
+        {text}
+      </div>
+      {!expanded && truncated ? (
+        <button
+          type="button"
+          className="mt-1 text-[13px] font-semibold text-[#1d4f91]"
+          onClick={(event) => {
+            event.stopPropagation()
+            setExpanded(true)
+          }}
+        >
+          ...see more
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 export default function Dashboard({ initialIsMobile = false }: { initialIsMobile?: boolean }) {
   const renderInlineEmphasis = useCallback((text: string, keyPrefix: string) => {
     const input = typeof text === 'string' ? text : ''
@@ -518,6 +578,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     mathClassName?: string
     canvasClassName?: string
     imageClassName?: string
+    renderTextBlock?: (text: string, key: string) => React.ReactNode
     compactImageAttachments?: boolean
     compactCanvasPreview?: boolean
     onOpenCanvasBlock?: (scene: PublicSolveScene) => void
@@ -537,7 +598,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       <div className={wrapperClassName}>
         {normalizedBlocks.map((block, index) => {
           if (block.type === 'text') {
-            return <div key={`${keyPrefix}-${block.id}-${index}`} className={textClassName}>{block.text}</div>
+            const blockKey = `${keyPrefix}-${block.id}-${index}`
+            return options?.renderTextBlock
+              ? options.renderTextBlock(block.text, blockKey)
+              : <div key={blockKey} className={textClassName}>{block.text}</div>
           }
 
           if (block.type === 'latex') {
@@ -6452,18 +6516,42 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           </div>
                         </div>
 
-                        <div className="mt-3 text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{title}</div>
-                        {prompt ? <div className="mt-1.5 text-[14px] leading-6 text-[#334155] break-words">{prompt.slice(0, 220)}{prompt.length > 220 ? '...' : ''}</div> : null}
-                        {imageUrl ? (
-                          <div className="mt-3 overflow-hidden rounded-2xl border border-black/10 bg-[#f8fafc]">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={imageUrl}
-                              alt="Post screenshot"
-                              className="max-h-[420px] w-full object-cover"
-                            />
-                          </div>
-                        ) : null}
+                        {isPost ? (
+                          <button
+                            type="button"
+                            className="mt-3 block w-full text-left"
+                            onClick={() => void openPostThread(p, { forceOpen: true })}
+                            aria-expanded={expandedSolutionThreadKey === itemKey && expandedSolutionThreadKind === 'post'}
+                          >
+                            <div className="text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{title}</div>
+                            {prompt ? <div className="mt-1.5 text-[14px] leading-6 text-[#334155] break-words">{prompt.slice(0, 220)}{prompt.length > 220 ? '...' : ''}</div> : null}
+                            {imageUrl ? (
+                              <div className="mt-3 overflow-hidden rounded-2xl border border-black/10 bg-[#f8fafc]">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={imageUrl}
+                                  alt="Post screenshot"
+                                  className="max-h-[420px] w-full object-cover"
+                                />
+                              </div>
+                            ) : null}
+                          </button>
+                        ) : (
+                          <>
+                            <div className="mt-3 text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{title}</div>
+                            {prompt ? <div className="mt-1.5 text-[14px] leading-6 text-[#334155] break-words">{prompt.slice(0, 220)}{prompt.length > 220 ? '...' : ''}</div> : null}
+                            {imageUrl ? (
+                              <div className="mt-3 overflow-hidden rounded-2xl border border-black/10 bg-[#f8fafc]">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={imageUrl}
+                                  alt="Post screenshot"
+                                  className="max-h-[420px] w-full object-cover"
+                                />
+                              </div>
+                            ) : null}
+                          </>
+                        )}
 
                       </div>
                       {p?.id ? (
@@ -6793,6 +6881,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         wrapperClassName: 'space-y-3',
                         textClassName: 'text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]',
                         mathClassName: 'leading-relaxed text-[#1c1e21]',
+                        renderTextBlock: (text, blockKey) => (
+                          <CollapsibleReplyText
+                            key={blockKey}
+                            text={text}
+                            className="text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]"
+                          />
+                        ),
                         onCanvasViewportChange: options.onInteractiveViewportChange && options.interactiveViewportResponseId === responseId
                           ? (_blockId, scene) => options.onInteractiveViewportChange?.(scene)
                           : (options.onLiveResponseViewportChange && isMine && responseId
@@ -6802,7 +6897,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         ) : (
                     <>
                       {String(response?.studentText || '').trim() ? (
-                        <div className="text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{String(response.studentText)}</div>
+                        <CollapsibleReplyText
+                          text={String(response.studentText)}
+                          className="text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]"
+                        />
                       ) : null}
 
                       {latex.trim() ? (

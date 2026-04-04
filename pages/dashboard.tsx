@@ -253,6 +253,17 @@ type ReplyCrudTarget = {
   href?: string
 }
 
+type ComposerBlockEditTarget = {
+  blockId: string
+  type: PostReplyBlock['type']
+  index: number
+}
+
+type ComposerBlockCrudTarget = {
+  block: PostReplyBlock
+  index: number
+}
+
 const POST_REPLY_BLOCKS_KIND = 'post-reply-blocks-v1'
 
 const createPostReplyBlockId = () => {
@@ -1425,8 +1436,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [postSolveError, setPostSolveError] = useState<string | null>(null)
   const [postSolvePreviewOverlay, setPostSolvePreviewOverlay] = useState<PostSolvePreviewState | null>(null)
   const [postImageViewer, setPostImageViewer] = useState<{ url: string; title: string } | null>(null)
+  const [postSolveEditingTarget, setPostSolveEditingTarget] = useState<ComposerBlockEditTarget | null>(null)
+  const [composerBlockCrudTarget, setComposerBlockCrudTarget] = useState<ComposerBlockCrudTarget | null>(null)
   const replyLongPressTimeoutRef = useRef<number | null>(null)
   const replyLongPressStateRef = useRef<null | { x: number; y: number; target: ReplyCrudTarget }>(null)
+  const composerBlockLongPressTimeoutRef = useRef<number | null>(null)
+  const composerBlockLongPressStateRef = useRef<null | { x: number; y: number; target: ComposerBlockCrudTarget }>(null)
+  const composerBlockLongPressOpenedRef = useRef(false)
   const [postThreadOverlay, setPostThreadOverlay] = useState<null | {
     postId: string
     threadKey: string
@@ -1525,6 +1541,50 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const closePostImageViewer = useCallback(() => {
     setPostImageViewer(null)
+  }, [])
+
+  const composePostSolveBlocksWithDraftText = useCallback((
+    blocks: PostReplyBlock[],
+    draftText: string,
+    editingTarget: ComposerBlockEditTarget | null,
+  ): PostReplyBlock[] => {
+    const nextText = String(draftText || '')
+    const trimmedText = nextText.trim()
+    if (editingTarget?.type === 'text') {
+      const filteredBlocks = blocks.filter((block) => block.id !== editingTarget.blockId)
+      if (!trimmedText) return filteredBlocks
+      const insertIndex = Math.max(0, Math.min(editingTarget.index, filteredBlocks.length))
+      const nextBlocks = [...filteredBlocks]
+      nextBlocks.splice(insertIndex, 0, { id: editingTarget.blockId, type: 'text', text: nextText } as PostReplyTextBlock)
+      return nextBlocks
+    }
+    if (!trimmedText) return blocks
+    return [...blocks, { id: createPostReplyBlockId(), type: 'text', text: nextText } as PostReplyTextBlock]
+  }, [])
+
+  const upsertPostSolveBlock = useCallback((
+    blocks: PostReplyBlock[],
+    nextBlock: PostReplyBlock,
+    acceptedType?: PostReplyBlock['type'],
+  ): PostReplyBlock[] => {
+    if (postSolveEditingTarget && (!acceptedType || postSolveEditingTarget.type === acceptedType)) {
+      const filteredBlocks = blocks.filter((block) => block.id !== postSolveEditingTarget.blockId)
+      const insertIndex = Math.max(0, Math.min(postSolveEditingTarget.index, filteredBlocks.length))
+      const replacementBlock = { ...nextBlock, id: postSolveEditingTarget.blockId } as PostReplyBlock
+      const nextBlocks = [...filteredBlocks]
+      nextBlocks.splice(insertIndex, 0, replacementBlock)
+      return nextBlocks
+    }
+    return [...blocks, nextBlock]
+  }, [postSolveEditingTarget])
+
+  const focusPostSolveTextarea = useCallback(() => {
+    if (typeof window === 'undefined') return
+    window.setTimeout(() => {
+      postSolveTextareaRef.current?.focus()
+      const length = postSolveTextareaRef.current?.value.length || 0
+      postSolveTextareaRef.current?.setSelectionRange(length, length)
+    }, 0)
   }, [])
 
   const resizePostSolveTextarea = useCallback(() => {
@@ -8534,44 +8594,55 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [pendingFeedThreadJumpKey])
 
-  const openHandwrittenPostSolveComposer = useCallback((draft: PostSolveOverlayState | null) => {
+  const openHandwrittenPostSolveComposer = useCallback((draft: PostSolveOverlayState | null, options?: { editTarget?: ComposerBlockEditTarget | null }) => {
     if (!draft) return
     const currentText = String(postSolveText || '')
-    const existingCanvasBlock = [...postSolveBlocks].reverse().find((block) => block.type === 'canvas') as PostReplyCanvasBlock | undefined
-    if (currentText.trim()) {
-      setPostSolveBlocks((prev) => [...prev, { id: createPostReplyBlockId(), type: 'text', text: currentText }])
-      setPostSolveText('')
-    }
+    const committedBlocks = composePostSolveBlocksWithDraftText(postSolveBlocks, currentText, postSolveEditingTarget)
+    const editTarget = options?.editTarget && options.editTarget.type === 'canvas' ? options.editTarget : null
+    const editingCanvasBlock = editTarget
+      ? committedBlocks.find((block): block is PostReplyCanvasBlock => block.id === editTarget.blockId && block.type === 'canvas')
+      : null
+    const existingCanvasBlock = [...committedBlocks].reverse().find((block) => block.type === 'canvas') as PostReplyCanvasBlock | undefined
+    setPostSolveBlocks(committedBlocks)
+    setPostSolveText('')
+    setPostSolveEditingTarget(editTarget)
+    setComposerBlockCrudTarget(null)
     setPostSolveModeOverlay(null)
     setPostTypedSolveOverlay(null)
     setPostSolveError(null)
     setPostSolveOverlay({
       ...draft,
-      initialScene: existingCanvasBlock?.scene || draft.initialScene || null,
+      initialScene: editingCanvasBlock?.scene || existingCanvasBlock?.scene || draft.initialScene || null,
       initialStudentText: '',
     })
-  }, [postSolveBlocks, postSolveText])
+  }, [composePostSolveBlocksWithDraftText, postSolveBlocks, postSolveEditingTarget, postSolveText])
 
-  const openTypedPostSolveComposer = useCallback((draft: PostSolveOverlayState | null, preferredRecognitionEngine: 'keyboard' | 'myscript' | 'mathpix' = 'keyboard') => {
+  const openTypedPostSolveComposer = useCallback((
+    draft: PostSolveOverlayState | null,
+    preferredRecognitionEngine: 'keyboard' | 'myscript' | 'mathpix' = 'keyboard',
+    options?: { editTarget?: ComposerBlockEditTarget | null; initialLatex?: string | null },
+  ) => {
     if (!draft) return
     const currentText = String(postSolveText || '')
-    if (currentText.trim()) {
-      setPostSolveBlocks((prev) => [...prev, { id: createPostReplyBlockId(), type: 'text', text: currentText }])
-      setPostSolveText('')
-    }
+    const committedBlocks = composePostSolveBlocksWithDraftText(postSolveBlocks, currentText, postSolveEditingTarget)
+    const editTarget = options?.editTarget && options.editTarget.type === 'latex' ? options.editTarget : null
+    setPostSolveBlocks(committedBlocks)
+    setPostSolveText('')
+    setPostSolveEditingTarget(editTarget)
+    setComposerBlockCrudTarget(null)
     setPostSolveModeOverlay(null)
     setPostSolvePreviewOverlay(null)
     setPostSolveOverlay(null)
     setPostSolveError(null)
     setPostTypedOverlayChromeVisible(!isMobile)
-    setPostTypedSolveLatex('')
+    setPostTypedSolveLatex(String(options?.initialLatex || ''))
     setPostTypedSolveOverlay({
       ...draft,
-      initialLatex: '',
+      initialLatex: String(options?.initialLatex || ''),
       initialStudentText: '',
       preferredRecognitionEngine,
     })
-  }, [isMobile, postSolveText])
+  }, [composePostSolveBlocksWithDraftText, isMobile, postSolveBlocks, postSolveEditingTarget, postSolveText])
 
   const openPostSolveComposer = useCallback(async (post: any, options?: { initialScene?: any | null; initialLatex?: string | null; initialStudentText?: string | null; initialGradingJson?: any | null }) => {
     const postId = String(post?.id || '')
@@ -8619,6 +8690,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     setPostSolveBlocks(initialBlocks)
     setPostSolveText('')
+    setPostSolveEditingTarget(null)
+    setComposerBlockCrudTarget(null)
     setPostTypedSolveOverlay(null)
     setPostSolveOverlay(null)
     setPostSolveModeOverlay({
@@ -8834,10 +8907,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const activeDraft = postSolveModeOverlay
     if (!activeDraft?.postId || !activeDraft?.threadKey) return
     const draftText = String(postSolveText || '')
-    const payload = buildPostReplyPayloadFromBlocks([
-      ...postSolveBlocks,
-      ...(draftText.trim() ? [{ id: createPostReplyBlockId(), type: 'text', text: draftText } as PostReplyTextBlock] : []),
-    ])
+    const payload = buildPostReplyPayloadFromBlocks(composePostSolveBlocksWithDraftText(postSolveBlocks, draftText, postSolveEditingTarget))
     if (!payload.contentBlocks.length) {
       setPostSolveError('Write a reply before sending.')
       return
@@ -8868,6 +8938,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setPostSolveModeOverlay(null)
       setPostSolveBlocks([])
       setPostSolveText('')
+      setPostSolveEditingTarget(null)
+      setComposerBlockCrudTarget(null)
 
       await openPostThread({
         id: activeDraft.postId,
@@ -8891,6 +8963,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (!activeDraft?.postId || !activeDraft?.threadKey || !normalizedScene) return
 
     setPostSolveBlocks((prev) => {
+      if (postSolveEditingTarget?.type === 'canvas') {
+        return upsertPostSolveBlock(prev, { id: postSolveEditingTarget.blockId, type: 'canvas', scene: normalizedScene }, 'canvas')
+      }
       const nextBlocks: PostReplyBlock[] = prev.filter((block) => block.type !== 'canvas')
       nextBlocks.push({ id: createPostReplyBlockId(), type: 'canvas', scene: normalizedScene })
       return nextBlocks
@@ -8898,13 +8973,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     setPostSolvePreviewOverlay(null)
     setPostSolveOverlay(null)
+    setPostSolveEditingTarget(null)
     setPostSolveModeOverlay({
       ...activeDraft,
       initialScene: normalizedScene,
       initialStudentText: '',
     })
     setPostSolveError(null)
-  }, [postSolveOverlay, postSolvePreviewOverlay])
+  }, [postSolveEditingTarget, postSolveOverlay, postSolvePreviewOverlay, upsertPostSolveBlock])
 
   const submitTypedPostSolve = useCallback(async () => {
     const activeDraft = postTypedSolveOverlay
@@ -8915,7 +8991,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       return
     }
 
-    setPostSolveBlocks((prev) => [...prev, { id: createPostReplyBlockId(), type: 'latex', latex }])
+    setPostSolveBlocks((prev) => upsertPostSolveBlock(prev, { id: createPostReplyBlockId(), type: 'latex', latex }, 'latex'))
     setPostSolveModeOverlay({
       ...activeDraft,
       initialLatex: '',
@@ -8924,12 +9000,88 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setPostTypedSolveOverlay(null)
     setPostTypedOverlayChromeVisible(false)
     setPostTypedSolveLatex('')
+    setPostSolveEditingTarget(null)
     setPostSolveError(null)
-  }, [postTypedSolveLatex, postTypedSolveOverlay])
+  }, [postTypedSolveLatex, postTypedSolveOverlay, upsertPostSolveBlock])
 
   const removePostReplyImageBlock = useCallback((blockId: string) => {
     setPostSolveBlocks((prev) => prev.filter((block) => !(block.type === 'image' && block.id === blockId)))
   }, [])
+
+  const deleteComposerBlock = useCallback((blockId: string) => {
+    setPostSolveBlocks((prev) => prev.filter((block) => block.id !== blockId))
+    setPostSolveEditingTarget((current) => current?.blockId === blockId ? null : current)
+    setComposerBlockCrudTarget((current) => current?.block.id === blockId ? null : current)
+  }, [])
+
+  const clearComposerBlockLongPress = useCallback(() => {
+    if (composerBlockLongPressTimeoutRef.current !== null && typeof window !== 'undefined') {
+      window.clearTimeout(composerBlockLongPressTimeoutRef.current)
+    }
+    composerBlockLongPressTimeoutRef.current = null
+    composerBlockLongPressStateRef.current = null
+  }, [])
+
+  const openComposerBlockCrudOptions = useCallback((target: ComposerBlockCrudTarget) => {
+    clearComposerBlockLongPress()
+    setComposerBlockCrudTarget(target)
+  }, [clearComposerBlockLongPress])
+
+  const beginComposerBlockLongPress = useCallback((event: React.PointerEvent, target: ComposerBlockCrudTarget) => {
+    if (typeof window === 'undefined') return
+    if (event.button !== 0) return
+
+    clearComposerBlockLongPress()
+    composerBlockLongPressStateRef.current = { x: event.clientX, y: event.clientY, target }
+    composerBlockLongPressOpenedRef.current = false
+    composerBlockLongPressTimeoutRef.current = window.setTimeout(() => {
+      composerBlockLongPressOpenedRef.current = true
+      openComposerBlockCrudOptions(target)
+    }, 420)
+  }, [clearComposerBlockLongPress, openComposerBlockCrudOptions])
+
+  const moveComposerBlockLongPress = useCallback((event: React.PointerEvent) => {
+    const state = composerBlockLongPressStateRef.current
+    if (!state) return
+    const dx = event.clientX - state.x
+    const dy = event.clientY - state.y
+    if (Math.hypot(dx, dy) > 10) {
+      clearComposerBlockLongPress()
+    }
+  }, [clearComposerBlockLongPress])
+
+  const editComposerBlock = useCallback((block: PostReplyBlock, index: number) => {
+    if (composerBlockLongPressOpenedRef.current) {
+      composerBlockLongPressOpenedRef.current = false
+      return
+    }
+    setComposerBlockCrudTarget(null)
+    if (!postSolveModeOverlay) return
+
+    const target: ComposerBlockEditTarget = { blockId: block.id, type: block.type, index }
+
+    if (block.type === 'text') {
+      setPostSolveEditingTarget(target)
+      setPostSolveText(block.text)
+      focusPostSolveTextarea()
+      return
+    }
+
+    if (block.type === 'latex') {
+      openTypedPostSolveComposer(postSolveModeOverlay, 'keyboard', {
+        editTarget: target,
+        initialLatex: block.latex,
+      })
+      return
+    }
+
+    if (block.type === 'canvas') {
+      openHandwrittenPostSolveComposer(postSolveModeOverlay, { editTarget: target })
+      return
+    }
+
+    openPostImageViewer(block.imageUrl, 'Reply attachment')
+  }, [focusPostSolveTextarea, openHandwrittenPostSolveComposer, openPostImageViewer, openTypedPostSolveComposer, postSolveModeOverlay])
 
   const openHandwrittenLessonSolveComposer = useCallback((draft: LessonSolveOverlayState | null) => {
     if (!draft) return
@@ -15565,6 +15717,55 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </OverlayPortal>
       ) : null}
 
+      {composerBlockCrudTarget ? (
+        <OverlayPortal>
+          <BottomSheet
+            open
+            backdrop
+            title="Block options"
+            subtitle="Press and hold a reply block to edit or remove it"
+            onClose={() => setComposerBlockCrudTarget(null)}
+            zIndexClassName="z-[69]"
+            className="bottom-0"
+            sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
+            contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5"
+          >
+            <div className="space-y-2">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
+                onClick={() => editComposerBlock(composerBlockCrudTarget.block, composerBlockCrudTarget.index)}
+              >
+                <span>
+                  <span className="block text-sm font-semibold">{composerBlockCrudTarget.block.type === 'image' ? 'Open image' : 'Edit block'}</span>
+                  <span className="block text-xs text-slate-500">
+                    {composerBlockCrudTarget.block.type === 'text'
+                      ? 'Load this text back into the composer for editing.'
+                      : composerBlockCrudTarget.block.type === 'latex'
+                        ? 'Reopen this math block in the keyboard editor.'
+                        : composerBlockCrudTarget.block.type === 'canvas'
+                          ? 'Reopen this handwritten block in the solve canvas.'
+                          : 'Open this image in the zoomable viewer.'}
+                  </span>
+                </span>
+                <span className="text-slate-400">{`>`}</span>
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-left text-red-700 transition hover:border-red-300 hover:bg-red-100"
+                onClick={() => deleteComposerBlock(composerBlockCrudTarget.block.id)}
+              >
+                <span>
+                  <span className="block text-sm font-semibold">Delete block</span>
+                  <span className="block text-xs text-red-500">Remove this item from your reply draft.</span>
+                </span>
+                <span className="text-red-300">{`>`}</span>
+              </button>
+            </div>
+          </BottomSheet>
+        </OverlayPortal>
+      ) : null}
+
       {lessonSolveModeOverlay && (
         <OverlayPortal>
           <div
@@ -15727,6 +15928,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               setPostSolveModeOverlay(null)
               setPostSolveError(null)
               setPostReplyImageSourceSheetOpen(false)
+              setPostSolveEditingTarget(null)
+              setComposerBlockCrudTarget(null)
             }}
             zIndexClassName="z-[68]"
             className="bottom-0"
@@ -15734,9 +15937,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             contentClassName="flex max-h-[min(32rem,68dvh)] flex-col overflow-hidden px-4 pt-3 sm:max-h-[min(36rem,72dvh)] sm:px-5 sm:pt-4"
           >
             {(() => {
-              const composerImageBlocks = postSolveBlocks.filter((block): block is PostReplyImageBlock => block.type === 'image')
-              const composerNonImageBlocks = postSolveBlocks.filter((block) => block.type !== 'image')
-              const hasReplyBlocks = postSolveBlocks.length > 0
+              const composerVisibleBlocks = postSolveBlocks.filter((block) => !(postSolveEditingTarget?.type === 'text' && postSolveEditingTarget.blockId === block.id))
+              const hasReplyBlocks = composerVisibleBlocks.length > 0
+              const canSubmitReply = composePostSolveBlocksWithDraftText(postSolveBlocks, postSolveText, postSolveEditingTarget).length > 0
               const iconButtonClassName = 'inline-flex h-10 items-center justify-center text-slate-700 transition hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
 
               return (
@@ -15754,26 +15957,120 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   <div className="min-h-0 overflow-y-auto overscroll-contain pb-4">
                     <div className="min-w-0 rounded-[24px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                         {hasReplyBlocks ? (
-                          <div className="mb-2">
-                            {composerImageBlocks.length > 0 ? (
-                              <div className="mb-2 flex flex-wrap items-start gap-2">
-                                {renderPostReplyBlocks(composerImageBlocks, 'composer-reply-image-block', {
-                                  wrapperClassName: 'flex flex-wrap items-start gap-2',
-                                })}
-                              </div>
-                            ) : null}
-                            {composerNonImageBlocks.length > 0 ? renderPostReplyBlocks(composerNonImageBlocks, 'composer-reply-block', {
-                              wrapperClassName: 'space-y-2',
-                              textClassName: 'text-sm leading-6 whitespace-pre-wrap break-words text-slate-700',
-                              mathClassName: 'overflow-x-auto text-slate-800 leading-relaxed',
-                              canvasClassName: 'pt-1',
-                              compactCanvasPreview: true,
-                              onOpenCanvasBlock: (scene) => openPostCanvasViewer(
-                                scene,
-                                `${currentViewerPostAuthor.name} canvas`,
-                                'Draft attachment'
-                              ),
-                            }) : null}
+                          <div className="mb-2 space-y-2">
+                            {composerVisibleBlocks.map((block, index) => {
+                              const blockTarget: ComposerBlockCrudTarget = { block, index }
+                              const blockHandlers = {
+                                onPointerDown: (event: React.PointerEvent) => beginComposerBlockLongPress(event, blockTarget),
+                                onPointerMove: moveComposerBlockLongPress,
+                                onPointerUp: clearComposerBlockLongPress,
+                                onPointerCancel: clearComposerBlockLongPress,
+                                onPointerLeave: clearComposerBlockLongPress,
+                                onContextMenu: (event: React.MouseEvent) => {
+                                  event.preventDefault()
+                                  openComposerBlockCrudOptions(blockTarget)
+                                },
+                              }
+
+                              if (block.type === 'text') {
+                                return (
+                                  <div
+                                    key={block.id}
+                                    role="button"
+                                    tabIndex={0}
+                                    className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 whitespace-pre-wrap break-words text-slate-700"
+                                    onClick={() => editComposerBlock(block, index)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault()
+                                        editComposerBlock(block, index)
+                                      }
+                                    }}
+                                    {...blockHandlers}
+                                  >
+                                    {block.text}
+                                  </div>
+                                )
+                              }
+
+                              if (block.type === 'latex') {
+                                const latexHtml = renderKatexDisplayHtml(block.latex)
+                                return (
+                                  <div
+                                    key={block.id}
+                                    role="button"
+                                    tabIndex={0}
+                                    className="overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800"
+                                    onClick={() => editComposerBlock(block, index)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault()
+                                        editComposerBlock(block, index)
+                                      }
+                                    }}
+                                    {...blockHandlers}
+                                  >
+                                    {latexHtml ? (
+                                      <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
+                                    ) : (
+                                      <div className="text-sm leading-6 whitespace-pre-wrap break-words">{renderTextWithKatex(block.latex)}</div>
+                                    )}
+                                  </div>
+                                )
+                              }
+
+                              if (block.type === 'canvas') {
+                                return (
+                                  <div
+                                    key={block.id}
+                                    role="button"
+                                    tabIndex={0}
+                                    className="pt-1"
+                                    onClick={() => editComposerBlock(block, index)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault()
+                                        editComposerBlock(block, index)
+                                      }
+                                    }}
+                                    {...blockHandlers}
+                                  >
+                                    <div className="overflow-hidden rounded-2xl border border-[#1d4f91] bg-white shadow-sm">
+                                      <PublicSolveCanvasViewer
+                                        scene={block.scene}
+                                        className="pointer-events-none"
+                                        viewerHeightPx={220}
+                                      />
+                                    </div>
+                                  </div>
+                                )
+                              }
+
+                              return (
+                                <div
+                                  key={block.id}
+                                  role="button"
+                                  tabIndex={0}
+                                  className="inline-flex max-w-full"
+                                  onClick={() => editComposerBlock(block, index)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                      event.preventDefault()
+                                      editComposerBlock(block, index)
+                                    }
+                                  }}
+                                  {...blockHandlers}
+                                >
+                                  <div className="relative inline-flex overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
+                                    <img
+                                      src={block.imageUrl}
+                                      alt="Reply attachment"
+                                      className="h-24 w-24 object-cover sm:h-28 sm:w-28"
+                                    />
+                                  </div>
+                                </div>
+                              )
+                            })}
                           </div>
                         ) : null}
                         <textarea
@@ -15838,7 +16135,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         type="button"
                         className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-white shadow-[0_18px_34px_rgba(24,119,242,0.28)] transition hover:bg-[#176ad8] disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={() => void submitPostTextSolve()}
-                        disabled={postSolveSubmitting || postReplyImageUploading || (!String(postSolveText || '').trim() && !postSolveBlocks.length)}
+                        disabled={postSolveSubmitting || postReplyImageUploading || !canSubmitReply}
                         aria-label="Send reply"
                         title="Send reply"
                       >
@@ -15949,6 +16246,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     initialStudentText: '',
                   })
                   setPostSolveOverlay(null)
+                  setPostSolveEditingTarget((current) => current?.type === 'canvas' ? null : current)
                   setPostSolveError(null)
                 }}
                 onSubmit={submitPostSolve}
@@ -16007,6 +16305,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         })
                         setPostTypedSolveOverlay(null)
                         setPostTypedOverlayChromeVisible(false)
+                        setPostSolveEditingTarget((current) => current?.type === 'latex' ? null : current)
                         setPostSolveError(null)
                       }}
                     >

@@ -15620,14 +15620,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           rows={1}
                           className="max-h-28 min-h-[1.5rem] w-full resize-none bg-transparent text-sm leading-6 text-slate-700 outline-none placeholder:text-slate-400"
                           style={{ overflowY: 'hidden' }}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' && !event.shiftKey) {
-                              event.preventDefault()
-                              if (!postSolveSubmitting) {
-                                void submitPostTextSolve()
-                              }
-                            }
-                          }}
                         />
                     </div>
                   </div>

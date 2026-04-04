@@ -579,6 +579,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     canvasClassName?: string
     imageClassName?: string
     renderTextBlock?: (text: string, key: string) => React.ReactNode
+    onOpenImageBlock?: (imageUrl: string) => void
     compactImageAttachments?: boolean
     compactCanvasPreview?: boolean
     onOpenCanvasBlock?: (scene: PublicSolveScene) => void
@@ -614,40 +615,69 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
           if (block.type === 'image') {
             if (options?.compactImageAttachments) {
+              const imageContent = (
+                <div className="relative inline-flex overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
+                  <img
+                    src={block.imageUrl}
+                    alt="Reply attachment"
+                    className="h-24 w-24 object-cover sm:h-28 sm:w-28"
+                  />
+                  {options?.onRemoveImageBlock ? (
+                    <button
+                      type="button"
+                      className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white transition hover:bg-black/80"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        options.onRemoveImageBlock?.(block.id)
+                      }}
+                      aria-label="Remove attachment"
+                      title="Remove attachment"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M18 6 6 18" />
+                        <path d="m6 6 12 12" />
+                      </svg>
+                    </button>
+                  ) : null}
+                </div>
+              )
+
               return (
                 <div key={`${keyPrefix}-${block.id}-${index}`} className={imageClassName}>
-                  <div className="relative inline-flex overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
-                    <img
-                      src={block.imageUrl}
-                      alt="Reply attachment"
-                      className="h-24 w-24 object-cover sm:h-28 sm:w-28"
-                    />
-                    {options?.onRemoveImageBlock ? (
-                      <button
-                        type="button"
-                        className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white transition hover:bg-black/80"
-                        onClick={() => options.onRemoveImageBlock?.(block.id)}
-                        aria-label="Remove attachment"
-                        title="Remove attachment"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M18 6 6 18" />
-                          <path d="m6 6 12 12" />
-                        </svg>
-                      </button>
-                    ) : null}
-                  </div>
+                  {options?.onOpenImageBlock ? (
+                    <button
+                      type="button"
+                      className="inline-flex text-left"
+                      onClick={() => options.onOpenImageBlock?.(block.imageUrl)}
+                    >
+                      {imageContent}
+                    </button>
+                  ) : imageContent}
                 </div>
               )
             }
 
             return (
               <div key={`${keyPrefix}-${block.id}-${index}`} className={imageClassName}>
-                <img
-                  src={block.imageUrl}
-                  alt="Reply attachment"
-                  className="max-h-[320px] w-full rounded-2xl border border-black/10 bg-white object-contain"
-                />
+                {options?.onOpenImageBlock ? (
+                  <button
+                    type="button"
+                    className="block w-full text-left"
+                    onClick={() => options.onOpenImageBlock?.(block.imageUrl)}
+                  >
+                    <img
+                      src={block.imageUrl}
+                      alt="Reply attachment"
+                      className="max-h-[320px] w-full rounded-2xl border border-black/10 bg-white object-contain"
+                    />
+                  </button>
+                ) : (
+                  <img
+                    src={block.imageUrl}
+                    alt="Reply attachment"
+                    className="max-h-[320px] w-full rounded-2xl border border-black/10 bg-white object-contain"
+                  />
+                )}
               </div>
             )
           }
@@ -1394,6 +1424,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [postReplyImageEditFile, setPostReplyImageEditFile] = useState<File | null>(null)
   const [postSolveError, setPostSolveError] = useState<string | null>(null)
   const [postSolvePreviewOverlay, setPostSolvePreviewOverlay] = useState<PostSolvePreviewState | null>(null)
+  const [postImageViewer, setPostImageViewer] = useState<{ url: string; title: string } | null>(null)
   const replyLongPressTimeoutRef = useRef<number | null>(null)
   const replyLongPressStateRef = useRef<null | { x: number; y: number; target: ReplyCrudTarget }>(null)
   const [postThreadOverlay, setPostThreadOverlay] = useState<null | {
@@ -1486,6 +1517,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setPostSolveError(err?.message || 'Failed to upload image')
     }
   }, [closePostReplyImageEdit, uploadPostReplyImage])
+
+  const openPostImageViewer = useCallback((url: string, title: string) => {
+    if (!url) return
+    setPostImageViewer({ url, title })
+  }, [])
+
+  const closePostImageViewer = useCallback(() => {
+    setPostImageViewer(null)
+  }, [])
 
   const resizePostSolveTextarea = useCallback(() => {
     const textarea = postSolveTextareaRef.current
@@ -6517,25 +6557,39 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         </div>
 
                         {isPost ? (
-                          <button
-                            type="button"
+                          <div
                             className="mt-3 block w-full text-left"
+                            role="button"
+                            tabIndex={0}
                             onClick={() => void openPostThread(p, { forceOpen: true })}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault()
+                                void openPostThread(p, { forceOpen: true })
+                              }
+                            }}
                             aria-expanded={expandedSolutionThreadKey === itemKey && expandedSolutionThreadKind === 'post'}
                           >
                             <div className="text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{title}</div>
                             {prompt ? <div className="mt-1.5 text-[14px] leading-6 text-[#334155] break-words">{prompt.slice(0, 220)}{prompt.length > 220 ? '...' : ''}</div> : null}
                             {imageUrl ? (
-                              <div className="mt-3 overflow-hidden rounded-2xl border border-black/10 bg-[#f8fafc]">
+                              <button
+                                type="button"
+                                className="mt-3 block w-full overflow-hidden rounded-2xl border border-black/10 bg-[#f8fafc]"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  openPostImageViewer(imageUrl, `${title} image`)
+                                }}
+                              >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
                                   src={imageUrl}
                                   alt="Post screenshot"
                                   className="max-h-[420px] w-full object-cover"
                                 />
-                              </div>
+                              </button>
                             ) : null}
-                          </button>
+                          </div>
                         ) : (
                           <>
                             <div className="mt-3 text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{title}</div>
@@ -6881,6 +6935,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         wrapperClassName: 'space-y-3',
                         textClassName: 'text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]',
                         mathClassName: 'leading-relaxed text-[#1c1e21]',
+                        onOpenImageBlock: (imageUrl) => openPostImageViewer(imageUrl, `${responseUserName} attachment`),
                         renderTextBlock: (text, blockKey) => (
                           <CollapsibleReplyText
                             key={blockKey}
@@ -11279,6 +11334,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               imageUrl={gradeImageViewer.url}
               title={gradeImageViewer.title}
               onClose={closeGradeScreenshotViewer}
+            />
+          </OverlayPortal>
+        ) : null}
+
+        {postImageViewer ? (
+          <OverlayPortal>
+            <ZoomableImageOverlay
+              open={Boolean(postImageViewer)}
+              imageUrl={postImageViewer.url}
+              title={postImageViewer.title}
+              onClose={closePostImageViewer}
             />
           </OverlayPortal>
         ) : null}
@@ -16029,9 +16095,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </div>
               ) : null}
               {postThreadOverlay.imageUrl ? (
-                <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+                <button
+                  type="button"
+                  className="block w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 text-left"
+                  onClick={() => openPostImageViewer(postThreadOverlay.imageUrl as string, `${postThreadOverlay.title || 'Post'} image`)}
+                >
                   <img src={postThreadOverlay.imageUrl} alt="Post attachment" className="max-h-[320px] w-full object-contain" />
-                </div>
+                </button>
               ) : null}
               {postThreadError ? (
                 <div className="rounded-2xl border border-red-300/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{postThreadError}</div>
@@ -16094,6 +16164,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                   wrapperClassName: 'space-y-3 text-white/90',
                                   textClassName: 'text-sm leading-6 whitespace-pre-wrap break-words text-white/85',
                                   mathClassName: 'leading-relaxed text-white/95',
+                                  onOpenImageBlock: (imageUrl) => openPostImageViewer(imageUrl, `${responseUserName} attachment`),
                                   compactCanvasPreview: true,
                                   onOpenCanvasBlock: (scene) => openPostCanvasViewer(
                                     scene,

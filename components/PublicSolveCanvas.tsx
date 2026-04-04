@@ -990,6 +990,9 @@ export function PublicSolveComposer({
   submitLabel = 'Submit solve',
   cancelLabel = 'Back',
   submitting = false,
+  fullscreenCanvas = false,
+  hideMainMenu = false,
+  referencePresentation = 'interactive',
   onCancel,
   onPreviewSubmit,
   onSubmit,
@@ -1003,6 +1006,9 @@ export function PublicSolveComposer({
   submitLabel?: string
   cancelLabel?: string
   submitting?: boolean
+  fullscreenCanvas?: boolean
+  hideMainMenu?: boolean
+  referencePresentation?: PublicSolveReferencePresentation
   onCancel?: () => void
   onPreviewSubmit?: (scene: PublicSolveScene) => void | Promise<void>
   onSubmit: (scene: PublicSolveScene) => void | Promise<void>
@@ -1058,7 +1064,7 @@ export function PublicSolveComposer({
     api.updateScene({
       appState: {
         activeTool: { type: 'freedraw' },
-        currentItemStrokeWidth: 2,
+        currentItemStrokeWidth: 1,
       },
     })
 
@@ -1069,7 +1075,7 @@ export function PublicSolveComposer({
       latestApi?.updateScene?.({
         appState: {
           activeTool: { type: 'freedraw' },
-          currentItemStrokeWidth: 2,
+          currentItemStrokeWidth: 1,
         },
       })
     }, 0)
@@ -1078,7 +1084,7 @@ export function PublicSolveComposer({
   }, [isReady])
 
   return (
-    <div className="flex h-full flex-col bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_32%),linear-gradient(180deg,#eef4ff_0%,#f8fbff_28%,#ffffff_100%)] text-slate-900">
+    <div className={`flex h-full min-h-0 flex-col bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_32%),linear-gradient(180deg,#eef4ff_0%,#f8fbff_28%,#ffffff_100%)] text-slate-900 ${fullscreenCanvas ? 'overflow-hidden' : ''}`.trim()}>
       <PublicSolveOpacityWorkspace
         title={title}
         prompt={prompt}
@@ -1087,13 +1093,18 @@ export function PublicSolveComposer({
         authorAvatarUrl={authorAvatarUrl}
         resetKey={composerInstanceKey}
         outerClassName="bg-transparent"
+        contentPaddingClassName={fullscreenCanvas ? 'relative flex-1 min-h-0 px-0 py-0' : undefined}
+        frameClassName={fullscreenCanvas ? 'relative flex h-full min-h-0 flex-col overflow-hidden rounded-none border-0 bg-white shadow-none' : undefined}
+        canvasSurfaceClassName={fullscreenCanvas ? 'flex h-full min-h-0 flex-col bg-white' : undefined}
+        referencePresentation={referencePresentation}
       >
         <div className="relative min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>
           <LessonStyledExcalidraw
             key={`public-solve-composer-${composerInstanceKey}`}
-            className="h-full"
+            className={`h-full ${fullscreenCanvas ? 'philani-excalidraw-safe-fullscreen' : ''}`.trim()}
             initialData={composerInitialData}
             UIOptions={editorUiOptions}
+            hideMainMenu={hideMainMenu}
             zenModeEnabled={false}
             gridModeEnabled={false}
             onChange={(elements: any[], appState: any, files: any) => {
@@ -1126,7 +1137,7 @@ export function PublicSolveComposer({
         </div>
       </PublicSolveOpacityWorkspace>
 
-      <div className="border-t border-slate-200 bg-white/92 px-4 py-3 backdrop-blur-xl sm:px-6">
+      <div className={`border-t border-slate-200 bg-white/92 px-4 py-3 backdrop-blur-xl sm:px-6 ${fullscreenCanvas ? 'pb-[calc(var(--app-safe-bottom)+0.9rem)] pt-3' : ''}`.trim()}>
         <div className="flex items-center justify-between gap-3">
           {onCancel ? (
             <button

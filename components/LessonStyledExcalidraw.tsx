@@ -6,6 +6,7 @@ const Excalidraw = dynamic(() => import('@excalidraw/excalidraw').then((mod) => 
 type LessonStyledExcalidrawProps = {
   className?: string
   style?: CSSProperties
+  hideMainMenu?: boolean
   topToolbarOffsetY?: number
   bottomToolbarOffsetY?: number
   onPointerDownCapture?: PointerEventHandler<HTMLDivElement>
@@ -25,6 +26,7 @@ type LessonStyledExcalidrawProps = {
 export default function LessonStyledExcalidraw({
   className = '',
   style,
+  hideMainMenu = false,
   topToolbarOffsetY = 0,
   bottomToolbarOffsetY = 0,
   onPointerDownCapture,
@@ -44,7 +46,7 @@ export default function LessonStyledExcalidraw({
 
   return (
     <div
-      className={`relative h-full w-full philani-excalidraw-bottom-toolbar ${className}`.trim()}
+      className={`relative h-full w-full philani-excalidraw-bottom-toolbar ${hideMainMenu ? 'philani-excalidraw-hide-main-menu' : ''} ${className}`.trim()}
       onPointerDownCapture={onPointerDownCapture}
       onPointerMoveCapture={onPointerMoveCapture}
       onPointerUpCapture={onPointerUpCapture}

@@ -15345,6 +15345,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             contentClassName="min-h-0 px-4 pb-[calc(var(--app-safe-bottom)+0.75rem)] pt-3 sm:px-5 sm:pb-5 sm:pt-4"
           >
             {(() => {
+              const composerImageBlocks = postSolveBlocks.filter((block): block is PostReplyImageBlock => block.type === 'image')
+              const composerNonImageBlocks = postSolveBlocks.filter((block) => block.type !== 'image')
               const hasReplyBlocks = postSolveBlocks.length > 0
               const iconButtonClassName = 'inline-flex h-10 items-center justify-center text-slate-700 transition hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
 
@@ -15363,15 +15365,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   <div className="min-w-0 rounded-[24px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                         {hasReplyBlocks ? (
                           <div className="mb-2">
-                            {renderPostReplyBlocks(postSolveBlocks, 'composer-reply-block', {
+                            {composerImageBlocks.length > 0 ? (
+                              <div className="mb-2 flex flex-wrap items-start gap-2">
+                                {renderPostReplyBlocks(composerImageBlocks, 'composer-reply-image-block', {
+                                  wrapperClassName: 'flex flex-wrap items-start gap-2',
+                                  imageClassName: '',
+                                  compactImageAttachments: true,
+                                  onRemoveImageBlock: removePostReplyImageBlock,
+                                })}
+                              </div>
+                            ) : null}
+                            {composerNonImageBlocks.length > 0 ? renderPostReplyBlocks(composerNonImageBlocks, 'composer-reply-block', {
                               wrapperClassName: 'space-y-2',
                               textClassName: 'text-sm leading-6 whitespace-pre-wrap break-words text-slate-700',
                               mathClassName: 'overflow-x-auto text-slate-800 leading-relaxed',
                               canvasClassName: 'pt-1',
-                              imageClassName: 'pt-1',
-                              compactImageAttachments: true,
-                              onRemoveImageBlock: removePostReplyImageBlock,
-                            })}
+                            }) : null}
                           </div>
                         ) : null}
                         <textarea

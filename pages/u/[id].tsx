@@ -460,7 +460,7 @@ export default function PublicUserProfilePage() {
             <div className="relative px-4 pb-5 pt-0 sm:px-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div className="-mt-10 flex items-end gap-4 sm:-mt-14">
-                  <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-[5px] border-white bg-slate-100 text-2xl font-semibold text-slate-700 shadow-[0_12px_24px_rgba(15,23,42,0.12)] sm:h-32 sm:w-32">
+                  <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border-[5px] border-white bg-slate-100 text-2xl font-semibold text-slate-700 shadow-[0_12px_24px_rgba(15,23,42,0.12)] sm:h-32 sm:w-32">
                     {avatarUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />

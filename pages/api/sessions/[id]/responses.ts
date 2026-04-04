@@ -11,6 +11,8 @@ const MAX_QUIZ_LABEL_LENGTH = 40
 const MAX_PHASE_KEY_LENGTH = 20
 const MAX_POINT_ID_LENGTH = 80
 const MAX_EXCALIDRAW_SCENE_LENGTH = 2_000_000
+const MAX_REPLY_BLOCKS = 32
+const POST_REPLY_BLOCKS_KIND = 'post-reply-blocks-v1'
 
 const PERSISTED_PUBLIC_SOLVE_APP_STATE_KEYS = [
   'scrollX',
@@ -66,6 +68,85 @@ const sanitizeExcalidrawScene = (value: any) => {
     updatedAt,
     sceneMeta,
   }
+}
+
+const sanitizePostReplyContentBlocks = (value: any) => {
+  if (!Array.isArray(value)) return []
+
+  const output: any[] = []
+  for (const rawBlock of value.slice(0, MAX_REPLY_BLOCKS)) {
+    const type = String(rawBlock?.type || '').trim().toLowerCase()
+    const id = String(rawBlock?.id || '').trim().slice(0, 80) || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+    if (type === 'text') {
+      const text = typeof rawBlock?.text === 'string' ? rawBlock.text.trim().slice(0, MAX_STUDENT_TEXT_LENGTH) : ''
+      if (text) output.push({ id, type: 'text', text })
+      continue
+    }
+
+    if (type === 'latex') {
+      const latex = typeof rawBlock?.latex === 'string' ? rawBlock.latex.trim().slice(0, MAX_LATEX_LENGTH) : ''
+      if (latex) output.push({ id, type: 'latex', latex })
+      continue
+    }
+
+    if (type === 'canvas') {
+      const scene = sanitizeExcalidrawScene(rawBlock?.scene)
+      if (!scene) continue
+      const sceneJson = JSON.stringify(scene)
+      if (sceneJson.length > MAX_EXCALIDRAW_SCENE_LENGTH) continue
+      output.push({ id, type: 'canvas', scene: JSON.parse(sceneJson) })
+    }
+  }
+
+  return output
+}
+
+const buildLegacyPostReplyBlocks = ({ studentText, latex, excalidrawScene }: { studentText: string | null; latex: string; excalidrawScene: Record<string, any> | null }) => {
+  const blocks: any[] = []
+  if (studentText) blocks.push({ id: `${Date.now().toString(36)}-text`, type: 'text', text: studentText })
+  if (latex.trim()) blocks.push({ id: `${Date.now().toString(36)}-latex`, type: 'latex', latex: latex.trim() })
+  if (excalidrawScene) blocks.push({ id: `${Date.now().toString(36)}-canvas`, type: 'canvas', scene: excalidrawScene })
+  return blocks
+}
+
+const buildPostReplyPayload = ({ studentText, latex, excalidrawScene, contentBlocks }: { studentText: string | null; latex: string; excalidrawScene: Record<string, any> | null; contentBlocks: any }) => {
+  const safeBlocks = sanitizePostReplyContentBlocks(contentBlocks)
+  const normalizedBlocks = safeBlocks.length > 0
+    ? safeBlocks
+    : buildLegacyPostReplyBlocks({ studentText, latex, excalidrawScene })
+  const textSummary = normalizedBlocks
+    .filter((block) => block?.type === 'text' && typeof block?.text === 'string')
+    .map((block) => String(block.text))
+    .join('\n')
+    .trim() || null
+  const latexSummary = normalizedBlocks
+    .filter((block) => block?.type === 'latex' && typeof block?.latex === 'string')
+    .map((block) => String(block.latex))
+    .join('\n\n')
+    .trim()
+  const canvasBlock = normalizedBlocks.find((block) => block?.type === 'canvas' && block?.scene)
+
+  return {
+    contentBlocks: normalizedBlocks,
+    studentText: textSummary,
+    latex: latexSummary,
+    excalidrawScene: canvasBlock?.scene || null,
+    gradingJson: normalizedBlocks.length > 0 ? { kind: POST_REPLY_BLOCKS_KIND, contentBlocks: normalizedBlocks } : null,
+  }
+}
+
+const updatePostReplyPayloadCanvasScene = (gradingJson: any, scene: Record<string, any>) => {
+  if (!gradingJson || gradingJson.kind !== POST_REPLY_BLOCKS_KIND || !Array.isArray(gradingJson.contentBlocks)) return null
+  let replaced = false
+  const contentBlocks = gradingJson.contentBlocks.map((block: any) => {
+    if (!replaced && String(block?.type || '').trim().toLowerCase() === 'canvas') {
+      replaced = true
+      return { ...block, scene: cloneJsonValue(scene) }
+    }
+    return block
+  })
+  return replaced ? { ...gradingJson, contentBlocks } : null
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -317,6 +398,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         id: true,
         userId: true,
         sessionKey: true,
+        gradingJson: true,
       },
     })
 
@@ -344,6 +426,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           where: { id: String(responseId) },
           data: {
             excalidrawScene: JSON.parse(sceneJson),
+            ...(isPostSession ? {
+              gradingJson: updatePostReplyPayloadCanvasScene(existing.gradingJson, JSON.parse(sceneJson)) ?? undefined,
+            } : {}),
           },
         })
 
@@ -401,7 +486,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'POST') {
-    const { latex, studentText, quizId, prompt, quizLabel, quizPhaseKey, quizPointId, quizPointIndex, excalidrawScene } = req.body || {}
+    const { latex, studentText, quizId, prompt, quizLabel, quizPhaseKey, quizPointId, quizPointIndex, excalidrawScene, contentBlocks } = req.body || {}
     const safeLatex = typeof latex === 'string' ? latex : ''
     if (safeLatex.length > MAX_LATEX_LENGTH) {
       return res.status(400).json({ message: 'Latex is too large' })
@@ -425,7 +510,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? studentText.trim().slice(0, MAX_STUDENT_TEXT_LENGTH)
       : null
 
-    if (!safeLatex.trim() && !safeExcalidrawScene && !safeStudentText) {
+    const postReplyPayload = isPostSession
+      ? buildPostReplyPayload({
+          studentText: safeStudentText,
+          latex: safeLatex,
+          excalidrawScene: safeExcalidrawScene,
+          contentBlocks,
+        })
+      : null
+
+    const effectiveStudentText = postReplyPayload ? postReplyPayload.studentText : safeStudentText
+    const effectiveLatex = postReplyPayload ? postReplyPayload.latex : safeLatex
+    const effectiveExcalidrawScene = postReplyPayload ? postReplyPayload.excalidrawScene : safeExcalidrawScene
+
+    if (!effectiveLatex.trim() && !effectiveExcalidrawScene && !effectiveStudentText) {
       return res.status(400).json({ message: 'Write a reply, add math, or attach a canvas response' })
     }
 
@@ -511,9 +609,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           quizPhaseKey: safeQuizPhaseKey,
           quizPointId: safeQuizPointId,
           quizPointIndex: safeQuizPointIndex,
-          latex: safeLatex,
-          studentText: safeStudentText,
-          excalidrawScene: safeExcalidrawScene,
+          latex: effectiveLatex,
+          studentText: effectiveStudentText,
+          excalidrawScene: effectiveExcalidrawScene,
+          ...(isPostSession ? { gradingJson: postReplyPayload?.gradingJson ?? null } : {}),
         },
       })
     }
@@ -528,9 +627,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const updated = await learnerResponse.update({
         where: { id: existing.id },
         data: {
-          latex: safeLatex,
-          studentText: safeStudentText,
-          excalidrawScene: safeExcalidrawScene,
+          latex: effectiveLatex,
+          studentText: effectiveStudentText,
+          excalidrawScene: effectiveExcalidrawScene,
           userEmail,
           quizId: safeQuizId,
           prompt: safePrompt,
@@ -539,6 +638,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           quizPointId: safeQuizPointId,
           quizPointIndex: safeQuizPointIndex,
           ownerId: responseOwnerId,
+          ...(isPostSession ? { gradingJson: postReplyPayload?.gradingJson ?? null } : {}),
           ...(opts?.resetChallengeFeedback ? { gradingJson: null, feedback: null } : {}),
           ...(opts?.bumpCreatedAt ? { createdAt: new Date() } : {}),
         },

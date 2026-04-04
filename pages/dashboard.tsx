@@ -78,6 +78,29 @@ type SectionId = typeof DASHBOARD_SECTIONS[number]['id']
 type SectionRole = typeof DASHBOARD_SECTIONS[number]['roles'][number]
 type OverlaySectionId = Exclude<SectionId, 'overview'>
 
+type PostReplyTextBlock = {
+  id: string
+  type: 'text'
+  text: string
+}
+
+type PostReplyLatexBlock = {
+  id: string
+  type: 'latex'
+  latex: string
+}
+
+type PostReplyCanvasBlock = {
+  id: string
+  type: 'canvas'
+  scene: PublicSolveScene
+}
+
+type PostReplyBlock = PostReplyTextBlock | PostReplyLatexBlock | PostReplyCanvasBlock
+
+const POST_REPLY_BLOCKS_KIND = 'post-reply-blocks-v1'
+const createPostReplyBlockId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
 type Announcement = {
   id: string
   title: string
@@ -399,6 +422,121 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return renderTextWithKatexRaw(text, { renderInlineEmphasis })
   }, [renderInlineEmphasis])
 
+  const normalizePostReplyBlocks = useCallback((source: any): PostReplyBlock[] => {
+    const rawBlocks = Array.isArray(source)
+      ? source
+      : (source?.gradingJson?.kind === POST_REPLY_BLOCKS_KIND && Array.isArray(source?.gradingJson?.contentBlocks)
+        ? source.gradingJson.contentBlocks
+        : [])
+
+    const normalizedBlocks = rawBlocks.reduce((acc: PostReplyBlock[], rawBlock: any) => {
+      const blockType = String(rawBlock?.type || '').trim().toLowerCase()
+      const blockId = String(rawBlock?.id || createPostReplyBlockId()).trim() || createPostReplyBlockId()
+      if (blockType === 'text') {
+        const text = typeof rawBlock?.text === 'string' ? rawBlock.text : ''
+        if (text.trim()) acc.push({ id: blockId, type: 'text', text })
+        return acc
+      }
+      if (blockType === 'latex') {
+        const latex = typeof rawBlock?.latex === 'string' ? rawBlock.latex : ''
+        if (latex.trim()) acc.push({ id: blockId, type: 'latex', latex })
+        return acc
+      }
+      if (blockType === 'canvas') {
+        const scene = normalizePublicSolveScene(rawBlock?.scene)
+        if (scene) acc.push({ id: blockId, type: 'canvas', scene })
+      }
+      return acc
+    }, [])
+
+    if (normalizedBlocks.length > 0) return normalizedBlocks
+
+    const fallbackBlocks: PostReplyBlock[] = []
+    const studentText = typeof source?.studentText === 'string' ? source.studentText : ''
+    const latex = typeof source?.latex === 'string' ? source.latex : ''
+    const scene = normalizePublicSolveScene(source?.excalidrawScene)
+
+    if (studentText.trim()) {
+      fallbackBlocks.push({ id: createPostReplyBlockId(), type: 'text', text: studentText })
+    }
+    if (latex.trim()) {
+      fallbackBlocks.push({ id: createPostReplyBlockId(), type: 'latex', latex })
+    }
+    if (scene) {
+      fallbackBlocks.push({ id: createPostReplyBlockId(), type: 'canvas', scene })
+    }
+
+    return fallbackBlocks
+  }, [])
+
+  const buildPostReplyPayloadFromBlocks = useCallback((blocks: PostReplyBlock[]) => {
+    const normalizedBlocks = normalizePostReplyBlocks(blocks)
+    const studentText = normalizedBlocks
+      .filter((block): block is PostReplyTextBlock => block.type === 'text')
+      .map((block) => block.text)
+      .join('\n')
+      .trim() || null
+    const latex = normalizedBlocks
+      .filter((block): block is PostReplyLatexBlock => block.type === 'latex')
+      .map((block) => block.latex)
+      .join('\n\n')
+      .trim()
+    const canvasBlock = normalizedBlocks.find((block): block is PostReplyCanvasBlock => block.type === 'canvas') || null
+
+    return {
+      contentBlocks: normalizedBlocks,
+      studentText,
+      latex,
+      excalidrawScene: canvasBlock?.scene || null,
+      gradingJson: normalizedBlocks.length > 0 ? { kind: POST_REPLY_BLOCKS_KIND, contentBlocks: normalizedBlocks } : null,
+    }
+  }, [normalizePostReplyBlocks])
+
+  const renderPostReplyBlocks = useCallback((blocks: PostReplyBlock[], keyPrefix: string, options?: {
+    wrapperClassName?: string
+    textClassName?: string
+    mathClassName?: string
+    canvasClassName?: string
+    onCanvasViewportChange?: (blockId: string, scene: PublicSolveScene) => void
+  }) => {
+    const normalizedBlocks = normalizePostReplyBlocks(blocks)
+    if (normalizedBlocks.length === 0) return null
+
+    const wrapperClassName = options?.wrapperClassName || 'space-y-2'
+    const textClassName = options?.textClassName || 'text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]'
+    const mathClassName = options?.mathClassName || 'leading-relaxed text-[#1c1e21]'
+    const canvasClassName = options?.canvasClassName || ''
+
+    return (
+      <div className={wrapperClassName}>
+        {normalizedBlocks.map((block, index) => {
+          if (block.type === 'text') {
+            return <div key={`${keyPrefix}-${block.id}-${index}`} className={textClassName}>{block.text}</div>
+          }
+
+          if (block.type === 'latex') {
+            const latexHtml = renderKatexDisplayHtml(block.latex)
+            if (latexHtml) {
+              return <div key={`${keyPrefix}-${block.id}-${index}`} className={mathClassName} dangerouslySetInnerHTML={{ __html: latexHtml }} />
+            }
+            return <div key={`${keyPrefix}-${block.id}-${index}`} className={textClassName}>{renderTextWithKatex(block.latex)}</div>
+          }
+
+          return (
+            <div key={`${keyPrefix}-${block.id}-${index}`} className={canvasClassName}>
+              <PublicSolveCanvasViewer
+                scene={block.scene}
+                onViewportChange={options?.onCanvasViewportChange
+                  ? (scene) => options.onCanvasViewportChange?.(block.id, scene)
+                  : undefined}
+              />
+            </div>
+          )
+        })}
+      </div>
+    )
+  }, [normalizePostReplyBlocks, renderKatexDisplayHtml, renderTextWithKatex])
+
   const formatSessionDate = useCallback((value: unknown) => {
     if (!value) return ''
     const dt = value instanceof Date ? value : new Date(String(value))
@@ -578,6 +716,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     initialScene?: any | null
     initialLatex?: string | null
     initialStudentText?: string | null
+    initialGradingJson?: any | null
     preferredRecognitionEngine?: 'keyboard' | 'myscript' | 'mathpix'
     postRecord?: any | null
   }
@@ -1085,6 +1224,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [postSolveModeOverlay, setPostSolveModeOverlay] = useState<PostSolveOverlayState | null>(null)
   const [postSolveOverlay, setPostSolveOverlay] = useState<PostSolveOverlayState | null>(null)
   const [postTypedSolveOverlay, setPostTypedSolveOverlay] = useState<PostSolveOverlayState | null>(null)
+  const [postSolveBlocks, setPostSolveBlocks] = useState<PostReplyBlock[]>([])
   const [postSolveText, setPostSolveText] = useState('')
   const [postTypedSolveLatex, setPostTypedSolveLatex] = useState('')
   const [postSolveSubmitting, setPostSolveSubmitting] = useState(false)
@@ -4942,6 +5082,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const effectiveCurrentUserId = String(currentUserId || viewerId || '')
     const responseUserName = String(session?.user?.name || session?.user?.email || 'You')
     const responseUserAvatar = String((session as any)?.user?.avatar || (session as any)?.user?.image || '').trim()
+    const draftPayload = buildPostReplyPayloadFromBlocks([
+      ...postSolveBlocks,
+      ...(String(postSolveText || '').trim() ? [{ id: createPostReplyBlockId(), type: 'text', text: String(postSolveText || '') } as PostReplyTextBlock] : []),
+      ...(postSolvePreviewOverlay.draftScene ? [{ id: createPostReplyBlockId(), type: 'canvas', scene: postSolvePreviewOverlay.draftScene } as PostReplyCanvasBlock] : []),
+    ])
+
     const draftResponse = {
       id: postSolvePreviewResponseId,
       userId: effectiveCurrentUserId,
@@ -4953,16 +5099,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      latex: '',
-      studentText: String(postSolvePreviewOverlay.draft?.initialStudentText || postSolveText || '').trim() || null,
+      latex: draftPayload.latex,
+      studentText: draftPayload.studentText,
       feedback: null,
-      gradingJson: null,
-      excalidrawScene: postSolvePreviewOverlay.draftScene,
+      gradingJson: draftPayload.gradingJson,
+      excalidrawScene: draftPayload.excalidrawScene,
       __draftPreview: true,
     }
 
     return orderThreadResponsesForFeed([draftResponse, ...(Array.isArray(postSolvePreviewOverlay.responses) ? postSolvePreviewOverlay.responses : [])])
-  }, [currentUserId, orderThreadResponsesForFeed, postSolvePreviewOverlay, postSolveText, session, viewerId])
+  }, [buildPostReplyPayloadFromBlocks, currentUserId, orderThreadResponsesForFeed, postSolveBlocks, postSolvePreviewOverlay, postSolveText, session, viewerId])
 
   useEffect(() => {
     const previewPostId = String(postSolvePreviewOverlay?.draft?.postId || '')
@@ -6417,6 +6563,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               const responseAvatar = String(response?.user?.avatar || response?.userAvatar || '').trim()
               const responseCreatedAt = response?.updatedAt || response?.createdAt
               const isMine = responseUserId === String(currentUserId || viewerId || '')
+              const postReplyBlocks = options.kind === 'post' ? normalizePostReplyBlocks(response) : []
+              const hasPostReplyBlocks = postReplyBlocks.length > 0
               const latex = String(response?.latex || '')
               const latexHtml = latex.trim() ? renderKatexDisplayHtml(latex) : ''
               const steps = splitLatexIntoSteps(latex)
@@ -6476,6 +6624,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               initialScene: response?.excalidrawScene || null,
                               initialLatex: typeof response?.latex === 'string' ? response.latex : '',
                               initialStudentText: typeof response?.studentText === 'string' ? response.studentText : '',
+                              initialGradingJson: response?.gradingJson ?? null,
                             })
                           }}
                         >
@@ -6493,30 +6642,47 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     ) : null}
                   </div>
 
-                  {String(response?.studentText || '').trim() ? (
-                    <div className="mt-3 text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{String(response.studentText)}</div>
-                  ) : null}
-
-                  {latex.trim() ? (
-                    latexHtml ? (
-                      <div className="mt-3 leading-relaxed text-[#1c1e21]" dangerouslySetInnerHTML={{ __html: latexHtml }} />
-                    ) : (
-                      <div className="mt-3 text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{renderTextWithKatex(latex)}</div>
-                    )
-                  ) : null}
-
-                  {response?.excalidrawScene ? (
+                  {hasPostReplyBlocks ? (
                     <div className="mt-3">
-                      <PublicSolveCanvasViewer
-                        scene={response.excalidrawScene}
-                        onViewportChange={options.onInteractiveViewportChange && options.interactiveViewportResponseId === responseId
-                          ? options.onInteractiveViewportChange
+                      {renderPostReplyBlocks(postReplyBlocks, `inline-post-reply-${responseId || idx}`, {
+                        wrapperClassName: 'space-y-3',
+                        textClassName: 'text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]',
+                        mathClassName: 'leading-relaxed text-[#1c1e21]',
+                        onCanvasViewportChange: options.onInteractiveViewportChange && options.interactiveViewportResponseId === responseId
+                          ? (_blockId, scene) => options.onInteractiveViewportChange?.(scene)
                           : (options.onLiveResponseViewportChange && isMine && responseId
-                            ? (scene) => options.onLiveResponseViewportChange?.(responseId, scene)
-                            : undefined)}
-                      />
+                            ? (_blockId, scene) => options.onLiveResponseViewportChange?.(responseId, scene)
+                            : undefined),
+                      })}
                     </div>
-                  ) : null}
+                  ) : (
+                    <>
+                      {String(response?.studentText || '').trim() ? (
+                        <div className="mt-3 text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{String(response.studentText)}</div>
+                      ) : null}
+
+                      {latex.trim() ? (
+                        latexHtml ? (
+                          <div className="mt-3 leading-relaxed text-[#1c1e21]" dangerouslySetInnerHTML={{ __html: latexHtml }} />
+                        ) : (
+                          <div className="mt-3 text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{renderTextWithKatex(latex)}</div>
+                        )
+                      ) : null}
+
+                      {response?.excalidrawScene ? (
+                        <div className="mt-3">
+                          <PublicSolveCanvasViewer
+                            scene={response.excalidrawScene}
+                            onViewportChange={options.onInteractiveViewportChange && options.interactiveViewportResponseId === responseId
+                              ? options.onInteractiveViewportChange
+                              : (options.onLiveResponseViewportChange && isMine && responseId
+                                ? (scene) => options.onLiveResponseViewportChange?.(responseId, scene)
+                                : undefined)}
+                          />
+                        </div>
+                      ) : null}
+                    </>
+                  )}
 
                   {grade || String(response?.feedback || '').trim() ? (
                     <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
@@ -8069,31 +8235,44 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const openHandwrittenPostSolveComposer = useCallback((draft: PostSolveOverlayState | null) => {
     if (!draft) return
+    const currentText = String(postSolveText || '')
+    const existingCanvasBlock = [...postSolveBlocks].reverse().find((block) => block.type === 'canvas') as PostReplyCanvasBlock | undefined
+    if (currentText.trim()) {
+      setPostSolveBlocks((prev) => [...prev, { id: createPostReplyBlockId(), type: 'text', text: currentText }])
+      setPostSolveText('')
+    }
     setPostSolveModeOverlay(null)
     setPostTypedSolveOverlay(null)
     setPostSolveError(null)
     setPostSolveOverlay({
       ...draft,
-      initialStudentText: postSolveText,
+      initialScene: existingCanvasBlock?.scene || draft.initialScene || null,
+      initialStudentText: '',
     })
-  }, [postSolveText])
+  }, [postSolveBlocks, postSolveText])
 
   const openTypedPostSolveComposer = useCallback((draft: PostSolveOverlayState | null, preferredRecognitionEngine: 'keyboard' | 'myscript' | 'mathpix' = 'keyboard') => {
     if (!draft) return
+    const currentText = String(postSolveText || '')
+    if (currentText.trim()) {
+      setPostSolveBlocks((prev) => [...prev, { id: createPostReplyBlockId(), type: 'text', text: currentText }])
+      setPostSolveText('')
+    }
     setPostSolveModeOverlay(null)
     setPostSolvePreviewOverlay(null)
     setPostSolveOverlay(null)
     setPostSolveError(null)
     setPostTypedOverlayChromeVisible(!isMobile)
-    setPostTypedSolveLatex(typeof draft.initialLatex === 'string' ? draft.initialLatex.trim() : '')
+    setPostTypedSolveLatex('')
     setPostTypedSolveOverlay({
       ...draft,
-      initialStudentText: postSolveText,
+      initialLatex: '',
+      initialStudentText: '',
       preferredRecognitionEngine,
     })
   }, [isMobile, postSolveText])
 
-  const openPostSolveComposer = useCallback(async (post: any, options?: { initialScene?: any | null; initialLatex?: string | null; initialStudentText?: string | null }) => {
+  const openPostSolveComposer = useCallback(async (post: any, options?: { initialScene?: any | null; initialLatex?: string | null; initialStudentText?: string | null; initialGradingJson?: any | null }) => {
     const postId = String(post?.id || '')
     const threadKey = typeof post?.threadKey === 'string' ? post.threadKey : `post:${postId}`
     if (!postId || !threadKey) return
@@ -8117,27 +8296,28 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     setPostSolveError(null)
     setPostSolvePreviewOverlay(null)
-    let initialScene = options?.initialScene ?? null
-    let initialLatex = typeof options?.initialLatex === 'string' ? options.initialLatex.trim() : ''
-    let initialStudentText = typeof options?.initialStudentText === 'string' ? options.initialStudentText.trim() : ''
-    if (!initialScene) {
+    let initialResponseSource: any = {
+      excalidrawScene: options?.initialScene ?? null,
+      latex: typeof options?.initialLatex === 'string' ? options.initialLatex : '',
+      studentText: typeof options?.initialStudentText === 'string' ? options.initialStudentText : '',
+      gradingJson: options?.initialGradingJson ?? null,
+    }
+    if (!options?.initialGradingJson && !options?.initialScene && !options?.initialLatex && !options?.initialStudentText) {
       try {
         const responses = await fetchPublicThreadResponses(threadKey)
         const effectiveCurrentUserId = String(currentUserId || viewerId || '')
         const mine = responses.find((response: any) => String(response?.userId || '') === effectiveCurrentUserId)
-        initialScene = mine?.excalidrawScene || null
-        if (!initialLatex) {
-          initialLatex = typeof mine?.latex === 'string' ? mine.latex.trim() : ''
-        }
-        if (!initialStudentText) {
-          initialStudentText = typeof mine?.studentText === 'string' ? mine.studentText.trim() : ''
-        }
+        if (mine) initialResponseSource = mine
       } catch {
         // ignore prefill failures and still open the composer
       }
     }
 
-    setPostSolveText(initialStudentText)
+    const initialBlocks = normalizePostReplyBlocks(initialResponseSource)
+    const initialPayload = buildPostReplyPayloadFromBlocks(initialBlocks)
+
+    setPostSolveBlocks(initialBlocks)
+    setPostSolveText('')
     setPostTypedSolveOverlay(null)
     setPostSolveOverlay(null)
     setPostSolveModeOverlay({
@@ -8148,12 +8328,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       imageUrl: typeof post?.imageUrl === 'string' ? post.imageUrl : null,
       authorName,
       authorAvatarUrl,
-      initialScene,
-      initialLatex,
-      initialStudentText,
+      initialScene: initialPayload.excalidrawScene,
+      initialLatex: initialPayload.latex,
+      initialStudentText: initialPayload.studentText,
+      initialGradingJson: initialPayload.gradingJson,
       postRecord: post,
     })
-  }, [currentUserId, fetchPublicThreadResponses, viewerId])
+  }, [buildPostReplyPayloadFromBlocks, currentUserId, fetchPublicThreadResponses, normalizePostReplyBlocks, viewerId])
 
   const openPostSolvePreview = useCallback(async (scene: PublicSolveScene) => {
     if (!postSolveOverlay?.postId || !postSolveOverlay?.threadKey) return
@@ -8238,9 +8419,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const submitPostTextSolve = useCallback(async () => {
     const activeDraft = postSolveModeOverlay
-    const studentText = String(postSolveText || '').trim()
     if (!activeDraft?.postId || !activeDraft?.threadKey) return
-    if (!studentText) {
+    const draftText = String(postSolveText || '')
+    const payload = buildPostReplyPayloadFromBlocks([
+      ...postSolveBlocks,
+      ...(draftText.trim() ? [{ id: createPostReplyBlockId(), type: 'text', text: draftText } as PostReplyTextBlock] : []),
+    ])
+    if (!payload.contentBlocks.length) {
       setPostSolveError('Write a reply before sending.')
       return
     }
@@ -8252,12 +8437,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          latex: typeof activeDraft.initialLatex === 'string' ? activeDraft.initialLatex : '',
-          studentText,
+          latex: payload.latex,
+          studentText: payload.studentText,
+          contentBlocks: payload.contentBlocks,
           quizId: activeDraft.threadKey,
           quizLabel: activeDraft.title,
           prompt: activeDraft.prompt,
-          excalidrawScene: activeDraft.initialScene || null,
+          excalidrawScene: payload.excalidrawScene,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -8267,6 +8453,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       applyOwnPostResponseToFeeds(activeDraft, data)
       setPostSolveModeOverlay(null)
+      setPostSolveBlocks([])
+      setPostSolveText('')
 
       await openPostThread({
         id: activeDraft.postId,
@@ -8282,109 +8470,49 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setPostSolveSubmitting(false)
     }
-  }, [applyOwnPostResponseToFeeds, openPostThread, postSolveModeOverlay, postSolveText])
+  }, [applyOwnPostResponseToFeeds, buildPostReplyPayloadFromBlocks, openPostThread, postSolveBlocks, postSolveModeOverlay, postSolveText])
 
   const submitPostSolve = useCallback(async (scene: any) => {
     const activeDraft = postSolveOverlay || postSolvePreviewOverlay?.draft || null
-    if (!activeDraft?.postId || !activeDraft?.threadKey) return
-    const studentText = String(postSolveText || '').trim() || null
-    setPostSolveSubmitting(true)
+    const normalizedScene = normalizePublicSolveScene(scene)
+    if (!activeDraft?.postId || !activeDraft?.threadKey || !normalizedScene) return
+
+    setPostSolveBlocks((prev) => {
+      const nextBlocks: PostReplyBlock[] = prev.filter((block) => block.type !== 'canvas')
+      nextBlocks.push({ id: createPostReplyBlockId(), type: 'canvas', scene: normalizedScene })
+      return nextBlocks
+    })
+
+    setPostSolvePreviewOverlay(null)
+    setPostSolveOverlay(null)
+    setPostSolveModeOverlay({
+      ...activeDraft,
+      initialScene: normalizedScene,
+      initialStudentText: '',
+    })
     setPostSolveError(null)
-    try {
-      const res = await fetch(`/api/threads/${encodeURIComponent(activeDraft.threadKey)}/responses`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          latex: '',
-          studentText,
-          quizId: activeDraft.threadKey,
-          quizLabel: activeDraft.title,
-          prompt: activeDraft.prompt,
-          excalidrawScene: scene,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(data?.message || `Failed to submit solve (${res.status})`)
-      }
-
-      if (data?.id && scene) {
-        rememberInteractiveViewportScenes([{ id: data.id, excalidrawScene: scene }])
-      }
-
-      applyOwnPostResponseToFeeds(activeDraft, data)
-
-      const overlayPost = {
-        id: activeDraft.postId,
-        threadKey: activeDraft.threadKey,
-        title: activeDraft.title,
-        prompt: activeDraft.prompt,
-        imageUrl: activeDraft.imageUrl || null,
-        authorName: activeDraft.authorName || null,
-        authorAvatarUrl: activeDraft.authorAvatarUrl || null,
-      }
-      setPostSolvePreviewOverlay(null)
-      setPostSolveOverlay(null)
-      setPostSolveModeOverlay(null)
-      await openPostThread(overlayPost, { forceOpen: true })
-    } catch (err: any) {
-      setPostSolveError(err?.message || 'Failed to submit solve')
-    } finally {
-      setPostSolveSubmitting(false)
-    }
-  }, [applyOwnPostResponseToFeeds, openPostThread, postSolveOverlay, postSolvePreviewOverlay, postSolveText, rememberInteractiveViewportScenes])
+  }, [postSolveOverlay, postSolvePreviewOverlay])
 
   const submitTypedPostSolve = useCallback(async () => {
     const activeDraft = postTypedSolveOverlay
     const latex = String(postTypedSolveLatex || '').trim()
-    const studentText = String(postSolveText || '').trim() || null
     if (!activeDraft?.postId || !activeDraft?.threadKey) return
     if (!latex) {
-      setPostSolveError('Write a typed response before submitting.')
+      setPostSolveError('Write a typed response before adding it.')
       return
     }
-    setPostSolveSubmitting(true)
+
+    setPostSolveBlocks((prev) => [...prev, { id: createPostReplyBlockId(), type: 'latex', latex }])
+    setPostSolveModeOverlay({
+      ...activeDraft,
+      initialLatex: '',
+      initialStudentText: '',
+    })
+    setPostTypedSolveOverlay(null)
+    setPostTypedOverlayChromeVisible(false)
+    setPostTypedSolveLatex('')
     setPostSolveError(null)
-    try {
-      const res = await fetch(`/api/threads/${encodeURIComponent(activeDraft.threadKey)}/responses`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          latex,
-          studentText,
-          quizId: activeDraft.threadKey,
-          quizLabel: activeDraft.title,
-          prompt: activeDraft.prompt,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(data?.message || `Failed to submit solve (${res.status})`)
-      }
-
-      applyOwnPostResponseToFeeds(activeDraft, data)
-      setPostTypedSolveOverlay(null)
-  setPostSolveModeOverlay(null)
-      setPostTypedOverlayChromeVisible(false)
-      setPostTypedSolveLatex('')
-
-      await openPostThread({
-        id: activeDraft.postId,
-        threadKey: activeDraft.threadKey,
-        title: activeDraft.title,
-        prompt: activeDraft.prompt,
-        imageUrl: activeDraft.imageUrl || null,
-        authorName: activeDraft.authorName || null,
-        authorAvatarUrl: activeDraft.authorAvatarUrl || null,
-      }, { forceOpen: true })
-    } catch (err: any) {
-      setPostSolveError(err?.message || 'Failed to submit solve')
-    } finally {
-      setPostSolveSubmitting(false)
-    }
-  }, [applyOwnPostResponseToFeeds, openPostThread, postSolveText, postTypedSolveLatex, postTypedSolveOverlay])
+  }, [postTypedSolveLatex, postTypedSolveOverlay])
 
   const openHandwrittenLessonSolveComposer = useCallback((draft: LessonSolveOverlayState | null) => {
     if (!draft) return
@@ -13424,7 +13552,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               onClick={() => void submitPostSolve(postSolvePreviewOverlay.draftScene)}
               disabled={postSolveSubmitting}
             >
-              {postSolveSubmitting ? 'Posting...' : 'Post solution'}
+              Add to reply
             </button>
           </div>
         </div>
@@ -15663,10 +15791,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             rightActions={postSolveSubmitting ? <span className="text-[11px] font-medium text-slate-500">Sending...</span> : null}
           >
             {(() => {
-              const mathDraftLatex = String(postSolveModeOverlay.initialLatex || '').trim()
-              const hasTypedDraft = String(postSolveModeOverlay.initialLatex || '').trim().length > 0
-              const hasCanvasDraft = Boolean(postSolveModeOverlay.initialScene)
-              const mathDraftHtml = hasTypedDraft ? renderKatexDisplayHtml(mathDraftLatex) : ''
+              const hasReplyBlocks = postSolveBlocks.length > 0
               const iconButtonClassName = 'inline-flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
 
               return (
@@ -15683,6 +15808,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <div className="min-w-0 flex-1 space-y-2">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-700/80">Reply as {currentViewerPostAuthor.name}</div>
                         <div className="rounded-[24px] bg-white px-4 py-3">
+                          {hasReplyBlocks ? (
+                            <div className="mb-2">
+                              {renderPostReplyBlocks(postSolveBlocks, 'composer-reply-block', {
+                                wrapperClassName: 'space-y-2',
+                                textClassName: 'text-sm leading-6 whitespace-pre-wrap break-words text-slate-700',
+                                mathClassName: 'overflow-x-auto text-slate-800 leading-relaxed',
+                                canvasClassName: 'pt-1',
+                              })}
+                            </div>
+                          ) : null}
                           <textarea
                             value={postSolveText}
                             onChange={(event) => setPostSolveText(event.target.value)}
@@ -15698,24 +15833,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               }
                             }}
                           />
-                          {(hasTypedDraft || hasCanvasDraft) ? (
-                            <div className="mt-2 space-y-2">
-                              {hasTypedDraft ? (
-                                <div className="overflow-x-auto text-slate-800 leading-relaxed">
-                                  {mathDraftHtml ? (
-                                    <div dangerouslySetInnerHTML={{ __html: mathDraftHtml }} />
-                                  ) : (
-                                    <div className="text-sm leading-6 text-slate-700">{renderTextWithKatex(mathDraftLatex)}</div>
-                                  )}
-                                </div>
-                              ) : null}
-                              {hasCanvasDraft ? (
-                                <div className="text-sm leading-6 text-slate-700">
-                                  Canvas attached
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -15779,7 +15896,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       type="button"
                       className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-white shadow-[0_18px_34px_rgba(24,119,242,0.28)] transition hover:bg-[#176ad8] disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={() => void submitPostTextSolve()}
-                      disabled={postSolveSubmitting || !String(postSolveText || '').trim()}
+                      disabled={postSolveSubmitting || (!String(postSolveText || '').trim() && !postSolveBlocks.length)}
                       aria-label="Send reply"
                       title="Send reply"
                     >
@@ -15818,7 +15935,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   setPostSolvePreviewOverlay(null)
                   setPostSolveModeOverlay({
                     ...postSolveOverlay,
-                    initialStudentText: postSolveText,
+                    initialStudentText: '',
                   })
                   setPostSolveOverlay(null)
                   setPostSolveError(null)
@@ -15862,7 +15979,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     onClick={() => void submitTypedPostSolve()}
                     disabled={postSolveSubmitting || !String(postTypedSolveLatex || '').trim()}
                   >
-                    {postSolveSubmitting ? 'Finishing...' : 'Finish'}
+                    Add to reply
                   </button>
 
                   <div className="live-window__header-controls pointer-events-auto">
@@ -15874,8 +15991,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         if (postSolveSubmitting) return
                         setPostSolveModeOverlay({
                           ...postTypedSolveOverlay,
-                          initialLatex: postTypedSolveLatex,
-                          initialStudentText: postSolveText,
+                          initialLatex: '',
+                          initialStudentText: '',
                         })
                         setPostTypedSolveOverlay(null)
                         setPostTypedOverlayChromeVisible(false)
@@ -15958,6 +16075,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     initialScene: ownResponse?.excalidrawScene || null,
                     initialLatex: typeof ownResponse?.latex === 'string' ? ownResponse.latex : '',
                     initialStudentText: typeof ownResponse?.studentText === 'string' ? ownResponse.studentText : '',
+                    initialGradingJson: ownResponse?.gradingJson ?? null,
                   })
                 }}
               >
@@ -15989,8 +16107,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     const responseUserId = response?.user?.id ? String(response.user.id) : null
                     const responseCreatedAt = response?.updatedAt || response?.createdAt
                     const isMine = String(response?.userId || '') === String(currentUserId || viewerId || '')
-                    const responseLatex = String(response?.latex || '').trim()
-                    const responseLatexSteps = responseLatex ? splitLatexIntoSteps(responseLatex) : []
+                    const postReplyBlocks = normalizePostReplyBlocks(response)
+                    const hasPostReplyBlocks = postReplyBlocks.length > 0
                     return (
                       <div key={String(response?.id || Math.random())} className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
                         <div className="flex items-center justify-between gap-3">
@@ -16014,37 +16132,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 initialScene: response?.excalidrawScene || null,
                                 initialLatex: typeof response?.latex === 'string' ? response.latex : '',
                                 initialStudentText: typeof response?.studentText === 'string' ? response.studentText : '',
+                                initialGradingJson: response?.gradingJson ?? null,
                               })}
                             >
                               Edit
                             </button>
                           ) : null}
                         </div>
-                        {response?.excalidrawScene ? (
-                          <PublicSolveCanvasViewer
-                            scene={response.excalidrawScene}
-                            onViewportChange={isMine && response?.id
-                              ? (scene) => queueInteractiveViewportSave(String(postThreadOverlay?.threadKey || ''), String(response.id), scene)
-                              : undefined}
-                          />
-                        ) : responseLatex ? (
-                          <div className="space-y-2 rounded-2xl border border-white/10 bg-black/10 p-4 text-white/90">
-                            {responseLatexSteps.length > 1 ? responseLatexSteps.map((step: string, stepIndex: number) => {
-                              const stepHtml = renderKatexDisplayHtml(step)
-                              if (!stepHtml) return null
-                              return (
-                                <div
-                                  key={`post-response-step-${String(response?.id || 'draft')}-${stepIndex}`}
-                                  className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 leading-relaxed"
-                                  dangerouslySetInnerHTML={{ __html: stepHtml }}
-                                />
-                              )
-                            }) : (() => {
-                              const latexHtml = renderKatexDisplayHtml(responseLatex)
-                              if (!latexHtml) return <div className="text-sm text-white/60">Unable to render typed response.</div>
-                              return <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
-                            })()}
-                          </div>
+                        {hasPostReplyBlocks ? (
+                          renderPostReplyBlocks(postReplyBlocks, `post-thread-reply-${String(response?.id || 'draft')}`, {
+                            wrapperClassName: 'space-y-3 text-white/90',
+                            textClassName: 'text-sm leading-6 whitespace-pre-wrap break-words text-white/85',
+                            mathClassName: 'leading-relaxed text-white/95',
+                            onCanvasViewportChange: isMine && response?.id
+                              ? (_blockId, scene) => queueInteractiveViewportSave(String(postThreadOverlay?.threadKey || ''), String(response.id), scene)
+                              : undefined,
+                          })
                         ) : (
                           <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-white/70">No canvas attached.</div>
                         )}

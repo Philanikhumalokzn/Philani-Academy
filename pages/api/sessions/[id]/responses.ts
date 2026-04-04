@@ -421,13 +421,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    if (!safeLatex.trim() && !safeExcalidrawScene) {
-      return res.status(400).json({ message: 'A typed or canvas response is required' })
-    }
-
     const safeStudentText = (typeof studentText === 'string' && studentText.trim().length > 0)
       ? studentText.trim().slice(0, MAX_STUDENT_TEXT_LENGTH)
       : null
+
+    if (!safeLatex.trim() && !safeExcalidrawScene && !safeStudentText) {
+      return res.status(400).json({ message: 'Write a reply, add math, or attach a canvas response' })
+    }
 
     const safeQuizId = (typeof quizId === 'string' && quizId.trim().length > 0)
       ? quizId.trim().slice(0, MAX_QUIZ_ID_LENGTH)

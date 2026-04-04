@@ -15799,15 +15799,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               return (
                 <div className="space-y-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-start gap-3 flex-1">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-700">
-                        {currentViewerPostAuthor.avatar ? (
-                          <img src={currentViewerPostAuthor.avatar} alt={currentViewerPostAuthor.name} className="h-full w-full object-cover" />
-                        ) : (
-                          <span>{String(currentViewerPostAuthor.name || 'Y').slice(0, 1).toUpperCase()}</span>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1 rounded-[26px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                    <div className="min-w-0 flex-1 rounded-[26px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                         {hasReplyBlocks ? (
                           <div className="mb-2">
                             {renderPostReplyBlocks(postSolveBlocks, 'composer-reply-block', {
@@ -15833,25 +15825,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             }
                           }}
                         />
-                      </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-2 pt-1">
+                    <div className="flex shrink-0 items-center pt-1">
                       {postSolveSubmitting ? <span className="text-[11px] font-medium text-slate-500">Sending...</span> : null}
-                      <button
-                        type="button"
-                        className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-600 shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:text-slate-900"
-                        onClick={() => {
-                          setPostSolveModeOverlay(null)
-                          setPostSolveError(null)
-                        }}
-                        aria-label="Close reply composer"
-                        title="Close"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M18 6 6 18" />
-                          <path d="m6 6 12 12" />
-                        </svg>
-                      </button>
                     </div>
                   </div>
 

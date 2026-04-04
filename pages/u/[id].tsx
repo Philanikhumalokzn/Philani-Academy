@@ -428,35 +428,36 @@ export default function PublicUserProfilePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#f9fbff_0%,#f3f6fb_32%,#f7f8fb_100%)] text-slate-900">
-      <div className="mx-auto min-h-screen max-w-5xl pb-[calc(var(--app-safe-bottom)+2rem)]">
-        <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/92 px-4 pb-3 pt-[calc(var(--app-safe-top)+0.85rem)] backdrop-blur-xl sm:px-6">
-          <div className="flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={handleBack}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50"
-              aria-label="Go back"
-            >
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
-                <path d="M15 18 9 12l6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-            <div className="min-w-0 text-center">
-              <div className="truncate text-[18px] font-semibold tracking-[-0.03em] text-slate-900">{displayName}</div>
-              <div className="text-[12px] font-medium text-slate-500">Profile</div>
+    <main className="min-h-screen bg-[linear-gradient(180deg,#eef4ff_0%,#f3f6fb_28%,#f7f8fb_100%)] text-slate-900">
+      <div className="min-h-screen pb-[calc(var(--app-safe-bottom)+2rem)]">
+        <section className="relative w-full overflow-hidden bg-slate-200">
+          <div className="absolute inset-0" style={{ backgroundImage: `url("${coverUrl}")`, backgroundSize: 'cover', backgroundPosition: 'center' }} aria-hidden="true" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(9,20,39,0.28)_0%,rgba(9,20,39,0.18)_28%,rgba(9,20,39,0.08)_52%,rgba(255,255,255,0)_100%)]" aria-hidden="true" />
+          <div className="relative min-h-[16.5rem] px-4 pb-24 pt-[calc(var(--app-safe-top)+0.85rem)] sm:min-h-[19rem] sm:px-6">
+            <div className="mx-auto max-w-5xl">
+              <div className="grid grid-cols-[auto,1fr,auto] items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/50 bg-white/90 text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.12)] transition hover:bg-white"
+                  aria-label="Go back"
+                >
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
+                    <path d="M15 18 9 12l6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <div className="min-w-0 text-center text-white">
+                  <div className="truncate text-[18px] font-semibold tracking-[-0.03em] [text-shadow:0_2px_10px_rgba(15,23,42,0.28)] sm:text-[20px]">{displayName}</div>
+                  <div className="text-[13px] font-medium text-white/85 [text-shadow:0_1px_8px_rgba(15,23,42,0.28)]">Profile</div>
+                </div>
+                <div className="h-11 w-11" />
+              </div>
             </div>
-            <div className="h-11 w-11" />
           </div>
-        </header>
+        </section>
 
-        <section className="px-4 pt-4 sm:px-6">
-          <div className="overflow-hidden rounded-[34px] border border-slate-200 bg-white shadow-[0_22px_54px_rgba(15,23,42,0.08)]">
-            <div className="relative h-40 w-full bg-slate-200 sm:h-52">
-              <div className="absolute inset-0" style={{ backgroundImage: `url("${coverUrl}")`, backgroundSize: 'cover', backgroundPosition: 'center' }} aria-hidden="true" />
-              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(15,23,42,0.18))]" aria-hidden="true" />
-            </div>
-
+        <section className="relative -mt-16 px-4 sm:px-6">
+          <div className="mx-auto max-w-5xl overflow-hidden rounded-[34px] border border-slate-200 bg-white shadow-[0_22px_54px_rgba(15,23,42,0.08)]">
             <div className="relative px-4 pb-5 pt-0 sm:px-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div className="-mt-10 flex items-end gap-4 sm:-mt-14">
@@ -513,6 +514,7 @@ export default function PublicUserProfilePage() {
           </div>
         </section>
 
+        <div className="mx-auto max-w-5xl">
         <section className="px-4 pt-5 sm:px-6">
           <div className="flex items-center gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {(['all', 'photos', 'reels'] as ProfileTab[]).map((tab) => {
@@ -648,6 +650,7 @@ export default function PublicUserProfilePage() {
           {!profileLoading && !profileError && activeTab === 'photos' ? renderPhotoGrid() : null}
           {!profileLoading && !profileError && activeTab === 'reels' ? renderReels() : null}
         </section>
+        </div>
       </div>
 
       {imageViewer ? (

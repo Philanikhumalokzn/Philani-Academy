@@ -510,6 +510,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     mathClassName?: string
     canvasClassName?: string
     imageClassName?: string
+    compactImageAttachments?: boolean
+    onRemoveImageBlock?: (blockId: string) => void
     onCanvasViewportChange?: (blockId: string, scene: PublicSolveScene) => void
   }) => {
     const normalizedBlocks = normalizePostReplyBlocks(blocks)
@@ -537,6 +539,34 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           }
 
           if (block.type === 'image') {
+            if (options?.compactImageAttachments) {
+              return (
+                <div key={`${keyPrefix}-${block.id}-${index}`} className={imageClassName}>
+                  <div className="relative inline-flex overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
+                    <img
+                      src={block.imageUrl}
+                      alt="Reply attachment"
+                      className="h-24 w-24 object-cover sm:h-28 sm:w-28"
+                    />
+                    {options?.onRemoveImageBlock ? (
+                      <button
+                        type="button"
+                        className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white transition hover:bg-black/80"
+                        onClick={() => options.onRemoveImageBlock?.(block.id)}
+                        aria-label="Remove attachment"
+                        title="Remove attachment"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M18 6 6 18" />
+                          <path d="m6 6 12 12" />
+                        </svg>
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              )
+            }
+
             return (
               <div key={`${keyPrefix}-${block.id}-${index}`} className={imageClassName}>
                 <img
@@ -8597,6 +8627,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setPostSolveError(null)
   }, [postTypedSolveLatex, postTypedSolveOverlay])
 
+  const removePostReplyImageBlock = useCallback((blockId: string) => {
+    setPostSolveBlocks((prev) => prev.filter((block) => !(block.type === 'image' && block.id === blockId)))
+  }, [])
+
   const openHandwrittenLessonSolveComposer = useCallback((draft: LessonSolveOverlayState | null) => {
     if (!draft) return
     setLessonSolveModeOverlay(null)
@@ -15335,6 +15369,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               mathClassName: 'overflow-x-auto text-slate-800 leading-relaxed',
                               canvasClassName: 'pt-1',
                               imageClassName: 'pt-1',
+                              compactImageAttachments: true,
+                              onRemoveImageBlock: removePostReplyImageBlock,
                             })}
                           </div>
                         ) : null}

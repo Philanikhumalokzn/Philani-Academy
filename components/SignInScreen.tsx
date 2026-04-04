@@ -2,7 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react'
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { signIn, useSession } from 'next-auth/react'
+import { getSession, signIn, useSession } from 'next-auth/react'
 import AppFooter from './AppFooter'
 import BrandLogo from './BrandLogo'
 
@@ -14,6 +14,20 @@ function normalizeError(error?: string | null) {
 
 function normalizeEmailInput(value: string) {
   return value.replace(/\s+/g, '').toLowerCase()
+}
+
+function normalizePostSignInDestination(resultUrl: string | undefined, callbackUrl: string) {
+  const trimmed = typeof resultUrl === 'string' ? resultUrl.trim() : ''
+  if (!trimmed) return callbackUrl || '/dashboard'
+  try {
+    const parsed = new URL(trimmed, 'http://localhost:3000')
+    if (parsed.pathname === '/' && !parsed.search && !parsed.hash) {
+      return callbackUrl || '/dashboard'
+    }
+    return `${parsed.pathname}${parsed.search}${parsed.hash}` || callbackUrl || '/dashboard'
+  } catch {
+    return trimmed || callbackUrl || '/dashboard'
+  }
 }
 
 type SignInScreenProps = {
@@ -63,12 +77,18 @@ export default function SignInScreen({ title = 'Sign in | Philani Academy' }: Si
       return
     }
 
-    if (result?.url) {
-      await router.push(result.url)
-      return
+    const destination = normalizePostSignInDestination(result?.url, callbackUrl)
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const nextSession = await getSession()
+      if (nextSession?.user) {
+        await router.push(destination)
+        return
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 250))
     }
 
-    await router.push('/dashboard')
+    setError('Sign-in did not complete. Please try again.')
   }, [email, password, callbackUrl, router])
 
   const handleResend = useCallback(async () => {

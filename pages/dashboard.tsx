@@ -15788,7 +15788,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               setPostSolveError(null)
             }}
             zIndexClassName="z-[68]"
-            className="bottom-0"
+            className="bottom-[4.5rem] sm:bottom-0"
             sheetClassName="rounded-t-[32px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f0f6ff_100%)] shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
             contentClassName="min-h-0 px-4 pb-4 pt-3 sm:px-5 sm:pb-5 sm:pt-4"
           >

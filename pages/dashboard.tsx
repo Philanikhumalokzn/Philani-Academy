@@ -595,7 +595,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               className={`block w-full text-left ${canvasClassName}`.trim()}
               onClick={() => options.onOpenCanvasBlock?.(block.scene)}
             >
-              <div className="overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
+              <div className="overflow-hidden rounded-2xl border border-[#1d4f91] bg-white shadow-sm">
                 <PublicSolveCanvasViewer
                   scene={block.scene}
                   className="pointer-events-none"
@@ -605,12 +605,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </button>
           ) : (
             <div key={`${keyPrefix}-${block.id}-${index}`} className={canvasClassName}>
-              <PublicSolveCanvasViewer
-                scene={block.scene}
-                onViewportChange={options?.onCanvasViewportChange
-                  ? (scene) => options.onCanvasViewportChange?.(block.id, scene)
-                  : undefined}
-              />
+              <div className="overflow-hidden rounded-2xl border border-[#1d4f91] bg-white shadow-sm">
+                <PublicSolveCanvasViewer
+                  scene={block.scene}
+                  onViewportChange={options?.onCanvasViewportChange
+                    ? (scene) => options.onCanvasViewportChange?.(block.id, scene)
+                    : undefined}
+                />
+              </div>
             </div>
           )
         })}
@@ -6763,9 +6765,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <UserLink userId={responseUserId || null} className="text-[13px] font-semibold text-[#1c1e21] hover:underline" title="View profile">
                         {responseUserName}
                       </UserLink>
-                      {isMine && response?.excalidrawScene ? (
+                      {isMine && response?.excalidrawScene && (viewportError || viewportSaving) ? (
                         <div className="mt-1 text-[11px] font-medium text-[#65676b]">
-                          {viewportError ? viewportError : (viewportSaving ? 'Saving view...' : 'Pan or zoom to adjust the shared view.')}
+                          {viewportError ? viewportError : 'Saving view...'}
                         </div>
                       ) : null}
 
@@ -15279,10 +15281,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 <UserLink userId={responseUserId} className="text-sm font-semibold text-white hover:underline" title="View profile">
                                   {responseUserName}
                                 </UserLink>
-                                {isMine && resp?.excalidrawScene ? (
+                                {isMine && resp?.excalidrawScene && (interactiveViewportErrorByResponseId[String(resp?.id || '')] || interactiveViewportSavingByResponseId[String(resp?.id || '')]) ? (
                                   <div className="mt-1 text-[11px] font-medium text-white/55">
-                                    {interactiveViewportErrorByResponseId[String(resp?.id || '')]
-                                      || (interactiveViewportSavingByResponseId[String(resp?.id || '')] ? 'Saving view...' : 'Pan or zoom to adjust the shared view.')}
+                                    {interactiveViewportErrorByResponseId[String(resp?.id || '')] || 'Saving view...'}
                                   </div>
                                 ) : null}
 
@@ -15974,10 +15975,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             <UserLink userId={responseUserId} className="text-sm font-semibold text-white hover:underline" title="View profile">
                               {responseUserName}
                             </UserLink>
-                            {isMine && response?.excalidrawScene ? (
+                            {isMine && response?.excalidrawScene && (interactiveViewportErrorByResponseId[String(response?.id || '')] || interactiveViewportSavingByResponseId[String(response?.id || '')]) ? (
                               <div className="mt-1 text-[11px] font-medium text-white/55">
-                                {interactiveViewportErrorByResponseId[String(response?.id || '')]
-                                  || (interactiveViewportSavingByResponseId[String(response?.id || '')] ? 'Saving view...' : 'Pan or zoom to adjust the shared view.')}
+                                {interactiveViewportErrorByResponseId[String(response?.id || '')] || 'Saving view...'}
                               </div>
                             ) : null}
                             <div className="mt-2 min-w-0 rounded-[20px] text-white/90">

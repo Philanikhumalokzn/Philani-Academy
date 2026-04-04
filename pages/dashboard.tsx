@@ -13564,7 +13564,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           subtitle={selectedGrade ? gradeToLabel(selectedGrade) : 'Select a grade'}
           onClose={() => setBooksOverlayOpen(false)}
           onBackdropClick={() => setBooksOverlayOpen(false)}
-          zIndexClassName="z-50"
+          zIndexClassName="z-[72]"
           variant={isMobile ? 'light' : undefined}
           panelClassName={isMobile ? 'bg-[#f0f2f5]' : undefined}
           contentClassName={isMobile ? 'p-0' : undefined}
@@ -15847,10 +15847,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <button
                         type="button"
                         className={iconButtonClassName}
-                        onClick={() => openTypedPostSolveComposer(postSolveModeOverlay, 'myscript')}
+                        onClick={() => openHandwrittenPostSolveComposer(postSolveModeOverlay)}
                         disabled={postSolveSubmitting}
-                        aria-label="Handwriting"
-                        title="Handwriting"
+                        aria-label="Canvas"
+                        title="Canvas"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                           <path d="M4 20h4l10.5-10.5a2.12 2.12 0 1 0-3-3L5 17v3Z" />
@@ -15860,10 +15860,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <button
                         type="button"
                         className={iconButtonClassName}
-                        onClick={() => openTypedPostSolveComposer(postSolveModeOverlay, 'mathpix')}
+                        onClick={() => openBooksOverlay()}
                         disabled={postSolveSubmitting}
-                        aria-label="Math scan"
-                        title="Math scan"
+                        aria-label="Library"
+                        title="Library"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                           <path d="M4.5 8V5.5h2.5" />
@@ -15871,18 +15871,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           <path d="M19.5 16v2.5H17" />
                           <path d="M7 18.5H4.5V16" />
                           <rect x="8" y="8" width="8" height="8" rx="1.5" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        className={iconButtonClassName}
-                        onClick={() => openHandwrittenPostSolveComposer(postSolveModeOverlay)}
-                        disabled={postSolveSubmitting}
-                        aria-label="Canvas"
-                        title="Canvas"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M3 5.5A2.5 2.5 0 0 1 5.5 3h13A2.5 2.5 0 0 1 21 5.5v9A2.5 2.5 0 0 1 18.5 17h-8L6 21v-4H5.5A2.5 2.5 0 0 1 3 14.5v-9Z" />
                         </svg>
                       </button>
                     </div>

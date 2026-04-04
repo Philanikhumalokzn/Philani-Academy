@@ -15780,24 +15780,26 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           <BottomSheet
             open
             backdrop
-            title="Reply"
-            subtitle="Write a normal reply or add a maths input method"
+            title="Post reply composer"
+            hideHeader
+            edgeToEdge
             onClose={() => {
               setPostSolveModeOverlay(null)
               setPostSolveError(null)
             }}
             zIndexClassName="z-[68]"
-            className="bottom-2 mx-auto max-w-2xl"
-            rightActions={postSolveSubmitting ? <span className="text-[11px] font-medium text-slate-500">Sending...</span> : null}
+            className="bottom-0"
+            sheetClassName="rounded-t-[32px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f0f6ff_100%)] shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
+            contentClassName="min-h-0 px-4 pb-4 pt-3 sm:px-5 sm:pb-5 sm:pt-4"
           >
             {(() => {
               const hasReplyBlocks = postSolveBlocks.length > 0
               const iconButtonClassName = 'inline-flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
 
               return (
-                <div className="space-y-3 bg-[linear-gradient(180deg,#fbfcff_0%,#f0f6ff_100%)] p-2 sm:p-3">
-                  <div className="rounded-[28px] border border-slate-200 bg-white px-4 py-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
-                    <div className="flex items-start gap-3">
+                <div className="space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-start gap-3 flex-1">
                       <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-700">
                         {currentViewerPostAuthor.avatar ? (
                           <img src={currentViewerPostAuthor.avatar} alt={currentViewerPostAuthor.name} className="h-full w-full object-cover" />
@@ -15805,36 +15807,51 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           <span>{String(currentViewerPostAuthor.name || 'Y').slice(0, 1).toUpperCase()}</span>
                         )}
                       </div>
-                      <div className="min-w-0 flex-1 space-y-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-700/80">Reply as {currentViewerPostAuthor.name}</div>
-                        <div className="rounded-[24px] bg-white px-4 py-3">
-                          {hasReplyBlocks ? (
-                            <div className="mb-2">
-                              {renderPostReplyBlocks(postSolveBlocks, 'composer-reply-block', {
-                                wrapperClassName: 'space-y-2',
-                                textClassName: 'text-sm leading-6 whitespace-pre-wrap break-words text-slate-700',
-                                mathClassName: 'overflow-x-auto text-slate-800 leading-relaxed',
-                                canvasClassName: 'pt-1',
-                              })}
-                            </div>
-                          ) : null}
-                          <textarea
-                            value={postSolveText}
-                            onChange={(event) => setPostSolveText(event.target.value)}
-                            placeholder={`Comment as ${currentViewerPostAuthor.name}`}
-                            rows={1}
-                            className="max-h-28 min-h-[1.5rem] w-full resize-none bg-transparent text-sm leading-6 text-slate-700 outline-none placeholder:text-slate-400"
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter' && !event.shiftKey) {
-                                event.preventDefault()
-                                if (!postSolveSubmitting) {
-                                  void submitPostTextSolve()
-                                }
+                      <div className="min-w-0 flex-1 rounded-[26px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                        {hasReplyBlocks ? (
+                          <div className="mb-2">
+                            {renderPostReplyBlocks(postSolveBlocks, 'composer-reply-block', {
+                              wrapperClassName: 'space-y-2',
+                              textClassName: 'text-sm leading-6 whitespace-pre-wrap break-words text-slate-700',
+                              mathClassName: 'overflow-x-auto text-slate-800 leading-relaxed',
+                              canvasClassName: 'pt-1',
+                            })}
+                          </div>
+                        ) : null}
+                        <textarea
+                          value={postSolveText}
+                          onChange={(event) => setPostSolveText(event.target.value)}
+                          placeholder={`Comment as ${currentViewerPostAuthor.name}`}
+                          rows={1}
+                          className="max-h-28 min-h-[1.5rem] w-full resize-none bg-transparent text-sm leading-6 text-slate-700 outline-none placeholder:text-slate-400"
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' && !event.shiftKey) {
+                              event.preventDefault()
+                              if (!postSolveSubmitting) {
+                                void submitPostTextSolve()
                               }
-                            }}
-                          />
-                        </div>
+                            }
+                          }}
+                        />
                       </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2 pt-1">
+                      {postSolveSubmitting ? <span className="text-[11px] font-medium text-slate-500">Sending...</span> : null}
+                      <button
+                        type="button"
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-600 shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:text-slate-900"
+                        onClick={() => {
+                          setPostSolveModeOverlay(null)
+                          setPostSolveError(null)
+                        }}
+                        aria-label="Close reply composer"
+                        title="Close"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M18 6 6 18" />
+                          <path d="m6 6 12 12" />
+                        </svg>
+                      </button>
                     </div>
                   </div>
 

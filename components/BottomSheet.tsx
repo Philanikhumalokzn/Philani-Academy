@@ -5,6 +5,8 @@ type BottomSheetProps = {
   title: string
   subtitle?: string
   onClose: () => void
+  hideHeader?: boolean
+  edgeToEdge?: boolean
 
   backdrop?: boolean
   closeOnBackdrop?: boolean
@@ -16,6 +18,8 @@ type BottomSheetProps = {
   rightActions?: React.ReactNode
 
   className?: string
+  sheetClassName?: string
+  contentClassName?: string
   zIndexClassName?: string
   style?: React.CSSProperties
   children: React.ReactNode
@@ -27,6 +31,8 @@ export default function BottomSheet(props: BottomSheetProps) {
     title,
     subtitle,
     onClose,
+    hideHeader = false,
+    edgeToEdge = false,
 
     backdrop = false,
     closeOnBackdrop = true,
@@ -37,6 +43,8 @@ export default function BottomSheet(props: BottomSheetProps) {
 
     rightActions,
     className,
+  sheetClassName,
+  contentClassName,
     zIndexClassName,
     style,
     children,
@@ -132,25 +140,27 @@ export default function BottomSheet(props: BottomSheetProps) {
   }
 
   const sheetInner = (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden max-h-full flex flex-col">
-      <div className="flex items-start justify-between gap-3 px-3 py-2 border-b border-slate-200">
-        <div className="min-w-0">
-          <div className="text-sm text-slate-800 font-medium truncate">{title}</div>
-          {subtitle ? <div className="text-[11px] text-slate-500 truncate">{subtitle}</div> : null}
+    <div className={`overflow-hidden max-h-full flex flex-col ${sheetClassName || 'rounded-2xl border border-slate-200 bg-white shadow-sm'}`.trim()}>
+      {!hideHeader ? (
+        <div className="flex items-start justify-between gap-3 px-3 py-2 border-b border-slate-200">
+          <div className="min-w-0">
+            <div className="text-sm text-slate-800 font-medium truncate">{title}</div>
+            {subtitle ? <div className="text-[11px] text-slate-500 truncate">{subtitle}</div> : null}
+          </div>
+          <div className="shrink-0 flex items-center gap-2">
+            {rightActions}
+            <button
+              type="button"
+              className="px-2 py-1 text-slate-700"
+              onClick={onClose}
+            >
+              Close
+            </button>
+          </div>
         </div>
-        <div className="shrink-0 flex items-center gap-2">
-          {rightActions}
-          <button
-            type="button"
-            className="px-2 py-1 text-slate-700"
-            onClick={onClose}
-          >
-            Close
-          </button>
-        </div>
-      </div>
+      ) : null}
 
-      <div className="p-2 min-h-0 overflow-y-auto">{children}</div>
+      <div className={`min-h-0 overflow-y-auto ${contentClassName || 'p-2'}`.trim()}>{children}</div>
     </div>
   )
 
@@ -166,7 +176,7 @@ export default function BottomSheet(props: BottomSheetProps) {
           onPointerDown={closeOnBackdrop ? onClose : undefined}
         />
         <div
-          className={`absolute left-2 right-2 ${className || ''} ${motion.sheet}`}
+          className={`absolute ${edgeToEdge ? 'left-0 right-0' : 'left-2 right-2'} ${className || ''} ${motion.sheet}`}
           style={cappedSheetStyle}
           role="dialog"
           aria-modal="true"
@@ -185,7 +195,7 @@ export default function BottomSheet(props: BottomSheetProps) {
       style={safeAreaFrameStyle}
     >
       <div
-        className={`absolute left-2 right-2 pointer-events-auto ${className || ''} ${motion.sheet}`}
+        className={`absolute ${edgeToEdge ? 'left-0 right-0' : 'left-2 right-2'} pointer-events-auto ${className || ''} ${motion.sheet}`}
         style={cappedSheetStyle}
         role="dialog"
         aria-label={title}

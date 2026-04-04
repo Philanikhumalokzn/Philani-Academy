@@ -1255,6 +1255,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [postTypedSolveLatex, setPostTypedSolveLatex] = useState('')
   const [postSolveSubmitting, setPostSolveSubmitting] = useState(false)
   const [postReplyImageUploading, setPostReplyImageUploading] = useState(false)
+  const [postReplyImageSourceSheetOpen, setPostReplyImageSourceSheetOpen] = useState(false)
   const [postReplyImageEditOpen, setPostReplyImageEditOpen] = useState(false)
   const [postReplyImageEditFile, setPostReplyImageEditFile] = useState<File | null>(null)
   const [postSolveError, setPostSolveError] = useState<string | null>(null)
@@ -1279,7 +1280,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [handwritingNormalizationOverlayOpen, setHandwritingNormalizationOverlayOpen] = useState(false)
   const [mathKeyboardOverlayOpen, setMathKeyboardOverlayOpen] = useState(false)
   const [accountSnapshotOverlayOpen, setAccountSnapshotOverlayOpen] = useState(false)
-  const postReplyImageInputRef = useRef<HTMLInputElement | null>(null)
+  const postReplyCameraInputRef = useRef<HTMLInputElement | null>(null)
+  const postReplyGalleryInputRef = useRef<HTMLInputElement | null>(null)
   const closePostReplyImageEdit = useCallback(() => {
     setPostReplyImageEditOpen(false)
     setPostReplyImageEditFile(null)
@@ -1309,8 +1311,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [])
 
   const openPostReplyImagePicker = useCallback(() => {
+    setPostReplyImageSourceSheetOpen(true)
+  }, [])
+
+  const openPostReplyCameraPicker = useCallback(() => {
     try {
-      postReplyImageInputRef.current?.click()
+      setPostReplyImageSourceSheetOpen(false)
+      postReplyCameraInputRef.current?.click()
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const openPostReplyGalleryPicker = useCallback(() => {
+    try {
+      setPostReplyImageSourceSheetOpen(false)
+      postReplyGalleryInputRef.current?.click()
     } catch {
       // ignore
     }
@@ -15287,6 +15303,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             onClose={() => {
               setPostSolveModeOverlay(null)
               setPostSolveError(null)
+              setPostReplyImageSourceSheetOpen(false)
             }}
             zIndexClassName="z-[68]"
             className="bottom-0"
@@ -15401,16 +15418,66 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               )
             })()}
             <input
-              ref={postReplyImageInputRef}
+              ref={postReplyCameraInputRef}
               type="file"
               accept="image/*"
               capture="environment"
               className="hidden"
               onChange={onPostReplyImagePicked}
             />
+            <input
+              ref={postReplyGalleryInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={onPostReplyImagePicked}
+            />
           </BottomSheet>
         </OverlayPortal>
       )}
+
+      {postSolveModeOverlay && postReplyImageSourceSheetOpen ? (
+        <OverlayPortal>
+          <BottomSheet
+            open
+            backdrop
+            title="Add photo"
+            subtitle="Choose how to attach your working"
+            onClose={() => setPostReplyImageSourceSheetOpen(false)}
+            zIndexClassName="z-[69]"
+            className="bottom-0"
+            sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
+            contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5"
+          >
+            <div className="space-y-2">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
+                onClick={openPostReplyCameraPicker}
+                disabled={postReplyImageUploading}
+              >
+                <span>
+                  <span className="block text-sm font-semibold">Take photo</span>
+                  <span className="block text-xs text-slate-500">Open the camera and shoot your paper working.</span>
+                </span>
+                <span className="text-slate-400">{`>`}</span>
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
+                onClick={openPostReplyGalleryPicker}
+                disabled={postReplyImageUploading}
+              >
+                <span>
+                  <span className="block text-sm font-semibold">Choose from gallery</span>
+                  <span className="block text-xs text-slate-500">Pick an existing photo or screenshot from your device.</span>
+                </span>
+                <span className="text-slate-400">{`>`}</span>
+              </button>
+            </div>
+          </BottomSheet>
+        </OverlayPortal>
+      ) : null}
 
       <ImageCropperModal
         open={postReplyImageEditOpen}

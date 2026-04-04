@@ -15798,8 +15798,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
               return (
                 <div className="space-y-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1 rounded-[26px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                  {postSolveSubmitting ? (
+                    <div className="flex justify-end px-1">
+                      <span className="text-[11px] font-medium text-slate-500">Sending...</span>
+                    </div>
+                  ) : null}
+
+                  <div className="min-w-0 rounded-[24px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                         {hasReplyBlocks ? (
                           <div className="mb-2">
                             {renderPostReplyBlocks(postSolveBlocks, 'composer-reply-block', {
@@ -15825,13 +15830,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             }
                           }}
                         />
-                    </div>
-                    <div className="flex shrink-0 items-center pt-1">
-                      {postSolveSubmitting ? <span className="text-[11px] font-medium text-slate-500">Sending...</span> : null}
-                    </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-3 rounded-[28px] border border-slate-200 bg-white px-4 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+                  <div className="flex items-center justify-between gap-3 px-1">
                     <div className="flex items-center gap-3">
                       <button
                         type="button"

@@ -6355,7 +6355,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         ) : studentFeedPosts.length === 0 ? (
           <div className="border-b border-black/10 bg-white px-4 py-6 text-sm text-[#65676b]">No posts yet.</div>
         ) : (
-          <ul className="space-y-0">
+          <ul className="space-y-4">
             {(postSolvePreviewOverlay || pendingFeedThreadJumpKey ? studentFeedPosts : studentFeedPosts.slice(0, 15)).map((rawPost: any) => {
                 const previewPostId = String(postSolvePreviewOverlay?.draft?.postId || '')
                 const isPreviewTarget = previewPostId !== '' && String(rawPost?.id || '') === previewPostId

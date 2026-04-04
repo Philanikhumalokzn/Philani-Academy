@@ -577,6 +577,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     authorAvatarUrl?: string | null
     initialScene?: any | null
     initialLatex?: string | null
+    preferredRecognitionEngine?: 'keyboard' | 'myscript' | 'mathpix'
     postRecord?: any | null
   }
 
@@ -8071,7 +8072,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setPostSolveOverlay(draft)
   }, [])
 
-  const openTypedPostSolveComposer = useCallback((draft: PostSolveOverlayState | null) => {
+  const openTypedPostSolveComposer = useCallback((draft: PostSolveOverlayState | null, preferredRecognitionEngine: 'keyboard' | 'myscript' | 'mathpix' = 'keyboard') => {
     if (!draft) return
     setPostSolveModeOverlay(null)
     setPostSolvePreviewOverlay(null)
@@ -8079,7 +8080,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setPostSolveError(null)
     setPostTypedOverlayChromeVisible(!isMobile)
     setPostTypedSolveLatex(typeof draft.initialLatex === 'string' ? draft.initialLatex.trim() : '')
-    setPostTypedSolveOverlay(draft)
+    setPostTypedSolveOverlay({
+      ...draft,
+      preferredRecognitionEngine,
+    })
   }, [isMobile])
 
   const openPostSolveComposer = useCallback(async (post: any, options?: { initialScene?: any | null; initialLatex?: string | null }) => {
@@ -15578,52 +15582,88 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       {postSolveModeOverlay && (
         <OverlayPortal>
-          <div
-            className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.58)] backdrop-blur-sm p-4"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Choose solve mode"
+          <BottomSheet
+            open
+            backdrop
+            title="Solve this post"
+            subtitle="Choose an input method for your response"
+            onClose={() => {
+              setPostSolveModeOverlay(null)
+              setPostSolveError(null)
+            }}
+            zIndexClassName="z-[68]"
+            className="bottom-2 mx-auto max-w-2xl"
           >
-            <div className="mx-auto flex min-h-full max-w-xl items-center justify-center">
-              <div className="w-full rounded-[28px] border border-white/15 bg-[#07111f] p-6 text-white shadow-[0_30px_80px_rgba(2,6,23,0.36)] sm:p-8">
-                <div className="space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-sky-200/80">Solve This Post</div>
-                  <h2 className="text-2xl font-semibold text-white">Choose how you'd like to write your response</h2>
-                  <p className="text-sm leading-6 text-white/70">Handwritten keeps the current canvas flow. Typed opens the full keyboard workspace in this post context.</p>
+            {(() => {
+              const draftPreview = String(postSolveModeOverlay.initialLatex || '').trim()
+              const responsePillLabel = draftPreview || `Comment as ${currentViewerPostAuthor.name}`
+              const methodButtonClassName = 'rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-left shadow-[0_12px_30px_rgba(15,23,42,0.08)] transition hover:border-sky-300 hover:bg-sky-50/70'
+              const methodLabelClassName = 'text-sm font-semibold text-slate-900'
+              const methodDescriptionClassName = 'mt-1 text-xs leading-5 text-slate-500'
+
+              return (
+                <div className="space-y-4 bg-[linear-gradient(180deg,#f8fbff_0%,#eef5ff_100%)] p-2 sm:p-3">
+                  <div className="rounded-[28px] border border-slate-200 bg-white px-4 py-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-700">
+                        {currentViewerPostAuthor.avatar ? (
+                          <img src={currentViewerPostAuthor.avatar} alt={currentViewerPostAuthor.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <span>{String(currentViewerPostAuthor.name || 'Y').slice(0, 1).toUpperCase()}</span>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-700/80">Post reply</div>
+                        <button
+                          type="button"
+                          className="mt-2 flex w-full items-center justify-between gap-3 rounded-full bg-slate-100 px-4 py-3 text-left text-sm text-slate-700 transition hover:bg-slate-200/80"
+                          onClick={() => openTypedPostSolveComposer(postSolveModeOverlay, 'keyboard')}
+                        >
+                          <span className="truncate">{responsePillLabel}</span>
+                          <span className="shrink-0 rounded-full bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Open</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      className={methodButtonClassName}
+                      onClick={() => openTypedPostSolveComposer(postSolveModeOverlay, 'keyboard')}
+                    >
+                      <div className={methodLabelClassName}>Math input</div>
+                      <div className={methodDescriptionClassName}>Open the compact keyboard workspace for typed maths and step-by-step editing.</div>
+                    </button>
+                    <button
+                      type="button"
+                      className={methodButtonClassName}
+                      onClick={() => openTypedPostSolveComposer(postSolveModeOverlay, 'myscript')}
+                    >
+                      <div className={methodLabelClassName}>Handwriting</div>
+                      <div className={methodDescriptionClassName}>Write naturally and let MyScript handle the handwritten maths input.</div>
+                    </button>
+                    <button
+                      type="button"
+                      className={methodButtonClassName}
+                      onClick={() => openTypedPostSolveComposer(postSolveModeOverlay, 'mathpix')}
+                    >
+                      <div className={methodLabelClassName}>Math scan</div>
+                      <div className={methodDescriptionClassName}>Use the backup Mathpix recognition flow when the keyboard is not the right fit.</div>
+                    </button>
+                    <button
+                      type="button"
+                      className={methodButtonClassName}
+                      onClick={() => openHandwrittenPostSolveComposer(postSolveModeOverlay)}
+                    >
+                      <div className={methodLabelClassName}>Canvas</div>
+                      <div className={methodDescriptionClassName}>Open the freehand solve canvas for sketching, annotation, and full visual work.</div>
+                    </button>
+                  </div>
                 </div>
-                <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    className="rounded-3xl border border-white/15 bg-white/6 p-5 text-left transition hover:border-sky-300/50 hover:bg-white/10"
-                    onClick={() => openHandwrittenPostSolveComposer(postSolveModeOverlay)}
-                  >
-                    <div className="text-base font-semibold text-white">Handwritten</div>
-                    <div className="mt-2 text-sm leading-6 text-white/70">Use the existing public solve canvas with sketching, annotation, and preview.</div>
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-3xl border border-sky-300/30 bg-sky-400/10 p-5 text-left transition hover:border-sky-200/60 hover:bg-sky-400/15"
-                    onClick={() => openTypedPostSolveComposer(postSolveModeOverlay)}
-                  >
-                    <div className="text-base font-semibold text-white">Typed</div>
-                    <div className="mt-2 text-sm leading-6 text-white/70">Open the full math keyboard experience instead of an inline reply box.</div>
-                  </button>
-                </div>
-                <div className="mt-6 flex justify-end">
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    onClick={() => {
-                      setPostSolveModeOverlay(null)
-                      setPostSolveError(null)
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+              )
+            })()}
+          </BottomSheet>
         </OverlayPortal>
       )}
 
@@ -15738,6 +15778,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       compactEdgeToEdge
                       onOverlayChromeVisibilityChange={setPostTypedOverlayChromeVisible}
                       initialComposedLatex={postTypedSolveOverlay.initialLatex || ''}
+                      initialRecognitionEngine={postTypedSolveOverlay.preferredRecognitionEngine || 'keyboard'}
                       onComposedLatexChange={setPostTypedSolveLatex}
                     />
                   </div>

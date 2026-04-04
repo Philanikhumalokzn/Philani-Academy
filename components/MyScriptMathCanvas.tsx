@@ -933,6 +933,7 @@ type MyScriptMathCanvasProps = {
   onRequestVideoOverlay?: () => void
   lessonAuthoring?: { phaseKey: string; pointId: string }
   compactEdgeToEdge?: boolean
+  initialRecognitionEngine?: 'keyboard' | 'myscript' | 'mathpix'
 }
 
 type LessonScriptPhaseKey = 'engage' | 'explore' | 'explain' | 'elaborate' | 'evaluate'
@@ -2568,7 +2569,7 @@ const sanitizeLatexOptions = (options?: Partial<LatexDisplayOptions>): LatexDisp
   }
 }
 
-const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOrchestrateLesson: legacyCanOrchestrateLesson, roleProfile, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, initialComposedLatex, onLatexOutputChange, onComposedLatexChange, onRequestVideoOverlay, lessonAuthoring, compactEdgeToEdge }: MyScriptMathCanvasProps): React.JSX.Element => {
+const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOrchestrateLesson: legacyCanOrchestrateLesson, roleProfile, forceEditable, boardId, realtimeScopeId, autoOpenDiagramTray, quizMode, initialQuiz, assignmentSubmission, uiMode = 'default', defaultOrientation, overlayControlsHandleRef, onOverlayChromeVisibilityChange, initialComposedLatex, onLatexOutputChange, onComposedLatexChange, onRequestVideoOverlay, lessonAuthoring, compactEdgeToEdge, initialRecognitionEngine }: MyScriptMathCanvasProps): React.JSX.Element => {
   const lessonRoleProfile = useMemo(() => {
     if (roleProfile) return roleProfile
     return createLessonRoleProfile({ platformRole: legacyCanOrchestrateLesson ? 'teacher' : 'learner' })
@@ -3700,6 +3701,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       window.localStorage.setItem(RECOGNITION_ENGINE_STORAGE_KEY, recognitionEngine)
     } catch {}
   }, [isTechnicalAdmin, recognitionEngine, uiMode])
+
+  useEffect(() => {
+    if (!initialRecognitionEngine) return
+    setRecognitionEngine((prev) => (prev === initialRecognitionEngine ? prev : initialRecognitionEngine))
+    setMathpixError(null)
+  }, [initialRecognitionEngine])
+
   const [eraserShimReady, setEraserShimReady] = useState(false)
   const eraserLongPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const eraserLongPressTriggeredRef = useRef(false)

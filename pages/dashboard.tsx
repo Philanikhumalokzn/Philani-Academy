@@ -6552,7 +6552,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       ) : null}
                     </div>
 
-                    <div className="mt-3 pt-2 text-[#65676b]">
+                    <div className="mt-2 pt-1 text-[#65676b]">
                       <div className="flex items-center gap-1">
                         {renderSocialActionButton({
                           label: 'Like',
@@ -6701,7 +6701,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       : (options.kind === 'post' ? true : canViewChallengeThread)
 
     return (
-      <div className="mt-3 pt-3">
+      <div className="mt-2 pt-2">
         {loading ? <div className="text-sm text-[#65676b]">Loading solutions...</div> : null}
         {!loading && error ? <div className="text-sm text-red-500">{error}</div> : null}
         {!loading && !error && !threadUnlocked ? (

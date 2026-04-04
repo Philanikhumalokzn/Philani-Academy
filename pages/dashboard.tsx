@@ -6701,7 +6701,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       : (options.kind === 'post' ? true : canViewChallengeThread)
 
     return (
-      <div className="mt-2 pt-2">
+      <div className="mt-1 pt-1">
         {loading ? <div className="text-sm text-[#65676b]">Loading solutions...</div> : null}
         {!loading && error ? <div className="text-sm text-red-500">{error}</div> : null}
         {!loading && !error && !threadUnlocked ? (

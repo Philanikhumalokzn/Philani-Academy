@@ -15397,7 +15397,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             zIndexClassName="z-[68]"
             className="bottom-0"
             sheetClassName="rounded-t-[32px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f0f6ff_100%)] shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
-            contentClassName="min-h-0 px-4 pb-[calc(var(--app-safe-bottom)+0.75rem)] pt-3 sm:px-5 sm:pb-5 sm:pt-4"
+            contentClassName="min-h-0 px-4 pt-3 sm:px-5 sm:pt-4"
           >
             {(() => {
               const composerImageBlocks = postSolveBlocks.filter((block): block is PostReplyImageBlock => block.type === 'image')
@@ -15406,18 +15406,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               const iconButtonClassName = 'inline-flex h-10 items-center justify-center text-slate-700 transition hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
 
               return (
-                <div className="space-y-4">
+                <div className="flex min-h-full flex-col">
                   {postSolveSubmitting ? (
-                    <div className="flex justify-end px-1">
+                    <div className="flex justify-end px-1 pb-4">
                       <span className="text-[11px] font-medium text-slate-500">Sending...</span>
                     </div>
                   ) : postReplyImageUploading ? (
-                    <div className="flex justify-end px-1">
+                    <div className="flex justify-end px-1 pb-4">
                       <span className="text-[11px] font-medium text-slate-500">Uploading image...</span>
                     </div>
                   ) : null}
 
-                  <div className="min-w-0 rounded-[24px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                  <div className="min-h-0 flex-1 pb-4">
+                    <div className="min-w-0 rounded-[24px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                         {hasReplyBlocks ? (
                           <div className="mb-2">
                             {composerImageBlocks.length > 0 ? (
@@ -15456,8 +15457,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             }
                           }}
                         />
+                    </div>
                   </div>
 
+                  <div className="sticky bottom-0 -mx-4 mt-auto border-t border-slate-200/80 bg-[linear-gradient(180deg,rgba(251,252,255,0.72)_0%,#f0f6ff_24%,#f0f6ff_100%)] px-5 pb-[calc(var(--app-safe-bottom)+0.75rem)] pt-3 backdrop-blur-xl sm:-mx-5 sm:px-6 sm:pb-5">
                   <div className="flex items-center justify-between gap-3 px-1">
                     <div className="flex items-center gap-4">
                       <button
@@ -15516,6 +15519,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         <path d="m21 3-7 18-4-7-7-4 18-7Z" />
                       </svg>
                     </button>
+                  </div>
                   </div>
                 </div>
               )

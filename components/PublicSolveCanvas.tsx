@@ -38,9 +38,6 @@ const PUBLIC_SOLVE_MIN_PROMPT_ZOOM = 1
 const PUBLIC_SOLVE_MAX_PROMPT_ZOOM = 2.4
 const PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT = 64
 const PUBLIC_SOLVE_VIEWER_HEIGHT_PX = 420
-const PUBLIC_SOLVE_VIEWER_VERTICAL_PADDING_MIN = 24
-const PUBLIC_SOLVE_VIEWER_VERTICAL_PADDING_MAX = 96
-const PUBLIC_SOLVE_VIEWER_AUTO_FIT_MAX_ZOOM = 2.6
 
 type PublicSolvePromptMode = 'passive' | 'active'
 type PublicSolveReferencePresentation = 'interactive' | 'background'
@@ -807,52 +804,61 @@ const buildInitialData = (scene: PublicSolveScene | null | undefined) => {
   }
 }
 
-const clampSceneViewportToVisibleContent = (
+const buildSceneViewportFromStrokeBounds = (
   scene: PublicSolveScene | null | undefined,
-  viewportHeightPx: number,
-): PublicSolveScene | null => {
+  options?: { maxHeightPx?: number; maxWidthPx?: number | null },
+): { scene: PublicSolveScene | null; widthPx: number; heightPx: number } => {
   const normalized = normalizePublicSolveScene(scene)
-  if (!normalized) return null
+  if (!normalized) {
+    return {
+      scene: null,
+      widthPx: 0,
+      heightPx: 0,
+    }
+  }
 
   const bounds = getElementsBoundingBox(normalized.elements)
-  if (!bounds) return normalized
+  if (!bounds) {
+    return {
+      scene: normalized,
+      widthPx: 0,
+      heightPx: 0,
+    }
+  }
 
-  const safeViewportHeight = Number.isFinite(viewportHeightPx) && viewportHeightPx > 0
-    ? viewportHeightPx
+  const maxHeightPx = Number.isFinite(options?.maxHeightPx) && Number(options?.maxHeightPx) > 0
+    ? Number(options?.maxHeightPx)
     : PUBLIC_SOLVE_VIEWER_HEIGHT_PX
-  const verticalPadding = clampNumber(
-    bounds.height * 0.08,
-    PUBLIC_SOLVE_VIEWER_VERTICAL_PADDING_MIN,
-    PUBLIC_SOLVE_VIEWER_VERTICAL_PADDING_MAX,
-  )
-  const contentTop = bounds.minY - verticalPadding
-  const contentBottom = bounds.maxY + verticalPadding
-  const contentHeight = Math.max(1, contentBottom - contentTop)
+  const maxWidthPx = Number.isFinite(options?.maxWidthPx) && Number(options?.maxWidthPx) > 0
+    ? Number(options?.maxWidthPx)
+    : Number.POSITIVE_INFINITY
+  const rawWidth = Math.max(1, bounds.width)
+  const rawHeight = Math.max(1, bounds.height)
+  const widthScale = Number.isFinite(maxWidthPx) ? (maxWidthPx / rawWidth) : Number.POSITIVE_INFINITY
+  const heightScale = maxHeightPx / rawHeight
+  const scale = Math.min(1, widthScale, heightScale)
+  const nextWidthPx = Math.max(1, Math.ceil(rawWidth * scale))
+  const nextHeightPx = Math.max(1, Math.ceil(rawHeight * scale))
 
   const currentAppState = normalized.appState || {}
-  const savedZoom = getAppStateZoomValue(currentAppState) || 1
-  const savedScrollY = Number(currentAppState.scrollY || 0)
-
-  const autoFitZoom = Math.min(PUBLIC_SOLVE_VIEWER_AUTO_FIT_MAX_ZOOM, safeViewportHeight / contentHeight)
-  const nextZoom = Math.max(savedZoom, autoFitZoom)
-  const currentVisibleHeight = safeViewportHeight / savedZoom
-  const nextVisibleHeight = safeViewportHeight / nextZoom
-  const currentTop = -savedScrollY / savedZoom
-  const currentCenter = currentTop + (currentVisibleHeight / 2)
-  const minTop = contentTop
-  const maxTop = Math.max(contentTop, contentBottom - nextVisibleHeight)
-  const nextTop = clampNumber(currentCenter - (nextVisibleHeight / 2), minTop, maxTop)
-  const nextScrollY = -nextTop * nextZoom
+  const nextZoom = scale
+  const nextScrollX = -bounds.minX * nextZoom
+  const nextScrollY = -bounds.minY * nextZoom
 
   const nextAppState = {
     ...currentAppState,
+    scrollX: nextScrollX,
     scrollY: nextScrollY,
     zoom: nextZoom,
   }
 
   return {
-    ...normalized,
-    appState: nextAppState,
+    scene: {
+      ...normalized,
+      appState: nextAppState,
+    },
+    widthPx: nextWidthPx,
+    heightPx: nextHeightPx,
   }
 }
 
@@ -900,8 +906,9 @@ export function PublicSolveCanvasViewer({
   scene,
   className = '',
   emptyLabel = 'No canvas submitted yet.',
-  heightClassName = 'h-[420px]',
+  heightClassName,
   viewerHeightPx = PUBLIC_SOLVE_VIEWER_HEIGHT_PX,
+  maxWidthPx,
   onViewportChange,
 }: {
   scene: PublicSolveScene | null | undefined
@@ -909,15 +916,15 @@ export function PublicSolveCanvasViewer({
   emptyLabel?: string
   heightClassName?: string
   viewerHeightPx?: number
+  maxWidthPx?: number | null
   onViewportChange?: (scene: PublicSolveScene) => void
 }) {
   const normalizedScene = useMemo(() => normalizePublicSolveScene(scene), [scene])
-  const viewerScene = useMemo(
-    () => (onViewportChange
-      ? normalizedScene
-      : clampSceneViewportToVisibleContent(normalizedScene, viewerHeightPx)),
-    [normalizedScene, onViewportChange, viewerHeightPx]
+  const viewerLayout = useMemo(
+    () => buildSceneViewportFromStrokeBounds(normalizedScene, { maxHeightPx: viewerHeightPx, maxWidthPx }),
+    [maxWidthPx, normalizedScene, viewerHeightPx]
   )
+  const viewerScene = viewerLayout.scene
   const excalidrawApiRef = useRef<any>(null)
   const lastViewportSignatureRef = useRef<string | null>(null)
 
@@ -944,21 +951,30 @@ export function PublicSolveCanvasViewer({
 
   return (
     <div className={`philani-solution-viewer ${className}`.trim()}>
-      <div className={`${heightClassName} bg-white`}>
-        <LessonStyledExcalidraw
-          key={viewerScene?.updatedAt || 'viewer'}
-          className="h-full"
-          initialData={buildInitialData(viewerScene)}
-          onChange={onViewportChange ? handleViewerChange : undefined}
-          excalidrawAPI={(api: any) => {
-            excalidrawApiRef.current = api
-          }}
-          viewModeEnabled
-          zenModeEnabled
-          gridModeEnabled={false}
-          UIOptions={viewerUiOptions}
-          renderTopRightUI={() => null}
-        />
+      <div
+        className="relative overflow-hidden bg-white"
+        style={{
+          width: `min(100%, ${Math.max(1, viewerLayout.widthPx)}px)`,
+          aspectRatio: `${Math.max(1, viewerLayout.widthPx)} / ${Math.max(1, viewerLayout.heightPx)}`,
+          maxHeight: `${viewerHeightPx}px`,
+        }}
+      >
+        <div className={`absolute inset-0 ${heightClassName || ''}`.trim()}>
+          <LessonStyledExcalidraw
+            key={viewerScene?.updatedAt || 'viewer'}
+            className="h-full"
+            initialData={buildInitialData(viewerScene)}
+            onChange={onViewportChange ? handleViewerChange : undefined}
+            excalidrawAPI={(api: any) => {
+              excalidrawApiRef.current = api
+            }}
+            viewModeEnabled
+            zenModeEnabled
+            gridModeEnabled={false}
+            UIOptions={viewerUiOptions}
+            renderTopRightUI={() => null}
+          />
+        </div>
       </div>
     </div>
   )

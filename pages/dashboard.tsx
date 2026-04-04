@@ -591,7 +591,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 <PublicSolveCanvasViewer
                   scene={block.scene}
                   className="pointer-events-none"
-                  heightClassName="h-[220px]"
                   viewerHeightPx={220}
                 />
               </div>
@@ -11084,7 +11083,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <div className="rounded-2xl border border-black/10 bg-white p-2 shadow-sm">
                 <PublicSolveCanvasViewer
                   scene={postCanvasViewer.scene}
-                  heightClassName="h-[70vh]"
                   viewerHeightPx={700}
                   onViewportChange={postCanvasViewer.onViewportChange}
                 />

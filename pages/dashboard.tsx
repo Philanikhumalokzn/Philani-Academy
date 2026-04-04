@@ -511,6 +511,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     canvasClassName?: string
     imageClassName?: string
     compactImageAttachments?: boolean
+    compactCanvasPreview?: boolean
+    onOpenCanvasBlock?: (scene: PublicSolveScene) => void
     onRemoveImageBlock?: (blockId: string) => void
     onCanvasViewportChange?: (blockId: string, scene: PublicSolveScene) => void
   }) => {
@@ -578,7 +580,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             )
           }
 
-          return (
+          return options?.compactCanvasPreview ? (
+            <button
+              key={`${keyPrefix}-${block.id}-${index}`}
+              type="button"
+              className={`block w-full text-left ${canvasClassName}`.trim()}
+              onClick={() => options.onOpenCanvasBlock?.(block.scene)}
+            >
+              <div className="overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm">
+                <PublicSolveCanvasViewer
+                  scene={block.scene}
+                  className="pointer-events-none"
+                  heightClassName="h-[220px]"
+                  viewerHeightPx={220}
+                />
+              </div>
+            </button>
+          ) : (
             <div key={`${keyPrefix}-${block.id}-${index}`} className={canvasClassName}>
               <PublicSolveCanvasViewer
                 scene={block.scene}
@@ -1236,6 +1254,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [userDetailLoading, setUserDetailLoading] = useState(false)
   const [bulkVerifyLoading, setBulkVerifyLoading] = useState(false)
   const [userTempPassword, setUserTempPassword] = useState<string | null>(null)
+  const [postCanvasViewer, setPostCanvasViewer] = useState<null | {
+    scene: PublicSolveScene
+    title: string
+    subtitle?: string | null
+    onViewportChange?: (scene: PublicSolveScene) => void
+  }>(null)
   const [newName, setNewName] = useState('')
   const [newEmail, setNewEmail] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -1254,7 +1278,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [expandedAnnouncementId, setExpandedAnnouncementId] = useState<string | null>(null)
   const [announcementsLoading, setAnnouncementsLoading] = useState(false)
   const [announcementsError, setAnnouncementsError] = useState<string | null>(null)
-  const [subscriptionActive, setSubscriptionActive] = useState<boolean | null>(null)
   const [announcementTitle, setAnnouncementTitle] = useState('')
   const [announcementContent, setAnnouncementContent] = useState('')
   const [creatingAnnouncement, setCreatingAnnouncement] = useState(false)
@@ -1263,6 +1286,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [materialsLoading, setMaterialsLoading] = useState(false)
   const [materialsError, setMaterialsError] = useState<string | null>(null)
   const [materialTitle, setMaterialTitle] = useState('')
+
+  const openPostCanvasViewer = useCallback((scene: PublicSolveScene, title: string, subtitle?: string | null, onViewportChange?: (scene: PublicSolveScene) => void) => {
+    setPostCanvasViewer({ scene, title, subtitle, onViewportChange })
+  }, [])
+
+  const closePostCanvasViewer = useCallback(() => {
+    setPostCanvasViewer(null)
+  }, [])
   const [materialFile, setMaterialFile] = useState<File | null>(null)
   const [materialUploading, setMaterialUploading] = useState(false)
   const [latexSaves, setLatexSaves] = useState<{ shared: LatexSave[]; mine: LatexSave[] }>({ shared: [], mine: [] })
@@ -1449,6 +1480,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const materialsRequestIdRef = useRef(0)
   const latexSavesRequestIdRef = useRef(0)
 
+  const [subscriptionActive, setSubscriptionActive] = useState<boolean | null>(null)
   const [subscriptionGatingEnabled, setSubscriptionGatingEnabled] = useState<boolean | null>(null)
   const [subscriptionGatingSaving, setSubscriptionGatingSaving] = useState(false)
   const [subscriptionGatingError, setSubscriptionGatingError] = useState<string | null>(null)
@@ -11038,6 +11070,29 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </OverlayPortal>
         ) : null}
 
+        {postCanvasViewer ? (
+          <OverlayPortal>
+            <FullScreenGlassOverlay
+              title={postCanvasViewer.title}
+              subtitle={postCanvasViewer.subtitle || 'Canvas viewer'}
+              onClose={closePostCanvasViewer}
+              onBackdropClick={closePostCanvasViewer}
+              zIndexClassName="z-[61]"
+              variant="light"
+              panelClassName="bg-[#f8fafc]"
+            >
+              <div className="rounded-2xl border border-black/10 bg-white p-2 shadow-sm">
+                <PublicSolveCanvasViewer
+                  scene={postCanvasViewer.scene}
+                  heightClassName="h-[70vh]"
+                  viewerHeightPx={700}
+                  onViewportChange={postCanvasViewer.onViewportChange}
+                />
+              </div>
+            </FullScreenGlassOverlay>
+          </OverlayPortal>
+        ) : null}
+
         {assignmentOverlayOpen && (
           <OverlayPortal>
             <FullScreenGlassOverlay
@@ -15369,9 +15424,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               <div className="mb-2 flex flex-wrap items-start gap-2">
                                 {renderPostReplyBlocks(composerImageBlocks, 'composer-reply-image-block', {
                                   wrapperClassName: 'flex flex-wrap items-start gap-2',
-                                  imageClassName: '',
-                                  compactImageAttachments: true,
-                                  onRemoveImageBlock: removePostReplyImageBlock,
                                 })}
                               </div>
                             ) : null}
@@ -15765,9 +15817,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             wrapperClassName: 'space-y-3 text-white/90',
                             textClassName: 'text-sm leading-6 whitespace-pre-wrap break-words text-white/85',
                             mathClassName: 'leading-relaxed text-white/95',
-                            onCanvasViewportChange: isMine && response?.id
-                              ? (_blockId, scene) => queueInteractiveViewportSave(String(postThreadOverlay?.threadKey || ''), String(response.id), scene)
-                              : undefined,
+                            compactCanvasPreview: true,
+                            onOpenCanvasBlock: (scene) => openPostCanvasViewer(
+                              scene,
+                              `${responseUserName} canvas`,
+                              responseCreatedAt ? formatFeedPostDate(responseCreatedAt) : null,
+                              isMine && response?.id
+                                ? (nextScene) => queueInteractiveViewportSave(String(postThreadOverlay?.threadKey || ''), String(response.id), nextScene)
+                                : undefined
+                            ),
                           })
                         ) : (
                           <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-white/70">No canvas attached.</div>

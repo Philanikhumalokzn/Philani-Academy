@@ -900,19 +900,23 @@ export function PublicSolveCanvasViewer({
   scene,
   className = '',
   emptyLabel = 'No canvas submitted yet.',
+  heightClassName = 'h-[420px]',
+  viewerHeightPx = PUBLIC_SOLVE_VIEWER_HEIGHT_PX,
   onViewportChange,
 }: {
   scene: PublicSolveScene | null | undefined
   className?: string
   emptyLabel?: string
+  heightClassName?: string
+  viewerHeightPx?: number
   onViewportChange?: (scene: PublicSolveScene) => void
 }) {
   const normalizedScene = useMemo(() => normalizePublicSolveScene(scene), [scene])
   const viewerScene = useMemo(
     () => (onViewportChange
       ? normalizedScene
-      : clampSceneViewportToVisibleContent(normalizedScene, PUBLIC_SOLVE_VIEWER_HEIGHT_PX)),
-    [normalizedScene, onViewportChange]
+      : clampSceneViewportToVisibleContent(normalizedScene, viewerHeightPx)),
+    [normalizedScene, onViewportChange, viewerHeightPx]
   )
   const excalidrawApiRef = useRef<any>(null)
   const lastViewportSignatureRef = useRef<string | null>(null)
@@ -940,7 +944,7 @@ export function PublicSolveCanvasViewer({
 
   return (
     <div className={`philani-solution-viewer ${className}`.trim()}>
-      <div className="h-[420px] bg-white">
+      <div className={`${heightClassName} bg-white`}>
         <LessonStyledExcalidraw
           key={viewerScene?.updatedAt || 'viewer'}
           className="h-full"

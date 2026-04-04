@@ -15432,6 +15432,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               textClassName: 'text-sm leading-6 whitespace-pre-wrap break-words text-slate-700',
                               mathClassName: 'overflow-x-auto text-slate-800 leading-relaxed',
                               canvasClassName: 'pt-1',
+                              compactCanvasPreview: true,
+                              onOpenCanvasBlock: (scene) => openPostCanvasViewer(
+                                scene,
+                                `${currentViewerPostAuthor.name} canvas`,
+                                'Draft attachment'
+                              ),
                             }) : null}
                           </div>
                         ) : null}

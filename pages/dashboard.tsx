@@ -15682,7 +15682,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       </div>
                       <div className="min-w-0 flex-1 space-y-2">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-700/80">Reply as {currentViewerPostAuthor.name}</div>
-                        <div className="rounded-[24px] bg-slate-100 px-4 py-3 shadow-inner">
+                        <div className="rounded-[24px] bg-white px-4 py-3">
                           <textarea
                             value={postSolveText}
                             onChange={(event) => setPostSolveText(event.target.value)}
@@ -15699,19 +15699,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             }}
                           />
                           {(hasTypedDraft || hasCanvasDraft) ? (
-                            <div className="mt-3 space-y-2 border-t border-slate-200/80 pt-3">
+                            <div className="mt-2 space-y-2">
                               {hasTypedDraft ? (
-                                <div className="overflow-hidden rounded-[18px] bg-white px-3 py-2 text-slate-800 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
-                                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700/80">Math draft</div>
+                                <div className="overflow-x-auto text-slate-800 leading-relaxed">
                                   {mathDraftHtml ? (
-                                    <div className="overflow-x-auto leading-relaxed" dangerouslySetInnerHTML={{ __html: mathDraftHtml }} />
+                                    <div dangerouslySetInnerHTML={{ __html: mathDraftHtml }} />
                                   ) : (
                                     <div className="text-sm leading-6 text-slate-700">{renderTextWithKatex(mathDraftLatex)}</div>
                                   )}
                                 </div>
                               ) : null}
                               {hasCanvasDraft ? (
-                                <div className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">
+                                <div className="text-sm leading-6 text-slate-700">
                                   Canvas attached
                                 </div>
                               ) : null}

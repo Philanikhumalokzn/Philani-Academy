@@ -256,6 +256,7 @@ export default function PublicUserProfilePage() {
   }, [loadDiscoverProfiles])
 
   const displayName = profile?.name || 'Profile'
+  const profileHandle = `@${displayName.replace(/[^a-zA-Z0-9]+/g, '').trim() || 'profile'}`
   const coverUrl = resolveImageUrl(profile?.profileCoverUrl) || resolveImageUrl(profile?.profileThemeBgUrl) || defaultMobileHeroBg
   const avatarUrl = resolveImageUrl(profile?.avatar)
   const isSelf = Boolean(profile && viewerId && String(profile.id) === String(viewerId))
@@ -428,94 +429,119 @@ export default function PublicUserProfilePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#eef4ff_0%,#f3f6fb_28%,#f7f8fb_100%)] text-slate-900">
+    <main className="min-h-screen bg-[linear-gradient(180deg,#ffffff_0%,#f5f8fd_30%,#f7f8fb_100%)] text-slate-900">
       <div className="min-h-screen pb-[calc(var(--app-safe-bottom)+2rem)]">
-        <section className="relative w-full overflow-hidden bg-slate-200">
+        <section className="relative w-full overflow-hidden bg-slate-900">
           <div className="absolute inset-0" style={{ backgroundImage: `url("${coverUrl}")`, backgroundSize: 'cover', backgroundPosition: 'center' }} aria-hidden="true" />
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(9,20,39,0.28)_0%,rgba(9,20,39,0.18)_28%,rgba(9,20,39,0.08)_52%,rgba(255,255,255,0)_100%)]" aria-hidden="true" />
-          <div className="relative min-h-[16.5rem] px-4 pb-24 pt-[calc(var(--app-safe-top)+0.85rem)] sm:min-h-[19rem] sm:px-6">
-            <div className="mx-auto max-w-5xl">
-              <div className="grid grid-cols-[auto,1fr,auto] items-center gap-3">
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.42)_0%,rgba(0,0,0,0.18)_30%,rgba(0,0,0,0.32)_100%)]" aria-hidden="true" />
+          <div className="relative min-h-[15rem] px-4 pb-24 pt-[calc(var(--app-safe-top)+0.85rem)] sm:min-h-[18rem] sm:px-6">
+            <div className="mx-auto flex max-w-5xl items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={handleBack}
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/50 bg-white/90 text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.12)] transition hover:bg-white"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-sm transition hover:bg-black/50"
                   aria-label="Go back"
                 >
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
                     <path d="M15 18 9 12l6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </button>
-                <div className="min-w-0 text-center text-white">
-                  <div className="truncate text-[18px] font-semibold tracking-[-0.03em] [text-shadow:0_2px_10px_rgba(15,23,42,0.28)] sm:text-[20px]">{displayName}</div>
-                  <div className="text-[13px] font-medium text-white/85 [text-shadow:0_1px_8px_rgba(15,23,42,0.28)]">Profile</div>
-                </div>
-                <div className="h-11 w-11" />
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-sm transition hover:bg-black/50"
+                  aria-label="Search profile"
+                >
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
+                    <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="2" />
+                    <path d="m16 16 4.25 4.25" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-sm transition hover:bg-black/50"
+                  aria-label="More options"
+                >
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
+                    <circle cx="5" cy="12" r="1.8" />
+                    <circle cx="12" cy="12" r="1.8" />
+                    <circle cx="19" cy="12" r="1.8" />
+                  </svg>
+                </button>
               </div>
             </div>
           </div>
         </section>
 
-        <section className="relative -mt-16 px-4 sm:px-6">
-          <div className="mx-auto max-w-5xl overflow-hidden rounded-[34px] border border-slate-200 bg-white shadow-[0_22px_54px_rgba(15,23,42,0.08)]">
+        <section className="relative -mt-12 bg-white">
+          <div className="mx-auto w-full max-w-5xl">
             <div className="relative px-4 pb-5 pt-0 sm:px-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                <div className="-mt-10 flex items-end gap-4 sm:-mt-14">
-                  <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border-[5px] border-white bg-slate-100 text-2xl font-semibold text-slate-700 shadow-[0_12px_24px_rgba(15,23,42,0.12)] sm:h-32 sm:w-32">
-                    {avatarUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
-                    ) : (
-                      <span>{extractInitials(displayName)}</span>
-                    )}
-                  </div>
-                  <div className="pb-1">
-                    <div className="flex items-center gap-2">
-                      <h1 className="text-[28px] font-semibold tracking-[-0.04em] text-slate-900 sm:text-[34px]">{displayName}</h1>
-                      {profile?.verified ? (
-                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#1877f2] text-white" aria-label="Verified" title="Verified">
-                          <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
-                            <path d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z" fill="currentColor" />
-                          </svg>
-                        </span>
-                      ) : null}
+              <div className="flex flex-col gap-4">
+                <div className="flex items-end justify-between gap-4">
+                  <div className="-mt-14 flex min-w-0 flex-1 items-end gap-4 sm:-mt-16">
+                    <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border-[5px] border-white bg-slate-100 text-2xl font-semibold text-slate-700 shadow-[0_12px_24px_rgba(15,23,42,0.18)] sm:h-32 sm:w-32">
+                      <div className="h-full w-full overflow-hidden rounded-full bg-slate-100">
+                        {avatarUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center">
+                            <span>{extractInitials(displayName)}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="mt-1 text-[15px] font-medium text-slate-500">
-                      {roleLabel(profile?.role)}
-                      {gradeLabel ? ` • ${gradeLabel}` : ''}
-                      {profile?.schoolName ? ` • ${profile.schoolName}` : ''}
+                    <div className="min-w-0 pb-1 pt-16 sm:pt-20">
+                      <div className="flex items-center gap-2">
+                        <h1 className="truncate text-[28px] font-semibold tracking-[-0.04em] text-slate-900 sm:text-[34px]">{displayName}</h1>
+                        {profile?.verified ? (
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#1d9bf0] text-white" aria-label="Verified" title="Verified">
+                            <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
+                              <path d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z" fill="currentColor" />
+                            </svg>
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-1 text-[15px] font-medium text-slate-500">{profileHandle}</div>
+                      <div className="mt-2 text-[15px] font-medium text-slate-500">
+                        {roleLabel(profile?.role)}
+                        {gradeLabel ? ` • ${gradeLabel}` : ''}
+                        {profile?.schoolName ? ` • ${profile.schoolName}` : ''}
+                      </div>
                     </div>
                   </div>
+
+                  {profileLoading ? null : isSelf ? (
+                    <button type="button" className="inline-flex h-10 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900 transition hover:bg-slate-50">
+                      Edit profile
+                    </button>
+                  ) : canFollow ? (
+                    <button
+                      type="button"
+                      className={`inline-flex h-10 shrink-0 items-center justify-center rounded-full px-5 text-sm font-semibold transition ${profile?.isFollowing ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50' : 'bg-slate-900 text-white hover:bg-slate-800'}`}
+                      onClick={() => void toggleFollow()}
+                      disabled={followBusy}
+                    >
+                      {followBusy ? 'Working...' : profile?.isFollowing ? 'Following' : 'Follow'}
+                    </button>
+                  ) : null}
                 </div>
 
-                {profileLoading ? null : isSelf ? (
-                  <button type="button" className="inline-flex h-12 items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-5 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-200">
-                    Manage posts
-                  </button>
-                ) : canFollow ? (
-                  <button
-                    type="button"
-                    className={`inline-flex h-12 items-center justify-center rounded-full px-5 text-sm font-semibold shadow-sm transition ${profile?.isFollowing ? 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50' : 'bg-[#1877f2] text-white hover:bg-[#176ad8]'}`}
-                    onClick={() => void toggleFollow()}
-                    disabled={followBusy}
-                  >
-                    {followBusy ? 'Working...' : profile?.isFollowing ? 'Following' : 'Follow'}
-                  </button>
-                ) : null}
-              </div>
+                {profile?.statusBio ? <p className="max-w-3xl text-[15px] leading-7 text-slate-700">{profile.statusBio}</p> : null}
 
-              {profile?.statusBio ? <p className="mt-4 max-w-3xl text-[15px] leading-7 text-slate-700">{profile.statusBio}</p> : null}
-
-              <div className="mt-4 flex flex-wrap items-center gap-3 text-[14px] font-medium text-slate-500">
-                <span>{Number(profile?.followerCount || 0)} followers</span>
-                <span>{Number(profile?.followingCount || 0)} following</span>
+                <div className="flex flex-wrap items-center gap-4 text-[14px] font-medium text-slate-500">
+                  <span><span className="font-semibold text-slate-900">{Number(profile?.followingCount || 0)}</span> Following</span>
+                  <span><span className="font-semibold text-slate-900">{Number(profile?.followerCount || 0)}</span> Followers</span>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        <div className="mx-auto max-w-5xl">
-        <section className="px-4 pt-5 sm:px-6">
+        <div className="mx-auto w-full max-w-5xl">
+        <section className="border-t border-slate-200 bg-white px-4 pt-3 sm:px-6">
           <div className="flex items-center gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {(['all', 'photos', 'reels'] as ProfileTab[]).map((tab) => {
               const active = activeTab === tab
@@ -524,10 +550,11 @@ export default function PublicUserProfilePage() {
                 <button
                   key={tab}
                   type="button"
-                  className={`shrink-0 rounded-full px-5 py-3 text-[15px] font-semibold tracking-[-0.02em] transition ${active ? 'bg-[#e8f1ff] text-[#1463cc]' : 'bg-transparent text-slate-900 hover:bg-white/70'}`}
+                  className={`relative shrink-0 px-4 py-3 text-[15px] font-semibold tracking-[-0.02em] transition ${active ? 'text-slate-900' : 'text-slate-500 hover:text-slate-800'}`}
                   onClick={() => setActiveTab(tab)}
                 >
                   {label}
+                  {active ? <span className="absolute inset-x-2 bottom-0 h-[3px] rounded-full bg-[#1d9bf0]" aria-hidden="true" /> : null}
                 </button>
               )
             })}

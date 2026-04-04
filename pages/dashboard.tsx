@@ -15663,8 +15663,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             rightActions={postSolveSubmitting ? <span className="text-[11px] font-medium text-slate-500">Sending...</span> : null}
           >
             {(() => {
+              const mathDraftLatex = String(postSolveModeOverlay.initialLatex || '').trim()
               const hasTypedDraft = String(postSolveModeOverlay.initialLatex || '').trim().length > 0
               const hasCanvasDraft = Boolean(postSolveModeOverlay.initialScene)
+              const mathDraftHtml = hasTypedDraft ? renderKatexDisplayHtml(mathDraftLatex) : ''
               const iconButtonClassName = 'inline-flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
 
               return (
@@ -15680,7 +15682,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       </div>
                       <div className="min-w-0 flex-1 space-y-2">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-700/80">Reply as {currentViewerPostAuthor.name}</div>
-                        <div className="rounded-full bg-slate-100 px-4 py-2.5 shadow-inner">
+                        <div className="rounded-[24px] bg-slate-100 px-4 py-3 shadow-inner">
                           <textarea
                             value={postSolveText}
                             onChange={(event) => setPostSolveText(event.target.value)}
@@ -15696,13 +15698,26 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               }
                             }}
                           />
+                          {(hasTypedDraft || hasCanvasDraft) ? (
+                            <div className="mt-3 space-y-2 border-t border-slate-200/80 pt-3">
+                              {hasTypedDraft ? (
+                                <div className="overflow-hidden rounded-[18px] bg-white px-3 py-2 text-slate-800 shadow-[0_6px_16px_rgba(15,23,42,0.06)]">
+                                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700/80">Math draft</div>
+                                  {mathDraftHtml ? (
+                                    <div className="overflow-x-auto leading-relaxed" dangerouslySetInnerHTML={{ __html: mathDraftHtml }} />
+                                  ) : (
+                                    <div className="text-sm leading-6 text-slate-700">{renderTextWithKatex(mathDraftLatex)}</div>
+                                  )}
+                                </div>
+                              ) : null}
+                              {hasCanvasDraft ? (
+                                <div className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">
+                                  Canvas attached
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </div>
-                        {(hasTypedDraft || hasCanvasDraft) ? (
-                          <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium text-slate-500">
-                            {hasTypedDraft ? <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-700">Math draft attached</span> : null}
-                            {hasCanvasDraft ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">Canvas attached</span> : null}
-                          </div>
-                        ) : null}
                       </div>
                     </div>
                   </div>

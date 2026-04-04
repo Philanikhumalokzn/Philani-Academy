@@ -15397,7 +15397,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             zIndexClassName="z-[68]"
             className="bottom-0"
             sheetClassName="rounded-t-[32px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f0f6ff_100%)] shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
-            contentClassName="min-h-0 px-4 pt-3 sm:px-5 sm:pt-4"
+            contentClassName="flex h-[min(32rem,68dvh)] min-h-[20rem] flex-col overflow-hidden px-4 pt-3 sm:h-[min(36rem,72dvh)] sm:px-5 sm:pt-4"
           >
             {(() => {
               const composerImageBlocks = postSolveBlocks.filter((block): block is PostReplyImageBlock => block.type === 'image')
@@ -15406,7 +15406,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               const iconButtonClassName = 'inline-flex h-10 items-center justify-center text-slate-700 transition hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
 
               return (
-                <div className="flex min-h-full flex-col">
+                <div className="flex min-h-0 flex-1 flex-col">
                   {postSolveSubmitting ? (
                     <div className="flex justify-end px-1 pb-4">
                       <span className="text-[11px] font-medium text-slate-500">Sending...</span>
@@ -15417,7 +15417,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     </div>
                   ) : null}
 
-                  <div className="min-h-0 flex-1 pb-4">
+                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4">
                     <div className="min-w-0 rounded-[24px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                         {hasReplyBlocks ? (
                           <div className="mb-2">
@@ -15460,66 +15460,66 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     </div>
                   </div>
 
-                  <div className="sticky bottom-0 -mx-4 mt-auto border-t border-slate-200/80 bg-[linear-gradient(180deg,rgba(251,252,255,0.72)_0%,#f0f6ff_24%,#f0f6ff_100%)] px-5 pb-[calc(var(--app-safe-bottom)+0.75rem)] pt-3 backdrop-blur-xl sm:-mx-5 sm:px-6 sm:pb-5">
-                  <div className="flex items-center justify-between gap-3 px-1">
-                    <div className="flex items-center gap-4">
-                      <button
-                        type="button"
-                        className={iconButtonClassName}
-                        onClick={() => openTypedPostSolveComposer(postSolveModeOverlay, 'keyboard')}
-                        disabled={postSolveSubmitting}
-                        aria-label="Math input"
-                        title="Math input"
-                      >
-                        <span
-                          className="text-[1.18rem] font-semibold italic leading-none tracking-[-0.05em]"
-                          style={{ fontFamily: 'KaTeX_Main, Times New Roman, serif' }}
+                  <div className="shrink-0 -mx-4 mt-auto border-t border-slate-200/80 bg-[linear-gradient(180deg,rgba(251,252,255,0.72)_0%,#f0f6ff_24%,#f0f6ff_100%)] px-5 pb-[calc(var(--app-safe-bottom)+0.75rem)] pt-3 backdrop-blur-xl sm:-mx-5 sm:px-6 sm:pb-5">
+                    <div className="flex items-center justify-between gap-3 px-1">
+                      <div className="flex items-center gap-4">
+                        <button
+                          type="button"
+                          className={iconButtonClassName}
+                          onClick={() => openTypedPostSolveComposer(postSolveModeOverlay, 'keyboard')}
+                          disabled={postSolveSubmitting}
+                          aria-label="Math input"
+                          title="Math input"
                         >
-                          fx
-                        </span>
-                      </button>
+                          <span
+                            className="text-[1.18rem] font-semibold italic leading-none tracking-[-0.05em]"
+                            style={{ fontFamily: 'KaTeX_Main, Times New Roman, serif' }}
+                          >
+                            fx
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className={iconButtonClassName}
+                          onClick={() => openHandwrittenPostSolveComposer(postSolveModeOverlay)}
+                          disabled={postSolveSubmitting}
+                          aria-label="Handwriting"
+                          title="Handwriting"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="m4.5 19.5 4.2-.8 9.9-9.9a2.1 2.1 0 0 0 0-3l-.4-.4a2.1 2.1 0 0 0-3 0l-9.9 9.9-.8 4.2Z" />
+                            <path d="m13.8 6.2 4 4" />
+                            <path d="M4.5 19.5 8 16" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          className={iconButtonClassName}
+                          onClick={openPostReplyImagePicker}
+                          disabled={postSolveSubmitting || postReplyImageUploading}
+                          aria-label="Camera"
+                          title="Camera"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.3-1.7A2 2 0 0 1 10.9 3.5h2.2a2 2 0 0 1 1.6.8L16 6h1.5A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-8Z" />
+                            <circle cx="12" cy="12.5" r="3.5" />
+                          </svg>
+                        </button>
+                      </div>
                       <button
                         type="button"
-                        className={iconButtonClassName}
-                        onClick={() => openHandwrittenPostSolveComposer(postSolveModeOverlay)}
-                        disabled={postSolveSubmitting}
-                        aria-label="Handwriting"
-                        title="Handwriting"
+                        className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-white shadow-[0_18px_34px_rgba(24,119,242,0.28)] transition hover:bg-[#176ad8] disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => void submitPostTextSolve()}
+                        disabled={postSolveSubmitting || postReplyImageUploading || (!String(postSolveText || '').trim() && !postSolveBlocks.length)}
+                        aria-label="Send reply"
+                        title="Send reply"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="m4.5 19.5 4.2-.8 9.9-9.9a2.1 2.1 0 0 0 0-3l-.4-.4a2.1 2.1 0 0 0-3 0l-9.9 9.9-.8 4.2Z" />
-                          <path d="m13.8 6.2 4 4" />
-                          <path d="M4.5 19.5 8 16" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        className={iconButtonClassName}
-                        onClick={openPostReplyImagePicker}
-                        disabled={postSolveSubmitting || postReplyImageUploading}
-                        aria-label="Camera"
-                        title="Camera"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.3-1.7A2 2 0 0 1 10.9 3.5h2.2a2 2 0 0 1 1.6.8L16 6h1.5A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-8Z" />
-                          <circle cx="12" cy="12.5" r="3.5" />
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M21 3 10 14" />
+                          <path d="m21 3-7 18-4-7-7-4 18-7Z" />
                         </svg>
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-white shadow-[0_18px_34px_rgba(24,119,242,0.28)] transition hover:bg-[#176ad8] disabled:cursor-not-allowed disabled:opacity-50"
-                      onClick={() => void submitPostTextSolve()}
-                      disabled={postSolveSubmitting || postReplyImageUploading || (!String(postSolveText || '').trim() && !postSolveBlocks.length)}
-                      aria-label="Send reply"
-                      title="Send reply"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <path d="M21 3 10 14" />
-                        <path d="m21 3-7 18-4-7-7-4 18-7Z" />
-                      </svg>
-                    </button>
-                  </div>
                   </div>
                 </div>
               )

@@ -2,7 +2,8 @@ import { useSession } from 'next-auth/react'
 import type { GetServerSideProps } from 'next'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import PublicFeedPostCard from '../../components/PublicFeedPostCard'
 import ZoomableImageOverlay from '../../components/ZoomableImageOverlay'
 import { gradeToLabel } from '../../lib/grades'
 
@@ -24,13 +25,29 @@ type PublicUser = {
 
 type ProfilePost = {
   id: string
+  kind?: 'post'
   title?: string | null
   prompt?: string | null
   imageUrl?: string | null
   grade?: string | null
   audience?: string | null
+  attemptsOpen?: boolean | null
+  solutionsVisible?: boolean | null
+  maxAttempts?: number | null
+  closedAt?: string | null
+  revealedAt?: string | null
   createdAt?: string | null
   createdById?: string | null
+  createdBy?: {
+    id?: string | null
+    name?: string | null
+    avatar?: string | null
+    grade?: string | null
+    role?: string | null
+  } | null
+  ownResponse?: any
+  myAttemptCount?: number
+  usesAttemptRules?: boolean
   solutionCount?: number
   hasOwnResponse?: boolean
   threadKey?: string
@@ -109,6 +126,13 @@ const extractInitials = (name: string) => {
   return `${words[0].slice(0, 1)}${words[1].slice(0, 1)}`.toUpperCase()
 }
 
+const formatSolutionsLabel = (count: unknown) => {
+  const safeCount = typeof count === 'number' && Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0
+  if (safeCount <= 0) return 'Solutions'
+  if (safeCount === 1) return '1 solution'
+  return `${safeCount} Solutions`
+}
+
 export default function PublicUserProfilePage() {
   const router = useRouter()
   const { status, data: session } = useSession()
@@ -133,6 +157,10 @@ export default function PublicUserProfilePage() {
   const [followBusy, setFollowBusy] = useState(false)
   const [activeTab, setActiveTab] = useState<ProfileTab>('all')
   const [imageViewer, setImageViewer] = useState<{ url: string; title: string } | null>(null)
+  const [likedPostKeys, setLikedPostKeys] = useState<Record<string, boolean>>({})
+  const [lastSharedPostKey, setLastSharedPostKey] = useState<string | null>(null)
+  const [expandedProfilePostId, setExpandedProfilePostId] = useState<string | null>(null)
+  const socialShareResetTimeoutRef = useRef<number | null>(null)
 
   const loadProfile = useCallback(async () => {
     if (!userId) return
@@ -313,70 +341,148 @@ export default function PublicUserProfilePage() {
     setImageViewer(null)
   }, [])
 
+  const toggleProfileLike = useCallback((itemKey: string) => {
+    if (!itemKey) return
+    setLikedPostKeys((current) => ({ ...current, [itemKey]: !current[itemKey] }))
+  }, [])
+
+  const markProfileShareHandled = useCallback((itemKey: string) => {
+    if (!itemKey) return
+    setLastSharedPostKey(itemKey)
+    if (typeof window === 'undefined') return
+    if (socialShareResetTimeoutRef.current !== null) {
+      window.clearTimeout(socialShareResetTimeoutRef.current)
+    }
+    socialShareResetTimeoutRef.current = window.setTimeout(() => {
+      setLastSharedPostKey((current) => (current === itemKey ? null : current))
+      socialShareResetTimeoutRef.current = null
+    }, 1800)
+  }, [])
+
+  const shareProfilePost = useCallback(async (opts: { itemKey: string; title: string; path: string; text?: string }) => {
+    const { itemKey, title, path, text } = opts
+    if (!itemKey || !path) return
+
+    const absoluteUrl = typeof window === 'undefined'
+      ? path
+      : new URL(path, window.location.origin).toString()
+
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        await navigator.share({ title, text, url: absoluteUrl })
+        markProfileShareHandled(itemKey)
+        return
+      }
+
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(absoluteUrl)
+        markProfileShareHandled(itemKey)
+        alert('Link copied')
+        return
+      }
+
+      if (typeof window !== 'undefined') {
+        window.prompt('Copy this link', absoluteUrl)
+        markProfileShareHandled(itemKey)
+      }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return
+      alert(err?.message || 'Failed to share')
+    }
+  }, [markProfileShareHandled])
+
+  useEffect(() => () => {
+    if (typeof window !== 'undefined' && socialShareResetTimeoutRef.current !== null) {
+      window.clearTimeout(socialShareResetTimeoutRef.current)
+    }
+  }, [])
+
   const renderPostCard = (post: ProfilePost) => {
-    const postImageUrl = resolveImageUrl(post.imageUrl)
+    const postId = String(post.id || '')
+    const itemKey = `post:${postId}`
+    const authorName = String(post?.createdBy?.name || displayName || 'Learner').trim() || 'Learner'
+    const authorId = String(post?.createdBy?.id || profile?.id || '').trim() || null
+    const authorAvatar = resolveImageUrl(post?.createdBy?.avatar || avatarUrl)
+    const authorRole = String(post?.createdBy?.role || profile?.role || '').toLowerCase()
+    const authorVerified = authorRole === 'admin' || authorRole === 'teacher' || Boolean(profile?.verified)
+    const maxAttempts = typeof post?.maxAttempts === 'number' ? post.maxAttempts : null
+    const attemptsOpen = post?.attemptsOpen !== false
+    const usesAttemptRules = Boolean(post?.usesAttemptRules || maxAttempts !== null || post?.attemptsOpen === false || post?.solutionsVisible === true)
+    const myAttemptCount = typeof post?.myAttemptCount === 'number' ? post.myAttemptCount : 0
+    const hasAttempted = myAttemptCount > 0
+    const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
+    const solveLabel = usesAttemptRules
+      ? (hasAttempted ? formatSolutionsLabel(post?.solutionCount) : (canAttempt ? 'Solve' : 'Closed'))
+      : (post?.hasOwnResponse ? formatSolutionsLabel(post?.solutionCount) : 'Solve')
+    const isExpanded = expandedProfilePostId === postId
+
     return (
-      <article key={post.id} className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_16px_36px_rgba(15,23,42,0.08)]">
-        <div className="flex items-start justify-between gap-3 px-5 pt-5">
-          <div className="flex min-w-0 items-start gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-700">
-              {avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
-              ) : (
-                <span>{extractInitials(displayName)}</span>
-              )}
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <div className="truncate text-[15px] font-semibold tracking-[-0.02em] text-slate-900">{displayName}</div>
-                {profile?.verified ? (
-                  <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#1877f2] text-white" aria-label="Verified" title="Verified">
-                    <svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" aria-hidden="true">
-                      <path d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.12 7.18a1 1 0 0 1-1.42.006L3.29 9.01a1 1 0 1 1 1.414-1.414l3.17 3.17 6.412-6.47a1 1 0 0 1 1.418-.006z" fill="currentColor" />
-                    </svg>
-                  </span>
-                ) : null}
-              </div>
-              <div className="mt-0.5 flex items-center gap-2 text-[12px] font-medium text-slate-500">
-                <span>{formatShortDate(post.createdAt)}</span>
-                <span className="inline-flex h-4 w-4 items-center justify-center text-slate-400">
-                  <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden="true">
-                    <path d="M9.75 2.5a7.25 7.25 0 1 0 0 14.5 7.25 7.25 0 0 0 0-14.5Zm0 0c1.57 1.55 2.45 3.67 2.45 5.87 0 2.2-.88 4.32-2.45 5.88m0-11.75c-1.57 1.55-2.45 3.67-2.45 5.87 0 2.2.88 4.32 2.45 5.88m-6.1-5.88h12.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <article key={post.id} className="border-b border-black/10 bg-white px-4 py-3 sm:px-6">
+        <PublicFeedPostCard
+          authorId={authorId}
+          authorName={authorName}
+          authorAvatar={authorAvatar}
+          authorVerified={authorVerified}
+          createdAt={formatShortDate(post.createdAt)}
+          title={String(post.title || '').trim() || 'Post'}
+          prompt={post.prompt || ''}
+          imageUrl={resolveImageUrl(post.imageUrl)}
+          expanded={isExpanded}
+          onOpen={() => setExpandedProfilePostId((current) => current === postId ? null : postId)}
+          onOpenImage={openImageViewer}
+          actions={[
+            {
+              label: 'Like',
+              active: Boolean(likedPostKeys[itemKey]),
+              onClick: () => toggleProfileLike(itemKey),
+              icon: (
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                  <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              ),
+            },
+            {
+              label: solveLabel,
+              onClick: () => setExpandedProfilePostId((current) => current === postId ? null : postId),
+              disabled: usesAttemptRules && !hasAttempted && !canAttempt,
+              icon: (
+                <span className="flex items-center gap-1" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+                    <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none">
+                    <path d="M4 20H8L18.5 9.5C19.3284 8.67157 19.3284 7.32843 18.5 6.5C17.6716 5.67157 16.3284 5.67157 15.5 6.5L5 17V20Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M14.5 7.5L17.5 10.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </span>
-              </div>
+              ),
+            },
+            {
+              label: 'Share',
+              statusLabel: lastSharedPostKey === itemKey ? 'Copied' : undefined,
+              onClick: () => void shareProfilePost({
+                itemKey,
+                title: String(post.title || '').trim() || 'Post',
+                text: String(post.prompt || '').trim() || String(post.title || '').trim() || 'Post',
+                path: `/u/${encodeURIComponent(String(userId || profile?.id || ''))}?postId=${encodeURIComponent(postId)}`,
+              }),
+              icon: (
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                  <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M4 19V17C4 13.6863 6.68629 11 10 11H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              ),
+            },
+          ]}
+        >
+          {isExpanded ? (
+            <div className="mt-2 rounded-2xl bg-[#f0f2f5] px-4 py-3 text-sm text-[#65676b]">
+              <div>{Number(post.solutionCount || 0)} solution{Number(post.solutionCount || 0) === 1 ? '' : 's'} on this post.</div>
+              <div className="mt-1">{post.audience === 'public' ? 'Public post' : post.audience === 'grade' ? 'Grade post' : 'Shared post'}</div>
             </div>
-          </div>
-          <button type="button" className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600" aria-label="More options">
-            <svg viewBox="0 0 20 20" className="h-5 w-5" fill="currentColor" aria-hidden="true">
-              <circle cx="4" cy="10" r="1.6" />
-              <circle cx="10" cy="10" r="1.6" />
-              <circle cx="16" cy="10" r="1.6" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="px-5 pb-4 pt-4">
-          {post.title ? <h3 className="text-[18px] font-semibold tracking-[-0.03em] text-slate-900">{post.title}</h3> : null}
-          {post.prompt ? <p className="mt-2 whitespace-pre-wrap text-[15px] leading-7 text-slate-700">{post.prompt}</p> : null}
-        </div>
-
-        {postImageUrl ? (
-          <button
-            type="button"
-            className="block w-full overflow-hidden bg-slate-100 text-left"
-            onClick={() => openImageViewer(postImageUrl, post.title || `${displayName} post image`)}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={postImageUrl} alt={post.title || 'Post image'} className="max-h-[34rem] w-full object-cover" />
-          </button>
-        ) : null}
-
-        <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-[13px] font-medium text-slate-500">
-          <span>{Number(post.solutionCount || 0)} replies</span>
-          <span>{post.audience === 'public' ? 'Public post' : post.audience === 'grade' ? 'Grade post' : 'Shared post'}</span>
-        </div>
+          ) : null}
+        </PublicFeedPostCard>
       </article>
     )
   }

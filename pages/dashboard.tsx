@@ -5,6 +5,7 @@ import JitsiRoom, { JitsiControls, JitsiMuteState } from '../components/JitsiRoo
 import LiveOverlayWindow from '../components/LiveOverlayWindow'
 import BrandLogo from '../components/BrandLogo'
 import GradePillSelector, { type PillAnchorRect } from '../components/GradePillSelector'
+import PublicFeedPostCard from '../components/PublicFeedPostCard'
 import UserLink from '../components/UserLink'
 import DiagramOverlayModule from '../components/DiagramOverlayModule'
 import TextOverlayModule from '../components/TextOverlayModule'
@@ -6559,6 +6560,185 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const itemKey = itemId ? `${kind}:${itemId}` : `${kind}:${title}`
                 const socialItemKey = itemId ? `${kind}:${itemId}` : `${kind}:${title}`
                 const href = !isPost && itemId ? `/challenges/${encodeURIComponent(itemId)}` : '#'
+
+                if (isPost) {
+                  const postSideActions = p?.id ? (
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      {isOwner ? (
+                        <>
+                          <button
+                            type="button"
+                            className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
+                            onClick={() => openEditPostComposer(p)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="shrink-0 text-xs font-semibold text-[#65676b]"
+                            onClick={() => void deletePost(String(p.id))}
+                          >
+                            Delete
+                          </button>
+                        </>
+                      ) : usesAttemptRules ? (
+                        canAttempt && !hasAttempted ? (
+                          <button
+                            type="button"
+                            className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
+                            onClick={() => void openPostSolveComposer(p)}
+                          >
+                            Solve
+                          </button>
+                        ) : hasAttempted ? (
+                          <button
+                            type="button"
+                            className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
+                            onClick={() => void openPostThread(p)}
+                          >
+                            Solutions
+                          </button>
+                        ) : (
+                          <button type="button" className="btn btn-ghost shrink-0" disabled>
+                            Closed
+                          </button>
+                        )
+                      ) : (
+                        <button
+                          type="button"
+                          className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
+                          onClick={() => {
+                            if (p?.hasOwnResponse) {
+                              void openPostThread(p)
+                              return
+                            }
+                            void openPostSolveComposer(p)
+                          }}
+                        >
+                          {p?.hasOwnResponse ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve'}
+                        </button>
+                      )}
+                    </div>
+                  ) : null
+
+                  const postActions = [
+                    {
+                      label: 'Like',
+                      active: Boolean(socialLikedItems[socialItemKey]),
+                      onClick: () => toggleSocialLike(socialItemKey),
+                      icon: (
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                          <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                          <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      ),
+                    },
+                    {
+                      label: usesAttemptRules
+                        ? (hasAttempted ? formatSolutionsLabel((p as any)?.solutionCount) : (canAttempt ? 'Solve' : 'Closed'))
+                        : (p?.hasOwnResponse ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve'),
+                      onClick: () => {
+                        if (usesAttemptRules) {
+                          if (hasAttempted) {
+                            void openPostThread(p)
+                            return
+                          }
+                          if (canAttempt) {
+                            void openPostSolveComposer(p)
+                          }
+                          return
+                        }
+                        if (p?.hasOwnResponse) {
+                          void openPostThread(p)
+                          return
+                        }
+                        void openPostSolveComposer(p)
+                      },
+                      disabled: !itemId || (usesAttemptRules && !hasAttempted && !canAttempt),
+                      icon: (
+                        <span className="flex items-center gap-1" aria-hidden="true">
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+                            <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none">
+                            <path d="M4 20H8L18.5 9.5C19.3284 8.67157 19.3284 7.32843 18.5 6.5C17.6716 5.67157 16.3284 5.67157 15.5 6.5L5 17V20Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d="M14.5 7.5L17.5 10.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </span>
+                      ),
+                    },
+                    {
+                      label: 'Share',
+                      statusLabel: lastSharedSocialItemKey === socialItemKey ? 'Copied' : undefined,
+                      onClick: () => shareDashboardItem({
+                        itemKey: socialItemKey,
+                        title,
+                        text: prompt || title,
+                        path: `/dashboard?postId=${encodeURIComponent(itemId)}`,
+                      }),
+                      disabled: !itemId,
+                      icon: (
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                          <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                          <path d="M4 19V17C4 13.6863 6.68629 11 10 11H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      ),
+                    },
+                  ]
+
+                  const postExpandedContent = isPreviewTarget
+                    ? renderInlineSolutionsThread(p, {
+                        kind: 'post',
+                        forceOpen: true,
+                        overrideResponses: postSolvePreviewResponses,
+                        overrideLoading: postSolvePreviewOverlay?.loading,
+                        overrideError: postSolvePreviewOverlay?.error,
+                        overrideThreadUnlocked: true,
+                        interactiveViewportResponseId: postSolvePreviewResponseId,
+                        onInteractiveViewportChange: updatePostSolvePreviewScene,
+                        onOwnPostEditSolution: () => {
+                          closePostSolvePreview()
+                        },
+                      })
+                    : renderInlineSolutionsThread(p, {
+                        kind: 'post',
+                        canAttempt,
+                        onLiveResponseViewportChange: (responseId, scene) => {
+                          const threadKey = `post:${String(p?.id || '')}`
+                          queueInteractiveViewportSave(threadKey, responseId, scene)
+                        },
+                      })
+
+                  return (
+                    <li
+                      key={getDashboardItemKey(p)}
+                      ref={(el) => {
+                        if (!itemId) return
+                        postFeedItemRefs.current[itemKey] = el
+                      }}
+                      data-post-id={itemId || undefined}
+                      className="border-b border-black/10 bg-white px-4 py-3"
+                    >
+                      <PublicFeedPostCard
+                        authorId={authorId}
+                        authorName={authorName}
+                        authorAvatar={authorAvatar}
+                        authorVerified={authorVerified}
+                        createdAt={createdAt}
+                        title={title}
+                        prompt={prompt}
+                        imageUrl={imageUrl}
+                        expanded={expandedSolutionThreadKey === itemKey && expandedSolutionThreadKind === 'post'}
+                        onOpen={() => void openPostThread(p, { forceOpen: true })}
+                        onOpenImage={openPostImageViewer}
+                        sideActions={postSideActions}
+                        actions={postActions}
+                      >
+                        {postExpandedContent}
+                      </PublicFeedPostCard>
+                    </li>
+                  )
+                }
 
                 return (
                   <li

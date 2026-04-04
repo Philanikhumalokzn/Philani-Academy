@@ -237,7 +237,13 @@ type PostReplyCanvasBlock = {
   scene: PublicSolveScene
 }
 
-type PostReplyBlock = PostReplyTextBlock | PostReplyLatexBlock | PostReplyCanvasBlock
+type PostReplyImageBlock = {
+  id: string
+  type: 'image'
+  imageUrl: string
+}
+
+type PostReplyBlock = PostReplyTextBlock | PostReplyLatexBlock | PostReplyCanvasBlock | PostReplyImageBlock
 
 const POST_REPLY_BLOCKS_KIND = 'post-reply-blocks-v1'
 
@@ -446,6 +452,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       if (blockType === 'canvas') {
         const scene = normalizePublicSolveScene(rawBlock?.scene)
         if (scene) acc.push({ id: blockId, type: 'canvas', scene })
+        return acc
+      }
+      if (blockType === 'image') {
+        const imageUrl = typeof rawBlock?.imageUrl === 'string' ? rawBlock.imageUrl.trim() : ''
+        if (imageUrl) acc.push({ id: blockId, type: 'image', imageUrl })
       }
       return acc
     }, [])
@@ -498,6 +509,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     textClassName?: string
     mathClassName?: string
     canvasClassName?: string
+    imageClassName?: string
     onCanvasViewportChange?: (blockId: string, scene: PublicSolveScene) => void
   }) => {
     const normalizedBlocks = normalizePostReplyBlocks(blocks)
@@ -507,6 +519,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const textClassName = options?.textClassName || 'text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]'
     const mathClassName = options?.mathClassName || 'leading-relaxed text-[#1c1e21]'
     const canvasClassName = options?.canvasClassName || ''
+    const imageClassName = options?.imageClassName || ''
 
     return (
       <div className={wrapperClassName}>
@@ -521,6 +534,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               return <div key={`${keyPrefix}-${block.id}-${index}`} className={mathClassName} dangerouslySetInnerHTML={{ __html: latexHtml }} />
             }
             return <div key={`${keyPrefix}-${block.id}-${index}`} className={textClassName}>{renderTextWithKatex(block.latex)}</div>
+          }
+
+          if (block.type === 'image') {
+            return (
+              <div key={`${keyPrefix}-${block.id}-${index}`} className={imageClassName}>
+                <img
+                  src={block.imageUrl}
+                  alt="Reply attachment"
+                  className="max-h-[320px] w-full rounded-2xl border border-black/10 bg-white object-contain"
+                />
+              </div>
+            )
           }
 
           return (
@@ -1229,6 +1254,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [postSolveText, setPostSolveText] = useState('')
   const [postTypedSolveLatex, setPostTypedSolveLatex] = useState('')
   const [postSolveSubmitting, setPostSolveSubmitting] = useState(false)
+  const [postReplyImageUploading, setPostReplyImageUploading] = useState(false)
+  const [postReplyImageEditOpen, setPostReplyImageEditOpen] = useState(false)
+  const [postReplyImageEditFile, setPostReplyImageEditFile] = useState<File | null>(null)
   const [postSolveError, setPostSolveError] = useState<string | null>(null)
   const [postSolvePreviewOverlay, setPostSolvePreviewOverlay] = useState<PostSolvePreviewState | null>(null)
   const [postThreadOverlay, setPostThreadOverlay] = useState<null | {
@@ -1251,7 +1279,61 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [handwritingNormalizationOverlayOpen, setHandwritingNormalizationOverlayOpen] = useState(false)
   const [mathKeyboardOverlayOpen, setMathKeyboardOverlayOpen] = useState(false)
   const [accountSnapshotOverlayOpen, setAccountSnapshotOverlayOpen] = useState(false)
-    useEffect(() => {
+  const postReplyImageInputRef = useRef<HTMLInputElement | null>(null)
+  const closePostReplyImageEdit = useCallback(() => {
+    setPostReplyImageEditOpen(false)
+    setPostReplyImageEditFile(null)
+  }, [])
+
+  const uploadPostReplyImage = useCallback(async (file: File) => {
+    setPostReplyImageUploading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/challenges/upload', {
+        method: 'POST',
+        body: form,
+        credentials: 'same-origin',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Upload failed (${res.status})`)
+      }
+      const imageUrl = typeof data?.url === 'string' ? data.url.trim() : ''
+      if (!imageUrl) throw new Error('Upload succeeded but returned no URL')
+      setPostSolveBlocks((prev) => [...prev, { id: createPostReplyBlockId(), type: 'image', imageUrl }])
+      setPostSolveError(null)
+    } finally {
+      setPostReplyImageUploading(false)
+    }
+  }, [])
+
+  const openPostReplyImagePicker = useCallback(() => {
+    try {
+      postReplyImageInputRef.current?.click()
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const onPostReplyImagePicked = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setPostReplyImageEditFile(file)
+    setPostReplyImageEditOpen(true)
+  }, [])
+
+  const confirmPostReplyImageEdit = useCallback(async (file: File) => {
+    try {
+      closePostReplyImageEdit()
+      await uploadPostReplyImage(file)
+    } catch (err: any) {
+      setPostSolveError(err?.message || 'Failed to upload image')
+    }
+  }, [closePostReplyImageEdit, uploadPostReplyImage])
+
+  useEffect(() => {
       if (!router.isReady) return
       const section = router.query.section
       if (typeof section !== 'string') return
@@ -15221,6 +15303,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <div className="flex justify-end px-1">
                       <span className="text-[11px] font-medium text-slate-500">Sending...</span>
                     </div>
+                  ) : postReplyImageUploading ? (
+                    <div className="flex justify-end px-1">
+                      <span className="text-[11px] font-medium text-slate-500">Uploading image...</span>
+                    </div>
                   ) : null}
 
                   <div className="min-w-0 rounded-[24px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
@@ -15231,6 +15317,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               textClassName: 'text-sm leading-6 whitespace-pre-wrap break-words text-slate-700',
                               mathClassName: 'overflow-x-auto text-slate-800 leading-relaxed',
                               canvasClassName: 'pt-1',
+                              imageClassName: 'pt-1',
                             })}
                           </div>
                         ) : null}
@@ -15285,15 +15372,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <button
                         type="button"
                         className={iconButtonClassName}
-                        onClick={() => openBooksOverlay()}
-                        disabled={postSolveSubmitting}
-                        aria-label="Learning"
-                        title="Learning"
+                        onClick={openPostReplyImagePicker}
+                        disabled={postSolveSubmitting || postReplyImageUploading}
+                        aria-label="Camera"
+                        title="Camera"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="21" height="21" fill="none" aria-hidden="true">
-                          <path d="M6 5.5C6 4.67157 6.67157 4 7.5 4H18V19H7.5C6.67157 19 6 19.6716 6 20.5V5.5Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
-                          <path d="M6 20H17.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
-                          <path d="M9 8H14" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.3-1.7A2 2 0 0 1 10.9 3.5h2.2a2 2 0 0 1 1.6.8L16 6h1.5A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-8Z" />
+                          <circle cx="12" cy="12.5" r="3.5" />
                         </svg>
                       </button>
                     </div>
@@ -15301,7 +15387,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       type="button"
                       className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-white shadow-[0_18px_34px_rgba(24,119,242,0.28)] transition hover:bg-[#176ad8] disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={() => void submitPostTextSolve()}
-                      disabled={postSolveSubmitting || (!String(postSolveText || '').trim() && !postSolveBlocks.length)}
+                      disabled={postSolveSubmitting || postReplyImageUploading || (!String(postSolveText || '').trim() && !postSolveBlocks.length)}
                       aria-label="Send reply"
                       title="Send reply"
                     >
@@ -15314,9 +15400,27 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </div>
               )
             })()}
+            <input
+              ref={postReplyImageInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={onPostReplyImagePicked}
+            />
           </BottomSheet>
         </OverlayPortal>
       )}
+
+      <ImageCropperModal
+        open={postReplyImageEditOpen}
+        file={postReplyImageEditFile}
+        title="Add reply photo"
+        onCancel={closePostReplyImageEdit}
+        onUseOriginal={(file: File) => void confirmPostReplyImageEdit(file)}
+        onConfirm={(file: File) => void confirmPostReplyImageEdit(file)}
+        confirmLabel="Add"
+      />
 
       {postSolveOverlay && (
         <OverlayPortal>

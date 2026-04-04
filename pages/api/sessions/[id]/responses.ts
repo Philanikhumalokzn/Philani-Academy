@@ -11,6 +11,7 @@ const MAX_QUIZ_LABEL_LENGTH = 40
 const MAX_PHASE_KEY_LENGTH = 20
 const MAX_POINT_ID_LENGTH = 80
 const MAX_EXCALIDRAW_SCENE_LENGTH = 2_000_000
+const MAX_REPLY_IMAGE_URL_LENGTH = 4000
 const MAX_REPLY_BLOCKS = 32
 const POST_REPLY_BLOCKS_KIND = 'post-reply-blocks-v1'
 
@@ -96,6 +97,12 @@ const sanitizePostReplyContentBlocks = (value: any) => {
       const sceneJson = JSON.stringify(scene)
       if (sceneJson.length > MAX_EXCALIDRAW_SCENE_LENGTH) continue
       output.push({ id, type: 'canvas', scene: JSON.parse(sceneJson) })
+      continue
+    }
+
+    if (type === 'image') {
+      const imageUrl = typeof rawBlock?.imageUrl === 'string' ? rawBlock.imageUrl.trim().slice(0, MAX_REPLY_IMAGE_URL_LENGTH) : ''
+      if (imageUrl) output.push({ id, type: 'image', imageUrl })
     }
   }
 

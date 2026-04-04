@@ -15551,7 +15551,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             zIndexClassName="z-[68]"
             className="bottom-0"
             sheetClassName="rounded-t-[32px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f0f6ff_100%)] shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
-            contentClassName="flex h-[min(32rem,68dvh)] min-h-[20rem] flex-col overflow-hidden px-4 pt-3 sm:h-[min(36rem,72dvh)] sm:px-5 sm:pt-4"
+            contentClassName="flex max-h-[min(32rem,68dvh)] flex-col overflow-hidden px-4 pt-3 sm:max-h-[min(36rem,72dvh)] sm:px-5 sm:pt-4"
           >
             {(() => {
               const composerImageBlocks = postSolveBlocks.filter((block): block is PostReplyImageBlock => block.type === 'image')
@@ -15560,7 +15560,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               const iconButtonClassName = 'inline-flex h-10 items-center justify-center text-slate-700 transition hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
 
               return (
-                <div className="flex min-h-0 flex-1 flex-col">
+                <div className="flex min-h-0 flex-col">
                   {postSolveSubmitting ? (
                     <div className="flex justify-end px-1 pb-4">
                       <span className="text-[11px] font-medium text-slate-500">Sending...</span>
@@ -15571,7 +15571,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     </div>
                   ) : null}
 
-                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4">
+                  <div className="min-h-0 overflow-y-auto overscroll-contain pb-4">
                     <div className="min-w-0 rounded-[24px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                         {hasReplyBlocks ? (
                           <div className="mb-2">

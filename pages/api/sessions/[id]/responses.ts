@@ -492,6 +492,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
+  if (req.method === 'DELETE') {
+    const { responseId } = req.body || {}
+    if (!responseId) return res.status(400).json({ message: 'Missing responseId' })
+
+    const existing = await learnerResponse.findUnique({
+      where: { id: String(responseId) },
+      select: {
+        id: true,
+        userId: true,
+        sessionKey: true,
+      },
+    })
+
+    if (!existing) return res.status(404).json({ message: 'Response not found' })
+    if (!responseThreadKeys.includes(String(existing.sessionKey || ''))) {
+      return res.status(404).json({ message: 'Response not found in this thread' })
+    }
+    if (!isAdmin && String(existing.userId || '') !== String(userId)) {
+      return res.status(403).json({ message: 'Only the response owner can delete this reply' })
+    }
+
+    await learnerResponse.delete({ where: { id: String(responseId) } })
+    return res.status(200).json({ ok: true })
+  }
+
   if (req.method === 'POST') {
     const { latex, studentText, quizId, prompt, quizLabel, quizPhaseKey, quizPointId, quizPointIndex, excalidrawScene, contentBlocks } = req.body || {}
     const safeLatex = typeof latex === 'string' ? latex : ''
@@ -731,6 +756,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
-  res.setHeader('Allow', ['GET', 'POST', 'PATCH'])
+  res.setHeader('Allow', ['GET', 'POST', 'PATCH', 'DELETE'])
   return res.status(405).end(`Method ${req.method} Not Allowed`)
 }

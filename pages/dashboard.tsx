@@ -245,6 +245,14 @@ type PostReplyImageBlock = {
 
 type PostReplyBlock = PostReplyTextBlock | PostReplyLatexBlock | PostReplyCanvasBlock | PostReplyImageBlock
 
+type ReplyCrudTarget = {
+  kind: 'post' | 'challenge'
+  threadKey: string
+  item: any
+  response: any
+  href?: string
+}
+
 const POST_REPLY_BLOCKS_KIND = 'post-reply-blocks-v1'
 
 const createPostReplyBlockId = () => {
@@ -1320,6 +1328,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [postReplyImageEditFile, setPostReplyImageEditFile] = useState<File | null>(null)
   const [postSolveError, setPostSolveError] = useState<string | null>(null)
   const [postSolvePreviewOverlay, setPostSolvePreviewOverlay] = useState<PostSolvePreviewState | null>(null)
+  const replyLongPressTimeoutRef = useRef<number | null>(null)
+  const replyLongPressStateRef = useRef<null | { x: number; y: number; target: ReplyCrudTarget }>(null)
   const [postThreadOverlay, setPostThreadOverlay] = useState<null | {
     postId: string
     threadKey: string
@@ -1332,6 +1342,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [postThreadLoading, setPostThreadLoading] = useState(false)
   const [postThreadError, setPostThreadError] = useState<string | null>(null)
   const [postThreadResponses, setPostThreadResponses] = useState<any[]>([])
+  const [replyCrudTarget, setReplyCrudTarget] = useState<ReplyCrudTarget | null>(null)
   const [pendingFeedThreadJumpKey, setPendingFeedThreadJumpKey] = useState<string | null>(null)
   const [expandedSolutionThreadKey, setExpandedSolutionThreadKey] = useState<string | null>(null)
   const [expandedSolutionThreadKind, setExpandedSolutionThreadKind] = useState<'post' | 'challenge' | null>(null)
@@ -6705,7 +6716,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               const responseUserId = String(response?.userId || response?.user?.id || '')
               const responseUserName = String(response?.user?.name || response?.userName || response?.user?.email || 'Learner')
               const responseAvatar = String(response?.user?.avatar || response?.userAvatar || '').trim()
-              const responseCreatedAt = response?.updatedAt || response?.createdAt
               const isMine = responseUserId === String(currentUserId || viewerId || '')
               const postReplyBlocks = options.kind === 'post' ? normalizePostReplyBlocks(response) : []
               const hasPostReplyBlocks = postReplyBlocks.length > 0
@@ -6716,79 +6726,52 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               const responseId = String(response?.id || '')
               const viewportSaving = Boolean(interactiveViewportSavingByResponseId[responseId])
               const viewportError = String(interactiveViewportErrorByResponseId[responseId] || '').trim()
+              const replyCrudTarget: ReplyCrudTarget = {
+                kind: options.kind,
+                threadKey: options.kind === 'post' ? `post:${String(item?.id || '')}` : `challenge:${String(item?.id || '')}`,
+                item,
+                response,
+                href: options.href,
+              }
 
               return (
                 <div
                   key={String(response?.id || idx)}
                   className="py-1"
+                  onPointerDown={(event) => beginReplyLongPress(event, replyCrudTarget)}
+                  onPointerMove={moveReplyLongPress}
+                  onPointerUp={clearReplyLongPress}
+                  onPointerCancel={clearReplyLongPress}
+                  onPointerLeave={clearReplyLongPress}
+                  onContextMenu={(event) => {
+                    if (!isMine) return
+                    event.preventDefault()
+                    openReplyCrudOptions(replyCrudTarget)
+                  }}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-start gap-3">
-                      <UserLink userId={responseUserId || null} className="shrink-0" title="View profile">
-                        <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f0f2f5]">
-                          {responseAvatar ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={responseAvatar} alt={responseUserName} className="h-full w-full object-cover" />
-                          ) : (
-                            <span className="text-[11px] font-semibold text-[#1c1e21]">{responseUserName.slice(0, 1).toUpperCase()}</span>
-                          )}
-                        </div>
-                      </UserLink>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <UserLink userId={responseUserId || null} className="text-[13px] font-semibold text-[#1c1e21] hover:underline" title="View profile">
-                            {responseUserName}
-                          </UserLink>
-                          {isMine ? (
-                            <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#1877f2]">
-                              {idx === 0 ? 'Pinned' : 'You'}
-                            </span>
-                          ) : null}
-                        </div>
-                        {responseCreatedAt ? <div className="text-[11px] font-medium text-[#65676b]">{formatFeedPostDate(responseCreatedAt)}</div> : null}
-                        {isMine && response?.excalidrawScene ? (
-                          <div className="mt-1 text-[11px] font-medium text-[#65676b]">
-                            {viewportError ? viewportError : (viewportSaving ? 'Saving view...' : 'Pan or zoom to adjust the shared view.')}
-                          </div>
-                        ) : null}
+                  <div className="flex items-start gap-3">
+                    <UserLink userId={responseUserId || null} className="shrink-0" title="View profile">
+                      <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f0f2f5]">
+                        {responseAvatar ? (
+                          <img src={responseAvatar} alt={responseUserName} className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-[11px] font-semibold text-[#1c1e21]">{responseUserName.slice(0, 1).toUpperCase()}</span>
+                        )}
                       </div>
-                    </div>
+                    </UserLink>
+                    <div className="min-w-0 flex-1">
+                      <UserLink userId={responseUserId || null} className="text-[13px] font-semibold text-[#1c1e21] hover:underline" title="View profile">
+                        {responseUserName}
+                      </UserLink>
+                      {isMine && response?.excalidrawScene ? (
+                        <div className="mt-1 text-[11px] font-medium text-[#65676b]">
+                          {viewportError ? viewportError : (viewportSaving ? 'Saving view...' : 'Pan or zoom to adjust the shared view.')}
+                        </div>
+                      ) : null}
 
-                    {isMine ? (
-                      options.kind === 'post' ? (
-                        <button
-                          type="button"
-                          className="shrink-0 text-xs font-semibold text-[#65676b] hover:text-[#1c1e21]"
-                          onClick={() => {
-                            if (options.onOwnPostEditSolution) {
-                              options.onOwnPostEditSolution(response)
-                              return
-                            }
-                            void openPostSolveComposer(item, {
-                              initialScene: response?.excalidrawScene || null,
-                              initialLatex: typeof response?.latex === 'string' ? response.latex : '',
-                              initialStudentText: typeof response?.studentText === 'string' ? response.studentText : '',
-                              initialGradingJson: response?.gradingJson ?? null,
-                            })
-                          }}
-                        >
-                          Edit solution
-                        </button>
-                      ) : options.canAttempt && options.href ? (
-                        <button
-                          type="button"
-                          className="shrink-0 text-xs font-semibold text-[#65676b] hover:text-[#1c1e21]"
-                          onClick={() => void router.push(options.href || '#')}
-                        >
-                          Edit solution
-                        </button>
-                      ) : null
-                    ) : null}
-                  </div>
-
-                  {hasPostReplyBlocks ? (
-                    <div className="mt-3">
-                      {renderPostReplyBlocks(postReplyBlocks, `inline-post-reply-${responseId || idx}`, {
+                      <div className="mt-2 min-w-0 rounded-[20px] pr-2">
+                        {hasPostReplyBlocks ? (
+                      renderPostReplyBlocks(postReplyBlocks, `inline-post-reply-${responseId || idx}`, {
                         wrapperClassName: 'space-y-3',
                         textClassName: 'text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]',
                         mathClassName: 'leading-relaxed text-[#1c1e21]',
@@ -6797,24 +6780,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           : (options.onLiveResponseViewportChange && isMine && responseId
                             ? (_blockId, scene) => options.onLiveResponseViewportChange?.(responseId, scene)
                             : undefined),
-                      })}
-                    </div>
-                  ) : (
+                      })
+                        ) : (
                     <>
                       {String(response?.studentText || '').trim() ? (
-                        <div className="mt-3 text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{String(response.studentText)}</div>
+                        <div className="text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{String(response.studentText)}</div>
                       ) : null}
 
                       {latex.trim() ? (
                         latexHtml ? (
-                          <div className="mt-3 leading-relaxed text-[#1c1e21]" dangerouslySetInnerHTML={{ __html: latexHtml }} />
+                          <div className="leading-relaxed text-[#1c1e21]" dangerouslySetInnerHTML={{ __html: latexHtml }} />
                         ) : (
-                          <div className="mt-3 text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{renderTextWithKatex(latex)}</div>
+                          <div className="text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{renderTextWithKatex(latex)}</div>
                         )
                       ) : null}
 
                       {response?.excalidrawScene ? (
-                        <div className="mt-3">
+                        <div>
                           <PublicSolveCanvasViewer
                             scene={response.excalidrawScene}
                             onViewportChange={options.onInteractiveViewportChange && options.interactiveViewportResponseId === responseId
@@ -6827,6 +6809,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       ) : null}
                     </>
                   )}
+
+                      </div>
+                    </div>
+                  </div>
 
                   {grade || String(response?.feedback || '').trim() ? (
                     <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
@@ -8560,6 +8546,118 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       ? prev.map((item) => getDashboardItemKey(item) === `post:${draft.postId}` ? applyOwnResponse(item) : item)
       : prev))
   }, [])
+
+  const syncPostThreadStateAcrossFeeds = useCallback((postId: string, responses: any[]) => {
+    const safePostId = String(postId || '')
+    if (!safePostId) return
+    const effectiveCurrentUserId = String(currentUserId || viewerId || '')
+    const ownResponse = (Array.isArray(responses) ? responses : []).find((response: any) => String(response?.userId || response?.user?.id || '') === effectiveCurrentUserId) || null
+    const ownAttemptCount = (Array.isArray(responses) ? responses : []).filter((response: any) => String(response?.userId || response?.user?.id || '') === effectiveCurrentUserId).length
+    const solutionCount = Array.isArray(responses) ? responses.length : 0
+
+    const applyPatch = (item: any) => {
+      if (getDashboardItemKey(item) !== `post:${safePostId}`) return item
+      return {
+        ...(item as any),
+        hasOwnResponse: Boolean(ownResponse),
+        ownResponse,
+        myAttemptCount: ownAttemptCount,
+        solutionCount,
+      }
+    }
+
+    setStudentFeedPosts((prev: any[]) => Array.isArray(prev) ? prev.map(applyPatch) : prev)
+    setTimelineChallenges((prev: any[]) => Array.isArray(prev) ? prev.map(applyPatch) : prev)
+    setMyPosts((prev: any[]) => Array.isArray(prev) ? prev.map(applyPatch) : prev)
+  }, [currentUserId, viewerId])
+
+  const clearReplyLongPress = useCallback(() => {
+    if (replyLongPressTimeoutRef.current !== null && typeof window !== 'undefined') {
+      window.clearTimeout(replyLongPressTimeoutRef.current)
+    }
+    replyLongPressTimeoutRef.current = null
+    replyLongPressStateRef.current = null
+  }, [])
+
+  const openReplyCrudOptions = useCallback((target: ReplyCrudTarget) => {
+    clearReplyLongPress()
+    setReplyCrudTarget(target)
+  }, [clearReplyLongPress])
+
+  const beginReplyLongPress = useCallback((event: React.PointerEvent, target: ReplyCrudTarget) => {
+    const responseUserId = String(target?.response?.userId || target?.response?.user?.id || '')
+    if (!responseUserId || responseUserId !== String(currentUserId || viewerId || '')) return
+    if (typeof window === 'undefined') return
+    if (event.button !== 0) return
+
+    clearReplyLongPress()
+    replyLongPressStateRef.current = { x: event.clientX, y: event.clientY, target }
+    replyLongPressTimeoutRef.current = window.setTimeout(() => {
+      openReplyCrudOptions(target)
+    }, 420)
+  }, [clearReplyLongPress, currentUserId, openReplyCrudOptions, viewerId])
+
+  const moveReplyLongPress = useCallback((event: React.PointerEvent) => {
+    const state = replyLongPressStateRef.current
+    if (!state) return
+    const dx = event.clientX - state.x
+    const dy = event.clientY - state.y
+    if (Math.hypot(dx, dy) > 10) {
+      clearReplyLongPress()
+    }
+  }, [clearReplyLongPress])
+
+  const deleteReplyFromCrudTarget = useCallback(async (target: ReplyCrudTarget) => {
+    const responseId = String(target?.response?.id || '')
+    const threadKey = String(target?.threadKey || '')
+    if (!responseId || !threadKey) return
+    const ok = typeof window !== 'undefined' ? window.confirm('Delete this reply? This cannot be undone.') : false
+    if (!ok) return
+
+    try {
+      const res = await fetch(`/api/threads/${encodeURIComponent(threadKey)}/responses`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ responseId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to delete reply (${res.status})`)
+      }
+
+      setReplyCrudTarget(null)
+
+      if (target.kind === 'post') {
+        const responses = await fetchPublicThreadResponses(threadKey)
+        setPostThreadResponses(responses)
+        syncPostThreadStateAcrossFeeds(String(target?.item?.id || target?.item?.postId || ''), responses)
+      } else {
+        const challengeId = String(target?.item?.id || '').trim()
+        if (challengeId) {
+          await fetchChallengeResponseThread(challengeId)
+        }
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete reply')
+    }
+  }, [fetchChallengeResponseThread, fetchPublicThreadResponses, syncPostThreadStateAcrossFeeds])
+
+  const editReplyFromCrudTarget = useCallback((target: ReplyCrudTarget) => {
+    setReplyCrudTarget(null)
+    if (target.kind === 'post') {
+      void openPostSolveComposer(target.item, {
+        initialScene: target?.response?.excalidrawScene || null,
+        initialLatex: typeof target?.response?.latex === 'string' ? target.response.latex : '',
+        initialStudentText: typeof target?.response?.studentText === 'string' ? target.response.studentText : '',
+        initialGradingJson: target?.response?.gradingJson ?? null,
+      })
+      return
+    }
+    if (target.href && target.href !== '#') {
+      void router.push(target.href)
+    }
+  }, [openPostSolveComposer, router])
 
   const submitPostTextSolve = useCallback(async () => {
     const activeDraft = postSolveModeOverlay
@@ -15139,44 +15237,56 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       {challengeThreadResponses.map((resp: any, idx: number) => {
                         const responseUserName = String(resp?.user?.name || resp?.userName || resp?.user?.email || 'Learner')
                         const responseUserId = resp?.user?.id ? String(resp.user.id) : (resp?.userId ? String(resp.userId) : null)
-                        const responseCreatedAt = resp?.updatedAt || resp?.createdAt
+                        const responseAvatar = String(resp?.user?.avatar || resp?.userAvatar || '').trim()
                         const isMine = String(resp?.userId || resp?.user?.id || '') === String(currentUserId || viewerId || '')
                         const latex = String(resp?.latex || '')
                         const html = latex.trim() ? renderKatexDisplayHtml(latex) : ''
                         const steps = splitLatexIntoSteps(latex)
                         const grade = normalizeChallengeGrade(resp?.gradingJson, steps.length)
+                        const replyCrudTarget: ReplyCrudTarget = {
+                          kind: 'challenge',
+                          threadKey: `challenge:${String(selectedChallengeResponseId || '')}`,
+                          item: { id: String(selectedChallengeResponseId || '') },
+                          response: resp,
+                          href: selectedChallengeResponseId ? `/challenges/${encodeURIComponent(String(selectedChallengeResponseId))}` : '#',
+                        }
                         return (
-                          <div key={String(resp?.id || idx)} className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <UserLink userId={responseUserId} className="text-sm font-semibold text-white hover:underline" title="View profile">
-                                    {responseUserName}
-                                  </UserLink>
-                                  {isMine ? <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/75">You</span> : null}
+                          <div
+                            key={String(resp?.id || idx)}
+                            className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                            onPointerDown={(event) => beginReplyLongPress(event, replyCrudTarget)}
+                            onPointerMove={moveReplyLongPress}
+                            onPointerUp={clearReplyLongPress}
+                            onPointerCancel={clearReplyLongPress}
+                            onPointerLeave={clearReplyLongPress}
+                            onContextMenu={(event) => {
+                              if (!isMine) return
+                              event.preventDefault()
+                              openReplyCrudOptions(replyCrudTarget)
+                            }}
+                          >
+                            <div className="flex items-start gap-3">
+                              <UserLink userId={responseUserId} className="shrink-0" title="View profile">
+                                <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/10">
+                                  {responseAvatar ? (
+                                    <img src={responseAvatar} alt={responseUserName} className="h-full w-full object-cover" />
+                                  ) : (
+                                    <span className="text-[11px] font-semibold text-white">{responseUserName.slice(0, 1).toUpperCase()}</span>
+                                  )}
                                 </div>
-                                {responseCreatedAt ? <div className="text-xs text-white/55">{formatFeedPostDate(responseCreatedAt)}</div> : null}
+                              </UserLink>
+                              <div className="min-w-0 flex-1">
+                                <UserLink userId={responseUserId} className="text-sm font-semibold text-white hover:underline" title="View profile">
+                                  {responseUserName}
+                                </UserLink>
                                 {isMine && resp?.excalidrawScene ? (
                                   <div className="mt-1 text-[11px] font-medium text-white/55">
                                     {interactiveViewportErrorByResponseId[String(resp?.id || '')]
                                       || (interactiveViewportSavingByResponseId[String(resp?.id || '')] ? 'Saving view...' : 'Pan or zoom to adjust the shared view.')}
                                   </div>
                                 ) : null}
-                              </div>
-                              {isMine && selectedChallengeResponseId && ((challengeResponseChallenge as any)?.attemptsOpen !== false) ? (
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost text-xs"
-                                  onClick={() => {
-                                    const targetId = String(selectedChallengeResponseId)
-                                    closeChallengeResponseOverlay()
-                                    void router.push(`/challenges/${encodeURIComponent(targetId)}`)
-                                  }}
-                                >
-                                  Edit
-                                </button>
-                              ) : null}
-                            </div>
+
+                                <div className="mt-2 min-w-0 rounded-[20px] text-white/90 space-y-3">
 
                             {String(resp?.studentText || '').trim() ? (
                               <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm whitespace-pre-wrap break-words text-white/85">
@@ -15217,6 +15327,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 ) : null}
                               </div>
                             ) : null}
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         )
                       })}
@@ -15228,6 +15341,48 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </FullScreenGlassOverlay>
         </OverlayPortal>
       )}
+
+      {replyCrudTarget ? (
+        <OverlayPortal>
+          <BottomSheet
+            open
+            backdrop
+            title="Reply options"
+            subtitle="Press and hold your reply to open these actions"
+            onClose={() => setReplyCrudTarget(null)}
+            zIndexClassName="z-[69]"
+            className="bottom-0"
+            sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
+            contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5"
+          >
+            <div className="space-y-2">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
+                onClick={() => editReplyFromCrudTarget(replyCrudTarget)}
+                disabled={replyCrudTarget.kind === 'challenge' && (!replyCrudTarget.href || replyCrudTarget.href === '#')}
+              >
+                <span>
+                  <span className="block text-sm font-semibold">Edit reply</span>
+                  <span className="block text-xs text-slate-500">Open your existing reply for editing.</span>
+                </span>
+                <span className="text-slate-400">{`>`}</span>
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-left text-red-700 transition hover:border-red-300 hover:bg-red-100"
+                onClick={() => void deleteReplyFromCrudTarget(replyCrudTarget)}
+              >
+                <span>
+                  <span className="block text-sm font-semibold">Delete reply</span>
+                  <span className="block text-xs text-red-500">Remove this reply permanently.</span>
+                </span>
+                <span className="text-red-300">{`>`}</span>
+              </button>
+            </div>
+          </BottomSheet>
+        </OverlayPortal>
+      ) : null}
 
       {lessonSolveModeOverlay && (
         <OverlayPortal>
@@ -15746,23 +15901,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               setPostThreadError(null)
               setPostThreadResponses([])
             }}
-            rightActions={
+            rightActions={postThreadResponses.some((response: any) => String(response?.userId || '') === String(currentUserId || viewerId || '')) ? null : (
               <button
                 type="button"
                 className="btn btn-primary"
                 onClick={() => {
-                  const ownResponse = postThreadResponses.find((response: any) => String(response?.userId || '') === String(currentUserId || viewerId || ''))
-                  void openPostSolveComposer(postThreadOverlay, {
-                    initialScene: ownResponse?.excalidrawScene || null,
-                    initialLatex: typeof ownResponse?.latex === 'string' ? ownResponse.latex : '',
-                    initialStudentText: typeof ownResponse?.studentText === 'string' ? ownResponse.studentText : '',
-                    initialGradingJson: ownResponse?.gradingJson ?? null,
-                  })
+                  void openPostSolveComposer(postThreadOverlay)
                 }}
               >
-                {postThreadResponses.some((response: any) => String(response?.userId || '') === String(currentUserId || viewerId || '')) ? 'Edit solution' : 'Share solution'}
+                Share solution
               </button>
-            }
+            )}
           >
             <div className="space-y-4">
               {postThreadOverlay.prompt ? (
@@ -15786,58 +15935,73 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   {postThreadResponses.map((response: any) => {
                     const responseUserName = String(response?.user?.name || response?.user?.email || 'Learner')
                     const responseUserId = response?.user?.id ? String(response.user.id) : null
-                    const responseCreatedAt = response?.updatedAt || response?.createdAt
+                    const responseAvatar = String(response?.user?.avatar || response?.userAvatar || '').trim()
                     const isMine = String(response?.userId || '') === String(currentUserId || viewerId || '')
                     const postReplyBlocks = normalizePostReplyBlocks(response)
                     const hasPostReplyBlocks = postReplyBlocks.length > 0
+                    const replyCrudTarget: ReplyCrudTarget = {
+                      kind: 'post',
+                      threadKey: String(postThreadOverlay?.threadKey || `post:${String(postThreadOverlay?.postId || '')}`),
+                      item: postThreadOverlay,
+                      response,
+                    }
                     return (
-                      <div key={String(response?.id || Math.random())} className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0">
+                      <div
+                        key={String(response?.id || Math.random())}
+                        className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                        onPointerDown={(event) => beginReplyLongPress(event, replyCrudTarget)}
+                        onPointerMove={moveReplyLongPress}
+                        onPointerUp={clearReplyLongPress}
+                        onPointerCancel={clearReplyLongPress}
+                        onPointerLeave={clearReplyLongPress}
+                        onContextMenu={(event) => {
+                          if (!isMine) return
+                          event.preventDefault()
+                          openReplyCrudOptions(replyCrudTarget)
+                        }}
+                      >
+                        <div className="flex items-start gap-3">
+                          <UserLink userId={responseUserId} className="shrink-0" title="View profile">
+                            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/10">
+                              {responseAvatar ? (
+                                <img src={responseAvatar} alt={responseUserName} className="h-full w-full object-cover" />
+                              ) : (
+                                <span className="text-[11px] font-semibold text-white">{responseUserName.slice(0, 1).toUpperCase()}</span>
+                              )}
+                            </div>
+                          </UserLink>
+                          <div className="min-w-0 flex-1">
                             <UserLink userId={responseUserId} className="text-sm font-semibold text-white hover:underline" title="View profile">
                               {responseUserName}
                             </UserLink>
-                            {responseCreatedAt ? <div className="text-xs text-white/55">{formatFeedPostDate(responseCreatedAt)}</div> : null}
                             {isMine && response?.excalidrawScene ? (
                               <div className="mt-1 text-[11px] font-medium text-white/55">
                                 {interactiveViewportErrorByResponseId[String(response?.id || '')]
                                   || (interactiveViewportSavingByResponseId[String(response?.id || '')] ? 'Saving view...' : 'Pan or zoom to adjust the shared view.')}
                               </div>
                             ) : null}
+                            <div className="mt-2 min-w-0 rounded-[20px] text-white/90">
+                              {hasPostReplyBlocks ? (
+                                renderPostReplyBlocks(postReplyBlocks, `post-thread-reply-${String(response?.id || 'draft')}`, {
+                                  wrapperClassName: 'space-y-3 text-white/90',
+                                  textClassName: 'text-sm leading-6 whitespace-pre-wrap break-words text-white/85',
+                                  mathClassName: 'leading-relaxed text-white/95',
+                                  compactCanvasPreview: true,
+                                  onOpenCanvasBlock: (scene) => openPostCanvasViewer(
+                                    scene,
+                                    `${responseUserName} canvas`,
+                                    null,
+                                    isMine && response?.id
+                                      ? (nextScene) => queueInteractiveViewportSave(String(postThreadOverlay?.threadKey || ''), String(response.id), nextScene)
+                                      : undefined
+                                  ),
+                                })
+                              ) : (
+                                <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-white/70">No canvas attached.</div>
+                              )}
+                            </div>
                           </div>
-                          {isMine ? (
-                            <button
-                              type="button"
-                              className="btn btn-ghost text-xs"
-                              onClick={() => void openPostSolveComposer(postThreadOverlay, {
-                                initialScene: response?.excalidrawScene || null,
-                                initialLatex: typeof response?.latex === 'string' ? response.latex : '',
-                                initialStudentText: typeof response?.studentText === 'string' ? response.studentText : '',
-                                initialGradingJson: response?.gradingJson ?? null,
-                              })}
-                            >
-                              Edit
-                            </button>
-                          ) : null}
                         </div>
-                        {hasPostReplyBlocks ? (
-                          renderPostReplyBlocks(postReplyBlocks, `post-thread-reply-${String(response?.id || 'draft')}`, {
-                            wrapperClassName: 'space-y-3 text-white/90',
-                            textClassName: 'text-sm leading-6 whitespace-pre-wrap break-words text-white/85',
-                            mathClassName: 'leading-relaxed text-white/95',
-                            compactCanvasPreview: true,
-                            onOpenCanvasBlock: (scene) => openPostCanvasViewer(
-                              scene,
-                              `${responseUserName} canvas`,
-                              responseCreatedAt ? formatFeedPostDate(responseCreatedAt) : null,
-                              isMine && response?.id
-                                ? (nextScene) => queueInteractiveViewportSave(String(postThreadOverlay?.threadKey || ''), String(response.id), nextScene)
-                                : undefined
-                            ),
-                          })
-                        ) : (
-                          <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-white/70">No canvas attached.</div>
-                        )}
                       </div>
                     )
                   })}

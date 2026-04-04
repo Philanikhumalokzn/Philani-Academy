@@ -434,7 +434,8 @@ export default function PublicUserProfilePage() {
         <section className="relative w-full overflow-hidden bg-slate-900">
           <div className="absolute inset-0" style={{ backgroundImage: `url("${coverUrl}")`, backgroundSize: 'cover', backgroundPosition: 'center' }} aria-hidden="true" />
           <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.42)_0%,rgba(0,0,0,0.18)_30%,rgba(0,0,0,0.32)_100%)]" aria-hidden="true" />
-          <div className="relative min-h-[15rem] px-4 pb-24 pt-[calc(var(--app-safe-top)+0.85rem)] sm:min-h-[18rem] sm:px-6">
+          <div className="absolute inset-x-0 bottom-0 h-40 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,rgba(255,255,255,0.7)_72%,#ffffff_100%)]" aria-hidden="true" />
+          <div className="relative min-h-[17rem] px-4 pb-32 pt-[calc(var(--app-safe-top)+0.85rem)] sm:min-h-[20rem] sm:px-6">
             <div className="mx-auto flex max-w-5xl items-start justify-between gap-3">
               <div className="flex items-center gap-3">
                 <button
@@ -475,12 +476,13 @@ export default function PublicUserProfilePage() {
           </div>
         </section>
 
-        <section className="relative -mt-12 bg-white">
+        <section className="relative -mt-24 bg-transparent">
           <div className="mx-auto w-full max-w-5xl">
             <div className="relative px-4 pb-5 pt-0 sm:px-6">
+              <div className="absolute inset-x-0 bottom-0 top-20 bg-white sm:top-24" aria-hidden="true" />
               <div className="flex flex-col gap-4">
-                <div className="flex items-end justify-between gap-4">
-                  <div className="-mt-14 flex min-w-0 flex-1 items-end gap-4 sm:-mt-16">
+                <div className="relative flex items-end justify-between gap-4">
+                  <div className="-mt-10 flex min-w-0 flex-1 items-end gap-4 sm:-mt-12">
                     <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border-[5px] border-white bg-slate-100 text-2xl font-semibold text-slate-700 shadow-[0_12px_24px_rgba(15,23,42,0.18)] sm:h-32 sm:w-32">
                       <div className="h-full w-full overflow-hidden rounded-full bg-slate-100">
                         {avatarUrl ? (
@@ -529,9 +531,9 @@ export default function PublicUserProfilePage() {
                   ) : null}
                 </div>
 
-                {profile?.statusBio ? <p className="max-w-3xl text-[15px] leading-7 text-slate-700">{profile.statusBio}</p> : null}
+                {profile?.statusBio ? <p className="relative max-w-3xl text-[15px] leading-7 text-slate-700">{profile?.statusBio}</p> : null}
 
-                <div className="flex flex-wrap items-center gap-4 text-[14px] font-medium text-slate-500">
+                <div className="relative flex flex-wrap items-center gap-4 text-[14px] font-medium text-slate-500">
                   <span><span className="font-semibold text-slate-900">{Number(profile?.followingCount || 0)}</span> Following</span>
                   <span><span className="font-semibold text-slate-900">{Number(profile?.followerCount || 0)}</span> Followers</span>
                 </div>

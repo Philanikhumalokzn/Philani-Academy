@@ -1355,6 +1355,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [accountSnapshotOverlayOpen, setAccountSnapshotOverlayOpen] = useState(false)
   const postReplyCameraInputRef = useRef<HTMLInputElement | null>(null)
   const postReplyGalleryInputRef = useRef<HTMLInputElement | null>(null)
+  const postSolveTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const closePostReplyImageEdit = useCallback(() => {
     setPostReplyImageEditOpen(false)
     setPostReplyImageEditFile(null)
@@ -1421,6 +1422,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setPostSolveError(err?.message || 'Failed to upload image')
     }
   }, [closePostReplyImageEdit, uploadPostReplyImage])
+
+  const resizePostSolveTextarea = useCallback(() => {
+    const textarea = postSolveTextareaRef.current
+    if (!textarea) return
+    const maxHeightPx = 112
+    textarea.style.height = 'auto'
+    const nextHeight = Math.min(textarea.scrollHeight, maxHeightPx)
+    textarea.style.height = `${nextHeight}px`
+    textarea.style.overflowY = textarea.scrollHeight > maxHeightPx ? 'auto' : 'hidden'
+  }, [])
+
+  useEffect(() => {
+    if (!postSolveModeOverlay) return
+    resizePostSolveTextarea()
+  }, [postSolveModeOverlay, postSolveText, resizePostSolveTextarea])
 
   useEffect(() => {
       if (!router.isReady) return
@@ -15597,11 +15613,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           </div>
                         ) : null}
                         <textarea
+                          ref={postSolveTextareaRef}
                           value={postSolveText}
                           onChange={(event) => setPostSolveText(event.target.value)}
                           placeholder={`Comment as ${currentViewerPostAuthor.name}`}
                           rows={1}
                           className="max-h-28 min-h-[1.5rem] w-full resize-none bg-transparent text-sm leading-6 text-slate-700 outline-none placeholder:text-slate-400"
+                          style={{ overflowY: 'hidden' }}
                           onKeyDown={(event) => {
                             if (event.key === 'Enter' && !event.shiftKey) {
                               event.preventDefault()

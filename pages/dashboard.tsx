@@ -16,23 +16,23 @@ import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import { PublicSolveCanvasViewer, PublicSolveComposer, PublicSolveOpacityWorkspace, normalizePublicSolveScene, type PublicSolveScene } from '../components/PublicSolveCanvas'
 import TaskManageMenu from '../components/TaskManageMenu'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
+import ZoomableImageOverlay from '../components/ZoomableImageOverlay'
 import ScriptPhotosEditor from '../components/ScriptPhotosEditor'
 import BottomSheet from '../components/BottomSheet'
 import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
-import { toDisplayFileName } from '../lib/fileName'
 import { isSpecialTestStudentEmail } from '../lib/testUsers'
+import { createLessonRoleProfile, getPlatformRoleDisplayLabel, hasLessonCapabilityForRole, isRecognizedLessonParticipantRole, normalizePlatformRole } from '../lib/lessonAccessControl'
 import { renderKatexDisplayHtml as renderKatexDisplayHtmlRaw, splitLatexIntoSteps as splitLatexIntoStepsRaw } from '../lib/latexRender'
 import { renderTextWithKatex as renderTextWithKatexRaw } from '../lib/renderTextWithKatex'
+import { toDisplayFileName } from '../lib/fileName'
 import { useTapToPeek } from '../lib/useTapToPeek'
 import { useOverlayRestore } from '../lib/overlayRestore'
-import { createLessonRoleProfile, getPlatformRoleDisplayLabel, hasLessonCapabilityForRole, isRecognizedLessonParticipantRole, normalizePlatformRole, type LessonRoleProfile } from '../lib/lessonAccessControl'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 const ImageCropperModal = dynamic(() => import('../components/ImageCropperModal'), { ssr: false })
-const ZoomableImageOverlay = dynamic(() => import('../components/ZoomableImageOverlay'), { ssr: false })
 
 const MOBILE_HERO_BG_MIN_WIDTH = 1200
 const MOBILE_HERO_BG_MIN_HEIGHT = 600
@@ -67,7 +67,7 @@ const DASHBOARD_SECTIONS = [
   { id: 'overview', label: 'Overview', description: 'Grade & quick actions', roles: ['admin', 'teacher', 'student', 'guest'] },
   { id: 'live', label: 'Live Class', description: 'Join lessons & board', roles: ['admin', 'teacher', 'student'] },
   { id: 'announcements', label: 'Announcements', description: 'Communicate updates', roles: ['admin', 'teacher', 'student'] },
-  { id: 'sessions', label: 'Sessions', description: 'Schedule classes & materials', roles: ['admin', 'teacher', 'student'] },
+  { id: 'sessions', label: 'Classroom', description: 'Sessions, quizzes & assignments', roles: ['admin', 'teacher', 'student'] },
   { id: 'groups', label: 'Groups', description: 'Classmates & groupmates', roles: ['admin', 'teacher', 'student'] },
   { id: 'discover', label: 'Discover', description: 'Find people & join groups', roles: ['admin', 'teacher', 'student'] },
   { id: 'users', label: 'Learners', description: 'Manage enrolments', roles: ['admin'] },
@@ -77,29 +77,7 @@ const DASHBOARD_SECTIONS = [
 type SectionId = typeof DASHBOARD_SECTIONS[number]['id']
 type SectionRole = typeof DASHBOARD_SECTIONS[number]['roles'][number]
 type OverlaySectionId = Exclude<SectionId, 'overview'>
-
-type PostReplyTextBlock = {
-  id: string
-  type: 'text'
-  text: string
-}
-
-type PostReplyLatexBlock = {
-  id: string
-  type: 'latex'
-  latex: string
-}
-
-type PostReplyCanvasBlock = {
-  id: string
-  type: 'canvas'
-  scene: PublicSolveScene
-}
-
-type PostReplyBlock = PostReplyTextBlock | PostReplyLatexBlock | PostReplyCanvasBlock
-
-const POST_REPLY_BLOCKS_KIND = 'post-reply-blocks-v1'
-const createPostReplyBlockId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+type DashboardCreateKind = 'quiz' | 'post'
 
 type Announcement = {
   id: string
@@ -136,72 +114,69 @@ type ResourceBankItem = {
 
 type LibraryGradeItem = {
   id: string
-  sourceType: 'assignment' | 'post_solution' | 'challenge_solution' | 'manual'
   assessmentTitle: string
+  sourceType: string
   scoreLabel: string
+  percentage?: number | null
   earnedMarks?: number | null
   totalMarks?: number | null
-  percentage: number | null
-  feedback: string | null
-  screenshotUrl: string | null
-  screenshotUrls?: string[]
   graderSignature?: string | null
-  gradedAt: string
-  sourceKey: string | null
+  feedback?: string | null
+  screenshotUrl?: string | null
   responseId?: string | null
+  gradedAt: string
+  [key: string]: any
 }
 
-type GradeChatComment = {
+type LibraryGradeComment = {
   id: string
-  authorId: string
-  authorRole: 'teacher' | 'learner'
   text: string
   createdAt: string
-  updatedAt: string
+  authorId?: string | null
+  authorName?: string | null
+  [key: string]: any
 }
 
 type LibraryGradeDetail = {
-  id: string
-  sourceType: string
   assessmentTitle: string
+  gradedAt: string
   scoreLabel: string
+  percentage?: number | null
   earnedMarks?: number | null
   totalMarks?: number | null
-  percentage: number | null
-  feedback: string | null
-  screenshotUrl: string | null
-  screenshotUrls: string[]
   graderSignature?: string | null
-  gradedAt: string
-  comments: GradeChatComment[]
-  canComment: boolean
+  feedback?: string | null
+  screenshotUrls: string[]
+  comments: LibraryGradeComment[]
+  [key: string]: any
 }
 
 type ManualAssessmentItem = {
   id: string
   title: string
-  grade: GradeValue
-  subject: string | null
-  term: string | null
-  assessmentDate: string | null
-  maxMarks: number | null
-  description: string | null
-  createdAt: string
-  updatedAt: string
+  subject?: string | null
+  term?: string | null
+  dateLabel?: string | null
+  assessmentDate?: string | null
+  maxMarks?: number | null
+  description?: string | null
+  updatedAt?: string | null
+  [key: string]: any
 }
 
 type ManualMarksheetRow = {
-  number: number
   userId: string
+  number: number
   surname: string
-  givenName: string
+  givenName?: string | null
   fullName: string
-  scoreLabel: string
-  percentage: number | null
-  notes: string | null
-  screenshotUrl: string | null
-  screenshotUrls: string[]
-  gradedAt: string | null
+  scoreLabel?: string | null
+  percentage?: number | null
+  notes?: string | null
+  screenshotUrl?: string | null
+  screenshotUrls?: string[]
+  gradedAt?: string | null
+  [key: string]: any
 }
 
 type LatexSave = {
@@ -232,7 +207,7 @@ type LiveWindowConfig = {
   roomIdOverride?: string
   boardIdOverride?: string
   isAdminOverride?: boolean
-  roleProfileOverride?: LessonRoleProfile
+  roleProfileOverride?: any
   quizMode?: boolean
   lessonAuthoring?: { phaseKey: string; pointId: string }
   autoOpenDiagramTray?: boolean
@@ -242,6 +217,32 @@ type LiveWindowConfig = {
   z: number
   mode: 'windowed' | 'fullscreen'
   windowedSnapshot: WindowSnapshot | null
+}
+
+type PostReplyTextBlock = {
+  id: string
+  type: 'text'
+  text: string
+}
+
+type PostReplyLatexBlock = {
+  id: string
+  type: 'latex'
+  latex: string
+}
+
+type PostReplyCanvasBlock = {
+  id: string
+  type: 'canvas'
+  scene: PublicSolveScene
+}
+
+type PostReplyBlock = PostReplyTextBlock | PostReplyLatexBlock | PostReplyCanvasBlock
+
+const POST_REPLY_BLOCKS_KIND = 'post-reply-blocks-v1'
+
+const createPostReplyBlockId = () => {
+  return `block_${Math.random().toString(36).slice(2, 10)}`
 }
 
 const OverlayPortal = ({ children }: { children: React.ReactNode }) => {
@@ -276,7 +277,7 @@ const writeLocalCache = <T,>(key: string, data: T) => {
   try {
     const payload: LocalCacheEntry<T> = {
       updatedAt: new Date().toISOString(),
-      data,
+      data
     }
     window.localStorage.setItem(key, JSON.stringify(payload))
   } catch {
@@ -284,7 +285,7 @@ const writeLocalCache = <T,>(key: string, data: T) => {
   }
 }
 
-type DashboardCreateKind = 'quiz' | 'post'
+const sanitizeIdentifier = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60)
 
 const getDashboardItemKind = (item: any): 'challenge' | 'post' => {
   return String(item?.kind || '').toLowerCase() === 'post' ? 'post' : 'challenge'
@@ -4145,14 +4146,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [isAdmin, makeOfflineCacheKey, selectedGrade, status])
 
   const openBooksOverlay = useCallback(() => {
-    markGradingUpdatesAttended()
     setBooksOverlayOpen(true)
     void fetchBooksForGrade()
-    void fetchLibraryGrades()
-    if (canManageAnnouncements) {
-      void fetchManualAssessments()
-    }
-  }, [canManageAnnouncements, fetchBooksForGrade, fetchLibraryGrades, fetchManualAssessments, markGradingUpdatesAttended])
+  }, [fetchBooksForGrade])
 
   useEffect(() => {
     if (!booksOverlayOpen) return
@@ -5542,41 +5538,30 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           className={`${btnClass('sessions')} flex-none snap-start`}
           style={{ width: buttonWidth }}
           onClick={() => openStudentQuickOverlay('sessions')}
-          aria-label="Sessions"
-          title="Sessions"
+          aria-label="Classroom"
+          title="Classroom"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path d="M15 10.5 19 8v8l-4-2.5V10.5Z" fill="currentColor" />
             <path d="M5 7h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z" stroke="currentColor" strokeWidth="2" />
           </svg>
-          <span className={labelClass('sessions')}>Sessions</span>
+          <span className={labelClass('sessions')}>Classroom</span>
         </button>
 
         <button
           type="button"
-          className={`${baseBtn} relative flex-none snap-start`}
+          className={`${baseBtn} flex-none snap-start`}
           style={{ width: buttonWidth }}
           onClick={openBooksOverlay}
-          aria-label="Books & materials"
-          title="Books & materials"
+          aria-label="Learning"
+          title="Learning"
         >
-          <span className="relative inline-flex">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H18a2 2 0 0 1 2 2v13.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              <path d="M4 5.5V18a3 3 0 0 0 3 3h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              <path d="M7.5 7h8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-            {unreadGradingUpdatesCount > 0 && (
-              <span
-                className={`absolute -top-1 -right-1 z-20 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center ${unattendedGradingUpdatesCount > 0 ? 'animate-pulse' : ''}`}
-                style={unattendedGradingUpdatesCount > 0 ? { animationDuration: '2.2s' } : undefined}
-                aria-label={`${unreadGradingUpdatesCount} new grading updates`}
-              >
-                {unreadGradingUpdatesCount > 99 ? '99+' : unreadGradingUpdatesCount}
-              </span>
-            )}
-          </span>
-          <span className="text-[10px] leading-none opacity-80 text-white">Books</span>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H18a2 2 0 0 1 2 2v13.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M4 5.5V18a3 3 0 0 0 3 3h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M7.5 7h8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+          <span className="text-[10px] leading-none opacity-80 text-white">Learning</span>
         </button>
 
         <button
@@ -12652,9 +12637,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   ) => {
     const meta = {
       sessions: {
-        eyebrow: 'Learning Flow',
-        title: 'Sessions',
-        subtitle: 'Lessons and schedule'
+        eyebrow: 'Classroom Flow',
+        title: 'Classroom',
+        subtitle: 'Sessions, quizzes and assignments'
       },
       groups: {
         eyebrow: 'Your Circle',
@@ -12667,9 +12652,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         subtitle: 'Find people'
       },
       books: {
-        eyebrow: 'Study Shelf',
-        title: 'Books & Materials',
-        subtitle: 'Learning resources'
+        eyebrow: 'Learning Hub',
+        title: 'Learning',
+        subtitle: 'Resources and study materials'
       }
     }[id]
 
@@ -12679,18 +12664,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <div className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e8f1ff] text-[#1877f2]">
-                <span className="relative inline-flex">
-                  {renderStudentSurfaceIcon(id)}
-                  {id === 'books' && unreadGradingUpdatesCount > 0 ? (
-                    <span
-                      className={`absolute -top-1 -right-1 z-20 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center ${unattendedGradingUpdatesCount > 0 ? 'animate-pulse' : ''}`}
-                      style={unattendedGradingUpdatesCount > 0 ? { animationDuration: '2.2s' } : undefined}
-                      aria-label={`${unreadGradingUpdatesCount} new grading updates`}
-                    >
-                      {unreadGradingUpdatesCount > 99 ? '99+' : unreadGradingUpdatesCount}
-                    </span>
-                  ) : null}
-                </span>
+                {renderStudentSurfaceIcon(id)}
               </div>
               <div className="min-w-0">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">{meta.eyebrow}</div>
@@ -12708,15 +12682,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const renderStudentSurfaceSection = (id: 'sessions' | 'groups' | 'discover') => {
     const action =
-      id === 'sessions' ? (
-        <button
-          type="button"
-          className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] transition hover:bg-[#eef2f7]"
-          onClick={openBooksOverlay}
-        >
-          Library
-        </button>
-      ) : id === 'groups' ? (
+      id === 'groups' ? (
         <button
           type="button"
           className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] transition hover:bg-[#eef2f7]"
@@ -12840,7 +12806,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/10 bg-white/6 px-4 text-sm font-medium text-white/88 transition hover:border-white/20 hover:bg-white/10"
                   onClick={openBooksOverlay}
                 >
-                  <span>Library</span>
+                  <span>Learning</span>
                 </button>
                 <button
                   type="button"
@@ -12929,7 +12895,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     className="inline-flex h-10 items-center justify-center rounded-full border border-white/10 bg-white/6 px-4 text-sm font-medium text-white/88 transition hover:border-white/20 hover:bg-white/10"
                     onClick={openBooksOverlay}
                   >
-                    Books
+                    Learning
                   </button>
                   {announcementsAvailable && (
                     <button
@@ -12966,7 +12932,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     className="inline-flex h-11 items-center justify-center rounded-full border border-white/14 bg-white/8 px-5 text-sm font-medium text-white transition hover:bg-white/12"
                     onClick={() => openDashboardOverlay('sessions')}
                   >
-                    Browse Sessions
+                    Open Classroom
                   </button>
                 </div>
               </div>
@@ -13221,8 +13187,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   type="button"
                   className={`relative z-10 flex min-w-0 items-center justify-center px-1 py-3 transition ${studentMobileTab === 'sessions' ? 'text-[#1c1e21]' : 'text-[#65676b]'}`}
                   onClick={() => switchMobileTab('sessions')}
-                  aria-label="Sessions"
-                  title="Sessions"
+                  aria-label="Classroom"
+                  title="Classroom"
                 >
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <rect x="4" y="5" width="16" height="15" rx="3" stroke="currentColor" strokeWidth="1.9" />
@@ -13259,25 +13225,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   type="button"
                   className="relative z-10 flex min-w-0 items-center justify-center px-1 py-3 text-[#65676b] transition"
                   onClick={openBooksOverlay}
-                  aria-label="Library"
-                  title="Library"
+                  aria-label="Learning"
+                  title="Learning"
                 >
-                  <span className="relative inline-flex">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                      <path d="M6 5.5C6 4.67157 6.67157 4 7.5 4H18V19H7.5C6.67157 19 6 19.6716 6 20.5V5.5Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
-                      <path d="M6 20H17.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
-                      <path d="M9 8H14" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
-                    </svg>
-                    {unreadGradingUpdatesCount > 0 ? (
-                      <span
-                        className={`absolute -top-1 -right-1 z-20 min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-[10px] leading-4 text-white text-center ${unattendedGradingUpdatesCount > 0 ? 'animate-pulse' : ''}`}
-                        style={unattendedGradingUpdatesCount > 0 ? { animationDuration: '2.2s' } : undefined}
-                        aria-label={`${unreadGradingUpdatesCount} new grading updates`}
-                      >
-                        {unreadGradingUpdatesCount > 99 ? '99+' : unreadGradingUpdatesCount}
-                      </span>
-                    ) : null}
-                  </span>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M6 5.5C6 4.67157 6.67157 4 7.5 4H18V19H7.5C6.67157 19 6 19.6716 6 20.5V5.5Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
+                    <path d="M6 20H17.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                    <path d="M9 8H14" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                  </svg>
                 </button>
               </div>
 
@@ -13342,8 +13297,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   }}
                 >
                   <span>
-                    <span className="mobile-menu-label">Library</span>
-                    <span className="mobile-menu-copy">Books and shared materials.</span>
+                    <span className="mobile-menu-label">Learning</span>
+                    <span className="mobile-menu-copy">Resources and shared study materials.</span>
                   </span>
                   <span className="mobile-menu-trail">Open</span>
                 </button>
@@ -13560,7 +13515,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       {booksOverlayOpen && (
         <FullScreenGlassOverlay
-          title="Books & materials"
+          title="Learning"
           subtitle={selectedGrade ? gradeToLabel(selectedGrade) : 'Select a grade'}
           onClose={() => setBooksOverlayOpen(false)}
           onBackdropClick={() => setBooksOverlayOpen(false)}
@@ -13575,17 +13530,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               className="btn btn-ghost text-xs"
               onClick={() => {
                 void fetchBooksForGrade()
-                void fetchLibraryGrades()
-                if (canManageAnnouncements) {
-                  void fetchManualAssessments()
-                  if (selectedManualAssessmentId) {
-                    void fetchManualMarksheet(selectedManualAssessmentId)
-                  }
-                }
               }}
-              disabled={booksLoading || libraryGradesLoading || manualAssessmentsLoading || manualMarksheetLoading}
+              disabled={booksLoading}
             >
-              {booksLoading || libraryGradesLoading || manualAssessmentsLoading || manualMarksheetLoading ? 'Loading...' : 'Refresh'}
+              {booksLoading ? 'Loading...' : 'Refresh'}
             </button>
           }
         >
@@ -13593,270 +13541,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             renderStudentSurfaceFrame(
               'books',
               <div>
-                <section className="border-b border-black/10 bg-white px-4 py-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Grades</div>
-                  {libraryGradesError ? <div className="mt-2 text-sm text-red-600">{libraryGradesError}</div> : null}
-                  {libraryGradesLoading ? <div className="mt-2 text-sm text-[#65676b]">Loading grades...</div> : null}
-                  {!libraryGradesLoading && !libraryGradesError && libraryGrades.length === 0 ? (
-                    <div className="mt-2 text-sm text-[#65676b]">No grades posted yet.</div>
-                  ) : null}
-                  {libraryGrades.length > 0 ? (
-                    <ul className="mt-3 space-y-3">
-                      {libraryGrades.map((item) => (
-                        <li key={item.id} className="rounded-2xl border border-black/10 bg-[#f8fafc] p-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="text-sm font-semibold text-[#111827] break-words">{item.assessmentTitle}</div>
-                              <div className="mt-1 text-xs text-[#65676b]">{getLibraryGradeSourceLabel(item.sourceType)}</div>
-                            </div>
-                            <div className="text-right shrink-0">
-                              {(() => {
-                                const fraction = parseScoreFraction(item)
-                                if (!fraction) {
-                                  return (
-                                    <>
-                                      <div className="text-sm font-semibold text-[#0f172a]">{item.scoreLabel}</div>
-                                      {formatPercentageLabel(item.percentage) ? <div className="text-xs text-[#65676b]">{formatPercentageLabel(item.percentage)}</div> : null}
-                                    </>
-                                  )
-                                }
-                                return (
-                                  <div className="flex flex-col items-center">
-                                    <div className="h-20 w-20 rounded-full border-2 border-[#1d4ed8]/55 bg-white shadow-sm flex flex-col items-center justify-center">
-                                      <div className="text-[18px] font-bold leading-none text-[#0f172a]">{fraction.top}</div>
-                                      <div className="my-1 h-px w-8 bg-[#334155]/70" />
-                                      <div className="text-[14px] font-semibold leading-none text-[#334155]">{fraction.bottom}</div>
-                                    </div>
-                                    <div className="mt-1 text-[10px] font-medium text-[#475569]">{getGradeSignature(item.graderSignature)}</div>
-                                    {formatPercentageLabel(item.percentage) ? <div className="text-[11px] text-[#64748b]">{formatPercentageLabel(item.percentage)}</div> : null}
-                                  </div>
-                                )
-                              })()}
-                            </div>
-                          </div>
-                          {item.feedback ? <div className="mt-2 text-xs text-[#475569] whitespace-pre-wrap break-words">{item.feedback}</div> : null}
-                          {item.screenshotUrl ? (
-                            <div className="mt-3 overflow-hidden rounded-xl border border-black/10 bg-white">
-                              <button
-                                type="button"
-                                className="block w-full cursor-zoom-in"
-                                onClick={() => openGradeScreenshotViewer(item.screenshotUrl || '', `${item.assessmentTitle} screenshot`)}
-                              >
-                                <img src={item.screenshotUrl} alt={`${item.assessmentTitle} screenshot`} className="max-h-64 w-full object-contain" />
-                              </button>
-                            </div>
-                          ) : null}
-                          {item.responseId ? (
-                            <div className="mt-2">
-                              <button
-                                type="button"
-                                className="inline-flex h-8 items-center justify-center rounded-full border border-black/15 bg-white px-3 text-[11px] font-semibold text-[#1d4ed8]"
-                                onClick={() => void openGradeDetail(item)}
-                              >
-                                View details
-                              </button>
-                            </div>
-                          ) : null}
-                          <div className="mt-2 text-[11px] text-[#64748b]">{new Date(item.gradedAt).toLocaleString()}</div>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </section>
-
-                {canManageAnnouncements ? (
-                  <section className="border-b border-black/10 bg-white px-4 py-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Assessment Marksheet</div>
-                    <div className="mt-3 grid gap-2">
-                      <div className="grid gap-2 rounded-2xl border border-black/10 bg-[#f8fafc] p-3">
-                        <div className="text-xs font-semibold text-[#334155]">
-                          {manualAssessmentEditingId ? 'Edit Assessment' : 'Create Assessment'} ({selectedGrade ? gradeToLabel(selectedGrade) : 'No grade selected'})
-                        </div>
-                        <input
-                          className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
-                          placeholder="Assessment name"
-                          value={manualAssessmentTitleDraft}
-                          onChange={(e) => setManualAssessmentTitleDraft(e.target.value)}
-                        />
-                        <div className="grid grid-cols-2 gap-2">
-                          <input
-                            className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
-                            placeholder="Subject"
-                            value={manualAssessmentSubjectDraft}
-                            onChange={(e) => setManualAssessmentSubjectDraft(e.target.value)}
-                          />
-                          <input
-                            className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
-                            placeholder="Term"
-                            value={manualAssessmentTermDraft}
-                            onChange={(e) => setManualAssessmentTermDraft(e.target.value)}
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <input
-                            className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
-                            placeholder="Date"
-                            value={manualAssessmentDateDraft}
-                            onChange={(e) => setManualAssessmentDateDraft(e.target.value)}
-                          />
-                          <input
-                            className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
-                            placeholder="Max marks"
-                            value={manualAssessmentMaxMarksDraft}
-                            onChange={(e) => setManualAssessmentMaxMarksDraft(e.target.value)}
-                          />
-                        </div>
-                        <textarea
-                          className="min-h-[64px] rounded-xl border border-black/10 bg-white px-3 py-2 text-sm"
-                          placeholder="Optional description"
-                          value={manualAssessmentDescriptionDraft}
-                          onChange={(e) => setManualAssessmentDescriptionDraft(e.target.value)}
-                        />
-                        {manualAssessmentCreateError ? <div className="text-xs text-red-600">{manualAssessmentCreateError}</div> : null}
-                        {manualAssessmentCreateSuccess ? <div className="text-xs text-emerald-700">{manualAssessmentCreateSuccess}</div> : null}
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            className="inline-flex h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
-                            onClick={() => void createManualAssessment()}
-                            disabled={manualAssessmentCreating || !selectedGrade}
-                          >
-                            {manualAssessmentCreating
-                              ? (manualAssessmentEditingId ? 'Saving...' : 'Creating...')
-                              : (manualAssessmentEditingId ? 'Save changes' : 'Create assessment')}
-                          </button>
-                          {manualAssessmentEditingId ? (
-                            <button
-                              type="button"
-                              className="inline-flex h-10 items-center justify-center rounded-xl border border-black/10 bg-white px-4 text-sm font-semibold text-[#334155]"
-                              onClick={cancelManualAssessmentEditing}
-                              disabled={manualAssessmentCreating}
-                            >
-                              Cancel
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="grid gap-2 rounded-2xl border border-black/10 bg-[#f8fafc] p-3">
-                        <div className="text-xs font-semibold text-[#334155]">Open Marksheet</div>
-                        {manualAssessmentsError ? <div className="text-xs text-red-600">{manualAssessmentsError}</div> : null}
-                        <select
-                          className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
-                          value={selectedManualAssessmentId || ''}
-                          onChange={(e) => setSelectedManualAssessmentId(e.target.value || null)}
-                        >
-                          <option value="">Select assessment</option>
-                          {manualAssessments.map((item) => (
-                            <option key={item.id} value={item.id}>{item.title}</option>
-                          ))}
-                        </select>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            className="inline-flex h-9 items-center justify-center rounded-xl border border-black/10 bg-white px-3 text-xs font-semibold text-[#111827] disabled:opacity-50"
-                            onClick={beginEditSelectedManualAssessment}
-                            disabled={!selectedManualAssessmentId || manualAssessmentUpdating || manualAssessmentDeleting}
-                          >
-                            {manualAssessmentUpdating ? 'Updating...' : 'Edit test'}
-                          </button>
-                          <button
-                            type="button"
-                            className="inline-flex h-9 items-center justify-center rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700 disabled:opacity-50"
-                            onClick={() => void deleteSelectedManualAssessment()}
-                            disabled={!selectedManualAssessmentId || manualAssessmentUpdating || manualAssessmentDeleting}
-                          >
-                            {manualAssessmentDeleting ? 'Deleting...' : 'Delete test'}
-                          </button>
-                        </div>
-                        {selectedManualAssessment?.maxMarks != null ? (
-                          <div className="text-[11px] text-[#475569]">Total marks: {selectedManualAssessment.maxMarks}</div>
-                        ) : null}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          className="h-10 rounded-xl border border-black/10 bg-white px-3 text-sm"
-                          placeholder="Search learner by name"
-                          value={manualMarksheetSearch}
-                          onChange={(e) => setManualMarksheetSearch(e.target.value)}
-                        />
-                      </div>
-                      {manualMarksheetError ? <div className="text-xs text-red-600">{manualMarksheetError}</div> : null}
-                      {manualMarksheetLoading ? <div className="text-sm text-[#64748b]">Loading marksheet...</div> : null}
-                      {selectedManualAssessmentId && !manualMarksheetLoading ? (
-                        <div className="max-h-[380px] space-y-2 overflow-y-auto rounded-2xl border border-black/10 bg-[#f8fafc] p-2">
-                          {visibleManualMarksheetRows.map((row) => {
-                            const draft = manualMarksheetDraftByUserId[row.userId] || {
-                              scoreLabel: row.scoreLabel || '',
-                              percentage: typeof row.percentage === 'number' ? String(row.percentage) : '',
-                              notes: row.notes || '',
-                              screenshotUrls: row.screenshotUrls?.length ? row.screenshotUrls : (row.screenshotUrl ? [row.screenshotUrl] : []),
-                            }
-                            const isSaving = manualMarksheetSavingUserId === row.userId
-                            return (
-                              <div key={row.userId} className="rounded-xl border border-black/10 bg-white p-2">
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="text-xs font-semibold text-[#334155]">{row.number}. {row.surname}, {row.givenName || row.fullName}</div>
-                                  <div className="text-[11px] text-[#64748b]">{row.gradedAt ? new Date(row.gradedAt).toLocaleDateString() : 'Not marked'}</div>
-                                </div>
-                                <div className="mt-2 grid grid-cols-2 gap-2">
-                                  <input
-                                    className="h-9 rounded-lg border border-black/10 bg-white px-2 text-sm"
-                                    placeholder="Score"
-                                    value={draft.scoreLabel}
-                                    onChange={(e) => setManualMarksheetDraftByUserId((prev) => ({
-                                      ...prev,
-                                      [row.userId]: {
-                                        ...draft,
-                                        scoreLabel: e.target.value,
-                                        percentage: derivePercentageFromScore(e.target.value, selectedManualAssessment?.maxMarks),
-                                      },
-                                    }))}
-                                  />
-                                  <input
-                                    className="h-9 rounded-lg border border-black/10 bg-[#f1f5f9] px-2 text-sm"
-                                    placeholder="Auto %"
-                                    value={(() => {
-                                      const pct = derivePercentageFromScore(draft.scoreLabel, selectedManualAssessment?.maxMarks) || draft.percentage
-                                      return pct ? `${pct}%` : ''
-                                    })()}
-                                    readOnly
-                                  />
-                                </div>
-                                <textarea
-                                  className="mt-2 min-h-[56px] w-full rounded-lg border border-black/10 bg-white px-2 py-1 text-sm"
-                                  placeholder="Notes"
-                                  value={draft.notes}
-                                  onChange={(e) => setManualMarksheetDraftByUserId((prev) => ({
-                                    ...prev,
-                                    [row.userId]: { ...draft, notes: e.target.value },
-                                  }))}
-                                />
-                                <div className="mt-2 flex items-center gap-2">
-                                  <ScriptPhotosEditor
-                                    urls={draft.screenshotUrls}
-                                    onChange={makeManualMarksheetPhotosChange(row.userId)}
-                                    disabled={isSaving}
-                                  />
-                                  <button
-                                    type="button"
-                                    className="ml-auto inline-flex h-8 items-center justify-center rounded-full bg-[#1877f2] px-3 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
-                                    onClick={() => void saveManualMarksheetRow(row.userId)}
-                                    disabled={isSaving}
-                                  >
-                                    {isSaving ? 'Saving...' : 'Save'}
-                                  </button>
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      ) : null}
-                    </div>
-                  </section>
-                ) : null}
-
                 {booksError ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-red-600">{booksError}</section> : null}
                 {booksLoading ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">Loading...</section> : null}
                 {!booksLoading && !booksError && booksItems.length === 0 ? (
@@ -13932,271 +13616,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             )
           ) : (
             <div className="space-y-3">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                <div className="text-xs uppercase tracking-wide text-white/70">Grades</div>
-                {libraryGradesError ? <div className="mt-2 text-sm text-red-200">{libraryGradesError}</div> : null}
-                {libraryGradesLoading ? <div className="mt-2 text-sm muted">Loading grades...</div> : null}
-                {!libraryGradesLoading && !libraryGradesError && libraryGrades.length === 0 ? (
-                  <div className="mt-2 text-sm muted">No grades posted yet.</div>
-                ) : null}
-                {libraryGrades.length > 0 ? (
-                  <ul className="mt-3 space-y-2">
-                    {libraryGrades.map((item) => (
-                      <li key={item.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="font-medium text-white break-words">{item.assessmentTitle}</div>
-                            <div className="text-xs muted">{getLibraryGradeSourceLabel(item.sourceType)}</div>
-                          </div>
-                          <div className="text-right shrink-0">
-                            {(() => {
-                              const fraction = parseScoreFraction(item)
-                              if (!fraction) {
-                                return (
-                                  <>
-                                    <div className="font-semibold text-white">{item.scoreLabel}</div>
-                                    {formatPercentageLabel(item.percentage) ? <div className="text-xs muted">{formatPercentageLabel(item.percentage)}</div> : null}
-                                  </>
-                                )
-                              }
-                              return (
-                                <div className="flex flex-col items-center">
-                                  <div className="h-20 w-20 rounded-full border-2 border-[#9cc1ff]/55 bg-black/25 shadow-sm flex flex-col items-center justify-center">
-                                    <div className="text-[18px] font-bold leading-none text-white">{fraction.top}</div>
-                                    <div className="my-1 h-px w-8 bg-white/70" />
-                                    <div className="text-[14px] font-semibold leading-none text-white/90">{fraction.bottom}</div>
-                                  </div>
-                                  <div className="mt-1 text-[10px] font-medium text-white/75">{getGradeSignature(item.graderSignature)}</div>
-                                  {formatPercentageLabel(item.percentage) ? <div className="text-[11px] text-white/70">{formatPercentageLabel(item.percentage)}</div> : null}
-                                </div>
-                              )
-                            })()}
-                          </div>
-                        </div>
-                        {item.feedback ? <div className="mt-2 text-xs text-white/80 whitespace-pre-wrap break-words">{item.feedback}</div> : null}
-                        {item.screenshotUrl ? (
-                          <div className="mt-3 overflow-hidden rounded-xl border border-white/10 bg-black/20">
-                            <button
-                              type="button"
-                              className="block w-full cursor-zoom-in"
-                              onClick={() => openGradeScreenshotViewer(item.screenshotUrl || '', `${item.assessmentTitle} screenshot`)}
-                            >
-                              <img src={item.screenshotUrl} alt={`${item.assessmentTitle} screenshot`} className="max-h-72 w-full object-contain" />
-                            </button>
-                          </div>
-                        ) : null}
-                        {item.responseId ? (
-                          <div className="mt-2">
-                            <button
-                              type="button"
-                              className="inline-flex h-8 items-center justify-center rounded-full border border-white/20 bg-white/10 px-3 text-[11px] font-semibold text-[#9cc1ff] hover:bg-white/15"
-                              onClick={() => void openGradeDetail(item)}
-                            >
-                              View details
-                            </button>
-                          </div>
-                        ) : null}
-                        <div className="mt-2 text-[11px] text-white/50">{new Date(item.gradedAt).toLocaleString()}</div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-
-              {canManageAnnouncements ? (
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                  <div className="text-xs uppercase tracking-wide text-white/70">Assessment Marksheet</div>
-                  <div className="mt-3 grid gap-2">
-                    <div className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-3">
-                      <div className="text-xs font-semibold text-white/80">
-                        {manualAssessmentEditingId ? 'Edit Assessment' : 'Create Assessment'} ({selectedGrade ? gradeToLabel(selectedGrade) : 'No grade selected'})
-                      </div>
-                      <input
-                        className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
-                        placeholder="Assessment name"
-                        value={manualAssessmentTitleDraft}
-                        onChange={(e) => setManualAssessmentTitleDraft(e.target.value)}
-                      />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
-                          placeholder="Subject"
-                          value={manualAssessmentSubjectDraft}
-                          onChange={(e) => setManualAssessmentSubjectDraft(e.target.value)}
-                        />
-                        <input
-                          className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
-                          placeholder="Term"
-                          value={manualAssessmentTermDraft}
-                          onChange={(e) => setManualAssessmentTermDraft(e.target.value)}
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
-                          placeholder="Date"
-                          value={manualAssessmentDateDraft}
-                          onChange={(e) => setManualAssessmentDateDraft(e.target.value)}
-                        />
-                        <input
-                          className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
-                          placeholder="Max marks"
-                          value={manualAssessmentMaxMarksDraft}
-                          onChange={(e) => setManualAssessmentMaxMarksDraft(e.target.value)}
-                        />
-                      </div>
-                      <textarea
-                        className="min-h-[64px] rounded-xl border border-white/20 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-white/45"
-                        placeholder="Optional description"
-                        value={manualAssessmentDescriptionDraft}
-                        onChange={(e) => setManualAssessmentDescriptionDraft(e.target.value)}
-                      />
-                      {manualAssessmentCreateError ? <div className="text-xs text-red-200">{manualAssessmentCreateError}</div> : null}
-                      {manualAssessmentCreateSuccess ? <div className="text-xs text-emerald-200">{manualAssessmentCreateSuccess}</div> : null}
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          className="btn btn-primary text-xs"
-                          onClick={() => void createManualAssessment()}
-                          disabled={manualAssessmentCreating || !selectedGrade}
-                        >
-                          {manualAssessmentCreating
-                            ? (manualAssessmentEditingId ? 'Saving...' : 'Creating...')
-                            : (manualAssessmentEditingId ? 'Save changes' : 'Create assessment')}
-                        </button>
-                        {manualAssessmentEditingId ? (
-                          <button
-                            type="button"
-                            className="btn btn-ghost text-xs"
-                            onClick={cancelManualAssessmentEditing}
-                            disabled={manualAssessmentCreating}
-                          >
-                            Cancel
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-3">
-                      <div className="text-xs font-semibold text-white/80">Open Marksheet</div>
-                      {manualAssessmentsError ? <div className="text-xs text-red-200">{manualAssessmentsError}</div> : null}
-                      <select
-                        className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white"
-                        value={selectedManualAssessmentId || ''}
-                        onChange={(e) => setSelectedManualAssessmentId(e.target.value || null)}
-                      >
-                        <option value="">Select assessment</option>
-                        {manualAssessments.map((item) => (
-                          <option key={item.id} value={item.id}>{item.title}</option>
-                        ))}
-                      </select>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          className="btn btn-ghost text-xs disabled:opacity-50"
-                          onClick={beginEditSelectedManualAssessment}
-                          disabled={!selectedManualAssessmentId || manualAssessmentUpdating || manualAssessmentDeleting}
-                        >
-                          {manualAssessmentUpdating ? 'Updating...' : 'Edit test'}
-                        </button>
-                        <button
-                          type="button"
-                          className="text-xs font-semibold rounded-xl border border-red-300/50 bg-red-500/10 text-red-200 px-3 h-9 disabled:opacity-50"
-                          onClick={() => void deleteSelectedManualAssessment()}
-                          disabled={!selectedManualAssessmentId || manualAssessmentUpdating || manualAssessmentDeleting}
-                        >
-                          {manualAssessmentDeleting ? 'Deleting...' : 'Delete test'}
-                        </button>
-                      </div>
-                      {selectedManualAssessment?.maxMarks != null ? (
-                        <div className="text-[11px] text-white/60">Total marks: {selectedManualAssessment.maxMarks}</div>
-                      ) : null}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
-                        className="h-10 rounded-xl border border-white/20 bg-black/20 px-3 text-sm text-white placeholder:text-white/45"
-                        placeholder="Search learner by name"
-                        value={manualMarksheetSearch}
-                        onChange={(e) => setManualMarksheetSearch(e.target.value)}
-                      />
-                    </div>
-                    {manualMarksheetError ? <div className="text-xs text-red-200">{manualMarksheetError}</div> : null}
-                    {manualMarksheetLoading ? <div className="text-sm muted">Loading marksheet...</div> : null}
-                    {selectedManualAssessmentId && !manualMarksheetLoading ? (
-                      <div className="max-h-[420px] space-y-2 overflow-y-auto rounded-2xl border border-white/10 bg-black/20 p-2">
-                        {visibleManualMarksheetRows.map((row) => {
-                          const draft = manualMarksheetDraftByUserId[row.userId] || {
-                            scoreLabel: row.scoreLabel || '',
-                            percentage: typeof row.percentage === 'number' ? String(row.percentage) : '',
-                            notes: row.notes || '',
-                            screenshotUrls: row.screenshotUrls?.length ? row.screenshotUrls : (row.screenshotUrl ? [row.screenshotUrl] : []),
-                          }
-                          const isSaving = manualMarksheetSavingUserId === row.userId
-                          return (
-                            <div key={row.userId} className="rounded-xl border border-white/10 bg-white/5 p-2">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="text-xs font-semibold text-white/85">{row.number}. {row.surname}, {row.givenName || row.fullName}</div>
-                                <div className="text-[11px] text-white/50">{row.gradedAt ? new Date(row.gradedAt).toLocaleDateString() : 'Not marked'}</div>
-                              </div>
-                              <div className="mt-2 grid grid-cols-2 gap-2">
-                                <input
-                                  className="h-9 rounded-lg border border-white/20 bg-black/20 px-2 text-sm text-white placeholder:text-white/45"
-                                  placeholder="Score"
-                                  value={draft.scoreLabel}
-                                  onChange={(e) => setManualMarksheetDraftByUserId((prev) => ({
-                                    ...prev,
-                                    [row.userId]: {
-                                      ...draft,
-                                      scoreLabel: e.target.value,
-                                      percentage: derivePercentageFromScore(e.target.value, selectedManualAssessment?.maxMarks),
-                                    },
-                                  }))}
-                                />
-                                <input
-                                  className="h-9 rounded-lg border border-white/20 bg-black/35 px-2 text-sm text-white placeholder:text-white/45"
-                                  placeholder="Auto %"
-                                  value={(() => {
-                                    const pct = derivePercentageFromScore(draft.scoreLabel, selectedManualAssessment?.maxMarks) || draft.percentage
-                                    return pct ? `${pct}%` : ''
-                                  })()}
-                                  readOnly
-                                />
-                              </div>
-                              <textarea
-                                className="mt-2 min-h-[56px] w-full rounded-lg border border-white/20 bg-black/20 px-2 py-1 text-sm text-white placeholder:text-white/45"
-                                placeholder="Notes"
-                                value={draft.notes}
-                                onChange={(e) => setManualMarksheetDraftByUserId((prev) => ({
-                                  ...prev,
-                                  [row.userId]: { ...draft, notes: e.target.value },
-                                }))}
-                              />
-                              <div className="mt-2 flex items-center gap-2">
-                                <ScriptPhotosEditor
-                                  urls={draft.screenshotUrls}
-                                  onChange={makeManualMarksheetPhotosChange(row.userId)}
-                                  disabled={isSaving}
-                                  darkMode
-                                />
-                                <button
-                                  type="button"
-                                  className="ml-auto inline-flex h-8 items-center justify-center rounded-full bg-[#1877f2] px-3 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
-                                  onClick={() => void saveManualMarksheetRow(row.userId)}
-                                  disabled={isSaving}
-                                >
-                                  {isSaving ? 'Saving...' : 'Save'}
-                                </button>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
-
               {booksError ? <div className="text-sm text-red-200">{booksError}</div> : null}
               {booksLoading ? <div className="text-sm muted">Loading...</div> : null}
               {!booksLoading && !booksError && booksItems.length === 0 ? (
@@ -14796,7 +14215,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       {!isAdmin && isMobile && mobilePanels.sessions && (
         <FullScreenGlassOverlay
-          title="Sessions"
+          title="Classroom"
           onClose={() => setMobilePanels(prev => ({ ...prev, sessions: false }))}
           onBackdropClick={() => setMobilePanels(prev => ({ ...prev, sessions: false }))}
           zIndexClassName="z-50"
@@ -15868,8 +15287,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         className={iconButtonClassName}
                         onClick={() => openBooksOverlay()}
                         disabled={postSolveSubmitting}
-                        aria-label="Library"
-                        title="Library"
+                        aria-label="Learning"
+                        title="Learning"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="21" height="21" fill="none" aria-hidden="true">
                           <path d="M6 5.5C6 4.67157 6.67157 4 7.5 4H18V19H7.5C6.67157 19 6 19.6716 6 20.5V5.5Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />

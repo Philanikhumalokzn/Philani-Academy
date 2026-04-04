@@ -15833,7 +15833,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   </div>
 
                   <div className="flex items-center justify-between gap-3 px-1">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-4">
                       <button
                         type="button"
                         className={iconButtonClassName}
@@ -15842,19 +15842,24 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         aria-label="Math input"
                         title="Math input"
                       >
-                        <span className="text-lg font-semibold">fx</span>
+                        <span
+                          className="text-[1.18rem] font-semibold italic leading-none tracking-[-0.05em]"
+                          style={{ fontFamily: 'KaTeX_Main, Times New Roman, serif' }}
+                        >
+                          fx
+                        </span>
                       </button>
                       <button
                         type="button"
                         className={iconButtonClassName}
                         onClick={() => openHandwrittenPostSolveComposer(postSolveModeOverlay)}
                         disabled={postSolveSubmitting}
-                        aria-label="Canvas"
-                        title="Canvas"
+                        aria-label="Handwriting"
+                        title="Handwriting"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M4 20h4l10.5-10.5a2.12 2.12 0 1 0-3-3L5 17v3Z" />
-                          <path d="m13.5 6.5 4 4" />
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M18.8 3.8c-2.6.4-5 1.8-6.7 3.9-2 2.5-2.8 5.6-2.5 8.8l-3 2.9c-.6.6-.2 1.7.7 1.7h2.6l.8-.8.9.9 1.3-1.3-.9-.9 1-1c3.2.3 6.3-.5 8.8-2.5 2.1-1.7 3.5-4.1 3.9-6.7-2 .5-4 .4-5.8-.3-.8-.3-1.5-.9-2.1-1.5-.6-.6-1.1-1.3-1.5-2.1-.7-1.8-.8-3.8-.3-5.8Z" />
+                          <path d="M14.2 9.8c.8.8 1.9 1.4 3 1.6" />
                         </svg>
                       </button>
                       <button
@@ -15865,12 +15870,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         aria-label="Library"
                         title="Library"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M4.5 8V5.5h2.5" />
-                          <path d="M17 5.5h2.5V8" />
-                          <path d="M19.5 16v2.5H17" />
-                          <path d="M7 18.5H4.5V16" />
-                          <rect x="8" y="8" width="8" height="8" rx="1.5" />
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="21" height="21" fill="none" aria-hidden="true">
+                          <path d="M6 5.5C6 4.67157 6.67157 4 7.5 4H18V19H7.5C6.67157 19 6 19.6716 6 20.5V5.5Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
+                          <path d="M6 20H17.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                          <path d="M9 8H14" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
                         </svg>
                       </button>
                     </div>

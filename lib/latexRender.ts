@@ -55,6 +55,25 @@ export function renderKatexDisplayHtml(latex: unknown): string {
   }
 }
 
+export function renderKatexInlineHtml(latex: unknown): string {
+  const raw = typeof latex === 'string' ? latex.trim() : ''
+  const value = normalizeMathSymbols(raw)
+  if (!value) return ''
+  try {
+    return katex.renderToString(value, {
+      displayMode: false,
+      throwOnError: false,
+      strict: 'ignore',
+      macros: {
+        '\\because': '\\mathrel{\\text{∵}}',
+        '\\therefore': '\\mathrel{\\text{∴}}',
+      },
+    })
+  } catch {
+    return ''
+  }
+}
+
 export function splitLatexIntoSteps(latex: unknown): string[] {
   const raw = typeof latex === 'string' ? latex.replace(/\r\n/g, '\n').trim() : ''
   if (!raw) return []

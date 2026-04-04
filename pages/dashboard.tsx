@@ -24,7 +24,7 @@ import { useRouter } from 'next/router'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 import { toDisplayFileName } from '../lib/fileName'
 import { isSpecialTestStudentEmail } from '../lib/testUsers'
-import { renderKatexDisplayHtml as renderKatexDisplayHtmlRaw, splitLatexIntoSteps as splitLatexIntoStepsRaw } from '../lib/latexRender'
+import { renderKatexDisplayHtml as renderKatexDisplayHtmlRaw, renderKatexInlineHtml as renderKatexInlineHtmlRaw, splitLatexIntoSteps as splitLatexIntoStepsRaw } from '../lib/latexRender'
 import { renderTextWithKatex as renderTextWithKatexRaw } from '../lib/renderTextWithKatex'
 import { useTapToPeek } from '../lib/useTapToPeek'
 import { useOverlayRestore } from '../lib/overlayRestore'
@@ -232,6 +232,132 @@ const OverlayPortal = ({ children }: { children: React.ReactNode }) => {
   return createPortal(children, document.body)
 }
 
+const INLINE_MATH_TOKEN_REGEX = /\[\[math:([^\]]+)\]\]/g
+
+type InlineReplySegment =
+  | { type: 'text'; value: string }
+  | { type: 'math'; latex: string }
+
+const escapeHtml = (value: string) => value
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
+
+const encodeInlineMathToken = (latex: string) => `[[math:${encodeURIComponent(latex)}]]`
+
+const decodeInlineMathToken = (encoded: string) => {
+  try {
+    return decodeURIComponent(encoded)
+  } catch {
+    return encoded
+  }
+}
+
+const parseInlineReplySegments = (value: unknown): InlineReplySegment[] => {
+  const input = typeof value === 'string' ? value : ''
+  if (!input) return []
+
+  const segments: InlineReplySegment[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  INLINE_MATH_TOKEN_REGEX.lastIndex = 0
+  while ((match = INLINE_MATH_TOKEN_REGEX.exec(input))) {
+    const matchIndex = match.index
+    if (matchIndex > lastIndex) {
+      segments.push({ type: 'text', value: input.slice(lastIndex, matchIndex) })
+    }
+    segments.push({ type: 'math', latex: decodeInlineMathToken(match[1] || '') })
+    lastIndex = matchIndex + match[0].length
+  }
+
+  if (lastIndex < input.length) {
+    segments.push({ type: 'text', value: input.slice(lastIndex) })
+  }
+
+  return segments
+}
+
+const inlineReplyContainsMath = (value: unknown) => parseInlineReplySegments(value).some((segment) => segment.type === 'math' && segment.latex.trim())
+
+const inlineReplyHasContent = (value: unknown) => parseInlineReplySegments(value).some((segment) => {
+  if (segment.type === 'math') return segment.latex.trim().length > 0
+  return segment.value.trim().length > 0
+})
+
+const mergeInlineReplyBody = (studentText: unknown, legacyLatex: unknown) => {
+  const text = typeof studentText === 'string' ? studentText : ''
+  const latex = typeof legacyLatex === 'string' ? legacyLatex.trim() : ''
+  if (!latex || inlineReplyContainsMath(text)) return text
+  if (!text.trim()) return encodeInlineMathToken(latex)
+  return `${text}\n${encodeInlineMathToken(latex)}`
+}
+
+const replaceInlineReplyRange = (value: string, start: number, end: number, replacement: string) => {
+  const safeStart = Math.max(0, Math.min(start, value.length))
+  const safeEnd = Math.max(safeStart, Math.min(end, value.length))
+  return `${value.slice(0, safeStart)}${replacement}${value.slice(safeEnd)}`
+}
+
+const serializeInlineReplyDomNode = (node: Node): string => {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node.textContent || ''
+  }
+
+  if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) {
+    return ''
+  }
+
+  const element = node as Element
+  if (element.nodeType === Node.ELEMENT_NODE) {
+    if (element.matches('span[data-inline-math="1"]')) {
+      const encoded = element.getAttribute('data-inline-math-latex') || ''
+      return `[[math:${encoded}]]`
+    }
+
+    if (element.tagName === 'BR') {
+      return '\n'
+    }
+  }
+
+  const childContent = Array.from(node.childNodes).map(serializeInlineReplyDomNode).join('')
+  if (element.nodeType === Node.ELEMENT_NODE && /^(DIV|P)$/i.test(element.tagName)) {
+    return childContent.endsWith('\n') ? childContent : `${childContent}\n`
+  }
+  return childContent
+}
+
+const serializeInlineReplyFragment = (fragment: DocumentFragment) => {
+  return Array.from(fragment.childNodes).map(serializeInlineReplyDomNode).join('')
+}
+
+const getInlineReplySelectionOffset = (root: HTMLElement, container: Node, offset: number) => {
+  const doc = root.ownerDocument
+  const range = doc.createRange()
+  range.selectNodeContents(root)
+  try {
+    range.setEnd(container, offset)
+  } catch {
+    return serializeInlineReplyDomNode(root).length
+  }
+  return serializeInlineReplyFragment(range.cloneContents()).length
+}
+
+const buildInlineReplyEditorHtml = (value: unknown, renderKatexInlineHtml: (latex: unknown) => string) => {
+  const segments = parseInlineReplySegments(value)
+  if (!segments.length) return ''
+  return segments.map((segment) => {
+    if (segment.type === 'text') {
+      return escapeHtml(segment.value).replace(/\n/g, '<br />')
+    }
+    const encodedLatex = encodeURIComponent(segment.latex)
+    const inlineHtml = renderKatexInlineHtml(segment.latex) || escapeHtml(segment.latex)
+    return `<span contenteditable="false" data-inline-math="1" data-inline-math-latex="${encodedLatex}" class="inline-flex items-center align-baseline mx-[0.08em] text-slate-800">${inlineHtml}</span>`
+  }).join('')
+}
+
 type LocalCacheEntry<T> = {
   updatedAt: string
   data: T
@@ -343,6 +469,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return renderKatexDisplayHtmlRaw(latex)
   }, [])
 
+  const renderKatexInlineHtml = useCallback((latex: unknown) => {
+    return renderKatexInlineHtmlRaw(latex)
+  }, [])
+
   const splitLatexIntoSteps = useCallback((latex: unknown) => {
     return splitLatexIntoStepsRaw(latex)
   }, [])
@@ -398,6 +528,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const renderTextWithKatex = useCallback((text: unknown) => {
     return renderTextWithKatexRaw(text, { renderInlineEmphasis })
   }, [renderInlineEmphasis])
+
+  const renderInlineReplyContent = useCallback((value: unknown) => {
+    const segments = parseInlineReplySegments(value)
+    if (!segments.length) return null
+
+    return segments.map((segment, index) => {
+      if (segment.type === 'text') {
+        return <React.Fragment key={`inline-reply-text-${index}`}>{renderTextWithKatex(segment.value)}</React.Fragment>
+      }
+
+      return (
+        <span key={`inline-reply-math-${index}`} className="inline align-baseline text-slate-900">
+          {renderTextWithKatex(`\\(${segment.latex}\\)`)}
+        </span>
+      )
+    })
+  }, [renderTextWithKatex])
 
   const formatSessionDate = useCallback((value: unknown) => {
     if (!value) return ''
@@ -1172,6 +1319,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const themeBgInputRef = useRef<HTMLInputElement | null>(null)
   const windowZCounterRef = useRef(50)
   const stageRef = useRef<HTMLDivElement | null>(null)
+  const postSolveEditorRef = useRef<HTMLDivElement | null>(null)
+  const postSolveInlineSelectionRef = useRef<{ start: number; end: number } | null>(null)
 
   // One shared hidden input so the dashboard button can open the file picker as a direct user gesture.
   // This keeps diagram upload standalone and avoids navigation.
@@ -6418,7 +6567,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               const responseCreatedAt = response?.updatedAt || response?.createdAt
               const isMine = responseUserId === String(currentUserId || viewerId || '')
               const latex = String(response?.latex || '')
-              const latexHtml = latex.trim() ? renderKatexDisplayHtml(latex) : ''
+              const mergedReplyBody = mergeInlineReplyBody(response?.studentText, latex)
               const steps = splitLatexIntoSteps(latex)
               const grade = normalizeChallengeGrade(response?.gradingJson, steps.length)
               const responseId = String(response?.id || '')
@@ -6493,16 +6642,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     ) : null}
                   </div>
 
-                  {String(response?.studentText || '').trim() ? (
-                    <div className="mt-3 text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{String(response.studentText)}</div>
-                  ) : null}
-
-                  {latex.trim() ? (
-                    latexHtml ? (
-                      <div className="mt-3 leading-relaxed text-[#1c1e21]" dangerouslySetInnerHTML={{ __html: latexHtml }} />
-                    ) : (
-                      <div className="mt-3 text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{renderTextWithKatex(latex)}</div>
-                    )
+                  {inlineReplyHasContent(mergedReplyBody) ? (
+                    <div className="mt-3 text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">
+                      {renderInlineReplyContent(mergedReplyBody)}
+                    </div>
                   ) : null}
 
                   {response?.excalidrawScene ? (
@@ -8067,28 +8210,71 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [pendingFeedThreadJumpKey])
 
+  const syncPostSolveTextFromEditor = useCallback(() => {
+    const editor = postSolveEditorRef.current
+    if (!editor) return
+    const nextValue = serializeInlineReplyDomNode(editor)
+    if (nextValue !== postSolveText) {
+      setPostSolveText(nextValue)
+    }
+  }, [postSolveText])
+
+  const updatePostSolveInlineSelection = useCallback(() => {
+    const editor = postSolveEditorRef.current
+    if (!editor || typeof window === 'undefined') return
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0) return
+    const range = selection.getRangeAt(0)
+    if (!editor.contains(range.startContainer) || !editor.contains(range.endContainer)) return
+
+    postSolveInlineSelectionRef.current = {
+      start: getInlineReplySelectionOffset(editor, range.startContainer, range.startOffset),
+      end: getInlineReplySelectionOffset(editor, range.endContainer, range.endOffset),
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!postSolveModeOverlay) return
+    const editor = postSolveEditorRef.current
+    if (!editor) return
+    const currentValue = serializeInlineReplyDomNode(editor)
+    if (currentValue === postSolveText) return
+    editor.innerHTML = buildInlineReplyEditorHtml(postSolveText, renderKatexInlineHtml)
+  }, [postSolveModeOverlay, postSolveText, renderKatexInlineHtml])
+
   const openHandwrittenPostSolveComposer = useCallback((draft: PostSolveOverlayState | null) => {
     if (!draft) return
+    const currentBody = postSolveEditorRef.current ? serializeInlineReplyDomNode(postSolveEditorRef.current) : postSolveText
+    if (currentBody !== postSolveText) {
+      setPostSolveText(currentBody)
+    }
     setPostSolveModeOverlay(null)
     setPostTypedSolveOverlay(null)
     setPostSolveError(null)
     setPostSolveOverlay({
       ...draft,
-      initialStudentText: postSolveText,
+      initialStudentText: currentBody,
     })
   }, [postSolveText])
 
   const openTypedPostSolveComposer = useCallback((draft: PostSolveOverlayState | null, preferredRecognitionEngine: 'keyboard' | 'myscript' | 'mathpix' = 'keyboard') => {
     if (!draft) return
+    const currentBody = postSolveEditorRef.current ? serializeInlineReplyDomNode(postSolveEditorRef.current) : postSolveText
+    if (currentBody !== postSolveText) {
+      setPostSolveText(currentBody)
+    }
+    const selection = postSolveInlineSelectionRef.current
+    postSolveInlineSelectionRef.current = selection || { start: currentBody.length, end: currentBody.length }
     setPostSolveModeOverlay(null)
     setPostSolvePreviewOverlay(null)
     setPostSolveOverlay(null)
     setPostSolveError(null)
     setPostTypedOverlayChromeVisible(!isMobile)
-    setPostTypedSolveLatex(typeof draft.initialLatex === 'string' ? draft.initialLatex.trim() : '')
+    setPostTypedSolveLatex('')
     setPostTypedSolveOverlay({
       ...draft,
-      initialStudentText: postSolveText,
+      initialStudentText: currentBody,
+      initialLatex: '',
       preferredRecognitionEngine,
     })
   }, [isMobile, postSolveText])
@@ -8137,7 +8323,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       }
     }
 
-    setPostSolveText(initialStudentText)
+    const initialBody = mergeInlineReplyBody(initialStudentText, initialLatex)
+    setPostSolveText(initialBody)
+    postSolveInlineSelectionRef.current = { start: initialBody.length, end: initialBody.length }
     setPostTypedSolveOverlay(null)
     setPostSolveOverlay(null)
     setPostSolveModeOverlay({
@@ -8149,8 +8337,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       authorName,
       authorAvatarUrl,
       initialScene,
-      initialLatex,
-      initialStudentText,
+      initialLatex: '',
+      initialStudentText: initialBody,
       postRecord: post,
     })
   }, [currentUserId, fetchPublicThreadResponses, viewerId])
@@ -8238,11 +8426,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const submitPostTextSolve = useCallback(async () => {
     const activeDraft = postSolveModeOverlay
-    const studentText = String(postSolveText || '').trim()
+    const studentText = postSolveEditorRef.current ? serializeInlineReplyDomNode(postSolveEditorRef.current) : String(postSolveText || '')
     if (!activeDraft?.postId || !activeDraft?.threadKey) return
-    if (!studentText) {
+    if (!inlineReplyHasContent(studentText) && !activeDraft.initialScene) {
       setPostSolveError('Write a reply before sending.')
       return
+    }
+    if (studentText !== postSolveText) {
+      setPostSolveText(studentText)
     }
     setPostSolveSubmitting(true)
     setPostSolveError(null)
@@ -8252,7 +8443,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          latex: typeof activeDraft.initialLatex === 'string' ? activeDraft.initialLatex : '',
+          latex: '',
           studentText,
           quizId: activeDraft.threadKey,
           quizLabel: activeDraft.title,
@@ -8338,53 +8529,31 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const submitTypedPostSolve = useCallback(async () => {
     const activeDraft = postTypedSolveOverlay
     const latex = String(postTypedSolveLatex || '').trim()
-    const studentText = String(postSolveText || '').trim() || null
     if (!activeDraft?.postId || !activeDraft?.threadKey) return
     if (!latex) {
-      setPostSolveError('Write a typed response before submitting.')
+      setPostSolveError('Write a typed response before inserting it.')
       return
     }
-    setPostSolveSubmitting(true)
+    const currentBody = String(postSolveText || '')
+    const selection = postSolveInlineSelectionRef.current || { start: currentBody.length, end: currentBody.length }
+    const token = encodeInlineMathToken(latex)
+    const nextStudentText = replaceInlineReplyRange(currentBody, selection.start, selection.end, token)
+
     setPostSolveError(null)
-    try {
-      const res = await fetch(`/api/threads/${encodeURIComponent(activeDraft.threadKey)}/responses`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          latex,
-          studentText,
-          quizId: activeDraft.threadKey,
-          quizLabel: activeDraft.title,
-          prompt: activeDraft.prompt,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(data?.message || `Failed to submit solve (${res.status})`)
-      }
-
-      applyOwnPostResponseToFeeds(activeDraft, data)
-      setPostTypedSolveOverlay(null)
-  setPostSolveModeOverlay(null)
-      setPostTypedOverlayChromeVisible(false)
-      setPostTypedSolveLatex('')
-
-      await openPostThread({
-        id: activeDraft.postId,
-        threadKey: activeDraft.threadKey,
-        title: activeDraft.title,
-        prompt: activeDraft.prompt,
-        imageUrl: activeDraft.imageUrl || null,
-        authorName: activeDraft.authorName || null,
-        authorAvatarUrl: activeDraft.authorAvatarUrl || null,
-      }, { forceOpen: true })
-    } catch (err: any) {
-      setPostSolveError(err?.message || 'Failed to submit solve')
-    } finally {
-      setPostSolveSubmitting(false)
+    setPostSolveText(nextStudentText)
+    postSolveInlineSelectionRef.current = {
+      start: selection.start + token.length,
+      end: selection.start + token.length,
     }
-  }, [applyOwnPostResponseToFeeds, openPostThread, postSolveText, postTypedSolveLatex, postTypedSolveOverlay])
+    setPostTypedSolveOverlay(null)
+    setPostSolveModeOverlay({
+      ...activeDraft,
+      initialLatex: '',
+      initialStudentText: nextStudentText,
+    })
+    setPostTypedOverlayChromeVisible(false)
+    setPostTypedSolveLatex('')
+  }, [postSolveText, postTypedSolveLatex, postTypedSolveOverlay])
 
   const openHandwrittenLessonSolveComposer = useCallback((draft: LessonSolveOverlayState | null) => {
     if (!draft) return
@@ -15663,10 +15832,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             rightActions={postSolveSubmitting ? <span className="text-[11px] font-medium text-slate-500">Sending...</span> : null}
           >
             {(() => {
-              const mathDraftLatex = String(postSolveModeOverlay.initialLatex || '').trim()
-              const hasTypedDraft = String(postSolveModeOverlay.initialLatex || '').trim().length > 0
               const hasCanvasDraft = Boolean(postSolveModeOverlay.initialScene)
-              const mathDraftHtml = hasTypedDraft ? renderKatexDisplayHtml(mathDraftLatex) : ''
+              const hasReplyContent = inlineReplyHasContent(postSolveText)
               const iconButtonClassName = 'inline-flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
 
               return (
@@ -15683,37 +15850,54 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <div className="min-w-0 flex-1 space-y-2">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-700/80">Reply as {currentViewerPostAuthor.name}</div>
                         <div className="rounded-[24px] bg-white px-4 py-3">
-                          <textarea
-                            value={postSolveText}
-                            onChange={(event) => setPostSolveText(event.target.value)}
-                            placeholder={`Comment as ${currentViewerPostAuthor.name}`}
-                            rows={1}
-                            className="max-h-28 min-h-[1.5rem] w-full resize-none bg-transparent text-sm leading-6 text-slate-700 outline-none placeholder:text-slate-400"
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter' && !event.shiftKey) {
+                          <div className="relative min-h-[1.5rem]">
+                            {!hasReplyContent ? (
+                              <div className="pointer-events-none absolute inset-0 text-sm leading-6 text-slate-400">
+                                Comment as {currentViewerPostAuthor.name}
+                              </div>
+                            ) : null}
+                            <div
+                              ref={postSolveEditorRef}
+                              contentEditable
+                              suppressContentEditableWarning
+                              role="textbox"
+                              aria-multiline="true"
+                              className="min-h-[1.5rem] w-full whitespace-pre-wrap break-words bg-transparent text-sm leading-6 text-slate-700 outline-none [&_.katex-display]:!my-0 [&_.katex-display]:!inline-block [&_.katex]:text-[1em]"
+                              onInput={() => {
+                                syncPostSolveTextFromEditor()
+                                updatePostSolveInlineSelection()
+                              }}
+                              onKeyUp={updatePostSolveInlineSelection}
+                              onMouseUp={updatePostSolveInlineSelection}
+                              onFocus={updatePostSolveInlineSelection}
+                              onBlur={() => {
+                                syncPostSolveTextFromEditor()
+                                updatePostSolveInlineSelection()
+                              }}
+                              onPaste={(event) => {
                                 event.preventDefault()
-                                if (!postSolveSubmitting) {
-                                  void submitPostTextSolve()
+                                const text = event.clipboardData.getData('text/plain')
+                                const selection = window.getSelection()
+                                if (!selection || selection.rangeCount === 0) return
+                                selection.deleteFromDocument()
+                                selection.getRangeAt(0).insertNode(document.createTextNode(text))
+                                selection.collapseToEnd()
+                                syncPostSolveTextFromEditor()
+                                updatePostSolveInlineSelection()
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' && !event.shiftKey) {
+                                  event.preventDefault()
+                                  if (!postSolveSubmitting) {
+                                    void submitPostTextSolve()
+                                  }
                                 }
-                              }
-                            }}
-                          />
-                          {(hasTypedDraft || hasCanvasDraft) ? (
-                            <div className="mt-2 space-y-2">
-                              {hasTypedDraft ? (
-                                <div className="overflow-x-auto text-slate-800 leading-relaxed">
-                                  {mathDraftHtml ? (
-                                    <div dangerouslySetInnerHTML={{ __html: mathDraftHtml }} />
-                                  ) : (
-                                    <div className="text-sm leading-6 text-slate-700">{renderTextWithKatex(mathDraftLatex)}</div>
-                                  )}
-                                </div>
-                              ) : null}
-                              {hasCanvasDraft ? (
-                                <div className="text-sm leading-6 text-slate-700">
-                                  Canvas attached
-                                </div>
-                              ) : null}
+                              }}
+                            />
+                          </div>
+                          {hasCanvasDraft ? (
+                            <div className="mt-2 text-sm leading-6 text-slate-700">
+                              Canvas attached
                             </div>
                           ) : null}
                         </div>
@@ -15779,7 +15963,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       type="button"
                       className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-white shadow-[0_18px_34px_rgba(24,119,242,0.28)] transition hover:bg-[#176ad8] disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={() => void submitPostTextSolve()}
-                      disabled={postSolveSubmitting || !String(postSolveText || '').trim()}
+                      disabled={postSolveSubmitting || (!hasReplyContent && !hasCanvasDraft)}
                       aria-label="Send reply"
                       title="Send reply"
                     >
@@ -15862,14 +16046,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     onClick={() => void submitTypedPostSolve()}
                     disabled={postSolveSubmitting || !String(postTypedSolveLatex || '').trim()}
                   >
-                    {postSolveSubmitting ? 'Finishing...' : 'Finish'}
+                    {postSolveSubmitting ? 'Inserting...' : 'Insert'}
                   </button>
 
                   <div className="live-window__header-controls pointer-events-auto">
                     <button
                       type="button"
-                      title="Close typed response"
-                      aria-label="Close typed response"
+                      title="Back to reply"
+                      aria-label="Back to reply"
                       onClick={() => {
                         if (postSolveSubmitting) return
                         setPostSolveModeOverlay({

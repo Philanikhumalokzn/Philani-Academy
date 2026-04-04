@@ -15788,13 +15788,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               setPostSolveError(null)
             }}
             zIndexClassName="z-[68]"
-            className="bottom-[4.5rem] sm:bottom-0"
+            className="bottom-0"
             sheetClassName="rounded-t-[32px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f0f6ff_100%)] shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
-            contentClassName="min-h-0 px-4 pb-4 pt-3 sm:px-5 sm:pb-5 sm:pt-4"
+            contentClassName="min-h-0 px-4 pb-[calc(4.5rem+var(--app-safe-bottom)+1rem)] pt-3 sm:px-5 sm:pb-5 sm:pt-4"
           >
             {(() => {
               const hasReplyBlocks = postSolveBlocks.length > 0
-              const iconButtonClassName = 'inline-flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.08)] transition hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
+              const iconButtonClassName = 'inline-flex h-10 items-center justify-center text-slate-700 transition hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
 
               return (
                 <div className="space-y-4">
@@ -15842,7 +15842,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         aria-label="Math input"
                         title="Math input"
                       >
-                        <span className="text-sm font-semibold">fx</span>
+                        <span className="text-lg font-semibold">fx</span>
                       </button>
                       <button
                         type="button"

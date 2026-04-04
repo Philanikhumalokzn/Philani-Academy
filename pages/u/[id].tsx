@@ -429,14 +429,14 @@ export default function PublicUserProfilePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#ffffff_0%,#f5f8fd_30%,#f7f8fb_100%)] text-slate-900">
+    <main className="public-profile-page min-h-screen bg-[linear-gradient(180deg,#ffffff_0%,#f5f8fd_30%,#f7f8fb_100%)] text-slate-900">
       <div className="min-h-screen pb-[calc(var(--app-safe-bottom)+2rem)]">
-        <section className="relative w-full overflow-hidden bg-slate-900">
-          <div className="absolute inset-0" style={{ backgroundImage: `url("${coverUrl}")`, backgroundSize: 'cover', backgroundPosition: 'center' }} aria-hidden="true" />
+        <section className="public-profile-hero relative w-full overflow-hidden bg-slate-900">
+          <div className="public-profile-hero__image absolute inset-0" style={{ backgroundImage: `url("${coverUrl}")`, backgroundSize: 'cover', backgroundPosition: 'center' }} aria-hidden="true" />
           <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.42)_0%,rgba(0,0,0,0.18)_30%,rgba(0,0,0,0.32)_100%)]" aria-hidden="true" />
           <div className="absolute inset-x-0 bottom-0 h-40 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,rgba(255,255,255,0.7)_72%,#ffffff_100%)]" aria-hidden="true" />
-          <div className="relative min-h-[17rem] px-4 pb-32 pt-[calc(var(--app-safe-top)+0.85rem)] sm:min-h-[20rem] sm:px-6">
-            <div className="mx-auto flex max-w-5xl items-start justify-between gap-3">
+          <div className="public-profile-hero__chrome relative min-h-[17rem] px-4 pb-32 pt-[calc(var(--app-safe-top)+0.85rem)] sm:min-h-[20rem] sm:px-6">
+            <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
                 <button
                   type="button"

@@ -424,6 +424,33 @@ body{
   border:1px solid var(--card-border);
 }
 
+.public-profile-page{
+  overflow-x:clip;
+}
+
+.public-profile-hero{
+  position:relative;
+  width:100vw;
+  max-width:100vw;
+  margin-left:calc(50% - 50vw);
+  margin-right:calc(50% - 50vw);
+  padding-left:0 !important;
+  padding-right:0 !important;
+}
+
+.public-profile-hero__image{
+  left:0;
+  right:0;
+  width:100vw;
+  max-width:none;
+}
+
+.public-profile-hero__chrome{
+  width:100%;
+  max-width:none;
+  box-sizing:border-box;
+}
+
 /* Hero */
 
 .hero{

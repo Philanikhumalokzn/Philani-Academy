@@ -16237,6 +16237,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 authorName={postSolveOverlay.authorName || null}
                 authorAvatarUrl={postSolveOverlay.authorAvatarUrl || null}
                 initialScene={postSolveOverlay.initialScene || null}
+                cancelLabel="Cancel"
+                submitLabel="Finish"
                 submitting={postSolveSubmitting}
                 fullscreenCanvas
                 hideMainMenu

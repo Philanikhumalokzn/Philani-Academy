@@ -15857,9 +15857,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         aria-label="Handwriting"
                         title="Handwriting"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M18.8 3.8c-2.6.4-5 1.8-6.7 3.9-2 2.5-2.8 5.6-2.5 8.8l-3 2.9c-.6.6-.2 1.7.7 1.7h2.6l.8-.8.9.9 1.3-1.3-.9-.9 1-1c3.2.3 6.3-.5 8.8-2.5 2.1-1.7 3.5-4.1 3.9-6.7-2 .5-4 .4-5.8-.3-.8-.3-1.5-.9-2.1-1.5-.6-.6-1.1-1.3-1.5-2.1-.7-1.8-.8-3.8-.3-5.8Z" />
-                          <path d="M14.2 9.8c.8.8 1.9 1.4 3 1.6" />
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="m4.5 19.5 4.2-.8 9.9-9.9a2.1 2.1 0 0 0 0-3l-.4-.4a2.1 2.1 0 0 0-3 0l-9.9 9.9-.8 4.2Z" />
+                          <path d="m13.8 6.2 4 4" />
+                          <path d="M4.5 19.5 8 16" />
                         </svg>
                       </button>
                       <button

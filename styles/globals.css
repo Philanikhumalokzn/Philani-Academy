@@ -319,7 +319,7 @@ math-field.keyboard-mathlive-field::part(virtual-keyboard-toggle) {
 }
 
 .philani-excalidraw-safe-fullscreen .excalidraw .App-top-bar {
-  bottom: 10px !important;
+  bottom: 2px !important;
   left: calc(max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px)) + 8px + 0.75rem) !important;
   right: calc(max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px)) + 8px + 0.75rem) !important;
   transform: none !important;
@@ -327,9 +327,13 @@ math-field.keyboard-mathlive-field::part(virtual-keyboard-toggle) {
 
 .philani-excalidraw-safe-fullscreen .excalidraw .mobile-misc-tools-container {
   top: auto !important;
-  bottom: 76px !important;
+  bottom: 54px !important;
   left: calc(max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px)) + 8px) !important;
   transform: none !important;
+}
+
+.philani-excalidraw-safe-fullscreen .excalidraw .HintViewer {
+  display: none !important;
 }
 
 .philani-excalidraw-safe-fullscreen .excalidraw .App-bottom-bar .App-toolbar-content .dropdown-menu--mobile,

@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../lib/prisma'
 import { getUserGrade, getUserIdFromReq, getUserRole } from '../../../lib/auth'
+import { enrichFeedPosts, FEED_POST_SELECT } from '../../../lib/feedContract'
 import { normalizeGradeInput } from '../../../lib/grades'
 
 function asString(value: unknown) {
@@ -10,10 +11,6 @@ function asString(value: unknown) {
 function isMissingSocialPostsTableError(err: unknown) {
   const message = err instanceof Error ? err.message : String(err || '')
   return /socialpost/i.test(message) && /(does not exist|not exist|no such table|relation)/i.test(message)
-}
-
-function isAttemptScopedPost(item: any) {
-  return item?.attemptsOpen === false || item?.solutionsVisible === true || typeof item?.maxAttempts === 'number'
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -82,30 +79,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       where,
       orderBy: { createdAt: 'desc' },
       take: 60,
-      select: {
-        id: true,
-        title: true,
-        prompt: true,
-        imageUrl: true,
-        grade: true,
-        audience: true,
-        attemptsOpen: true,
-        solutionsVisible: true,
-        maxAttempts: true,
-        closedAt: true,
-        revealedAt: true,
-        createdAt: true,
-        createdById: true,
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-            grade: true,
-            role: true,
-          },
-        },
-      },
+      select: FEED_POST_SELECT,
     })
   } catch (err) {
     if (isMissingSocialPostsTableError(err)) {
@@ -155,15 +129,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   return res.status(200).json({
-    posts: items.map((item: any) => ({
-      ...item,
-      kind: 'post',
-      threadKey: `post:${item.id}`,
-      ownResponse: ownResponseByKey.get(`post:${item.id}`) || null,
-      hasOwnResponse: ownResponseByKey.has(`post:${item.id}`),
-      myAttemptCount: attemptCountByKey.get(`post:${item.id}`) || 0,
-      usesAttemptRules: isAttemptScopedPost(item),
-      solutionCount: solutionCounts.get(`post:${item.id}`) || 0,
-    })),
+    posts: enrichFeedPosts(items, ownResponseByKey, attemptCountByKey, solutionCounts),
   })
 }

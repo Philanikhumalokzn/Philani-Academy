@@ -5,6 +5,7 @@ import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PublicFeedPostCard from '../../components/PublicFeedPostCard'
 import ZoomableImageOverlay from '../../components/ZoomableImageOverlay'
+import { buildFeedPostActionState, type FeedPost } from '../../lib/feedContract'
 import { gradeToLabel } from '../../lib/grades'
 
 type PublicUser = {
@@ -23,35 +24,7 @@ type PublicUser = {
   isFollowing?: boolean
 }
 
-type ProfilePost = {
-  id: string
-  kind?: 'post'
-  title?: string | null
-  prompt?: string | null
-  imageUrl?: string | null
-  grade?: string | null
-  audience?: string | null
-  attemptsOpen?: boolean | null
-  solutionsVisible?: boolean | null
-  maxAttempts?: number | null
-  closedAt?: string | null
-  revealedAt?: string | null
-  createdAt?: string | null
-  createdById?: string | null
-  createdBy?: {
-    id?: string | null
-    name?: string | null
-    avatar?: string | null
-    grade?: string | null
-    role?: string | null
-  } | null
-  ownResponse?: any
-  myAttemptCount?: number
-  usesAttemptRules?: boolean
-  solutionCount?: number
-  hasOwnResponse?: boolean
-  threadKey?: string
-}
+type ProfilePost = FeedPost
 
 type ProfileChallenge = {
   id: string
@@ -124,13 +97,6 @@ const extractInitials = (name: string) => {
   if (words.length === 0) return 'U'
   if (words.length === 1) return words[0].slice(0, 1).toUpperCase()
   return `${words[0].slice(0, 1)}${words[1].slice(0, 1)}`.toUpperCase()
-}
-
-const formatSolutionsLabel = (count: unknown) => {
-  const safeCount = typeof count === 'number' && Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0
-  if (safeCount <= 0) return 'Solutions'
-  if (safeCount === 1) return '1 solution'
-  return `${safeCount} Solutions`
 }
 
 export default function PublicUserProfilePage() {
@@ -405,15 +371,7 @@ export default function PublicUserProfilePage() {
     const authorAvatar = resolveImageUrl(post?.createdBy?.avatar || avatarUrl)
     const authorRole = String(post?.createdBy?.role || profile?.role || '').toLowerCase()
     const authorVerified = authorRole === 'admin' || authorRole === 'teacher' || Boolean(profile?.verified)
-    const maxAttempts = typeof post?.maxAttempts === 'number' ? post.maxAttempts : null
-    const attemptsOpen = post?.attemptsOpen !== false
-    const usesAttemptRules = Boolean(post?.usesAttemptRules || maxAttempts !== null || post?.attemptsOpen === false || post?.solutionsVisible === true)
-    const myAttemptCount = typeof post?.myAttemptCount === 'number' ? post.myAttemptCount : 0
-    const hasAttempted = myAttemptCount > 0
-    const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
-    const solveLabel = usesAttemptRules
-      ? (hasAttempted ? formatSolutionsLabel(post?.solutionCount) : (canAttempt ? 'Solve' : 'Closed'))
-      : (post?.hasOwnResponse ? formatSolutionsLabel(post?.solutionCount) : 'Solve')
+    const actionState = buildFeedPostActionState(post)
     const isExpanded = expandedProfilePostId === postId
 
     return (
@@ -443,9 +401,9 @@ export default function PublicUserProfilePage() {
               ),
             },
             {
-              label: solveLabel,
+              label: actionState.solveLabel,
               onClick: () => setExpandedProfilePostId((current) => current === postId ? null : postId),
-              disabled: usesAttemptRules && !hasAttempted && !canAttempt,
+              disabled: actionState.solveAction === 'closed',
               icon: (
                 <span className="flex items-center gap-1" aria-hidden="true">
                   <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">

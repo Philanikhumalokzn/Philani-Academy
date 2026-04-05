@@ -4,13 +4,17 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react'
+import FullScreenGlassOverlay from '../../components/FullScreenGlassOverlay'
 import PublicFeedPostCard from '../../components/PublicFeedPostCard'
 import PostReplyComposerOverlays from '../../components/PostReplyComposerOverlays'
-import { normalizePublicSolveScene, type PublicSolveScene } from '../../components/PublicSolveCanvas'
+import { PublicSolveCanvasViewer, normalizePublicSolveScene, type PublicSolveScene } from '../../components/PublicSolveCanvas'
+import UserLink from '../../components/UserLink'
 import ZoomableImageOverlay from '../../components/ZoomableImageOverlay'
 import { buildFeedPostActionState, type FeedPost } from '../../lib/feedContract'
 import { gradeToLabel } from '../../lib/grades'
+import { renderKatexDisplayHtml } from '../../lib/latexRender'
 import { createLessonRoleProfile, normalizePlatformRole } from '../../lib/lessonAccessControl'
+import { renderTextWithKatex } from '../../lib/renderTextWithKatex'
 import {
   buildPostReplyPayloadFromBlocks,
   composePostSolveBlocksWithDraftText,
@@ -114,6 +118,44 @@ const extractInitials = (name: string) => {
   return `${words[0].slice(0, 1)}${words[1].slice(0, 1)}`.toUpperCase()
 }
 
+const renderProfilePostReplyBlocks = (blocks: PostReplyBlock[], keyPrefix: string, options?: { onOpenImageBlock?: (imageUrl: string) => void }) => {
+  const normalizedBlocks = normalizePostReplyBlocks(blocks)
+  if (normalizedBlocks.length === 0) return null
+
+  return (
+    <div className="space-y-3 text-white/90">
+      {normalizedBlocks.map((block, index) => {
+        if (block.type === 'text') {
+          return <div key={`${keyPrefix}-${block.id}-${index}`} className="text-sm leading-6 whitespace-pre-wrap break-words text-white/85">{block.text}</div>
+        }
+        if (block.type === 'latex') {
+          const latexHtml = renderKatexDisplayHtml(block.latex)
+          if (latexHtml) {
+            return <div key={`${keyPrefix}-${block.id}-${index}`} className="leading-relaxed text-white/95" dangerouslySetInnerHTML={{ __html: latexHtml }} />
+          }
+          return <div key={`${keyPrefix}-${block.id}-${index}`} className="text-sm leading-6 whitespace-pre-wrap break-words text-white/85">{renderTextWithKatex(block.latex)}</div>
+        }
+        if (block.type === 'image') {
+          return (
+            <div key={`${keyPrefix}-${block.id}-${index}`}>
+              <button type="button" className="block w-full text-left" onClick={() => options?.onOpenImageBlock?.(block.imageUrl)}>
+                <img src={block.imageUrl} alt="Reply attachment" className="max-h-[320px] w-full rounded-2xl border border-white/10 bg-white/5 object-contain" />
+              </button>
+            </div>
+          )
+        }
+        return (
+          <div key={`${keyPrefix}-${block.id}-${index}`}>
+            <div className="overflow-hidden rounded-2xl border border-[#1d4f91] bg-white shadow-sm">
+              <PublicSolveCanvasViewer scene={block.scene} className="pointer-events-none" viewerHeightPx={220} />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function PublicUserProfilePage() {
   const router = useRouter()
   const { status, data: session } = useSession()
@@ -145,6 +187,18 @@ export default function PublicUserProfilePage() {
   const [postSolveModeOverlay, setPostSolveModeOverlay] = useState<PostSolveOverlayState | null>(null)
   const [postSolveOverlay, setPostSolveOverlay] = useState<PostSolveOverlayState | null>(null)
   const [postTypedSolveOverlay, setPostTypedSolveOverlay] = useState<PostSolveOverlayState | null>(null)
+  const [postThreadOverlay, setPostThreadOverlay] = useState<null | {
+    postId: string
+    threadKey: string
+    title: string
+    prompt: string
+    imageUrl?: string | null
+    authorName?: string | null
+    authorAvatarUrl?: string | null
+  }>(null)
+  const [postThreadLoading, setPostThreadLoading] = useState(false)
+  const [postThreadError, setPostThreadError] = useState<string | null>(null)
+  const [postThreadResponses, setPostThreadResponses] = useState<any[]>([])
   const [postSolveBlocks, setPostSolveBlocks] = useState<PostReplyBlock[]>([])
   const [postSolveText, setPostSolveText] = useState('')
   const [postTypedSolveLatex, setPostTypedSolveLatex] = useState('')
@@ -263,6 +317,40 @@ export default function PublicUserProfilePage() {
       return bTs - aTs
     })
   }, [])
+
+  const openLocalPostThread = useCallback(async (post: ProfilePost, options?: { forceOpen?: boolean }) => {
+    const postId = String(post?.id || '')
+    const threadKey = typeof post?.threadKey === 'string' ? post.threadKey : `post:${postId}`
+    if (!postId || !threadKey) return
+
+    if (!options?.forceOpen && postThreadOverlay?.postId === postId) {
+      setPostThreadOverlay(null)
+      setPostThreadError(null)
+      setPostThreadResponses([])
+      return
+    }
+
+    setPostThreadOverlay({
+      postId,
+      threadKey,
+      title: String(post?.title || 'Solutions'),
+      prompt: String(post?.prompt || ''),
+      imageUrl: resolveImageUrl(post?.imageUrl) || null,
+      authorName: String(post?.createdBy?.name || profile?.name || 'Poster').trim() || 'Poster',
+      authorAvatarUrl: resolveImageUrl(post?.createdBy?.avatar || profile?.avatar || ''),
+    })
+    setPostThreadLoading(true)
+    setPostThreadError(null)
+    try {
+      const responses = await fetchPublicThreadResponses(threadKey)
+      setPostThreadResponses(responses)
+    } catch (err: any) {
+      setPostThreadResponses([])
+      setPostThreadError(err?.message || 'Failed to load solutions')
+    } finally {
+      setPostThreadLoading(false)
+    }
+  }, [fetchPublicThreadResponses, postThreadOverlay?.postId, profile?.avatar, profile?.name])
 
   const focusPostSolveTextarea = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -440,12 +528,13 @@ export default function PublicUserProfilePage() {
       setPostSolveEditingTarget(null)
       setComposerBlockCrudTarget(null)
       setPostReplyImageSourceSheetOpen(false)
+      await openLocalPostThread(activeDraft as any, { forceOpen: true })
     } catch (err: any) {
       setPostSolveError(err?.message || 'Failed to submit reply')
     } finally {
       setPostSolveSubmitting(false)
     }
-  }, [applyOwnPostResponse, postSolveBlocks, postSolveEditingTarget, postSolveModeOverlay, postSolveText])
+  }, [applyOwnPostResponse, openLocalPostThread, postSolveBlocks, postSolveEditingTarget, postSolveModeOverlay, postSolveText])
 
   const submitPostSolve = useCallback(async (scene: PublicSolveScene) => {
     const activeDraft = postSolveOverlay
@@ -817,7 +906,7 @@ export default function PublicUserProfilePage() {
     const handleSolveAction = () => {
       if (actionState.solveAction === 'closed') return
       if (actionState.solveAction === 'solutions') {
-        void openDashboardPostThread(postId)
+        void openLocalPostThread(post, { forceOpen: true })
         return
       }
       void openLocalPostSolveComposer(post)
@@ -1271,6 +1360,93 @@ export default function PublicUserProfilePage() {
         onClearBlockLongPress={clearComposerBlockLongPress}
         onOpenBlockCrudOptions={openComposerBlockCrudOptions}
       />
+
+      {postThreadOverlay ? (
+        <FullScreenGlassOverlay
+          title={postThreadOverlay.title || 'Solutions'}
+          subtitle="Public solutions thread"
+          zIndexClassName="z-[67]"
+          onClose={() => {
+            setPostThreadOverlay(null)
+            setPostThreadError(null)
+            setPostThreadResponses([])
+          }}
+          onBackdropClick={() => {
+            setPostThreadOverlay(null)
+            setPostThreadError(null)
+            setPostThreadResponses([])
+          }}
+          rightActions={postThreadResponses.some((response: any) => String(response?.userId || '') === currentViewerId) ? null : (
+            <button type="button" className="btn btn-primary" onClick={() => {
+              const targetPost = posts.find((post) => String(post?.id || '') === String(postThreadOverlay.postId || ''))
+              if (targetPost) void openLocalPostSolveComposer(targetPost)
+            }}>
+              Share solution
+            </button>
+          )}
+        >
+          <div className="space-y-4">
+            {postThreadOverlay.prompt ? (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">{postThreadOverlay.prompt}</div>
+            ) : null}
+            {postThreadOverlay.imageUrl ? (
+              <button
+                type="button"
+                className="block w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 text-left"
+                onClick={() => openImageViewer(postThreadOverlay.imageUrl as string, `${postThreadOverlay.title || 'Post'} image`)}
+              >
+                <img src={postThreadOverlay.imageUrl} alt="Post attachment" className="max-h-[320px] w-full object-contain" />
+              </button>
+            ) : null}
+            {postThreadError ? (
+              <div className="rounded-2xl border border-red-300/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{postThreadError}</div>
+            ) : postThreadLoading ? (
+              <div className="text-sm text-white/70">Loading solutions...</div>
+            ) : postThreadResponses.length === 0 ? (
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/70">No solutions yet.</div>
+            ) : (
+              <div className="space-y-3">
+                {postThreadResponses.map((response: any) => {
+                  const responseUserName = String(response?.user?.name || response?.user?.email || 'Learner')
+                  const responseUserId = response?.user?.id ? String(response.user.id) : null
+                  const responseAvatar = String(response?.user?.avatar || response?.userAvatar || '').trim()
+                  const postReplyBlocks = normalizePostReplyBlocks(response)
+
+                  return (
+                    <div key={String(response?.id || Math.random())} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div className="flex items-start gap-3">
+                        <UserLink userId={responseUserId} className="shrink-0" title="View profile">
+                          <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/10">
+                            {responseAvatar ? (
+                              <img src={responseAvatar} alt={responseUserName} className="h-full w-full object-cover" />
+                            ) : (
+                              <span className="text-[11px] font-semibold text-white">{responseUserName.slice(0, 1).toUpperCase()}</span>
+                            )}
+                          </div>
+                        </UserLink>
+                        <div className="min-w-0 flex-1">
+                          <UserLink userId={responseUserId} className="text-sm font-semibold text-white hover:underline" title="View profile">
+                            {responseUserName}
+                          </UserLink>
+                          <div className="mt-2 min-w-0 rounded-[20px] text-white/90">
+                            {postReplyBlocks.length > 0 ? (
+                              renderProfilePostReplyBlocks(postReplyBlocks, `profile-post-thread-${String(response?.id || 'draft')}`, {
+                                onOpenImageBlock: (imageUrl) => openImageViewer(imageUrl, `${responseUserName} attachment`),
+                              })
+                            ) : (
+                              <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-white/70">No canvas attached.</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </FullScreenGlassOverlay>
+      ) : null}
 
       {imageViewer ? (
         <ZoomableImageOverlay

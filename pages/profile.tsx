@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { signOut, useSession } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
 import { gradeToLabel } from '../lib/grades'
+import { signOutWithPushCleanup } from '../lib/nativePush'
 
 import NavArrows from '../components/NavArrows'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
@@ -840,7 +841,7 @@ export default function ProfilePage() {
             <button
               type="button"
               className="text-sm font-semibold text-red-200 hover:text-red-100"
-              onClick={() => signOut({ callbackUrl: '/' })}
+              onClick={() => void signOutWithPushCleanup({ callbackUrl: '/' })}
             >
               Sign out
             </button>

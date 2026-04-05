@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import prisma from '../../../../../../lib/prisma'
 import { normalizeGradeInput } from '../../../../../../lib/grades'
+import { sendPushToUser } from '../../../../../../lib/pushNotifications'
 
 const MAX_TEXT = 20000
 
@@ -825,13 +826,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       const notifyUserId = String(targetUserId || '')
       if (notifyUserId) {
+        const notificationBody = `Your assignment has been graded${assignment?.title ? `: ${assignment.title}` : ''}`
+        const route = `/dashboard?panel=assignments&assignmentSessionId=${encodeURIComponent(String(sessionRecord.id || ''))}&assignmentId=${encodeURIComponent(String(assignment.id || ''))}`
+
         await prisma.notification.create({
           data: {
             userId: notifyUserId,
             type: 'assignment_graded',
             title: 'Assignment graded',
-            body: `Your assignment has been graded${assignment?.title ? `: ${assignment.title}` : ''}`,
-            data: { assignmentId: assignment.id, sessionId: sessionRecord.id, gradedById: authUserId },
+            body: notificationBody,
+            data: { assignmentId: assignment.id, sessionId: sessionRecord.id, gradedById: authUserId, panel: 'assignments', route },
+          },
+        })
+
+        await sendPushToUser(notifyUserId, {
+          title: 'Assignment graded',
+          body: notificationBody,
+          data: {
+            route,
+            panel: 'assignments',
+            assignmentId: assignment.id,
+            assignmentSessionId: sessionRecord.id,
           },
         })
       }

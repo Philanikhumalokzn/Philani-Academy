@@ -58,6 +58,13 @@ Email & phone verification
 - For manual smoke tests, set `ENABLE_EMAIL_TESTER=1`. This enables `/api/debug/send-test-email` and a “Send test email” helper on the verification screen so you can confirm deliveries with the same Resend logic.
 - Manage domains quickly with `npm run resend:domains <action>`. Actions: `create <domain>`, `list`, `get <id>`, `verify <id>`, `update <id> [--open-tracking=false --click-tracking=true]`, `remove <id>`. The command reads `RESEND_API_KEY` from your environment and surfaces Resend API errors in the console.
 
+Mobile push notifications
+- Native Android push now uses Capacitor plus Firebase Cloud Messaging.
+- Install-time setup: add `android/app/google-services.json` from your Firebase project for Android app id `com.philani.academy`.
+- Server delivery requires either `GOOGLE_APPLICATION_CREDENTIALS` or the trio `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY`.
+- Device tokens are registered through `POST /api/push/register` after native sign-in and disabled through `POST /api/push/unregister` during sign-out.
+- Assignment grading now sends both the stored in-app notification and an Android push when Firebase is configured.
+
 Branding suggestions
 - Name: Philani Academy for Mathematics (use full name in headers; short form "Philani Academy" in the nav)
 - Colors: Primary blue (#1D4ED8) and white accent for a clean educational look

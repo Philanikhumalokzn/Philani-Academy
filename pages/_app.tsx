@@ -3,13 +3,14 @@ import 'katex/dist/katex.min.css'
 import 'react-image-crop/dist/ReactCrop.css'
 import '@excalidraw/excalidraw/index.css'
 import type { AppProps } from 'next/app'
-import { SessionProvider } from 'next-auth/react'
+import { SessionProvider, useSession } from 'next-auth/react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import NavBar from '../components/NavBar'
 import NotificationsPanelHost from '../components/NotificationsPanelHost'
 import AppErrorBoundary from '../components/AppErrorBoundary'
+import { storeNativePushToken } from '../lib/nativePush'
 import { OverlayRestoreProvider } from '../lib/overlayRestore'
 
 const CHUNK_RECOVERY_RELOAD_KEY = 'pa:chunk-recovery-reload:v1'
@@ -258,6 +259,140 @@ const formatClientErrorDetails = (error: GlobalClientErrorState) => {
     `Timestamp:\n${new Date(error.timestamp).toISOString()}`,
   ].filter(Boolean)
   return blocks.join('\n\n')
+}
+
+function resolveNativePushRoute(data: Record<string, string>) {
+  const route = String(data.route || '').trim()
+  if (route) return route
+
+  const assignmentSessionId = String(data.assignmentSessionId || '').trim()
+  const assignmentId = String(data.assignmentId || '').trim()
+  if (assignmentSessionId && assignmentId) {
+    return `/dashboard?panel=assignments&assignmentSessionId=${encodeURIComponent(assignmentSessionId)}&assignmentId=${encodeURIComponent(assignmentId)}`
+  }
+
+  const panel = String(data.panel || '').trim()
+  if (panel) return `/dashboard?panel=${encodeURIComponent(panel)}`
+  return '/dashboard'
+}
+
+function NativePushBootstrap() {
+  const router = useRouter()
+  const { status } = useSession()
+  const [nativePushToken, setNativePushToken] = useState('')
+  const [isNativeAndroid, setIsNativeAndroid] = useState(false)
+  const listenersReadyRef = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+    let registrationHandle: { remove: () => Promise<void> } | null = null
+    let registrationErrorHandle: { remove: () => Promise<void> } | null = null
+    let actionHandle: { remove: () => Promise<void> } | null = null
+
+    void (async () => {
+      try {
+        const [{ Capacitor }, { PushNotifications }] = await Promise.all([
+          import('@capacitor/core'),
+          import('@capacitor/push-notifications'),
+        ])
+
+        if (cancelled || !Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+          return
+        }
+
+        setIsNativeAndroid(true)
+
+        registrationHandle = await PushNotifications.addListener('registration', (token) => {
+          const nextToken = String(token?.value || '').trim()
+          if (!nextToken) return
+          storeNativePushToken(nextToken)
+          setNativePushToken(nextToken)
+        })
+
+        registrationErrorHandle = await PushNotifications.addListener('registrationError', (error) => {
+          console.warn('Native push registration failed', error)
+        })
+
+        actionHandle = await PushNotifications.addListener('pushNotificationActionPerformed', (event) => {
+          const data = event?.notification?.data && typeof event.notification.data === 'object'
+            ? Object.fromEntries(Object.entries(event.notification.data).map(([key, value]) => [key, String(value ?? '')]))
+            : {}
+          void router.push(resolveNativePushRoute(data))
+        })
+
+        listenersReadyRef.current = true
+      } catch {
+        // ignore native push setup failures outside Capacitor shells
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      listenersReadyRef.current = false
+      void registrationHandle?.remove()
+      void registrationErrorHandle?.remove()
+      void actionHandle?.remove()
+    }
+  }, [router])
+
+  useEffect(() => {
+    if (!isNativeAndroid || status !== 'authenticated' || !listenersReadyRef.current) return
+
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const { PushNotifications } = await import('@capacitor/push-notifications')
+        const permission = await PushNotifications.checkPermissions()
+        let receive = permission.receive
+
+        if (receive === 'prompt') {
+          const request = await PushNotifications.requestPermissions()
+          receive = request.receive
+        }
+
+        if (cancelled || receive !== 'granted') return
+        await PushNotifications.register()
+      } catch {
+        // ignore permission or registration failures on unsupported shells
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isNativeAndroid, status])
+
+  useEffect(() => {
+    if (!isNativeAndroid || status !== 'authenticated' || !nativePushToken) return
+
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const res = await fetch('/api/push/register', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: nativePushToken, platform: 'android' }),
+        })
+
+        if (!cancelled && !res.ok && process.env.NODE_ENV !== 'production') {
+          console.warn('Push token registration failed', res.status)
+        }
+      } catch (err) {
+        if (!cancelled && process.env.NODE_ENV !== 'production') {
+          console.warn('Push token registration request failed', err)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isNativeAndroid, nativePushToken, status])
+
+  return null
 }
 
 function GlobalClientErrorOverlay({ error, onDismiss }: { error: GlobalClientErrorState; onDismiss: () => void }) {
@@ -527,6 +662,7 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
         <meta name="twitter:title" content="Philani Academy" />
         <meta name="twitter:description" content="Philani Academy — online sessions and learning for your community." />
       </Head>
+      <NativePushBootstrap />
       <AppErrorBoundary key={router.asPath}>
         <div className="app-shell">
           {!hideNavBar && <NavBar />}

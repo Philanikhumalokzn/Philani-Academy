@@ -1,7 +1,8 @@
-import { signOut, useSession } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
+import { signOutWithPushCleanup } from '../lib/nativePush'
 
 const provinceOptions = [
   'Eastern Cape',
@@ -460,7 +461,7 @@ export default function AccountControlOverlay({ onRequestClose }: Props) {
         <button
           type="button"
           className="text-sm font-semibold text-red-200 hover:text-red-100"
-          onClick={() => signOut({ callbackUrl: '/' })}
+          onClick={() => void signOutWithPushCleanup({ callbackUrl: '/' })}
         >
           Sign out
         </button>

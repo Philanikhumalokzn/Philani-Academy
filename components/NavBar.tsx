@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { signOut, useSession } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { signOutWithPushCleanup } from '../lib/nativePush'
 
 export default function NavBar() {
   const router = useRouter()
@@ -204,7 +205,7 @@ export default function NavBar() {
                       </div>
                     </Link>
                   )}
-                  <button onClick={() => signOut({ callbackUrl: '/' })} className="btn btn-ghost border border-white/30">Sign out</button>
+                  <button onClick={() => void signOutWithPushCleanup({ callbackUrl: '/' })} className="btn btn-ghost border border-white/30">Sign out</button>
                 </>
               ) : (
                 <Link href="/api/auth/signin" className="btn btn-primary text-sm">Sign in</Link>
@@ -226,7 +227,7 @@ export default function NavBar() {
             <div className="flex flex-col items-center space-y-3">
               {role && <div className="text-sm text-blue-100/70 capitalize">{role}</div>}
               {session ? (
-                <button onClick={() => signOut({ callbackUrl: '/' })} className="w-full text-center px-3 py-2 border border-white/30 rounded-xl">Sign out</button>
+                <button onClick={() => void signOutWithPushCleanup({ callbackUrl: '/' })} className="w-full text-center px-3 py-2 border border-white/30 rounded-xl">Sign out</button>
               ) : (
                 <Link href="/api/auth/signin" className="block w-full text-center px-3 py-2 border border-white/30 rounded-xl">Sign in</Link>
               )}

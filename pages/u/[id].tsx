@@ -1149,7 +1149,7 @@ export default function PublicUserProfilePage() {
           <div className="flex items-center gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {(['all', 'photos', 'reels'] as ProfileTab[]).map((tab) => {
               const active = activeTab === tab
-              const label = tab === 'all' ? 'All' : tab === 'photos' ? 'Photos' : 'Reels'
+              const label = tab === 'all' ? 'Posts' : tab === 'photos' ? 'Sessions' : 'Notes'
               return (
                 <button
                   key={tab}

@@ -1833,6 +1833,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const socialShareResetTimeoutRef = useRef<number | null>(null)
   const postFeedItemRefs = useRef<Record<string, HTMLLIElement | null>>({})
   const handledFeedThreadJumpKeyRef = useRef<string | null>(null)
+  const handledFeedSolveJumpKeyRef = useRef<string | null>(null)
   const interactiveViewportSaveTimeoutsRef = useRef<Record<string, number>>({})
   const interactiveViewportQueuedSceneRef = useRef<Record<string, { threadKey: string; scene: PublicSolveScene; serialized: string }>>({})
   const interactiveViewportSavedSceneRef = useRef<Record<string, string>>({})
@@ -8889,6 +8890,66 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       postRecord: post,
     })
   }, [buildPostReplyPayloadFromBlocks, currentUserId, fetchPublicThreadResponses, normalizePostReplyBlocks, viewerId])
+
+  useEffect(() => {
+    if (!router.isReady) return
+    const openFeedSolveId = typeof router.query.openFeedSolveId === 'string' ? router.query.openFeedSolveId.trim() : ''
+    const openFeedSolveKindRaw = typeof router.query.openFeedSolveKind === 'string' ? router.query.openFeedSolveKind.trim().toLowerCase() : ''
+    const openFeedSolveKind = openFeedSolveKindRaw === 'post' ? 'post' : ''
+    if (!openFeedSolveId || !openFeedSolveKind) {
+      handledFeedSolveJumpKeyRef.current = null
+      return
+    }
+    if (studentFeedLoading) return
+
+    const targetKey = `${openFeedSolveKind}:${openFeedSolveId}`
+    if (handledFeedSolveJumpKeyRef.current === targetKey) return
+    const targetItem = (Array.isArray(studentFeedPosts) ? studentFeedPosts : []).find((item: any) => getDashboardItemKey(item) === targetKey)
+    if (!targetItem) return
+    handledFeedSolveJumpKeyRef.current = targetKey
+
+    if (activeSection !== 'overview') setActiveSection('overview')
+    if (dashboardSectionOverlay) setDashboardSectionOverlay(null)
+    if (studentQuickOverlay) setStudentQuickOverlay(null)
+    if (studentMobileTab !== 'timeline') setStudentMobileTab('timeline')
+
+    const usesAttemptRules = Boolean(targetItem?.usesAttemptRules || typeof targetItem?.maxAttempts === 'number' || targetItem?.attemptsOpen === false || targetItem?.solutionsVisible === true)
+    const myAttemptCount = typeof targetItem?.myAttemptCount === 'number' ? targetItem.myAttemptCount : 0
+    const hasAttempted = myAttemptCount > 0
+    const maxAttempts = typeof targetItem?.maxAttempts === 'number' ? targetItem.maxAttempts : null
+    const attemptsOpen = targetItem?.attemptsOpen !== false
+    const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
+
+    if (usesAttemptRules) {
+      if (hasAttempted) {
+        void openPostThread(targetItem, { forceOpen: true })
+      } else if (canAttempt) {
+        void openPostSolveComposer(targetItem)
+      }
+    } else if (targetItem?.hasOwnResponse) {
+      void openPostThread(targetItem, { forceOpen: true })
+    } else {
+      void openPostSolveComposer(targetItem)
+    }
+
+    const nextQuery: Record<string, any> = { ...router.query }
+    delete nextQuery.openFeedSolveId
+    delete nextQuery.openFeedSolveKind
+    void router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
+  }, [
+    activeSection,
+    dashboardSectionOverlay,
+    openPostSolveComposer,
+    openPostThread,
+    router,
+    router.isReady,
+    router.pathname,
+    router.query,
+    studentFeedLoading,
+    studentFeedPosts,
+    studentMobileTab,
+    studentQuickOverlay,
+  ])
 
   const openPostSolvePreview = useCallback(async (scene: PublicSolveScene) => {
     if (!postSolveOverlay?.postId || !postSolveOverlay?.threadKey) return

@@ -767,6 +767,7 @@ export default function PublicUserProfilePage() {
   }, [loadDiscoverProfiles])
 
   const displayName = profile?.name || 'Profile'
+  const firstName = useMemo(() => String(displayName || '').trim().split(/\s+/).filter(Boolean)[0] || 'User', [displayName])
   const profileHandle = `@${displayName.replace(/[^a-zA-Z0-9]+/g, '').trim() || 'profile'}`
   const coverUrl = resolveImageUrl(profile?.profileCoverUrl) || resolveImageUrl(profile?.profileThemeBgUrl) || defaultMobileHeroBg
   const avatarUrl = resolveImageUrl(profile?.avatar)
@@ -1194,7 +1195,7 @@ export default function PublicUserProfilePage() {
 
         <section className="px-4 pt-6 sm:px-6">
           <div className="flex items-center justify-between gap-4">
-            <h2 className="text-[26px] font-semibold tracking-[-0.05em] text-slate-900">All posts</h2>
+            <h2 className="text-[26px] font-semibold tracking-[-0.05em] text-slate-900">{isSelf ? 'All posts' : `${firstName}'s posts`}</h2>
             <button
               type="button"
               className="text-[17px] font-semibold tracking-[-0.03em] text-[#1463cc]"
@@ -1240,19 +1241,20 @@ export default function PublicUserProfilePage() {
               </div>
             </div>
           ) : canFollow ? (
-            <div className="mt-5 rounded-[30px] border border-slate-200 bg-white px-5 py-5 shadow-[0_16px_34px_rgba(15,23,42,0.08)]">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="text-[18px] font-semibold tracking-[-0.03em] text-slate-900">Follow {displayName}</div>
-                  <div className="mt-1 text-[14px] leading-6 text-slate-600">Stay updated with posts, photos, and activity from this profile.</div>
+            <div className="mt-5 overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_16px_34px_rgba(15,23,42,0.08)]">
+              <div className="flex items-center gap-4 px-5 py-5">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-700">
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+                  ) : (
+                    <span>{extractInitials(displayName)}</span>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  className={`inline-flex h-12 items-center justify-center rounded-full px-5 text-sm font-semibold shadow-sm transition ${profile?.isFollowing ? 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50' : 'bg-[#1877f2] text-white hover:bg-[#176ad8]'}`}
-                  onClick={() => void toggleFollow()}
-                  disabled={followBusy}
-                >
-                  {followBusy ? 'Working...' : profile?.isFollowing ? 'Following' : 'Follow'}
+                <div className="min-w-0 flex-1 rounded-full bg-slate-50 px-4 py-3 text-[16px] font-medium tracking-[-0.02em] text-slate-800">Post a challenge to {firstName}</div>
+                <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-full text-[#2fb344] transition hover:bg-[#effaf2]" aria-label={`Post a challenge to ${firstName}`}>
+                  <svg viewBox="0 0 24 24" className="h-7 w-7" fill="currentColor" aria-hidden="true">
+                    <path d="M6.5 5A3.5 3.5 0 0 0 3 8.5v7A3.5 3.5 0 0 0 6.5 19h11a3.5 3.5 0 0 0 3.5-3.5v-7A3.5 3.5 0 0 0 17.5 5h-2.59l-.7-1.05A2 2 0 0 0 12.54 3h-1.08a2 2 0 0 0-1.67.95L9.09 5H6.5Zm5.5 3.25A4.25 4.25 0 1 1 7.75 12 4.25 4.25 0 0 1 12 8.25Zm0 1.5A2.75 2.75 0 1 0 14.75 12 2.75 2.75 0 0 0 12 9.75Z" />
+                  </svg>
                 </button>
               </div>
             </div>

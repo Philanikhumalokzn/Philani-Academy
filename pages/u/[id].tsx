@@ -307,6 +307,30 @@ export default function PublicUserProfilePage() {
     setImageViewer(null)
   }, [])
 
+  const openDashboardPostThread = useCallback(async (postId: string) => {
+    const safePostId = String(postId || '').trim()
+    if (!safePostId) return
+    await router.push({
+      pathname: '/dashboard',
+      query: {
+        openFeedThreadId: safePostId,
+        openFeedThreadKind: 'post',
+      },
+    })
+  }, [router])
+
+  const openDashboardPostSolve = useCallback(async (postId: string) => {
+    const safePostId = String(postId || '').trim()
+    if (!safePostId) return
+    await router.push({
+      pathname: '/dashboard',
+      query: {
+        openFeedSolveId: safePostId,
+        openFeedSolveKind: 'post',
+      },
+    })
+  }, [router])
+
   const toggleProfileLike = useCallback((itemKey: string) => {
     if (!itemKey) return
     setLikedPostKeys((current) => ({ ...current, [itemKey]: !current[itemKey] }))
@@ -374,6 +398,15 @@ export default function PublicUserProfilePage() {
     const actionState = buildFeedPostActionState(post)
     const isExpanded = expandedProfilePostId === postId
 
+    const handleSolveAction = () => {
+      if (actionState.solveAction === 'closed') return
+      if (actionState.solveAction === 'solutions') {
+        void openDashboardPostThread(postId)
+        return
+      }
+      void openDashboardPostSolve(postId)
+    }
+
     return (
       <article key={post.id} className="border-b border-black/10 bg-white px-4 py-3 sm:px-6">
         <PublicFeedPostCard
@@ -402,7 +435,7 @@ export default function PublicUserProfilePage() {
             },
             {
               label: actionState.solveLabel,
-              onClick: () => setExpandedProfilePostId((current) => current === postId ? null : postId),
+              onClick: handleSolveAction,
               disabled: actionState.solveAction === 'closed',
               icon: (
                 <span className="flex items-center gap-1" aria-hidden="true">

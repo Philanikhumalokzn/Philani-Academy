@@ -22,6 +22,7 @@ import ScriptPhotosEditor from '../components/ScriptPhotosEditor'
 import BottomSheet from '../components/BottomSheet'
 import InlinePostSolutionsThread from '../components/InlinePostSolutionsThread'
 import PostReplyComposerOverlays from '../components/PostReplyComposerOverlays'
+import ReplyCrudBottomSheet from '../components/ReplyCrudBottomSheet'
 import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
@@ -33,6 +34,8 @@ import { renderTextWithKatex as renderTextWithKatexRaw } from '../lib/renderText
 import { toDisplayFileName } from '../lib/fileName'
 import { useTapToPeek } from '../lib/useTapToPeek'
 import { useOverlayRestore } from '../lib/overlayRestore'
+import { applyOwnFeedPostResponse, syncFeedPostThreadState } from '../lib/feedContract'
+import { useReplyLongPressCrud, type ReplyCrudTarget } from '../lib/replyCrud'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
 const ImageCropperModal = dynamic(() => import('../components/ImageCropperModal'), { ssr: false })
@@ -247,14 +250,6 @@ type PostReplyImageBlock = {
 }
 
 type PostReplyBlock = PostReplyTextBlock | PostReplyLatexBlock | PostReplyCanvasBlock | PostReplyImageBlock
-
-type ReplyCrudTarget = {
-  kind: 'post' | 'challenge'
-  threadKey: string
-  item: any
-  response: any
-  href?: string
-}
 
 type ComposerBlockEditTarget = {
   blockId: string
@@ -1441,8 +1436,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [postImageViewer, setPostImageViewer] = useState<{ url: string; title: string } | null>(null)
   const [postSolveEditingTarget, setPostSolveEditingTarget] = useState<ComposerBlockEditTarget | null>(null)
   const [composerBlockCrudTarget, setComposerBlockCrudTarget] = useState<ComposerBlockCrudTarget | null>(null)
-  const replyLongPressTimeoutRef = useRef<number | null>(null)
-  const replyLongPressStateRef = useRef<null | { x: number; y: number; target: ReplyCrudTarget }>(null)
   const composerBlockLongPressTimeoutRef = useRef<number | null>(null)
   const composerBlockLongPressStateRef = useRef<null | { x: number; y: number; target: ComposerBlockCrudTarget }>(null)
   const composerBlockLongPressOpenedRef = useRef(false)
@@ -1466,6 +1459,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [dashboardSectionOverlay, setDashboardSectionOverlay] = useState<OverlaySectionId | null>(null)
   const [handwritingNormalizationOverlayOpen, setHandwritingNormalizationOverlayOpen] = useState(false)
   const [mathKeyboardOverlayOpen, setMathKeyboardOverlayOpen] = useState(false)
+
+  const {
+    clearReplyLongPress,
+    openReplyCrudOptions,
+    beginReplyLongPress,
+    moveReplyLongPress,
+  } = useReplyLongPressCrud<ReplyCrudTarget>({
+    currentUserId: String((session as any)?.user?.id || viewerId || ''),
+    onOpenCrud: setReplyCrudTarget,
+  })
   const [accountSnapshotOverlayOpen, setAccountSnapshotOverlayOpen] = useState(false)
   const postReplyCameraInputRef = useRef<HTMLInputElement | null>(null)
   const postReplyGalleryInputRef = useRef<HTMLInputElement | null>(null)
@@ -9086,27 +9089,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [])
 
   const applyOwnPostResponseToFeeds = useCallback((draft: Pick<PostSolveOverlayState, 'postId'>, responseData: any) => {
-    const applyOwnResponse = (item: any) => {
-      const previousOwnResponseId = String(item?.ownResponse?.id || '')
-      const nextOwnResponseId = String(responseData?.id || '')
-      const isNewResponseRecord = !previousOwnResponseId || (nextOwnResponseId && nextOwnResponseId !== previousOwnResponseId)
-      const previousAttemptCount = typeof item?.myAttemptCount === 'number' ? item.myAttemptCount : 0
-      const previousSolutionCount = Number(item?.solutionCount || 0)
-
-      return {
-        ...(item as any),
-        hasOwnResponse: true,
-        ownResponse: responseData || (item as any)?.ownResponse || null,
-        myAttemptCount: isNewResponseRecord ? previousAttemptCount + 1 : Math.max(previousAttemptCount, 1),
-        solutionCount: isNewResponseRecord ? Math.max(1, previousSolutionCount + 1) : Math.max(1, previousSolutionCount),
-      }
-    }
-
     setStudentFeedPosts((prev: any[]) => (Array.isArray(prev)
-      ? prev.map((item) => getDashboardItemKey(item) === `post:${draft.postId}` ? applyOwnResponse(item) : item)
+      ? prev.map((item) => applyOwnFeedPostResponse(item, draft.postId, responseData))
       : prev))
     setTimelineChallenges((prev: any[]) => (Array.isArray(prev)
-      ? prev.map((item) => getDashboardItemKey(item) === `post:${draft.postId}` ? applyOwnResponse(item) : item)
+      ? prev.map((item) => applyOwnFeedPostResponse(item, draft.postId, responseData))
       : prev))
   }, [])
 
@@ -9114,61 +9101,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const safePostId = String(postId || '')
     if (!safePostId) return
     const effectiveCurrentUserId = String(currentUserId || viewerId || '')
-    const ownResponse = (Array.isArray(responses) ? responses : []).find((response: any) => String(response?.userId || response?.user?.id || '') === effectiveCurrentUserId) || null
-    const ownAttemptCount = (Array.isArray(responses) ? responses : []).filter((response: any) => String(response?.userId || response?.user?.id || '') === effectiveCurrentUserId).length
-    const solutionCount = Array.isArray(responses) ? responses.length : 0
 
-    const applyPatch = (item: any) => {
-      if (getDashboardItemKey(item) !== `post:${safePostId}`) return item
-      return {
-        ...(item as any),
-        hasOwnResponse: Boolean(ownResponse),
-        ownResponse,
-        myAttemptCount: ownAttemptCount,
-        solutionCount,
-      }
-    }
-
-    setStudentFeedPosts((prev: any[]) => Array.isArray(prev) ? prev.map(applyPatch) : prev)
-    setTimelineChallenges((prev: any[]) => Array.isArray(prev) ? prev.map(applyPatch) : prev)
-    setMyPosts((prev: any[]) => Array.isArray(prev) ? prev.map(applyPatch) : prev)
+    setStudentFeedPosts((prev: any[]) => Array.isArray(prev) ? prev.map((item) => syncFeedPostThreadState(item, safePostId, responses, effectiveCurrentUserId)) : prev)
+    setTimelineChallenges((prev: any[]) => Array.isArray(prev) ? prev.map((item) => syncFeedPostThreadState(item, safePostId, responses, effectiveCurrentUserId)) : prev)
+    setMyPosts((prev: any[]) => Array.isArray(prev) ? prev.map((item) => syncFeedPostThreadState(item, safePostId, responses, effectiveCurrentUserId)) : prev)
   }, [currentUserId, viewerId])
-
-  const clearReplyLongPress = useCallback(() => {
-    if (replyLongPressTimeoutRef.current !== null && typeof window !== 'undefined') {
-      window.clearTimeout(replyLongPressTimeoutRef.current)
-    }
-    replyLongPressTimeoutRef.current = null
-    replyLongPressStateRef.current = null
-  }, [])
-
-  const openReplyCrudOptions = useCallback((target: ReplyCrudTarget) => {
-    clearReplyLongPress()
-    setReplyCrudTarget(target)
-  }, [clearReplyLongPress])
-
-  const beginReplyLongPress = useCallback((event: React.PointerEvent, target: ReplyCrudTarget) => {
-    const responseUserId = String(target?.response?.userId || target?.response?.user?.id || '')
-    if (!responseUserId || responseUserId !== String(currentUserId || viewerId || '')) return
-    if (typeof window === 'undefined') return
-    if (event.button !== 0) return
-
-    clearReplyLongPress()
-    replyLongPressStateRef.current = { x: event.clientX, y: event.clientY, target }
-    replyLongPressTimeoutRef.current = window.setTimeout(() => {
-      openReplyCrudOptions(target)
-    }, 420)
-  }, [clearReplyLongPress, currentUserId, openReplyCrudOptions, viewerId])
-
-  const moveReplyLongPress = useCallback((event: React.PointerEvent) => {
-    const state = replyLongPressStateRef.current
-    if (!state) return
-    const dx = event.clientX - state.x
-    const dy = event.clientY - state.y
-    if (Math.hypot(dx, dy) > 10) {
-      clearReplyLongPress()
-    }
-  }, [clearReplyLongPress])
 
   const deleteReplyFromCrudTarget = useCallback(async (target: ReplyCrudTarget) => {
     const responseId = String(target?.response?.id || '')
@@ -15996,43 +15933,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       {replyCrudTarget ? (
         <OverlayPortal>
-          <BottomSheet
+          <ReplyCrudBottomSheet
             open
-            backdrop
-            title="Reply options"
-            subtitle="Press and hold your reply to open these actions"
+            disableEdit={replyCrudTarget.kind === 'challenge' && (!replyCrudTarget.href || replyCrudTarget.href === '#')}
             onClose={() => setReplyCrudTarget(null)}
-            zIndexClassName="z-[69]"
-            className="bottom-0"
-            sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
-            contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5"
-          >
-            <div className="space-y-2">
-              <button
-                type="button"
-                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
-                onClick={() => editReplyFromCrudTarget(replyCrudTarget)}
-                disabled={replyCrudTarget.kind === 'challenge' && (!replyCrudTarget.href || replyCrudTarget.href === '#')}
-              >
-                <span>
-                  <span className="block text-sm font-semibold">Edit reply</span>
-                  <span className="block text-xs text-slate-500">Open your existing reply for editing.</span>
-                </span>
-                <span className="text-slate-400">{`>`}</span>
-              </button>
-              <button
-                type="button"
-                className="flex w-full items-center justify-between rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-left text-red-700 transition hover:border-red-300 hover:bg-red-100"
-                onClick={() => void deleteReplyFromCrudTarget(replyCrudTarget)}
-              >
-                <span>
-                  <span className="block text-sm font-semibold">Delete reply</span>
-                  <span className="block text-xs text-red-500">Remove this reply permanently.</span>
-                </span>
-                <span className="text-red-300">{`>`}</span>
-              </button>
-            </div>
-          </BottomSheet>
+            onEdit={() => editReplyFromCrudTarget(replyCrudTarget)}
+            onDelete={() => void deleteReplyFromCrudTarget(replyCrudTarget)}
+          />
         </OverlayPortal>
       ) : null}
 

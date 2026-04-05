@@ -103,6 +103,41 @@ export function enrichFeedPosts(items: any[], ownResponseByKey: Map<string, any>
   }))
 }
 
+export function applyOwnFeedPostResponse<T extends Partial<FeedPost>>(item: T, postId: string, responseData: any): T {
+  if (String(item?.id || '') !== String(postId || '')) return item
+
+  const previousOwnResponseId = String(item?.ownResponse?.id || '')
+  const nextOwnResponseId = String(responseData?.id || '')
+  const isNewResponseRecord = !previousOwnResponseId || (nextOwnResponseId && nextOwnResponseId !== previousOwnResponseId)
+  const previousAttemptCount = typeof item?.myAttemptCount === 'number' ? item.myAttemptCount : 0
+  const previousSolutionCount = Number(item?.solutionCount || 0)
+
+  return {
+    ...item,
+    hasOwnResponse: true,
+    ownResponse: responseData || item?.ownResponse || null,
+    myAttemptCount: isNewResponseRecord ? previousAttemptCount + 1 : Math.max(previousAttemptCount, 1),
+    solutionCount: isNewResponseRecord ? Math.max(1, previousSolutionCount + 1) : Math.max(1, previousSolutionCount),
+  }
+}
+
+export function syncFeedPostThreadState<T extends Partial<FeedPost>>(item: T, postId: string, responses: any[], currentUserId: string): T {
+  if (String(item?.id || '') !== String(postId || '')) return item
+
+  const safeResponses = Array.isArray(responses) ? responses : []
+  const effectiveCurrentUserId = String(currentUserId || '')
+  const ownResponse = safeResponses.find((response: any) => String(response?.userId || response?.user?.id || '') === effectiveCurrentUserId) || null
+  const ownAttemptCount = safeResponses.filter((response: any) => String(response?.userId || response?.user?.id || '') === effectiveCurrentUserId).length
+
+  return {
+    ...item,
+    hasOwnResponse: Boolean(ownResponse),
+    ownResponse,
+    myAttemptCount: ownAttemptCount,
+    solutionCount: safeResponses.length,
+  }
+}
+
 function formatSolutionsLabel(count: number) {
   const safeCount = Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0
   if (safeCount <= 0) return 'Solutions'

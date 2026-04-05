@@ -8,14 +8,16 @@ import FullScreenGlassOverlay from '../../components/FullScreenGlassOverlay'
 import InlinePostSolutionsThread from '../../components/InlinePostSolutionsThread'
 import PublicFeedPostCard from '../../components/PublicFeedPostCard'
 import PostReplyComposerOverlays from '../../components/PostReplyComposerOverlays'
+import ReplyCrudBottomSheet from '../../components/ReplyCrudBottomSheet'
 import { PublicSolveCanvasViewer, normalizePublicSolveScene, type PublicSolveScene } from '../../components/PublicSolveCanvas'
 import UserLink from '../../components/UserLink'
 import ZoomableImageOverlay from '../../components/ZoomableImageOverlay'
-import { buildFeedPostActionState, type FeedPost } from '../../lib/feedContract'
+import { applyOwnFeedPostResponse, buildFeedPostActionState, syncFeedPostThreadState, type FeedPost } from '../../lib/feedContract'
 import { gradeToLabel } from '../../lib/grades'
 import { renderKatexDisplayHtml } from '../../lib/latexRender'
 import { createLessonRoleProfile, normalizePlatformRole } from '../../lib/lessonAccessControl'
 import { renderTextWithKatex } from '../../lib/renderTextWithKatex'
+import { useReplyLongPressCrud, type ReplyCrudTarget } from '../../lib/replyCrud'
 import {
   buildPostReplyPayloadFromBlocks,
   composePostSolveBlocksWithDraftText,
@@ -200,6 +202,7 @@ export default function PublicUserProfilePage() {
   const [postThreadLoading, setPostThreadLoading] = useState(false)
   const [postThreadError, setPostThreadError] = useState<string | null>(null)
   const [postThreadResponses, setPostThreadResponses] = useState<any[]>([])
+  const [replyCrudTarget, setReplyCrudTarget] = useState<ReplyCrudTarget | null>(null)
   const [postSolveBlocks, setPostSolveBlocks] = useState<PostReplyBlock[]>([])
   const [postSolveText, setPostSolveText] = useState('')
   const [postTypedSolveLatex, setPostTypedSolveLatex] = useState('')
@@ -224,6 +227,15 @@ export default function PublicUserProfilePage() {
   const currentLessonRoleProfile = useMemo(() => createLessonRoleProfile({ platformRole: sessionPlatformRole }), [sessionPlatformRole])
   const currentViewerId = String(viewerId || (session as any)?.user?.id || '')
   const currentViewerName = String(session?.user?.name || session?.user?.email || 'You')
+  const {
+    clearReplyLongPress,
+    openReplyCrudOptions,
+    beginReplyLongPress,
+    moveReplyLongPress,
+  } = useReplyLongPressCrud<ReplyCrudTarget>({
+    currentUserId: currentViewerId,
+    onOpenCrud: setReplyCrudTarget,
+  })
   const activeGradeLabel = useMemo(() => {
     const rawGrade = typeof (session as any)?.user?.grade === 'string' ? (session as any).user.grade : ''
     return rawGrade ? gradeToLabel(rawGrade as any) : null
@@ -465,22 +477,79 @@ export default function PublicUserProfilePage() {
   }, [currentViewerId, fetchPublicThreadResponses, profile?.avatar, profile?.name])
 
   const applyOwnPostResponse = useCallback((draft: Pick<PostSolveOverlayState, 'postId'>, responseData: any) => {
-    setPosts((prev) => Array.isArray(prev) ? prev.map((item) => {
-      if (String(item?.id || '') !== String(draft.postId || '')) return item
-      const previousOwnResponseId = String((item as any)?.ownResponse?.id || '')
-      const nextOwnResponseId = String(responseData?.id || '')
-      const isNewResponseRecord = !previousOwnResponseId || (nextOwnResponseId && nextOwnResponseId !== previousOwnResponseId)
-      const previousAttemptCount = typeof (item as any)?.myAttemptCount === 'number' ? (item as any).myAttemptCount : 0
-      const previousSolutionCount = Number((item as any)?.solutionCount || 0)
-      return {
-        ...(item as any),
-        hasOwnResponse: true,
-        ownResponse: responseData || (item as any)?.ownResponse || null,
-        myAttemptCount: isNewResponseRecord ? previousAttemptCount + 1 : Math.max(previousAttemptCount, 1),
-        solutionCount: isNewResponseRecord ? Math.max(1, previousSolutionCount + 1) : Math.max(1, previousSolutionCount),
-      }
-    }) : prev)
+    setPosts((prev) => Array.isArray(prev) ? prev.map((item) => applyOwnFeedPostResponse(item, draft.postId, responseData)) : prev)
   }, [])
+
+  const syncProfilePostThreadState = useCallback((postId: string, responses: any[]) => {
+    const safePostId = String(postId || '')
+    if (!safePostId) return
+    setPosts((prev) => Array.isArray(prev)
+      ? prev.map((item) => syncFeedPostThreadState(item, safePostId, responses, currentViewerId))
+      : prev)
+  }, [currentViewerId])
+
+  const buildPostReplyCrudTarget = useCallback((post: ProfilePost, response: any): ReplyCrudTarget => ({
+    kind: 'post',
+    threadKey: typeof post?.threadKey === 'string' ? post.threadKey : `post:${String(post?.id || '')}`,
+    item: post,
+    response,
+  }), [])
+
+  const getPostReplyContainerProps = useCallback((post: ProfilePost, response: any, isMine: boolean) => {
+    const target = buildPostReplyCrudTarget(post, response)
+    return {
+      onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => beginReplyLongPress(event, target),
+      onPointerMove: moveReplyLongPress,
+      onPointerUp: clearReplyLongPress,
+      onPointerCancel: clearReplyLongPress,
+      onPointerLeave: clearReplyLongPress,
+      onContextMenu: (event: React.MouseEvent<HTMLDivElement>) => {
+        if (!isMine) return
+        event.preventDefault()
+        openReplyCrudOptions(target)
+      },
+    }
+  }, [beginReplyLongPress, buildPostReplyCrudTarget, clearReplyLongPress, moveReplyLongPress, openReplyCrudOptions])
+
+  const deleteReplyFromCrudTarget = useCallback(async (target: ReplyCrudTarget) => {
+    const responseId = String(target?.response?.id || '')
+    const threadKey = String(target?.threadKey || '')
+    if (!responseId || !threadKey) return
+    const ok = typeof window !== 'undefined' ? window.confirm('Delete this reply? This cannot be undone.') : false
+    if (!ok) return
+
+    try {
+      const res = await fetch(`/api/threads/${encodeURIComponent(threadKey)}/responses`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ responseId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to delete reply (${res.status})`)
+      }
+
+      setReplyCrudTarget(null)
+
+      const responses = await fetchPublicThreadResponses(threadKey)
+      setPostThreadResponses(responses)
+      syncProfilePostThreadState(String(target?.item?.id || target?.item?.postId || ''), responses)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete reply')
+    }
+  }, [fetchPublicThreadResponses, syncProfilePostThreadState])
+
+  const editReplyFromCrudTarget = useCallback((target: ReplyCrudTarget) => {
+    setReplyCrudTarget(null)
+    if (target.kind !== 'post') return
+    void openLocalPostSolveComposer(target.item, {
+      initialScene: target?.response?.excalidrawScene || null,
+      initialLatex: typeof target?.response?.latex === 'string' ? target.response.latex : '',
+      initialStudentText: typeof target?.response?.studentText === 'string' ? target.response.studentText : '',
+      initialGradingJson: target?.response?.gradingJson ?? null,
+    })
+  }, [openLocalPostSolveComposer])
 
   const submitPostTextSolve = useCallback(async () => {
     const activeDraft = postSolveModeOverlay
@@ -902,6 +971,7 @@ export default function PublicUserProfilePage() {
         error={postThreadError}
         responses={postThreadResponses}
         currentUserId={currentViewerId}
+        getContainerProps={(response, args) => getPostReplyContainerProps(post, response, args.isMine)}
         onOpenImageBlock={(imageUrl, args) => openImageViewer(imageUrl, `${args.responseUserName} attachment`)}
       />
     ) : null
@@ -1360,6 +1430,17 @@ export default function PublicUserProfilePage() {
         onOpenBlockCrudOptions={openComposerBlockCrudOptions}
       />
 
+      <ReplyCrudBottomSheet
+        open={Boolean(replyCrudTarget)}
+        onClose={() => setReplyCrudTarget(null)}
+        onEdit={() => {
+          if (replyCrudTarget) editReplyFromCrudTarget(replyCrudTarget)
+        }}
+        onDelete={() => {
+          if (replyCrudTarget) void deleteReplyFromCrudTarget(replyCrudTarget)
+        }}
+      />
+
       {postThreadOverlay ? (
         <FullScreenGlassOverlay
           title={postThreadOverlay.title || 'Solutions'}
@@ -1410,9 +1491,13 @@ export default function PublicUserProfilePage() {
                   const responseUserId = response?.user?.id ? String(response.user.id) : null
                   const responseAvatar = String(response?.user?.avatar || response?.userAvatar || '').trim()
                   const postReplyBlocks = normalizePostReplyBlocks(response)
+                  const overlayPost = posts.find((post) => String(post?.id || '') === String(postThreadOverlay.postId || '')) || null
+                  const containerProps = overlayPost
+                    ? getPostReplyContainerProps(overlayPost, response, responseUserId === currentViewerId)
+                    : undefined
 
                   return (
-                    <div key={String(response?.id || Math.random())} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div key={String(response?.id || Math.random())} className="rounded-2xl border border-white/10 bg-white/5 p-4" {...containerProps}>
                       <div className="flex items-start gap-3">
                         <UserLink userId={responseUserId} className="shrink-0" title="View profile">
                           <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/10">

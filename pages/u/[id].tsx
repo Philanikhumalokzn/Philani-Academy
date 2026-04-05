@@ -162,8 +162,10 @@ const renderProfilePostReplyBlocks = (blocks: PostReplyBlock[], keyPrefix: strin
 export default function PublicUserProfilePage() {
   const router = useRouter()
   const { status, data: session } = useSession()
+  const pageRootRef = useRef<HTMLElement | null>(null)
 
   const userId = typeof router.query?.id === 'string' ? router.query.id : ''
+  const isEmbedded = typeof router.query?.embedded === 'string' && router.query.embedded === '1'
 
   const [profile, setProfile] = useState<PublicUser | null>(null)
   const [profileLoading, setProfileLoading] = useState(false)
@@ -828,6 +830,43 @@ export default function PublicUserProfilePage() {
     void loadDiscoverProfiles()
   }, [loadDiscoverProfiles])
 
+  useEffect(() => {
+    if (!isEmbedded) return
+    if (typeof window === 'undefined') return
+    if (window.parent === window) return
+
+    const postHeight = () => {
+      const rootHeight = pageRootRef.current?.scrollHeight || 0
+      const bodyHeight = document.body?.scrollHeight || 0
+      const docHeight = document.documentElement?.scrollHeight || 0
+      const height = Math.max(rootHeight, bodyHeight, docHeight)
+      if (!height) return
+      window.parent.postMessage({
+        type: 'pa:embedded-profile-height',
+        userId,
+        height,
+      }, window.location.origin)
+    }
+
+    const animationFrameId = window.requestAnimationFrame(postHeight)
+    const timeoutId = window.setTimeout(postHeight, 120)
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => postHeight())
+      : null
+
+    if (resizeObserver && pageRootRef.current) {
+      resizeObserver.observe(pageRootRef.current)
+    }
+
+    window.addEventListener('resize', postHeight)
+    return () => {
+      window.cancelAnimationFrame(animationFrameId)
+      window.clearTimeout(timeoutId)
+      window.removeEventListener('resize', postHeight)
+      resizeObserver?.disconnect()
+    }
+  }, [isEmbedded, posts.length, postThreadLoading, postThreadResponses.length, userId])
+
   const displayName = profile?.name || 'Profile'
   const firstName = useMemo(() => String(displayName || '').trim().split(/\s+/).filter(Boolean)[0] || 'User', [displayName])
   const profileHandle = `@${displayName.replace(/[^a-zA-Z0-9]+/g, '').trim() || 'profile'}`
@@ -1099,8 +1138,8 @@ export default function PublicUserProfilePage() {
   }
 
   return (
-    <main className="public-profile-page min-h-screen bg-[linear-gradient(180deg,#ffffff_0%,#f5f8fd_30%,#f7f8fb_100%)] text-slate-900">
-      <div className="min-h-screen pb-[calc(var(--app-safe-bottom)+2rem)]">
+    <main ref={pageRootRef} className={`public-profile-page bg-[linear-gradient(180deg,#ffffff_0%,#f5f8fd_30%,#f7f8fb_100%)] text-slate-900 ${isEmbedded ? '' : 'min-h-screen'}`}>
+      <div className={`${isEmbedded ? '' : 'min-h-screen'} pb-[calc(var(--app-safe-bottom)+2rem)]`}>
         <section className="public-profile-hero relative w-full overflow-hidden bg-slate-900">
           <div className="public-profile-hero__image absolute inset-0" style={{ backgroundImage: `url("${coverUrl}")`, backgroundSize: 'cover', backgroundPosition: 'center' }} aria-hidden="true" />
           <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.42)_0%,rgba(0,0,0,0.18)_30%,rgba(0,0,0,0.32)_100%)]" aria-hidden="true" />

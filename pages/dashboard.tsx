@@ -1886,6 +1886,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [])
 
   const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'discover'>('timeline')
+  const [studentDashboardProfileOpen, setStudentDashboardProfileOpen] = useState(false)
+  const [studentDashboardProfileHeight, setStudentDashboardProfileHeight] = useState(960)
   const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'discover' | 'admin' | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [booksOverlayOpen, setBooksOverlayOpen] = useState(false)
@@ -3895,6 +3897,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [finishStudentMobileSwipe])
 
   const openStudentQuickOverlay = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover' | 'admin') => {
+    setStudentDashboardProfileOpen(false)
     setStudentQuickOverlay(tab)
     if (tab === 'timeline') setTimelineOpen(true)
   }, [])
@@ -3906,6 +3909,39 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const closeMobileMenu = useCallback(() => {
     setMobileMenuOpen(false)
   }, [])
+
+  const closeOwnDashboardProfile = useCallback(() => {
+    setStudentDashboardProfileOpen(false)
+  }, [])
+
+  const openOwnDashboardProfile = useCallback(() => {
+    setStudentDashboardProfileOpen(true)
+    setStudentQuickOverlay(null)
+    setBooksOverlayOpen(false)
+    setDashboardSectionOverlay(null)
+    setActiveSection('overview')
+    closeMobileMenu()
+    setStudentMobileIsDragging(false)
+    setStudentMobileDragOffsetPx(0)
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [closeMobileMenu])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handleMessage = (event: MessageEvent) => {
+      const data = event.data as any
+      if (!data || data.type !== 'pa:embedded-profile-height') return
+      const reportedUserId = String(data.userId || '')
+      if (reportedUserId && reportedUserId !== currentViewerId) return
+      const nextHeight = Number(data.height || 0)
+      if (!Number.isFinite(nextHeight) || nextHeight <= 0) return
+      setStudentDashboardProfileHeight(Math.max(720, Math.ceil(nextHeight)))
+    }
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [currentViewerId])
 
   const isPdfResource = useCallback((item: ResourceBankItem) => {
     const filename = (item.filename || '').toLowerCase()
@@ -10235,7 +10271,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </div>
       </dl>
       <div className="flex flex-col sm:flex-row items-start gap-2">
-        <Link href="/profile" className="btn btn-ghost">Update profile</Link>
+        <button type="button" className="btn btn-ghost" onClick={openOwnDashboardProfile}>Update profile</button>
         <Link href="/subscribe" className="btn btn-primary">Manage subscription</Link>
       </div>
     </>
@@ -13568,6 +13604,31 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return renderStudentSurfaceFrame(id, renderSection(id), action)
   }
 
+  const renderEmbeddedOwnProfilePanel = (tone: 'mobile' | 'desktop') => {
+    if (!currentViewerId) {
+      return (
+        <div className="rounded-[28px] border border-black/10 bg-white px-5 py-8 text-center text-sm text-[#65676b] shadow-[0_14px_30px_rgba(15,23,42,0.06)]">
+          Your profile is unavailable right now.
+        </div>
+      )
+    }
+
+    const src = `/u/${encodeURIComponent(currentViewerId)}?embedded=1&dashboard=1`
+
+    return (
+      <div className={tone === 'mobile' ? 'pb-8' : 'space-y-4'}>
+        <div className="overflow-hidden rounded-[30px] border border-black/10 bg-white shadow-[0_16px_34px_rgba(15,23,42,0.08)]">
+          <iframe
+            title="Your profile"
+            src={src}
+            className="block w-full border-0 bg-white"
+            style={{ height: `${studentDashboardProfileHeight}px` }}
+          />
+        </div>
+      </div>
+    )
+  }
+
   const SectionNav = () => {
     if (availableSections.length <= 1) return null
 
@@ -13703,9 +13764,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     </span>
                   )}
                 </button>
-                <Link
-                  href="/profile"
+                <button
+                  type="button"
+                  onClick={openOwnDashboardProfile}
                   className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/6 px-2 py-2 text-white/90 transition hover:border-white/20 hover:bg-white/10"
+                  aria-label="Open your profile"
                 >
                   <span className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/10 text-sm font-semibold text-white">
                     {effectiveAvatarUrl ? (
@@ -13715,7 +13778,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     )}
                   </span>
                   <span className="hidden pr-2 text-sm font-medium lg:inline">{learnerName}</span>
-                </Link>
+                </button>
               </div>
             </div>
           </div>
@@ -13785,33 +13848,39 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </aside>
 
           <section className="min-w-0 space-y-4">
-            <div className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(135deg,rgba(8,24,74,0.92),rgba(11,35,94,0.78))] px-6 py-5 shadow-[0_18px_50px_rgba(2,6,23,0.35)]">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-200/65">For You</div>
-                  <h1 className="mt-2 text-[2rem] font-semibold tracking-[-0.03em] text-white">Welcome back, {String(learnerName || 'Learner').split(' ')[0]}</h1>
-                  <p className="mt-2 max-w-2xl text-sm leading-relaxed text-blue-50/72">A feed-first home for class activity, live lessons, quizzes, announcements, and the work your circle is sharing right now.</p>
+            {studentDashboardProfileOpen ? (
+              renderEmbeddedOwnProfilePanel('desktop')
+            ) : (
+              <>
+                <div className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(135deg,rgba(8,24,74,0.92),rgba(11,35,94,0.78))] px-6 py-5 shadow-[0_18px_50px_rgba(2,6,23,0.35)]">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-200/65">For You</div>
+                      <h1 className="mt-2 text-[2rem] font-semibold tracking-[-0.03em] text-white">Welcome back, {String(learnerName || 'Learner').split(' ')[0]}</h1>
+                      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-blue-50/72">A feed-first home for class activity, live lessons, quizzes, announcements, and the work your circle is sharing right now.</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#0f172a] shadow-[0_14px_32px_rgba(255,255,255,0.18)] transition hover:bg-blue-50"
+                        onClick={openCreateChallengeComposer}
+                      >
+                        Create Post
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex h-11 items-center justify-center rounded-full border border-white/14 bg-white/8 px-5 text-sm font-medium text-white transition hover:bg-white/12"
+                        onClick={() => openDashboardOverlay('sessions')}
+                      >
+                        Open Classroom
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-semibold text-[#0f172a] shadow-[0_14px_32px_rgba(255,255,255,0.18)] transition hover:bg-blue-50"
-                    onClick={openCreateChallengeComposer}
-                  >
-                    Create Post
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex h-11 items-center justify-center rounded-full border border-white/14 bg-white/8 px-5 text-sm font-medium text-white transition hover:bg-white/12"
-                    onClick={() => openDashboardOverlay('sessions')}
-                  >
-                    Open Classroom
-                  </button>
-                </div>
-              </div>
-            </div>
 
-            {renderStudentTimelinePanel()}
+                {renderStudentTimelinePanel()}
+              </>
+            )}
           </section>
 
           <aside className="space-y-4 xl:sticky xl:top-28 self-start">
@@ -13857,9 +13926,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   </button>
                 </div>
                 <div className="mt-4 flex gap-2">
-                  <Link href="/profile" className="inline-flex h-11 flex-1 items-center justify-center rounded-full border border-white/10 bg-white/8 px-4 text-sm font-medium text-white transition hover:bg-white/12">
+                  <button
+                    type="button"
+                    className="inline-flex h-11 flex-1 items-center justify-center rounded-full border border-white/10 bg-white/8 px-4 text-sm font-medium text-white transition hover:bg-white/12"
+                    onClick={openOwnDashboardProfile}
+                  >
                     View Profile
-                  </Link>
+                  </button>
                   <button
                     type="button"
                     className="inline-flex h-11 flex-1 items-center justify-center rounded-full border border-white/10 bg-white/8 px-4 text-sm font-medium text-white transition hover:bg-white/12"
@@ -13947,6 +14020,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     )
 
     const jumpHome = () => {
+      setStudentDashboardProfileOpen(false)
       closeDashboardOverlay()
       setActiveSection('overview')
       setStudentMobileTab('timeline')
@@ -13957,6 +14031,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
 
     const switchMobileTab = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
+      setStudentDashboardProfileOpen(false)
       setStudentMobileIsDragging(false)
       setStudentMobileDragOffsetPx(0)
       setStudentMobileTab(tab)
@@ -14028,13 +14103,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     </span>
                   )}
                 </button>
-                <Link href="/profile" className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f8fafc]">
+                <button
+                  type="button"
+                  onClick={openOwnDashboardProfile}
+                  className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f8fafc]"
+                  aria-label="Open your profile"
+                >
                   {effectiveAvatarUrl ? (
                     <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
                   ) : (
                     <span className="text-sm font-semibold text-[#1c1e21]">{String(learnerName || 'U').slice(0, 1).toUpperCase()}</span>
                   )}
-                </Link>
+                </button>
               </div>
             </div>
 
@@ -14113,7 +14193,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </div>
 
         <div>
-          {renderMobileActivePanel()}
+          {studentDashboardProfileOpen ? renderEmbeddedOwnProfilePanel('mobile') : renderMobileActivePanel()}
         </div>
 
         {renderDashboardFooter('mobile')}
@@ -14207,8 +14287,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   type="button"
                   className="mobile-menu-item"
                   onClick={() => {
-                    closeMobileMenu()
-                    void router.push('/profile')
+                    openOwnDashboardProfile()
                   }}
                 >
                   <span>

@@ -354,8 +354,6 @@ export default function NotificationsPanelHost() {
     setNewNotificationIds(nextNew)
   }, [actionInvites, actionJoinRequests, activityFeed, announcements, claimedNotificationKey, isVisible, readSet, seenNotificationKey])
 
-  if (!isVisible) return null
-
   const acknowledgeNewNotifications = () => {
     if (typeof window === 'undefined') return
     if (newNotificationIds.length === 0) return
@@ -622,6 +620,8 @@ export default function NotificationsPanelHost() {
     if (!id) return
     setExpandedRequestId(prev => (prev === id ? null : id))
   }
+
+  if (!isVisible) return null
 
   return (
     <>

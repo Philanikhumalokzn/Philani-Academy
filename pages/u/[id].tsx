@@ -3,10 +3,25 @@ import type { GetServerSideProps } from 'next'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react'
 import PublicFeedPostCard from '../../components/PublicFeedPostCard'
+import PostReplyComposerOverlays from '../../components/PostReplyComposerOverlays'
+import { normalizePublicSolveScene, type PublicSolveScene } from '../../components/PublicSolveCanvas'
 import ZoomableImageOverlay from '../../components/ZoomableImageOverlay'
 import { buildFeedPostActionState, type FeedPost } from '../../lib/feedContract'
 import { gradeToLabel } from '../../lib/grades'
+import { createLessonRoleProfile, normalizePlatformRole } from '../../lib/lessonAccessControl'
+import {
+  buildPostReplyPayloadFromBlocks,
+  composePostSolveBlocksWithDraftText,
+  createPostReplyBlockId,
+  normalizePostReplyBlocks,
+  upsertPostReplyBlock,
+  type ComposerBlockCrudTarget,
+  type ComposerBlockEditTarget,
+  type PostReplyBlock,
+  type PostSolveOverlayState,
+} from '../../lib/postReplyComposer'
 
 type PublicUser = {
   id: string
@@ -127,6 +142,419 @@ export default function PublicUserProfilePage() {
   const [lastSharedPostKey, setLastSharedPostKey] = useState<string | null>(null)
   const [expandedProfilePostId, setExpandedProfilePostId] = useState<string | null>(null)
   const socialShareResetTimeoutRef = useRef<number | null>(null)
+  const [postSolveModeOverlay, setPostSolveModeOverlay] = useState<PostSolveOverlayState | null>(null)
+  const [postSolveOverlay, setPostSolveOverlay] = useState<PostSolveOverlayState | null>(null)
+  const [postTypedSolveOverlay, setPostTypedSolveOverlay] = useState<PostSolveOverlayState | null>(null)
+  const [postSolveBlocks, setPostSolveBlocks] = useState<PostReplyBlock[]>([])
+  const [postSolveText, setPostSolveText] = useState('')
+  const [postTypedSolveLatex, setPostTypedSolveLatex] = useState('')
+  const [postSolveSubmitting, setPostSolveSubmitting] = useState(false)
+  const [postReplyImageUploading, setPostReplyImageUploading] = useState(false)
+  const [postReplyImageSourceSheetOpen, setPostReplyImageSourceSheetOpen] = useState(false)
+  const [postReplyImageEditOpen, setPostReplyImageEditOpen] = useState(false)
+  const [postReplyImageEditFile, setPostReplyImageEditFile] = useState<File | null>(null)
+  const [postSolveError, setPostSolveError] = useState<string | null>(null)
+  const [postSolveEditingTarget, setPostSolveEditingTarget] = useState<ComposerBlockEditTarget | null>(null)
+  const [composerBlockCrudTarget, setComposerBlockCrudTarget] = useState<ComposerBlockCrudTarget | null>(null)
+  const [postTypedOverlayChromeVisible, setPostTypedOverlayChromeVisible] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+  const composerBlockLongPressTimeoutRef = useRef<number | null>(null)
+  const composerBlockLongPressStateRef = useRef<null | { x: number; y: number; target: ComposerBlockCrudTarget }>(null)
+  const composerBlockLongPressOpenedRef = useRef(false)
+  const postReplyCameraInputRef = useRef<HTMLInputElement | null>(null)
+  const postReplyGalleryInputRef = useRef<HTMLInputElement | null>(null)
+  const postSolveTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+
+  const sessionPlatformRole = normalizePlatformRole((session as any)?.user?.role)
+  const currentLessonRoleProfile = useMemo(() => createLessonRoleProfile({ platformRole: sessionPlatformRole }), [sessionPlatformRole])
+  const currentViewerId = String(viewerId || (session as any)?.user?.id || '')
+  const currentViewerName = String(session?.user?.name || session?.user?.email || 'You')
+  const activeGradeLabel = useMemo(() => {
+    const rawGrade = typeof (session as any)?.user?.grade === 'string' ? (session as any).user.grade : ''
+    return rawGrade ? gradeToLabel(rawGrade as any) : null
+  }, [session])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const syncIsMobile = () => setIsMobile(window.innerWidth < 640)
+    syncIsMobile()
+    window.addEventListener('resize', syncIsMobile)
+    return () => window.removeEventListener('resize', syncIsMobile)
+  }, [])
+
+  const closePostReplyImageEdit = useCallback(() => {
+    setPostReplyImageEditOpen(false)
+    setPostReplyImageEditFile(null)
+  }, [])
+
+  const uploadPostReplyImage = useCallback(async (file: File) => {
+    setPostReplyImageUploading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/challenges/upload', {
+        method: 'POST',
+        body: form,
+        credentials: 'same-origin',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Upload failed (${res.status})`)
+      const imageUrl = typeof data?.url === 'string' ? data.url.trim() : ''
+      if (!imageUrl) throw new Error('Upload succeeded but returned no URL')
+      setPostSolveBlocks((prev) => [...prev, { id: createPostReplyBlockId(), type: 'image', imageUrl }])
+      setPostSolveError(null)
+    } finally {
+      setPostReplyImageUploading(false)
+    }
+  }, [])
+
+  const openPostReplyImagePicker = useCallback(() => {
+    setPostReplyImageSourceSheetOpen(true)
+  }, [])
+
+  const openPostReplyCameraPicker = useCallback(() => {
+    try {
+      setPostReplyImageSourceSheetOpen(false)
+      postReplyCameraInputRef.current?.click()
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const openPostReplyGalleryPicker = useCallback(() => {
+    try {
+      setPostReplyImageSourceSheetOpen(false)
+      postReplyGalleryInputRef.current?.click()
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const onPostReplyImagePicked = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setPostReplyImageEditFile(file)
+    setPostReplyImageEditOpen(true)
+  }, [])
+
+  const confirmPostReplyImageEdit = useCallback(async (file: File) => {
+    try {
+      closePostReplyImageEdit()
+      await uploadPostReplyImage(file)
+    } catch (err: any) {
+      setPostSolveError(err?.message || 'Failed to upload image')
+    }
+  }, [closePostReplyImageEdit, uploadPostReplyImage])
+
+  const fetchPublicThreadResponses = useCallback(async (threadKey: string) => {
+    const safeThreadKey = String(threadKey || '').trim()
+    if (!safeThreadKey) return []
+    const res = await fetch(`/api/threads/${encodeURIComponent(safeThreadKey)}/responses`, {
+      credentials: 'same-origin',
+      cache: 'no-store',
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data?.message || `Failed to load solutions (${res.status})`)
+    const responses = Array.isArray(data?.responses) ? data.responses : []
+    return responses.slice().sort((a: any, b: any) => {
+      const aTs = Math.max(a?.updatedAt ? new Date(a.updatedAt).getTime() : 0, a?.createdAt ? new Date(a.createdAt).getTime() : 0)
+      const bTs = Math.max(b?.updatedAt ? new Date(b.updatedAt).getTime() : 0, b?.createdAt ? new Date(b.createdAt).getTime() : 0)
+      return bTs - aTs
+    })
+  }, [])
+
+  const focusPostSolveTextarea = useCallback(() => {
+    if (typeof window === 'undefined') return
+    window.setTimeout(() => {
+      postSolveTextareaRef.current?.focus()
+      const length = postSolveTextareaRef.current?.value.length || 0
+      postSolveTextareaRef.current?.setSelectionRange(length, length)
+    }, 0)
+  }, [])
+
+  const resizePostSolveTextarea = useCallback(() => {
+    const textarea = postSolveTextareaRef.current
+    if (!textarea) return
+    const maxHeightPx = 112
+    textarea.style.height = 'auto'
+    const nextHeight = Math.min(textarea.scrollHeight, maxHeightPx)
+    textarea.style.height = `${nextHeight}px`
+    textarea.style.overflowY = textarea.scrollHeight > maxHeightPx ? 'auto' : 'hidden'
+  }, [])
+
+  useEffect(() => {
+    if (!postSolveModeOverlay) return
+    resizePostSolveTextarea()
+  }, [postSolveModeOverlay, postSolveText, resizePostSolveTextarea])
+
+  const openHandwrittenPostSolveComposer = useCallback((draft: PostSolveOverlayState | null, options?: { editTarget?: ComposerBlockEditTarget | null }) => {
+    if (!draft) return
+    const currentText = String(postSolveText || '')
+    const committedBlocks = composePostSolveBlocksWithDraftText(postSolveBlocks, currentText, postSolveEditingTarget)
+    const editTarget = options?.editTarget && options.editTarget.type === 'canvas' ? options.editTarget : null
+    const editingCanvasBlock = editTarget
+      ? committedBlocks.find((block): block is any => block.id === editTarget.blockId && block.type === 'canvas')
+      : null
+    const existingCanvasBlock = [...committedBlocks].reverse().find((block) => block.type === 'canvas') as any
+    setPostSolveBlocks(committedBlocks)
+    setPostSolveText('')
+    setPostSolveEditingTarget(editTarget)
+    setComposerBlockCrudTarget(null)
+    setPostSolveModeOverlay(null)
+    setPostTypedSolveOverlay(null)
+    setPostSolveError(null)
+    setPostSolveOverlay({
+      ...draft,
+      initialScene: editingCanvasBlock?.scene || existingCanvasBlock?.scene || draft.initialScene || null,
+      initialStudentText: '',
+    })
+  }, [postSolveBlocks, postSolveEditingTarget, postSolveText])
+
+  const openTypedPostSolveComposer = useCallback((draft: PostSolveOverlayState | null, preferredRecognitionEngine: 'keyboard' | 'myscript' | 'mathpix' = 'keyboard', options?: { editTarget?: ComposerBlockEditTarget | null; initialLatex?: string | null }) => {
+    if (!draft) return
+    const currentText = String(postSolveText || '')
+    const committedBlocks = composePostSolveBlocksWithDraftText(postSolveBlocks, currentText, postSolveEditingTarget)
+    const editTarget = options?.editTarget && options.editTarget.type === 'latex' ? options.editTarget : null
+    setPostSolveBlocks(committedBlocks)
+    setPostSolveText('')
+    setPostSolveEditingTarget(editTarget)
+    setComposerBlockCrudTarget(null)
+    setPostSolveModeOverlay(null)
+    setPostSolveOverlay(null)
+    setPostSolveError(null)
+    setPostTypedOverlayChromeVisible(!isMobile)
+    setPostTypedSolveLatex(String(options?.initialLatex || ''))
+    setPostTypedSolveOverlay({
+      ...draft,
+      initialLatex: String(options?.initialLatex || ''),
+      initialStudentText: '',
+      preferredRecognitionEngine,
+    })
+  }, [isMobile, postSolveBlocks, postSolveEditingTarget, postSolveText])
+
+  const openLocalPostSolveComposer = useCallback(async (post: ProfilePost, options?: { initialScene?: any | null; initialLatex?: string | null; initialStudentText?: string | null; initialGradingJson?: any | null }) => {
+    const postId = String(post?.id || '')
+    const threadKey = typeof post?.threadKey === 'string' ? post.threadKey : `post:${postId}`
+    if (!postId || !threadKey) return
+
+    const authorName = String(post?.createdBy?.name || profile?.name || 'Poster').trim() || 'Poster'
+    const authorAvatarUrl = resolveImageUrl(post?.createdBy?.avatar || profile?.avatar || '')
+
+    setPostSolveError(null)
+    let initialResponseSource: any = {
+      excalidrawScene: options?.initialScene ?? null,
+      latex: typeof options?.initialLatex === 'string' ? options.initialLatex : '',
+      studentText: typeof options?.initialStudentText === 'string' ? options.initialStudentText : '',
+      gradingJson: options?.initialGradingJson ?? null,
+    }
+    if (!options?.initialGradingJson && !options?.initialScene && !options?.initialLatex && !options?.initialStudentText) {
+      try {
+        const responses = await fetchPublicThreadResponses(threadKey)
+        const mine = responses.find((response: any) => String(response?.userId || '') === currentViewerId)
+        if (mine) initialResponseSource = mine
+      } catch {
+        // ignore prefill failures and still open the composer
+      }
+    }
+
+    const initialBlocks = normalizePostReplyBlocks(initialResponseSource)
+    const initialPayload = buildPostReplyPayloadFromBlocks(initialBlocks)
+
+    setPostSolveBlocks(initialBlocks)
+    setPostSolveText('')
+    setPostSolveEditingTarget(null)
+    setComposerBlockCrudTarget(null)
+    setPostTypedSolveOverlay(null)
+    setPostSolveOverlay(null)
+    setPostSolveModeOverlay({
+      postId,
+      threadKey,
+      title: String(post?.title || 'Post'),
+      prompt: String(post?.prompt || 'Share your solution for this post.'),
+      imageUrl: resolveImageUrl(post?.imageUrl) || null,
+      authorName,
+      authorAvatarUrl,
+      initialScene: initialPayload.excalidrawScene,
+      initialLatex: initialPayload.latex,
+      initialStudentText: initialPayload.studentText,
+      initialGradingJson: initialPayload.gradingJson,
+      postRecord: post,
+    })
+  }, [currentViewerId, fetchPublicThreadResponses, profile?.avatar, profile?.name])
+
+  const applyOwnPostResponse = useCallback((draft: Pick<PostSolveOverlayState, 'postId'>, responseData: any) => {
+    setPosts((prev) => Array.isArray(prev) ? prev.map((item) => {
+      if (String(item?.id || '') !== String(draft.postId || '')) return item
+      const previousOwnResponseId = String((item as any)?.ownResponse?.id || '')
+      const nextOwnResponseId = String(responseData?.id || '')
+      const isNewResponseRecord = !previousOwnResponseId || (nextOwnResponseId && nextOwnResponseId !== previousOwnResponseId)
+      const previousAttemptCount = typeof (item as any)?.myAttemptCount === 'number' ? (item as any).myAttemptCount : 0
+      const previousSolutionCount = Number((item as any)?.solutionCount || 0)
+      return {
+        ...(item as any),
+        hasOwnResponse: true,
+        ownResponse: responseData || (item as any)?.ownResponse || null,
+        myAttemptCount: isNewResponseRecord ? previousAttemptCount + 1 : Math.max(previousAttemptCount, 1),
+        solutionCount: isNewResponseRecord ? Math.max(1, previousSolutionCount + 1) : Math.max(1, previousSolutionCount),
+      }
+    }) : prev)
+  }, [])
+
+  const submitPostTextSolve = useCallback(async () => {
+    const activeDraft = postSolveModeOverlay
+    if (!activeDraft?.postId || !activeDraft?.threadKey) return
+    const payload = buildPostReplyPayloadFromBlocks(composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget))
+    if (!payload.contentBlocks.length) {
+      setPostSolveError('Write a reply before sending.')
+      return
+    }
+
+    setPostSolveSubmitting(true)
+    setPostSolveError(null)
+    try {
+      const res = await fetch(`/api/threads/${encodeURIComponent(activeDraft.threadKey)}/responses`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          latex: payload.latex,
+          studentText: payload.studentText,
+          contentBlocks: payload.contentBlocks,
+          quizId: activeDraft.threadKey,
+          quizLabel: activeDraft.title,
+          prompt: activeDraft.prompt,
+          excalidrawScene: payload.excalidrawScene,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to submit reply (${res.status})`)
+
+      applyOwnPostResponse(activeDraft, data)
+      setPostSolveModeOverlay(null)
+      setPostSolveOverlay(null)
+      setPostTypedSolveOverlay(null)
+      setPostSolveBlocks([])
+      setPostSolveText('')
+      setPostTypedSolveLatex('')
+      setPostSolveEditingTarget(null)
+      setComposerBlockCrudTarget(null)
+      setPostReplyImageSourceSheetOpen(false)
+    } catch (err: any) {
+      setPostSolveError(err?.message || 'Failed to submit reply')
+    } finally {
+      setPostSolveSubmitting(false)
+    }
+  }, [applyOwnPostResponse, postSolveBlocks, postSolveEditingTarget, postSolveModeOverlay, postSolveText])
+
+  const submitPostSolve = useCallback(async (scene: PublicSolveScene) => {
+    const activeDraft = postSolveOverlay
+    const normalizedScene = normalizePublicSolveScene(scene)
+    if (!activeDraft?.postId || !activeDraft?.threadKey || !normalizedScene) return
+
+    setPostSolveBlocks((prev) => {
+      if (postSolveEditingTarget?.type === 'canvas') {
+        return upsertPostReplyBlock(prev, { id: postSolveEditingTarget.blockId, type: 'canvas', scene: normalizedScene }, postSolveEditingTarget, 'canvas')
+      }
+      const nextBlocks: PostReplyBlock[] = prev.filter((block) => block.type !== 'canvas')
+      nextBlocks.push({ id: createPostReplyBlockId(), type: 'canvas', scene: normalizedScene })
+      return nextBlocks
+    })
+
+    setPostSolveOverlay(null)
+    setPostSolveEditingTarget(null)
+    setPostSolveModeOverlay({
+      ...activeDraft,
+      initialScene: normalizedScene,
+      initialStudentText: '',
+    })
+    setPostSolveError(null)
+  }, [postSolveEditingTarget, postSolveOverlay])
+
+  const submitTypedPostSolve = useCallback(async () => {
+    const activeDraft = postTypedSolveOverlay
+    const latex = String(postTypedSolveLatex || '').trim()
+    if (!activeDraft?.postId || !activeDraft?.threadKey) return
+    if (!latex) {
+      setPostSolveError('Write a typed response before adding it.')
+      return
+    }
+    setPostSolveBlocks((prev) => upsertPostReplyBlock(prev, { id: createPostReplyBlockId(), type: 'latex', latex }, postSolveEditingTarget, 'latex'))
+    setPostSolveModeOverlay({
+      ...activeDraft,
+      initialLatex: '',
+      initialStudentText: '',
+    })
+    setPostTypedSolveOverlay(null)
+    setPostTypedOverlayChromeVisible(false)
+    setPostTypedSolveLatex('')
+    setPostSolveEditingTarget(null)
+    setPostSolveError(null)
+  }, [postSolveEditingTarget, postTypedSolveLatex, postTypedSolveOverlay])
+
+  const deleteComposerBlock = useCallback((blockId: string) => {
+    setPostSolveBlocks((prev) => prev.filter((block) => block.id !== blockId))
+    setPostSolveEditingTarget((current) => current?.blockId === blockId ? null : current)
+    setComposerBlockCrudTarget((current) => current?.block.id === blockId ? null : current)
+  }, [])
+
+  const clearComposerBlockLongPress = useCallback(() => {
+    if (composerBlockLongPressTimeoutRef.current !== null && typeof window !== 'undefined') {
+      window.clearTimeout(composerBlockLongPressTimeoutRef.current)
+    }
+    composerBlockLongPressTimeoutRef.current = null
+    composerBlockLongPressStateRef.current = null
+  }, [])
+
+  const openComposerBlockCrudOptions = useCallback((target: ComposerBlockCrudTarget) => {
+    clearComposerBlockLongPress()
+    setComposerBlockCrudTarget(target)
+  }, [clearComposerBlockLongPress])
+
+  const beginComposerBlockLongPress = useCallback((event: ReactPointerEvent, target: ComposerBlockCrudTarget) => {
+    if (typeof window === 'undefined') return
+    if (event.button !== 0) return
+    clearComposerBlockLongPress()
+    composerBlockLongPressStateRef.current = { x: event.clientX, y: event.clientY, target }
+    composerBlockLongPressOpenedRef.current = false
+    composerBlockLongPressTimeoutRef.current = window.setTimeout(() => {
+      composerBlockLongPressOpenedRef.current = true
+      openComposerBlockCrudOptions(target)
+    }, 420)
+  }, [clearComposerBlockLongPress, openComposerBlockCrudOptions])
+
+  const moveComposerBlockLongPress = useCallback((event: ReactPointerEvent) => {
+    const state = composerBlockLongPressStateRef.current
+    if (!state) return
+    const dx = event.clientX - state.x
+    const dy = event.clientY - state.y
+    if (Math.hypot(dx, dy) > 10) clearComposerBlockLongPress()
+  }, [clearComposerBlockLongPress])
+
+  const editComposerBlock = useCallback((block: PostReplyBlock, index: number) => {
+    if (composerBlockLongPressOpenedRef.current) {
+      composerBlockLongPressOpenedRef.current = false
+      return
+    }
+    setComposerBlockCrudTarget(null)
+    if (!postSolveModeOverlay) return
+    const target: ComposerBlockEditTarget = { blockId: block.id, type: block.type, index }
+    if (block.type === 'text') {
+      setPostSolveEditingTarget(target)
+      setPostSolveText(block.text)
+      focusPostSolveTextarea()
+      return
+    }
+    if (block.type === 'latex') {
+      openTypedPostSolveComposer(postSolveModeOverlay, 'keyboard', { editTarget: target, initialLatex: block.latex })
+      return
+    }
+    if (block.type === 'canvas') {
+      openHandwrittenPostSolveComposer(postSolveModeOverlay, { editTarget: target })
+      return
+    }
+    setImageViewer({ url: block.imageUrl, title: 'Reply attachment' })
+  }, [focusPostSolveTextarea, openHandwrittenPostSolveComposer, openTypedPostSolveComposer, postSolveModeOverlay])
 
   const loadProfile = useCallback(async () => {
     if (!userId) return
@@ -319,18 +747,6 @@ export default function PublicUserProfilePage() {
     })
   }, [router])
 
-  const openDashboardPostSolve = useCallback(async (postId: string) => {
-    const safePostId = String(postId || '').trim()
-    if (!safePostId) return
-    await router.push({
-      pathname: '/dashboard',
-      query: {
-        openFeedSolveId: safePostId,
-        openFeedSolveKind: 'post',
-      },
-    })
-  }, [router])
-
   const toggleProfileLike = useCallback((itemKey: string) => {
     if (!itemKey) return
     setLikedPostKeys((current) => ({ ...current, [itemKey]: !current[itemKey] }))
@@ -404,7 +820,7 @@ export default function PublicUserProfilePage() {
         void openDashboardPostThread(postId)
         return
       }
-      void openDashboardPostSolve(postId)
+      void openLocalPostSolveComposer(post)
     }
 
     return (
@@ -778,6 +1194,83 @@ export default function PublicUserProfilePage() {
         </section>
         </div>
       </div>
+
+      <PostReplyComposerOverlays
+        modeOverlay={postSolveModeOverlay}
+        canvasOverlay={postSolveOverlay}
+        typedOverlay={postTypedSolveOverlay}
+        blocks={postSolveBlocks}
+        draftText={postSolveText}
+        editingTarget={postSolveEditingTarget}
+        crudTarget={composerBlockCrudTarget}
+        typedLatex={postTypedSolveLatex}
+        typedChromeVisible={postTypedOverlayChromeVisible}
+        isMobile={isMobile}
+        viewerId={currentViewerId}
+        viewerName={currentViewerName}
+        gradeLabel={activeGradeLabel}
+        roleProfile={currentLessonRoleProfile}
+        submitting={postSolveSubmitting}
+        imageUploading={postReplyImageUploading}
+        imageSourceSheetOpen={postReplyImageSourceSheetOpen}
+        imageEditOpen={postReplyImageEditOpen}
+        imageEditFile={postReplyImageEditFile}
+        error={postSolveError}
+        cameraInputRef={postReplyCameraInputRef}
+        galleryInputRef={postReplyGalleryInputRef}
+        textareaRef={postSolveTextareaRef}
+        onDraftTextChange={setPostSolveText}
+        onTypedLatexChange={setPostTypedSolveLatex}
+        onCloseModeOverlay={() => {
+          setPostSolveModeOverlay(null)
+          setPostSolveError(null)
+          setPostReplyImageSourceSheetOpen(false)
+          setPostSolveEditingTarget(null)
+          setComposerBlockCrudTarget(null)
+        }}
+        onCloseBlockCrud={() => setComposerBlockCrudTarget(null)}
+        onOpenTyped={() => openTypedPostSolveComposer(postSolveModeOverlay, 'keyboard')}
+        onOpenHandwritten={() => openHandwrittenPostSolveComposer(postSolveModeOverlay)}
+        onOpenImagePicker={openPostReplyImagePicker}
+        onSubmitText={() => void submitPostTextSolve()}
+        onImagePicked={onPostReplyImagePicked}
+        onCloseImageSourceSheet={() => setPostReplyImageSourceSheetOpen(false)}
+        onOpenCameraPicker={openPostReplyCameraPicker}
+        onOpenGalleryPicker={openPostReplyGalleryPicker}
+        onCancelImageEdit={closePostReplyImageEdit}
+        onConfirmImageEdit={(file) => void confirmPostReplyImageEdit(file)}
+        onCanvasCancel={() => {
+          if (postSolveSubmitting) return
+          setPostSolveModeOverlay(postSolveOverlay ? {
+            ...postSolveOverlay,
+            initialStudentText: '',
+          } : null)
+          setPostSolveOverlay(null)
+          setPostSolveEditingTarget((current) => current?.type === 'canvas' ? null : current)
+          setPostSolveError(null)
+        }}
+        onCanvasSubmit={(scene) => void submitPostSolve(scene)}
+        onTypedClose={() => {
+          if (postSolveSubmitting) return
+          setPostSolveModeOverlay(postTypedSolveOverlay ? {
+            ...postTypedSolveOverlay,
+            initialLatex: '',
+            initialStudentText: '',
+          } : null)
+          setPostTypedSolveOverlay(null)
+          setPostTypedOverlayChromeVisible(false)
+          setPostSolveEditingTarget((current) => current?.type === 'latex' ? null : current)
+          setPostSolveError(null)
+        }}
+        onSubmitTyped={() => void submitTypedPostSolve()}
+        onTypedChromeVisibilityChange={setPostTypedOverlayChromeVisible}
+        onEditBlock={editComposerBlock}
+        onDeleteBlock={deleteComposerBlock}
+        onBeginBlockLongPress={beginComposerBlockLongPress}
+        onMoveBlockLongPress={moveComposerBlockLongPress}
+        onClearBlockLongPress={clearComposerBlockLongPress}
+        onOpenBlockCrudOptions={openComposerBlockCrudOptions}
+      />
 
       {imageViewer ? (
         <ZoomableImageOverlay

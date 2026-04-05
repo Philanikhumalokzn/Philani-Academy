@@ -20,6 +20,7 @@ import PdfViewerOverlay from '../components/PdfViewerOverlay'
 import ZoomableImageOverlay from '../components/ZoomableImageOverlay'
 import ScriptPhotosEditor from '../components/ScriptPhotosEditor'
 import BottomSheet from '../components/BottomSheet'
+import PostReplyComposerOverlays from '../components/PostReplyComposerOverlays'
 import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
@@ -15958,55 +15959,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </OverlayPortal>
       ) : null}
 
-      {composerBlockCrudTarget ? (
-        <OverlayPortal>
-          <BottomSheet
-            open
-            backdrop
-            title="Block options"
-            subtitle="Press and hold a reply block to edit or remove it"
-            onClose={() => setComposerBlockCrudTarget(null)}
-            zIndexClassName="z-[69]"
-            className="bottom-0"
-            sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
-            contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5"
-          >
-            <div className="space-y-2">
-              <button
-                type="button"
-                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
-                onClick={() => editComposerBlock(composerBlockCrudTarget.block, composerBlockCrudTarget.index)}
-              >
-                <span>
-                  <span className="block text-sm font-semibold">{composerBlockCrudTarget.block.type === 'image' ? 'Open image' : 'Edit block'}</span>
-                  <span className="block text-xs text-slate-500">
-                    {composerBlockCrudTarget.block.type === 'text'
-                      ? 'Load this text back into the composer for editing.'
-                      : composerBlockCrudTarget.block.type === 'latex'
-                        ? 'Reopen this math block in the keyboard editor.'
-                        : composerBlockCrudTarget.block.type === 'canvas'
-                          ? 'Reopen this handwritten block in the solve canvas.'
-                          : 'Open this image in the zoomable viewer.'}
-                  </span>
-                </span>
-                <span className="text-slate-400">{`>`}</span>
-              </button>
-              <button
-                type="button"
-                className="flex w-full items-center justify-between rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-left text-red-700 transition hover:border-red-300 hover:bg-red-100"
-                onClick={() => deleteComposerBlock(composerBlockCrudTarget.block.id)}
-              >
-                <span>
-                  <span className="block text-sm font-semibold">Delete block</span>
-                  <span className="block text-xs text-red-500">Remove this item from your reply draft.</span>
-                </span>
-                <span className="text-red-300">{`>`}</span>
-              </button>
-            </div>
-          </BottomSheet>
-        </OverlayPortal>
-      ) : null}
-
       {lessonSolveModeOverlay && (
         <OverlayPortal>
           <div
@@ -16157,453 +16109,83 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </OverlayPortal>
       )}
 
-      {postSolveModeOverlay && (
-        <OverlayPortal>
-          <BottomSheet
-            open
-            backdrop
-            title="Post reply composer"
-            hideHeader
-            edgeToEdge
-            onClose={() => {
-              setPostSolveModeOverlay(null)
-              setPostSolveError(null)
-              setPostReplyImageSourceSheetOpen(false)
-              setPostSolveEditingTarget(null)
-              setComposerBlockCrudTarget(null)
-            }}
-            zIndexClassName="z-[68]"
-            className="bottom-0"
-            sheetClassName="rounded-t-[32px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f0f6ff_100%)] shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
-            contentClassName="flex max-h-[min(32rem,68dvh)] flex-col overflow-hidden px-4 pt-3 sm:max-h-[min(36rem,72dvh)] sm:px-5 sm:pt-4"
-          >
-            {(() => {
-              const composerVisibleBlocks = postSolveBlocks.filter((block) => !(postSolveEditingTarget?.type === 'text' && postSolveEditingTarget.blockId === block.id))
-              const hasReplyBlocks = composerVisibleBlocks.length > 0
-              const canSubmitReply = composePostSolveBlocksWithDraftText(postSolveBlocks, postSolveText, postSolveEditingTarget).length > 0
-              const iconButtonClassName = 'inline-flex h-10 items-center justify-center text-slate-700 transition hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
-
-              return (
-                <div className="flex min-h-0 flex-col">
-                  {postSolveSubmitting ? (
-                    <div className="flex justify-end px-1 pb-4">
-                      <span className="text-[11px] font-medium text-slate-500">Sending...</span>
-                    </div>
-                  ) : postReplyImageUploading ? (
-                    <div className="flex justify-end px-1 pb-4">
-                      <span className="text-[11px] font-medium text-slate-500">Uploading image...</span>
-                    </div>
-                  ) : null}
-
-                  <div className="min-h-0 overflow-y-auto overscroll-contain pb-4">
-                    <div className="min-w-0 rounded-[24px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
-                        {hasReplyBlocks ? (
-                          <div className="mb-2 space-y-2">
-                            {composerVisibleBlocks.map((block, index) => {
-                              const blockTarget: ComposerBlockCrudTarget = { block, index }
-                              const blockHandlers = {
-                                onPointerDown: (event: React.PointerEvent) => beginComposerBlockLongPress(event, blockTarget),
-                                onPointerMove: moveComposerBlockLongPress,
-                                onPointerUp: clearComposerBlockLongPress,
-                                onPointerCancel: clearComposerBlockLongPress,
-                                onPointerLeave: clearComposerBlockLongPress,
-                                onContextMenu: (event: React.MouseEvent) => {
-                                  event.preventDefault()
-                                  openComposerBlockCrudOptions(blockTarget)
-                                },
-                              }
-
-                              if (block.type === 'text') {
-                                return (
-                                  <div
-                                    key={block.id}
-                                    role="button"
-                                    tabIndex={0}
-                                    className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 whitespace-pre-wrap break-words text-slate-700"
-                                    onClick={() => editComposerBlock(block, index)}
-                                    onKeyDown={(event) => {
-                                      if (event.key === 'Enter' || event.key === ' ') {
-                                        event.preventDefault()
-                                        editComposerBlock(block, index)
-                                      }
-                                    }}
-                                    {...blockHandlers}
-                                  >
-                                    {block.text}
-                                  </div>
-                                )
-                              }
-
-                              if (block.type === 'latex') {
-                                const latexHtml = renderKatexDisplayHtml(block.latex)
-                                return (
-                                  <div
-                                    key={block.id}
-                                    role="button"
-                                    tabIndex={0}
-                                    className="overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800"
-                                    onClick={() => editComposerBlock(block, index)}
-                                    onKeyDown={(event) => {
-                                      if (event.key === 'Enter' || event.key === ' ') {
-                                        event.preventDefault()
-                                        editComposerBlock(block, index)
-                                      }
-                                    }}
-                                    {...blockHandlers}
-                                  >
-                                    {latexHtml ? (
-                                      <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
-                                    ) : (
-                                      <div className="text-sm leading-6 whitespace-pre-wrap break-words">{renderTextWithKatex(block.latex)}</div>
-                                    )}
-                                  </div>
-                                )
-                              }
-
-                              if (block.type === 'canvas') {
-                                return (
-                                  <div
-                                    key={block.id}
-                                    role="button"
-                                    tabIndex={0}
-                                    className="pt-1"
-                                    onClick={() => editComposerBlock(block, index)}
-                                    onKeyDown={(event) => {
-                                      if (event.key === 'Enter' || event.key === ' ') {
-                                        event.preventDefault()
-                                        editComposerBlock(block, index)
-                                      }
-                                    }}
-                                    {...blockHandlers}
-                                  >
-                                    <div className="overflow-hidden rounded-2xl border border-[#1d4f91] bg-white shadow-sm">
-                                      <PublicSolveCanvasViewer
-                                        scene={block.scene}
-                                        className="pointer-events-none"
-                                        viewerHeightPx={220}
-                                      />
-                                    </div>
-                                  </div>
-                                )
-                              }
-
-                              return (
-                                <div
-                                  key={block.id}
-                                  role="button"
-                                  tabIndex={0}
-                                  className="inline-flex max-w-full"
-                                  onClick={() => editComposerBlock(block, index)}
-                                  onKeyDown={(event) => {
-                                    if (event.key === 'Enter' || event.key === ' ') {
-                                      event.preventDefault()
-                                      editComposerBlock(block, index)
-                                    }
-                                  }}
-                                  {...blockHandlers}
-                                >
-                                  <div className="relative inline-flex overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
-                                    <img
-                                      src={block.imageUrl}
-                                      alt="Reply attachment"
-                                      className="h-24 w-24 object-cover sm:h-28 sm:w-28"
-                                    />
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        ) : null}
-                        <textarea
-                          ref={postSolveTextareaRef}
-                          value={postSolveText}
-                          onChange={(event) => setPostSolveText(event.target.value)}
-                          placeholder={`Comment as ${currentViewerPostAuthor.name}`}
-                          rows={1}
-                          className="max-h-28 min-h-[1.5rem] w-full resize-none bg-transparent text-sm leading-6 text-slate-700 outline-none placeholder:text-slate-400"
-                          style={{ overflowY: 'hidden' }}
-                        />
-                    </div>
-                  </div>
-
-                  <div className="shrink-0 -mx-4 mt-auto border-t border-slate-200/80 bg-[linear-gradient(180deg,rgba(251,252,255,0.72)_0%,#f0f6ff_24%,#f0f6ff_100%)] px-5 pb-[calc(var(--app-safe-bottom)+0.75rem)] pt-3 backdrop-blur-xl sm:-mx-5 sm:px-6 sm:pb-5">
-                    <div className="flex items-center justify-between gap-3 px-1">
-                      <div className="flex items-center gap-4">
-                        <button
-                          type="button"
-                          className={iconButtonClassName}
-                          onClick={() => openTypedPostSolveComposer(postSolveModeOverlay, 'keyboard')}
-                          disabled={postSolveSubmitting}
-                          aria-label="Math input"
-                          title="Math input"
-                        >
-                          <span
-                            className="text-[1.18rem] font-semibold italic leading-none tracking-[-0.05em]"
-                            style={{ fontFamily: 'KaTeX_Main, Times New Roman, serif' }}
-                          >
-                            fx
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          className={iconButtonClassName}
-                          onClick={() => openHandwrittenPostSolveComposer(postSolveModeOverlay)}
-                          disabled={postSolveSubmitting}
-                          aria-label="Handwriting"
-                          title="Handwriting"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                            <path d="m4.5 19.5 4.2-.8 9.9-9.9a2.1 2.1 0 0 0 0-3l-.4-.4a2.1 2.1 0 0 0-3 0l-9.9 9.9-.8 4.2Z" />
-                            <path d="m13.8 6.2 4 4" />
-                            <path d="M4.5 19.5 8 16" />
-                          </svg>
-                        </button>
-                        <button
-                          type="button"
-                          className={iconButtonClassName}
-                          onClick={openPostReplyImagePicker}
-                          disabled={postSolveSubmitting || postReplyImageUploading}
-                          aria-label="Camera"
-                          title="Camera"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                            <path d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.3-1.7A2 2 0 0 1 10.9 3.5h2.2a2 2 0 0 1 1.6.8L16 6h1.5A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-8Z" />
-                            <circle cx="12" cy="12.5" r="3.5" />
-                          </svg>
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-white shadow-[0_18px_34px_rgba(24,119,242,0.28)] transition hover:bg-[#176ad8] disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => void submitPostTextSolve()}
-                        disabled={postSolveSubmitting || postReplyImageUploading || !canSubmitReply}
-                        aria-label="Send reply"
-                        title="Send reply"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M21 3 10 14" />
-                          <path d="m21 3-7 18-4-7-7-4 18-7Z" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )
-            })()}
-            <input
-              ref={postReplyCameraInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={onPostReplyImagePicked}
-            />
-            <input
-              ref={postReplyGalleryInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={onPostReplyImagePicked}
-            />
-          </BottomSheet>
-        </OverlayPortal>
-      )}
-
-      {postSolveModeOverlay && postReplyImageSourceSheetOpen ? (
-        <OverlayPortal>
-          <BottomSheet
-            open
-            backdrop
-            title="Add photo"
-            subtitle="Choose how to attach your working"
-            onClose={() => setPostReplyImageSourceSheetOpen(false)}
-            zIndexClassName="z-[69]"
-            className="bottom-0"
-            sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
-            contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5"
-          >
-            <div className="space-y-2">
-              <button
-                type="button"
-                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
-                onClick={openPostReplyCameraPicker}
-                disabled={postReplyImageUploading}
-              >
-                <span>
-                  <span className="block text-sm font-semibold">Take photo</span>
-                  <span className="block text-xs text-slate-500">Open the camera and shoot your paper working.</span>
-                </span>
-                <span className="text-slate-400">{`>`}</span>
-              </button>
-              <button
-                type="button"
-                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
-                onClick={openPostReplyGalleryPicker}
-                disabled={postReplyImageUploading}
-              >
-                <span>
-                  <span className="block text-sm font-semibold">Choose from gallery</span>
-                  <span className="block text-xs text-slate-500">Pick an existing photo or screenshot from your device.</span>
-                </span>
-                <span className="text-slate-400">{`>`}</span>
-              </button>
-            </div>
-          </BottomSheet>
-        </OverlayPortal>
-      ) : null}
-
-      <ImageCropperModal
-        open={postReplyImageEditOpen}
-        file={postReplyImageEditFile}
-        title="Add reply photo"
-        onCancel={closePostReplyImageEdit}
-        onUseOriginal={(file: File) => void confirmPostReplyImageEdit(file)}
-        onConfirm={(file: File) => void confirmPostReplyImageEdit(file)}
-        confirmLabel="Add"
+      <PostReplyComposerOverlays
+        modeOverlay={postSolveModeOverlay}
+        canvasOverlay={postSolveOverlay}
+        typedOverlay={postTypedSolveOverlay}
+        blocks={postSolveBlocks}
+        draftText={postSolveText}
+        editingTarget={postSolveEditingTarget}
+        crudTarget={composerBlockCrudTarget}
+        typedLatex={postTypedSolveLatex}
+        typedChromeVisible={postTypedOverlayChromeVisible}
+        isMobile={isMobile}
+        viewerId={currentViewerId}
+        viewerName={currentViewerPostAuthor.name}
+        gradeLabel={activeGradeLabel}
+        roleProfile={currentLessonRoleProfile}
+        submitting={postSolveSubmitting}
+        imageUploading={postReplyImageUploading}
+        imageSourceSheetOpen={postReplyImageSourceSheetOpen}
+        imageEditOpen={postReplyImageEditOpen}
+        imageEditFile={postReplyImageEditFile}
+        error={postSolveError}
+        cameraInputRef={postReplyCameraInputRef}
+        galleryInputRef={postReplyGalleryInputRef}
+        textareaRef={postSolveTextareaRef}
+        onDraftTextChange={setPostSolveText}
+        onTypedLatexChange={setPostTypedSolveLatex}
+        onCloseModeOverlay={() => {
+          setPostSolveModeOverlay(null)
+          setPostSolveError(null)
+          setPostReplyImageSourceSheetOpen(false)
+          setPostSolveEditingTarget(null)
+          setComposerBlockCrudTarget(null)
+        }}
+        onCloseBlockCrud={() => setComposerBlockCrudTarget(null)}
+        onOpenTyped={() => openTypedPostSolveComposer(postSolveModeOverlay, 'keyboard')}
+        onOpenHandwritten={() => openHandwrittenPostSolveComposer(postSolveModeOverlay)}
+        onOpenImagePicker={openPostReplyImagePicker}
+        onSubmitText={() => void submitPostTextSolve()}
+        onImagePicked={onPostReplyImagePicked}
+        onCloseImageSourceSheet={() => setPostReplyImageSourceSheetOpen(false)}
+        onOpenCameraPicker={openPostReplyCameraPicker}
+        onOpenGalleryPicker={openPostReplyGalleryPicker}
+        onCancelImageEdit={closePostReplyImageEdit}
+        onConfirmImageEdit={(file) => void confirmPostReplyImageEdit(file)}
+        onCanvasCancel={() => {
+          if (postSolveSubmitting) return
+          setPostSolvePreviewOverlay(null)
+          setPostSolveModeOverlay(postSolveOverlay ? {
+            ...postSolveOverlay,
+            initialStudentText: '',
+          } : null)
+          setPostSolveOverlay(null)
+          setPostSolveEditingTarget((current) => current?.type === 'canvas' ? null : current)
+          setPostSolveError(null)
+        }}
+        onCanvasSubmit={(scene) => void submitPostSolve(scene)}
+        onTypedClose={() => {
+          if (postSolveSubmitting) return
+          setPostSolveModeOverlay(postTypedSolveOverlay ? {
+            ...postTypedSolveOverlay,
+            initialLatex: '',
+            initialStudentText: '',
+          } : null)
+          setPostTypedSolveOverlay(null)
+          setPostTypedOverlayChromeVisible(false)
+          setPostSolveEditingTarget((current) => current?.type === 'latex' ? null : current)
+          setPostSolveError(null)
+        }}
+        onSubmitTyped={() => void submitTypedPostSolve()}
+        onTypedChromeVisibilityChange={setPostTypedOverlayChromeVisible}
+        onEditBlock={editComposerBlock}
+        onDeleteBlock={deleteComposerBlock}
+        onBeginBlockLongPress={beginComposerBlockLongPress}
+        onMoveBlockLongPress={moveComposerBlockLongPress}
+        onClearBlockLongPress={clearComposerBlockLongPress}
+        onOpenBlockCrudOptions={openComposerBlockCrudOptions}
       />
-
-      {postSolveOverlay && (
-        <OverlayPortal>
-          <div
-            className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.58)] backdrop-blur-sm p-0"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Post solve canvas"
-          >
-            <div className="mx-auto flex h-full w-full max-w-none flex-col overflow-hidden rounded-none border-0 bg-white shadow-none">
-              <PublicSolveComposer
-                title={postSolveOverlay.title}
-                prompt={postSolveOverlay.prompt}
-                imageUrl={postSolveOverlay.imageUrl || null}
-                authorName={postSolveOverlay.authorName || null}
-                authorAvatarUrl={postSolveOverlay.authorAvatarUrl || null}
-                initialScene={postSolveOverlay.initialScene || null}
-                cancelLabel="Cancel"
-                submitLabel="Finish"
-                submitting={postSolveSubmitting}
-                fullscreenCanvas
-                hideMainMenu
-                referencePresentation="background"
-                onCancel={() => {
-                  if (postSolveSubmitting) return
-                  setPostSolvePreviewOverlay(null)
-                  setPostSolveModeOverlay({
-                    ...postSolveOverlay,
-                    initialStudentText: '',
-                  })
-                  setPostSolveOverlay(null)
-                  setPostSolveEditingTarget((current) => current?.type === 'canvas' ? null : current)
-                  setPostSolveError(null)
-                }}
-                onSubmit={submitPostSolve}
-              />
-            </div>
-            {postSolveError ? (
-              <div className="pointer-events-none absolute left-4 right-4 top-4 z-[69] mx-auto max-w-3xl rounded-2xl border border-red-200 bg-red-50/95 px-4 py-3 text-sm font-medium text-red-700 shadow-[0_18px_40px_rgba(220,38,38,0.12)] backdrop-blur-xl">
-                {postSolveError}
-              </div>
-            ) : null}
-          </div>
-        </OverlayPortal>
-      )}
-
-      {postTypedSolveOverlay && (
-        <OverlayPortal>
-          <div
-            className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.7)] backdrop-blur-sm p-0 sm:p-4"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Typed post response"
-          >
-            {(() => {
-              const typedPostActionsVisible = !isMobile || postTypedOverlayChromeVisible
-              return (
-            <div className="relative mx-auto flex h-full w-full max-w-none sm:max-w-7xl flex-col overflow-hidden rounded-none sm:rounded-[32px] border-0 sm:border sm:border-white/15 bg-transparent sm:bg-[#030712] shadow-none sm:shadow-[0_30px_80px_rgba(2,6,23,0.36)]">
-              <div className={`pointer-events-none absolute inset-0 z-[5] live-window--canvas ${typedPostActionsVisible ? 'live-window--chrome-visible' : ''}`}>
-                <div
-                  className="live-window__header"
-                  style={{
-                    top: 'calc(10px + max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)))',
-                    left: 'calc(12px + max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px)))',
-                    right: 'calc(12px + max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px)))',
-                  }}
-                >
-                  <button
-                    type="button"
-                    className="pointer-events-auto rounded-full border border-white/15 bg-white/6 px-3 py-1.5 text-[0.85rem] font-semibold leading-none text-white transition hover:bg-white/10 disabled:opacity-50"
-                    onClick={() => void submitTypedPostSolve()}
-                    disabled={postSolveSubmitting || !String(postTypedSolveLatex || '').trim()}
-                  >
-                    Add to reply
-                  </button>
-
-                  <div className="live-window__header-controls pointer-events-auto">
-                    <button
-                      type="button"
-                      title="Close typed response"
-                      aria-label="Close typed response"
-                      onClick={() => {
-                        if (postSolveSubmitting) return
-                        setPostSolveModeOverlay({
-                          ...postTypedSolveOverlay,
-                          initialLatex: '',
-                          initialStudentText: '',
-                        })
-                        setPostTypedSolveOverlay(null)
-                        setPostTypedOverlayChromeVisible(false)
-                        setPostSolveEditingTarget((current) => current?.type === 'latex' ? null : current)
-                        setPostSolveError(null)
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div className="min-h-0 flex-1">
-                <PublicSolveOpacityWorkspace
-                  title={postTypedSolveOverlay.title || 'Post'}
-                  prompt={postTypedSolveOverlay.prompt || ''}
-                  imageUrl={postTypedSolveOverlay.imageUrl || null}
-                  authorName={postTypedSolveOverlay.authorName || null}
-                  authorAvatarUrl={postTypedSolveOverlay.authorAvatarUrl || null}
-                  referencePresentation="background"
-                  resetKey={postTypedSolveOverlay.postId}
-                  outerClassName="bg-transparent"
-                  contentPaddingClassName="relative flex-1 min-h-0 px-0 py-0 sm:px-6 sm:py-4"
-                  frameClassName="relative flex h-full min-h-0 flex-col overflow-hidden rounded-none sm:rounded-[28px] border-0 sm:border sm:border-white/10 bg-white shadow-none sm:shadow-[0_22px_60px_rgba(2,6,23,0.24)]"
-                  canvasSurfaceClassName="flex h-full min-h-0 flex-col bg-white"
-                >
-                  <div className="h-full min-h-0 bg-white">
-                    <StackedCanvasWindow
-                      isVisible
-                      gradeLabel={activeGradeLabel}
-                      roomId={`post-compose:${postTypedSolveOverlay.postId}:${currentViewerId || 'anon'}`}
-                      userId={currentViewerId || 'anon'}
-                      userDisplayName={currentViewerPostAuthor.name}
-                      canOrchestrateLesson={false}
-                      roleProfile={currentLessonRoleProfile}
-                      forceEditable
-                      compactEdgeToEdge
-                      onOverlayChromeVisibilityChange={setPostTypedOverlayChromeVisible}
-                      initialComposedLatex={postTypedSolveOverlay.initialLatex || ''}
-                      initialRecognitionEngine={postTypedSolveOverlay.preferredRecognitionEngine || 'keyboard'}
-                      onComposedLatexChange={setPostTypedSolveLatex}
-                    />
-                  </div>
-                </PublicSolveOpacityWorkspace>
-              </div>
-            </div>
-              )
-            })()}
-            {postSolveError ? (
-              <div className="pointer-events-none absolute left-4 right-4 top-4 z-[69] mx-auto max-w-3xl rounded-2xl border border-red-200 bg-red-50/95 px-4 py-3 text-sm font-medium text-red-700 shadow-[0_18px_40px_rgba(220,38,38,0.12)] backdrop-blur-xl">
-                {postSolveError}
-              </div>
-            ) : null}
-          </div>
-        </OverlayPortal>
-      )}
 
       {postThreadOverlay && (
         <OverlayPortal>

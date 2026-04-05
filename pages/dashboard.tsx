@@ -20,6 +20,7 @@ import PdfViewerOverlay from '../components/PdfViewerOverlay'
 import ZoomableImageOverlay from '../components/ZoomableImageOverlay'
 import ScriptPhotosEditor from '../components/ScriptPhotosEditor'
 import BottomSheet from '../components/BottomSheet'
+import InlinePostSolutionsThread from '../components/InlinePostSolutionsThread'
 import PostReplyComposerOverlays from '../components/PostReplyComposerOverlays'
 import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -7099,6 +7100,82 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const threadUnlocked = typeof options.overrideThreadUnlocked === 'boolean'
       ? options.overrideThreadUnlocked
       : (options.kind === 'post' ? true : canViewChallengeThread)
+
+    if (options.kind === 'post') {
+      return (
+        <InlinePostSolutionsThread
+          loading={loading}
+          error={error || null}
+          responses={responses}
+          currentUserId={String(currentUserId || viewerId || '')}
+          threadUnlocked={threadUnlocked}
+          renderTextBlock={(text, blockKey) => (
+            <CollapsibleReplyText
+              key={blockKey}
+              text={text}
+              className="text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]"
+            />
+          )}
+          getContainerProps={(response, args) => ({
+            onPointerDown: (event) => beginReplyLongPress(event as any, {
+              kind: options.kind,
+              threadKey: `post:${String(item?.id || '')}`,
+              item,
+              response,
+              href: options.href,
+            }),
+            onPointerMove: moveReplyLongPress as any,
+            onPointerUp: clearReplyLongPress as any,
+            onPointerCancel: clearReplyLongPress as any,
+            onPointerLeave: clearReplyLongPress as any,
+            onContextMenu: (event) => {
+              if (!args.isMine) return
+              event.preventDefault()
+              openReplyCrudOptions({
+                kind: options.kind,
+                threadKey: `post:${String(item?.id || '')}`,
+                item,
+                response,
+                href: options.href,
+              })
+            },
+          })}
+          renderResponseStatus={(response, args) => {
+            const viewportSaving = Boolean(interactiveViewportSavingByResponseId[args.responseId])
+            const viewportError = String(interactiveViewportErrorByResponseId[args.responseId] || '').trim()
+            if (!(args.isMine && response?.excalidrawScene && (viewportError || viewportSaving))) return null
+            return (
+              <div className="mt-1 text-[11px] font-medium text-[#65676b]">
+                {viewportError ? viewportError : 'Saving view...'}
+              </div>
+            )
+          }}
+          renderResponseFooter={(response) => {
+            const latex = String(response?.latex || '')
+            const steps = splitLatexIntoSteps(latex)
+            const grade = normalizeChallengeGrade(response?.gradingJson, steps.length)
+            const feedback = String(response?.feedback || '').trim()
+            if (!grade && !feedback) return null
+            return (
+              <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                {grade ? <div className="font-semibold">Grade: {grade.earnedMarks}/{grade.totalMarks}</div> : null}
+                {feedback ? <div className="mt-1 whitespace-pre-wrap break-words">{feedback}</div> : null}
+              </div>
+            )
+          }}
+          onOpenImageBlock={(imageUrl, args) => openPostImageViewer(imageUrl, `${args.responseUserName} attachment`)}
+          onCanvasViewportChange={(response, responseId, scene) => {
+            if (options.onInteractiveViewportChange && options.interactiveViewportResponseId === responseId) {
+              options.onInteractiveViewportChange(scene)
+              return
+            }
+            if (options.onLiveResponseViewportChange && String(response?.userId || response?.user?.id || '') === String(currentUserId || viewerId || '') && responseId) {
+              options.onLiveResponseViewportChange(responseId, scene)
+            }
+          }}
+        />
+      )
+    }
 
     return (
       <div className="mt-1 pt-1">

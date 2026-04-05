@@ -5,6 +5,7 @@ import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react'
 import FullScreenGlassOverlay from '../../components/FullScreenGlassOverlay'
+import InlinePostSolutionsThread from '../../components/InlinePostSolutionsThread'
 import PublicFeedPostCard from '../../components/PublicFeedPostCard'
 import PostReplyComposerOverlays from '../../components/PostReplyComposerOverlays'
 import { PublicSolveCanvasViewer, normalizePublicSolveScene, type PublicSolveScene } from '../../components/PublicSolveCanvas'
@@ -896,53 +897,13 @@ export default function PublicUserProfilePage() {
     const actionState = buildFeedPostActionState(post)
     const isExpanded = expandedProfilePostId === postId
     const inlineThreadContent = isExpanded ? (
-      <div className="mt-1 pt-1">
-        {postThreadLoading ? <div className="text-sm text-[#65676b]">Loading solutions...</div> : null}
-        {!postThreadLoading && postThreadError ? <div className="text-sm text-red-500">{postThreadError}</div> : null}
-        {!postThreadLoading && !postThreadError && postThreadResponses.length === 0 ? (
-          <div className="rounded-2xl bg-[#f0f2f5] px-4 py-3 text-sm text-[#65676b]">No solutions yet.</div>
-        ) : null}
-        {!postThreadLoading && !postThreadError && postThreadResponses.length > 0 ? (
-          <div className="space-y-3">
-            {postThreadResponses.map((response: any, idx: number) => {
-              const responseUserId = String(response?.userId || response?.user?.id || '')
-              const responseUserName = String(response?.user?.name || response?.userName || response?.user?.email || 'Learner')
-              const responseAvatar = String(response?.user?.avatar || response?.userAvatar || '').trim()
-              const postReplyBlocks = normalizePostReplyBlocks(response)
-
-              return (
-                <div key={String(response?.id || idx)} className="py-1">
-                  <div className="flex items-start gap-3">
-                    <UserLink userId={responseUserId || null} className="shrink-0" title="View profile">
-                      <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f0f2f5]">
-                        {responseAvatar ? (
-                          <img src={responseAvatar} alt={responseUserName} className="h-full w-full object-cover" />
-                        ) : (
-                          <span className="text-[11px] font-semibold text-[#1c1e21]">{responseUserName.slice(0, 1).toUpperCase()}</span>
-                        )}
-                      </div>
-                    </UserLink>
-                    <div className="min-w-0 flex-1">
-                      <UserLink userId={responseUserId || null} className="text-[13px] font-semibold text-[#1c1e21] hover:underline" title="View profile">
-                        {responseUserName}
-                      </UserLink>
-                      <div className="mt-2 min-w-0 rounded-[20px] pr-2">
-                        {postReplyBlocks.length > 0 ? (
-                          renderProfilePostReplyBlocks(postReplyBlocks, `inline-profile-post-reply-${String(response?.id || idx)}`, {
-                            onOpenImageBlock: (imageUrl) => openImageViewer(imageUrl, `${responseUserName} attachment`),
-                          })
-                        ) : (
-                          <div className="rounded-xl border border-black/5 bg-[#f0f2f5] px-3 py-2 text-sm text-[#65676b]">No solution content.</div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        ) : null}
-      </div>
+      <InlinePostSolutionsThread
+        loading={postThreadLoading}
+        error={postThreadError}
+        responses={postThreadResponses}
+        currentUserId={currentViewerId}
+        onOpenImageBlock={(imageUrl, args) => openImageViewer(imageUrl, `${args.responseUserName} attachment`)}
+      />
     ) : null
 
     const handleSolveAction = () => {

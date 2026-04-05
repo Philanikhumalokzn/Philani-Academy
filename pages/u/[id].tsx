@@ -323,22 +323,14 @@ export default function PublicUserProfilePage() {
     const threadKey = typeof post?.threadKey === 'string' ? post.threadKey : `post:${postId}`
     if (!postId || !threadKey) return
 
-    if (!options?.forceOpen && postThreadOverlay?.postId === postId) {
-      setPostThreadOverlay(null)
+    if (!options?.forceOpen && expandedProfilePostId === postId) {
+      setExpandedProfilePostId(null)
       setPostThreadError(null)
       setPostThreadResponses([])
       return
     }
 
-    setPostThreadOverlay({
-      postId,
-      threadKey,
-      title: String(post?.title || 'Solutions'),
-      prompt: String(post?.prompt || ''),
-      imageUrl: resolveImageUrl(post?.imageUrl) || null,
-      authorName: String(post?.createdBy?.name || profile?.name || 'Poster').trim() || 'Poster',
-      authorAvatarUrl: resolveImageUrl(post?.createdBy?.avatar || profile?.avatar || ''),
-    })
+    setExpandedProfilePostId(postId)
     setPostThreadLoading(true)
     setPostThreadError(null)
     try {
@@ -350,7 +342,7 @@ export default function PublicUserProfilePage() {
     } finally {
       setPostThreadLoading(false)
     }
-  }, [fetchPublicThreadResponses, postThreadOverlay?.postId, profile?.avatar, profile?.name])
+  }, [expandedProfilePostId, fetchPublicThreadResponses])
 
   const focusPostSolveTextarea = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -903,6 +895,55 @@ export default function PublicUserProfilePage() {
     const authorVerified = authorRole === 'admin' || authorRole === 'teacher' || Boolean(profile?.verified)
     const actionState = buildFeedPostActionState(post)
     const isExpanded = expandedProfilePostId === postId
+    const inlineThreadContent = isExpanded ? (
+      <div className="mt-1 pt-1">
+        {postThreadLoading ? <div className="text-sm text-[#65676b]">Loading solutions...</div> : null}
+        {!postThreadLoading && postThreadError ? <div className="text-sm text-red-500">{postThreadError}</div> : null}
+        {!postThreadLoading && !postThreadError && postThreadResponses.length === 0 ? (
+          <div className="rounded-2xl bg-[#f0f2f5] px-4 py-3 text-sm text-[#65676b]">No solutions yet.</div>
+        ) : null}
+        {!postThreadLoading && !postThreadError && postThreadResponses.length > 0 ? (
+          <div className="space-y-3">
+            {postThreadResponses.map((response: any, idx: number) => {
+              const responseUserId = String(response?.userId || response?.user?.id || '')
+              const responseUserName = String(response?.user?.name || response?.userName || response?.user?.email || 'Learner')
+              const responseAvatar = String(response?.user?.avatar || response?.userAvatar || '').trim()
+              const postReplyBlocks = normalizePostReplyBlocks(response)
+
+              return (
+                <div key={String(response?.id || idx)} className="py-1">
+                  <div className="flex items-start gap-3">
+                    <UserLink userId={responseUserId || null} className="shrink-0" title="View profile">
+                      <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f0f2f5]">
+                        {responseAvatar ? (
+                          <img src={responseAvatar} alt={responseUserName} className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-[11px] font-semibold text-[#1c1e21]">{responseUserName.slice(0, 1).toUpperCase()}</span>
+                        )}
+                      </div>
+                    </UserLink>
+                    <div className="min-w-0 flex-1">
+                      <UserLink userId={responseUserId || null} className="text-[13px] font-semibold text-[#1c1e21] hover:underline" title="View profile">
+                        {responseUserName}
+                      </UserLink>
+                      <div className="mt-2 min-w-0 rounded-[20px] pr-2">
+                        {postReplyBlocks.length > 0 ? (
+                          renderProfilePostReplyBlocks(postReplyBlocks, `inline-profile-post-reply-${String(response?.id || idx)}`, {
+                            onOpenImageBlock: (imageUrl) => openImageViewer(imageUrl, `${responseUserName} attachment`),
+                          })
+                        ) : (
+                          <div className="rounded-xl border border-black/5 bg-[#f0f2f5] px-3 py-2 text-sm text-[#65676b]">No solution content.</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : null}
+      </div>
+    ) : null
 
     const handleSolveAction = () => {
       if (actionState.solveAction === 'closed') return
@@ -925,7 +966,7 @@ export default function PublicUserProfilePage() {
           prompt={post.prompt || ''}
           imageUrl={resolveImageUrl(post.imageUrl)}
           expanded={isExpanded}
-          onOpen={() => setExpandedProfilePostId((current) => current === postId ? null : postId)}
+          onOpen={() => void openLocalPostThread(post, { forceOpen: true })}
           onOpenImage={openImageViewer}
           actions={[
             {
@@ -973,12 +1014,7 @@ export default function PublicUserProfilePage() {
             },
           ]}
         >
-          {isExpanded ? (
-            <div className="mt-2 rounded-2xl bg-[#f0f2f5] px-4 py-3 text-sm text-[#65676b]">
-              <div>{Number(post.solutionCount || 0)} solution{Number(post.solutionCount || 0) === 1 ? '' : 's'} on this post.</div>
-              <div className="mt-1">{post.audience === 'public' ? 'Public post' : post.audience === 'grade' ? 'Grade post' : 'Shared post'}</div>
-            </div>
-          ) : null}
+          {inlineThreadContent}
         </PublicFeedPostCard>
       </article>
     )

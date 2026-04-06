@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { PublicSolveCanvasViewer } from './PublicSolveCanvas'
 import { renderKatexDisplayHtml } from '../lib/latexRender'
 import type { PostReplyBlock } from '../lib/postReplyComposer'
@@ -33,6 +34,14 @@ export default function PostComposerBlocksPreview({
   const resolvedTextClassName = textClassName || (compact
     ? 'text-[14px] leading-6 text-[#334155] break-words whitespace-pre-wrap'
     : 'text-[14px] leading-6 text-[#334155] break-words whitespace-pre-wrap')
+  const fullBleedImageStyle: CSSProperties | undefined = fullBleedImages
+    ? {
+        width: '100vw',
+        maxWidth: '100vw',
+        marginLeft: 'calc(50% - 50vw)',
+        marginRight: 'calc(50% - 50vw)',
+      }
+    : undefined
 
   return (
     <div className={wrapperClassName || 'space-y-3'}>
@@ -62,16 +71,17 @@ export default function PostComposerBlocksPreview({
 
         const imageElement = <img src={block.imageUrl} alt={imageTitle} className={fullBleedImages ? 'block h-auto w-full' : `w-full ${compact ? 'max-h-[320px] object-cover' : 'max-h-[520px] object-contain'}`} />
         const imageContainerClassName = fullBleedImages
-          ? 'relative left-1/2 block w-screen max-w-none -translate-x-1/2'
+          ? 'block'
           : 'overflow-hidden rounded-2xl border border-black/10 bg-[#f8fafc]'
         if (!onOpenImage) {
-          return <div key={blockKey} className={imageContainerClassName}>{imageElement}</div>
+          return <div key={blockKey} className={imageContainerClassName} style={fullBleedImageStyle}>{imageElement}</div>
         }
         return (
           <button
             key={blockKey}
             type="button"
             className={fullBleedImages ? `${imageContainerClassName} text-left` : `block w-full ${imageContainerClassName} text-left`}
+            style={fullBleedImageStyle}
             onClick={() => onOpenImage(block.imageUrl, imageTitle)}
           >
             {imageElement}

@@ -1576,22 +1576,6 @@ export default function PublicUserProfilePage() {
                 rightActionLabel="Open posts menu"
                 rightActionTitle="Posts menu"
               />
-              <div className="border-t border-slate-100 px-5 py-4">
-                <div className="flex flex-wrap items-center gap-3">
-                  <button type="button" className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-3 text-[15px] font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50">
-                    <span className="text-[#ff5a5f]">
-                      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true"><path d="M4 7.75A2.75 2.75 0 0 1 6.75 5h10.5A2.75 2.75 0 0 1 20 7.75v8.5A2.75 2.75 0 0 1 17.25 19H6.75A2.75 2.75 0 0 1 4 16.25v-8.5Zm4.5 1.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm7.72.22-5.47 5.47-2.22-2.22L5.5 15.75h13l-2.28-6.28Z" /></svg>
-                    </span>
-                    Reel
-                  </button>
-                  <button type="button" className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-3 text-[15px] font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50">
-                    <span className="text-[#ff4b4b]">
-                      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true"><path d="M17.5 6A2.5 2.5 0 0 1 20 8.5v7a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 15.5v-7A2.5 2.5 0 0 1 6.5 6h11Zm-8 3.25v5.5L15 12l-5.5-2.75Z" /></svg>
-                    </span>
-                    Live
-                  </button>
-                </div>
-              </div>
             </div>
           ) : canFollow ? (
             <div className="mt-5 overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_16px_34px_rgba(15,23,42,0.08)]">

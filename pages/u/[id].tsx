@@ -1275,6 +1275,7 @@ export default function PublicUserProfilePage() {
           title={String(post.title || '').trim() || 'Post'}
           prompt={post.prompt || ''}
           imageUrl={resolveImageUrl(post.imageUrl)}
+          contentBlocks={Array.isArray(post.contentBlocks) ? post.contentBlocks : null}
           expanded={isExpanded}
           onOpen={() => void openLocalPostThread(post, { forceOpen: true })}
           onOpenImage={openImageViewer}

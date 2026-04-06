@@ -6809,6 +6809,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         title={title}
                         prompt={prompt}
                         imageUrl={imageUrl}
+                        contentBlocks={Array.isArray((p as any)?.contentBlocks) ? (p as any).contentBlocks : null}
                         expanded={expandedSolutionThreadKey === itemKey && expandedSolutionThreadKind === 'post'}
                         onOpen={() => void openPostThread(p, { forceOpen: true })}
                         onOpenImage={openPostImageViewer}

@@ -1,6 +1,6 @@
 import dynamic from 'next/dynamic'
 import type { ChangeEvent, RefObject } from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import BottomSheet from './BottomSheet'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import OverlayPortal from './OverlayPortal'
@@ -296,6 +296,17 @@ export default function PostComposerOverlay(props: Props) {
     return composePostSolveBlocksWithDraftText(props.contentBlocks || [], String(props.draftText || ''), props.editingTarget || null)
   }, [props.contentBlocks, props.draftText, props.editingTarget, usesUniversalComposer])
 
+  useEffect(() => {
+    if (!open || !usesUniversalComposer) return
+    const textarea = props.textareaRef?.current
+    if (!textarea) return
+    const maxHeightPx = 112
+    textarea.style.height = 'auto'
+    const nextHeight = Math.min(textarea.scrollHeight, maxHeightPx)
+    textarea.style.height = `${nextHeight}px`
+    textarea.style.overflowY = textarea.scrollHeight > maxHeightPx ? 'auto' : 'hidden'
+  }, [open, props.draftText, props.editingTarget, props.textareaRef, usesUniversalComposer])
+
   if (!open) return null
 
   const renderHeader = () => (
@@ -362,7 +373,7 @@ export default function PostComposerOverlay(props: Props) {
             zIndexClassName="z-[70]"
             variant="light"
             panelSize="full"
-            position="absolute"
+            position="fixed"
             forceHeaderSafeTop
             frameClassName="absolute inset-0 flex items-stretch justify-center p-0"
             panelClassName="!h-full !max-h-none !max-w-none !rounded-none border-none bg-white"
@@ -595,7 +606,7 @@ export default function PostComposerOverlay(props: Props) {
       {usesUniversalComposer ? renderUniversalComposer() : (
         <>
           <OverlayPortal>
-            <FullScreenGlassOverlay title="Post" onClose={onClose} onBackdropClick={onClose} zIndexClassName="z-[70]" variant="light" panelSize="full" position="absolute" forceHeaderSafeTop frameClassName="absolute inset-0 flex items-stretch justify-center p-0" panelClassName="!h-full !max-h-none !max-w-none !rounded-none border-none bg-white" className="[&>.philani-overlay-backdrop]:!bg-white [&>.philani-overlay-backdrop]:!backdrop-blur-none" contentClassName="flex flex-col overflow-hidden p-0">
+            <FullScreenGlassOverlay title="Post" onClose={onClose} onBackdropClick={onClose} zIndexClassName="z-[70]" variant="light" panelSize="full" position="fixed" forceHeaderSafeTop frameClassName="absolute inset-0 flex items-stretch justify-center p-0" panelClassName="!h-full !max-h-none !max-w-none !rounded-none border-none bg-white" className="[&>.philani-overlay-backdrop]:!bg-white [&>.philani-overlay-backdrop]:!backdrop-blur-none" contentClassName="flex flex-col overflow-hidden p-0">
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white p-0 text-[#1c1e21]">
                 <input ref={props.uploadInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(event) => void props.onFilePicked?.(event)} />
                 {renderHeader()}

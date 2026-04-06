@@ -1819,10 +1819,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [])
 
-  const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'discover'>('timeline')
+  const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'profile'>('timeline')
   const [studentDashboardProfileOpen, setStudentDashboardProfileOpen] = useState(false)
   const [studentDashboardProfileHeight, setStudentDashboardProfileHeight] = useState(960)
-  const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'discover' | 'admin' | null>(null)
+  const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'profile' | 'admin' | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [booksOverlayOpen, setBooksOverlayOpen] = useState(false)
   const [booksLoading, setBooksLoading] = useState(false)
@@ -14070,11 +14070,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
         <div
           ref={el => {
-            studentMobilePanelRefs.current.discover = el
+            studentMobilePanelRefs.current.profile = el
           }}
           className="w-full flex-none self-start"
         >
-          <div className="pb-8">{renderStudentSurfaceSection('discover')}</div>
+          <div className="pb-8">{renderEmbeddedOwnProfilePanel('mobile')}</div>
         </div>
       </div>
     </div>
@@ -14099,7 +14099,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       }
     }
 
-    const switchMobileTab = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
+    const switchMobileTab = (tab: 'timeline' | 'sessions' | 'groups' | 'profile') => {
       setStudentDashboardProfileOpen(false)
       setStudentMobileIsDragging(false)
       setStudentMobileDragOffsetPx(0)
@@ -14188,10 +14188,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </div>
 
             <div>
-              <div className="relative grid grid-cols-5 border-b border-black/10 bg-white">
+              <div className="relative grid grid-cols-4 border-b border-black/10 bg-white">
                 <span
                   aria-hidden="true"
-                  className={`pointer-events-none absolute bottom-0 left-0 z-0 h-[3px] w-1/5 rounded-full bg-[#1877f2] ${studentMobileIsDragging ? '' : 'transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]'}`}
+                  className={`pointer-events-none absolute bottom-0 left-0 z-0 h-[3px] w-1/4 rounded-full bg-[#1877f2] ${studentMobileIsDragging ? '' : 'transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]'}`}
                   style={{ transform: `translateX(${studentMobileVisualIndex * 100}%)` }}
                 />
                 <button
@@ -14209,8 +14209,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   type="button"
                   className={`relative z-10 flex min-w-0 items-center justify-center px-1 py-3 transition ${studentMobileTab === 'sessions' ? 'text-[#1c1e21]' : 'text-[#65676b]'}`}
                   onClick={() => switchMobileTab('sessions')}
-                  aria-label="Classroom"
-                  title="Classroom"
+                  aria-label="Study hub"
+                  title="Study hub"
                 >
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <rect x="4" y="5" width="16" height="15" rx="3" stroke="currentColor" strokeWidth="1.9" />
@@ -14233,28 +14233,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </button>
                 <button
                   type="button"
-                  className={`relative z-10 flex min-w-0 items-center justify-center px-1 py-3 transition ${studentMobileTab === 'discover' ? 'text-[#1c1e21]' : 'text-[#65676b]'}`}
-                  onClick={() => switchMobileTab('discover')}
-                  aria-label="Discover"
-                  title="Discover"
+                  className={`relative z-10 flex min-w-0 items-center justify-center px-1 py-3 transition ${studentMobileTab === 'profile' ? 'text-[#1c1e21]' : 'text-[#65676b]'}`}
+                  onClick={() => switchMobileTab('profile')}
+                  aria-label="My profile"
+                  title="My profile"
                 >
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.9" />
-                    <path d="M14.8 9.2L13.3 13.3L9.2 14.8L10.7 10.7L14.8 9.2Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  className="relative z-10 flex min-w-0 items-center justify-center px-1 py-3 text-[#65676b] transition"
-                  onClick={openBooksOverlay}
-                  aria-label="Learning"
-                  title="Learning"
-                >
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M6 5.5C6 4.67157 6.67157 4 7.5 4H18V19H7.5C6.67157 19 6 19.6716 6 20.5V5.5Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
-                    <path d="M6 20H17.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
-                    <path d="M9 8H14" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
-                  </svg>
+                  <span className="inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f8fafc]">
+                    {effectiveAvatarUrl ? (
+                      <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="text-sm font-semibold text-[#1c1e21]">{String(learnerName || 'U').slice(0, 1).toUpperCase()}</span>
+                    )}
+                  </span>
                 </button>
               </div>
 

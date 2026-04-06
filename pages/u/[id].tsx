@@ -1584,8 +1584,11 @@ export default function PublicUserProfilePage() {
                 avatarAlt={displayName}
                 avatarFallback={<span>{extractInitials(displayName)}</span>}
                 message={`Post a challenge to ${firstName}`}
-                rightActionIcon="photo"
-                rightActionLabel={`Post a challenge to ${firstName}`}
+                onMessageClick={openCreateOwnedPostComposer}
+                rightActionIcon="menu"
+                onRightActionClick={() => setPostToolsSheetOpen(true)}
+                rightActionLabel="Open posts menu"
+                rightActionTitle="Posts menu"
               />
             </div>
           ) : null}

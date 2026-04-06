@@ -321,27 +321,18 @@ export default function PostComposerOverlay(props: Props) {
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-slate-700">{editingPostId ? 'Edit post' : 'Share a post'}</div>
+          <input
+            className="w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-base text-[#1c1e21] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/25"
+            placeholder="Title (optional)"
+            maxLength={30}
+            value={titleDraft}
+            onChange={(event) => onTitleChange(event.target.value)}
+          />
         </div>
       </div>
 
       <div className="mt-4 flex flex-col gap-3">
-        <input
-          className="w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-base text-[#1c1e21] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/25"
-          placeholder="Title (optional)"
-          value={titleDraft}
-          onChange={(event) => onTitleChange(event.target.value)}
-        />
-
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-slate-600">
-              <path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-            <span className="text-xs text-slate-500">Mode</span>
-            <span className="text-sm text-[#1c1e21]">{usesUniversalComposer ? 'Composer' : 'Post'}</span>
-          </div>
-
           <div className="flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-slate-600">
               <path d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364-2.121 2.121M7.757 16.243l-2.121 2.121m12.728 0-2.121-2.121M7.757 7.757 5.636 5.636" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />

@@ -246,7 +246,7 @@ function ComposerBlockList({
             key={block.id}
             role="button"
             tabIndex={0}
-            className={block.type === 'image' ? 'inline-flex max-w-full' : 'pt-1'}
+            className={block.type === 'image' ? 'block' : 'pt-1'}
             onClick={() => onEditBlock?.(block, index)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' || event.key === ' ') {

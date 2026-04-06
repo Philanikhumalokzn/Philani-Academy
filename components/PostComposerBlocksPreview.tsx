@@ -13,6 +13,7 @@ type Props = {
   compact?: boolean
   textClassName?: string
   wrapperClassName?: string
+  fullBleedImages?: boolean
 }
 
 export default function PostComposerBlocksPreview({
@@ -24,6 +25,7 @@ export default function PostComposerBlocksPreview({
   compact = false,
   textClassName,
   wrapperClassName,
+  fullBleedImages = true,
 }: Props) {
   const normalizedBlocks = normalizePostReplyBlocks(Array.isArray(blocks) && blocks.length > 0 ? blocks : { studentText: prompt, imageUrl })
   if (normalizedBlocks.length === 0) return null
@@ -58,15 +60,18 @@ export default function PostComposerBlocksPreview({
           )
         }
 
-        const imageElement = <img src={block.imageUrl} alt={imageTitle} className={`w-full ${compact ? 'max-h-[320px] object-cover' : 'max-h-[520px] object-contain'}`} />
+        const imageElement = <img src={block.imageUrl} alt={imageTitle} className={fullBleedImages ? 'block h-auto w-full' : `w-full ${compact ? 'max-h-[320px] object-cover' : 'max-h-[520px] object-contain'}`} />
+        const imageContainerClassName = fullBleedImages
+          ? 'relative left-1/2 block w-screen max-w-none -translate-x-1/2'
+          : 'overflow-hidden rounded-2xl border border-black/10 bg-[#f8fafc]'
         if (!onOpenImage) {
-          return <div key={blockKey} className="overflow-hidden rounded-2xl border border-black/10 bg-[#f8fafc]">{imageElement}</div>
+          return <div key={blockKey} className={imageContainerClassName}>{imageElement}</div>
         }
         return (
           <button
             key={blockKey}
             type="button"
-            className="block w-full overflow-hidden rounded-2xl border border-black/10 bg-[#f8fafc] text-left"
+            className={fullBleedImages ? `${imageContainerClassName} text-left` : `block w-full ${imageContainerClassName} text-left`}
             onClick={() => onOpenImage(block.imageUrl, imageTitle)}
           >
             {imageElement}

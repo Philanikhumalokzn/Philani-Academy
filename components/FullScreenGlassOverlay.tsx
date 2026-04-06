@@ -25,6 +25,7 @@ export type FullScreenGlassOverlayProps = {
   showCloseButton?: boolean
   hideHeader?: boolean
   forceHeaderSafeTop?: boolean
+  respectBottomSafeArea?: boolean
 
   leftActions?: React.ReactNode
   rightActions?: React.ReactNode
@@ -52,6 +53,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     showCloseButton: _showCloseButton,
     hideHeader = false,
     forceHeaderSafeTop = false,
+    respectBottomSafeArea = true,
     leftActions,
     rightActions,
     className,
@@ -182,7 +184,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     ? {
         paddingTop: 'max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px))',
         paddingRight: 'max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px))',
-        paddingBottom: 'max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))',
+        paddingBottom: respectBottomSafeArea ? 'max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))' : '0px',
         paddingLeft: 'max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px))',
       }
     : undefined

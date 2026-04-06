@@ -374,6 +374,7 @@ export default function PostComposerOverlay(props: Props) {
             panelSize="full"
             position="fixed"
             forceHeaderSafeTop
+            respectBottomSafeArea={false}
             frameClassName="absolute inset-0 flex items-stretch justify-center p-0"
             panelClassName="!h-full !max-h-none !max-w-none !rounded-none border-none bg-white"
             className="[&>.philani-overlay-backdrop]:!bg-white [&>.philani-overlay-backdrop]:!backdrop-blur-none"
@@ -585,7 +586,7 @@ export default function PostComposerOverlay(props: Props) {
       {usesUniversalComposer ? renderUniversalComposer() : (
         <>
           <OverlayPortal>
-            <FullScreenGlassOverlay title="Post" onClose={onClose} onBackdropClick={onClose} zIndexClassName="z-[70]" variant="light" panelSize="full" position="fixed" forceHeaderSafeTop frameClassName="absolute inset-0 flex items-stretch justify-center p-0" panelClassName="!h-full !max-h-none !max-w-none !rounded-none border-none bg-white" className="[&>.philani-overlay-backdrop]:!bg-white [&>.philani-overlay-backdrop]:!backdrop-blur-none" contentClassName="flex flex-col overflow-hidden p-0">
+            <FullScreenGlassOverlay title="Post" onClose={onClose} onBackdropClick={onClose} zIndexClassName="z-[70]" variant="light" panelSize="full" position="fixed" forceHeaderSafeTop respectBottomSafeArea={false} frameClassName="absolute inset-0 flex items-stretch justify-center p-0" panelClassName="!h-full !max-h-none !max-w-none !rounded-none border-none bg-white" className="[&>.philani-overlay-backdrop]:!bg-white [&>.philani-overlay-backdrop]:!backdrop-blur-none" contentClassName="flex flex-col overflow-hidden p-0">
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white p-0 text-[#1c1e21]">
                 <input ref={props.uploadInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(event) => void props.onFilePicked?.(event)} />
                 {renderHeader()}

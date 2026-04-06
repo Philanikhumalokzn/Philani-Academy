@@ -248,6 +248,8 @@ export default function PublicUserProfilePage() {
   const currentLessonRoleProfile = useMemo(() => createLessonRoleProfile({ platformRole: sessionPlatformRole }), [sessionPlatformRole])
   const currentViewerId = String(viewerId || (session as any)?.user?.id || '')
   const currentViewerName = String(session?.user?.name || session?.user?.email || 'You')
+  const currentViewerAvatarUrl = resolveImageUrl(String((session as any)?.user?.avatar || (session as any)?.user?.image || '')) || null
+  const currentViewerFirstName = useMemo(() => String(currentViewerName || '').trim().split(/\s+/).filter(Boolean)[0] || 'You', [currentViewerName])
   const {
     clearReplyLongPress,
     openReplyCrudOptions,
@@ -1550,12 +1552,13 @@ export default function PublicUserProfilePage() {
           </div>
 
           {isSelf ? (
-            <div className="mt-5 overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_16px_34px_rgba(15,23,42,0.08)]">
+            <div className="mt-5 overflow-hidden rounded-[30px] border border-slate-200 bg-white px-4 py-2.5 shadow-[0_16px_34px_rgba(15,23,42,0.08)]">
               <FeedComposerPill
-                avatarUrl={avatarUrl}
-                avatarAlt={displayName}
-                avatarFallback={<span>{extractInitials(displayName)}</span>}
-                message={`What's on your mind, ${firstName}?`}
+                size="compact"
+                avatarUrl={currentViewerAvatarUrl}
+                avatarAlt={currentViewerName}
+                avatarFallback={<span>{extractInitials(currentViewerName)}</span>}
+                message={`What's on your mind, ${currentViewerFirstName}?`}
                 onMessageClick={openCreateOwnedPostComposer}
                 rightActionIcon="menu"
                 onRightActionClick={() => setPostToolsSheetOpen(true)}
@@ -1564,11 +1567,12 @@ export default function PublicUserProfilePage() {
               />
             </div>
           ) : canFollow ? (
-            <div className="mt-5 overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_16px_34px_rgba(15,23,42,0.08)]">
+            <div className="mt-5 overflow-hidden rounded-[30px] border border-slate-200 bg-white px-4 py-2.5 shadow-[0_16px_34px_rgba(15,23,42,0.08)]">
               <FeedComposerPill
-                avatarUrl={avatarUrl}
-                avatarAlt={displayName}
-                avatarFallback={<span>{extractInitials(displayName)}</span>}
+                size="compact"
+                avatarUrl={currentViewerAvatarUrl}
+                avatarAlt={currentViewerName}
+                avatarFallback={<span>{extractInitials(currentViewerName)}</span>}
                 message={`Post a challenge to ${firstName}`}
                 onMessageClick={openCreateOwnedPostComposer}
                 rightActionIcon="menu"
@@ -1686,7 +1690,7 @@ export default function PublicUserProfilePage() {
         open={postComposerOpen}
         editingPostId={editingOwnedPostId}
         viewerName={currentViewerName}
-        viewerAvatarUrl={avatarUrl || String((session as any)?.user?.avatar || (session as any)?.user?.image || '')}
+        viewerAvatarUrl={currentViewerAvatarUrl}
         titleDraft={postTitleDraft}
         audienceDraft={postAudienceDraft}
         maxAttempts={postMaxAttemptsDraft}
@@ -1729,7 +1733,7 @@ export default function PublicUserProfilePage() {
           prompt: String(postSolveText || '').trim(),
           imageUrl: null,
           authorName: currentViewerName,
-          authorAvatarUrl: avatarUrl || String((session as any)?.user?.avatar || (session as any)?.user?.image || ''),
+          authorAvatarUrl: currentViewerAvatarUrl,
           postContentBlocks: composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget),
         }, 'keyboard')}
         onOpenHandwritten={() => openHandwrittenPostSolveComposer({
@@ -1739,7 +1743,7 @@ export default function PublicUserProfilePage() {
           prompt: String(postSolveText || '').trim(),
           imageUrl: null,
           authorName: currentViewerName,
-          authorAvatarUrl: avatarUrl || String((session as any)?.user?.avatar || (session as any)?.user?.image || ''),
+          authorAvatarUrl: currentViewerAvatarUrl,
           postContentBlocks: composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget),
         })}
         onOpenImagePicker={openPostReplyImagePicker}

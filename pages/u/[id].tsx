@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react'
+import FeedComposerPill from '../../components/FeedComposerPill'
 import FullScreenGlassOverlay from '../../components/FullScreenGlassOverlay'
 import InlinePostSolutionsThread from '../../components/InlinePostSolutionsThread'
 import PublicFeedPostCard from '../../components/PublicFeedPostCard'
@@ -1313,22 +1314,14 @@ export default function PublicUserProfilePage() {
 
           {isSelf ? (
             <div className="mt-5 overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_16px_34px_rgba(15,23,42,0.08)]">
-              <div className="flex items-center gap-4 px-5 py-5">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-700">
-                  {avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
-                  ) : (
-                    <span>{extractInitials(displayName)}</span>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1 rounded-full bg-slate-50 px-4 py-3 text-[16px] font-medium tracking-[-0.02em] text-slate-800">What's on your mind?</div>
-                <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-full text-[#2fb344] transition hover:bg-[#effaf2]" aria-label="Add photo">
-                  <svg viewBox="0 0 24 24" className="h-7 w-7" fill="currentColor" aria-hidden="true">
-                    <path d="M6.5 5A3.5 3.5 0 0 0 3 8.5v7A3.5 3.5 0 0 0 6.5 19h11a3.5 3.5 0 0 0 3.5-3.5v-7A3.5 3.5 0 0 0 17.5 5h-2.59l-.7-1.05A2 2 0 0 0 12.54 3h-1.08a2 2 0 0 0-1.67.95L9.09 5H6.5Zm5.5 3.25A4.25 4.25 0 1 1 7.75 12 4.25 4.25 0 0 1 12 8.25Zm0 1.5A2.75 2.75 0 1 0 14.75 12 2.75 2.75 0 0 0 12 9.75Z" />
-                  </svg>
-                </button>
-              </div>
+              <FeedComposerPill
+                avatarUrl={avatarUrl}
+                avatarAlt={displayName}
+                avatarFallback={<span>{extractInitials(displayName)}</span>}
+                message="What's on your mind?"
+                rightActionIcon="photo"
+                rightActionLabel="Add photo"
+              />
               <div className="border-t border-slate-100 px-5 py-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <button type="button" className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-3 text-[15px] font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50">
@@ -1348,21 +1341,14 @@ export default function PublicUserProfilePage() {
             </div>
           ) : canFollow ? (
             <div className="mt-5 overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_16px_34px_rgba(15,23,42,0.08)]">
-              <div className="flex items-center gap-4 px-5 py-5">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-700">
-                  {avatarUrl ? (
-                    <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
-                  ) : (
-                    <span>{extractInitials(displayName)}</span>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1 rounded-full bg-slate-50 px-4 py-3 text-[16px] font-medium tracking-[-0.02em] text-slate-800">Post a challenge to {firstName}</div>
-                <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-full text-[#2fb344] transition hover:bg-[#effaf2]" aria-label={`Post a challenge to ${firstName}`}>
-                  <svg viewBox="0 0 24 24" className="h-7 w-7" fill="currentColor" aria-hidden="true">
-                    <path d="M6.5 5A3.5 3.5 0 0 0 3 8.5v7A3.5 3.5 0 0 0 6.5 19h11a3.5 3.5 0 0 0 3.5-3.5v-7A3.5 3.5 0 0 0 17.5 5h-2.59l-.7-1.05A2 2 0 0 0 12.54 3h-1.08a2 2 0 0 0-1.67.95L9.09 5H6.5Zm5.5 3.25A4.25 4.25 0 1 1 7.75 12 4.25 4.25 0 0 1 12 8.25Zm0 1.5A2.75 2.75 0 1 0 14.75 12 2.75 2.75 0 0 0 12 9.75Z" />
-                  </svg>
-                </button>
-              </div>
+              <FeedComposerPill
+                avatarUrl={avatarUrl}
+                avatarAlt={displayName}
+                avatarFallback={<span>{extractInitials(displayName)}</span>}
+                message={`Post a challenge to ${firstName}`}
+                rightActionIcon="photo"
+                rightActionLabel={`Post a challenge to ${firstName}`}
+              />
             </div>
           ) : null}
 

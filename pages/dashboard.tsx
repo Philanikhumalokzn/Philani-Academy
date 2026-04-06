@@ -11,6 +11,7 @@ import DiagramOverlayModule from '../components/DiagramOverlayModule'
 import TextOverlayModule from '../components/TextOverlayModule'
 import AssignmentSubmissionOverlay from '../components/AssignmentSubmissionOverlay'
 import AppFooter from '../components/AppFooter'
+import FeedComposerPill from '../components/FeedComposerPill'
 import HandwritingNormalizationOverlay from '../components/HandwritingNormalizationOverlay'
 import MathKeyboardOverlay from '../components/MathKeyboardOverlay'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
@@ -6102,40 +6103,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return (
       <section className="space-y-0 bg-[#f0f2f5] text-[#1c1e21]">
         <section className="border-b border-black/10 bg-white px-4 py-2.5">
-          <div className="flex items-center gap-3 bg-transparent">
-            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f0f2f5] text-sm font-semibold text-[#1c1e21]">
-              {effectiveAvatarUrl ? (
-                <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
-              ) : (
-                <span>{learnerInitials}</span>
-              )}
-            </span>
-            <div className="flex min-w-0 flex-1 items-center rounded-full border border-black/10 bg-[#f8fafc] px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
-              <button
-                type="button"
-                className="min-w-0 flex-1 py-2 text-left text-[14px] text-[#65676b]"
-                onClick={() => {
-                  setCreateKind('post')
-                  setCreateOverlayOpen(true)
-                }}
-              >
-                What's on your mind, {String(learnerName || 'learner').split(' ')[0]}?
-              </button>
-            </div>
-            <button
-              type="button"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 bg-[#f8fafc] text-[#1c1e21]"
-              onClick={() => setPostToolsSheetOpen(true)}
-              aria-label="Open posts menu"
-              title="Posts menu"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M6 8H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <path d="M9 12H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <path d="M12 16H18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </button>
-          </div>
+          <FeedComposerPill
+            size="compact"
+            avatarUrl={effectiveAvatarUrl}
+            avatarAlt={learnerName}
+            avatarFallback={<span>{learnerInitials}</span>}
+            message={`What's on your mind, ${String(learnerName || 'learner').split(' ')[0]}?`}
+            onMessageClick={() => {
+              setCreateKind('post')
+              setCreateOverlayOpen(true)
+            }}
+            rightActionIcon="menu"
+            onRightActionClick={() => setPostToolsSheetOpen(true)}
+            rightActionLabel="Open posts menu"
+            rightActionTitle="Posts menu"
+          />
         </section>
 
         <section className="border-b border-black/10 bg-white">

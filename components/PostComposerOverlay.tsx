@@ -248,7 +248,8 @@ function ComposerBlockList({
             <button
               key={block.id}
               type="button"
-              className="block w-full text-left"
+              className="block w-full appearance-none border-0 bg-transparent p-0 text-left"
+              data-testid="post-composer-image-row"
               onClick={() => onEditBlock?.(block, index)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
@@ -386,6 +387,8 @@ export default function PostComposerOverlay(props: Props) {
             position="fixed"
             forceHeaderSafeTop
             respectBottomSafeArea={false}
+            respectHorizontalSafeArea={false}
+            disableContentPadding
             frameClassName="absolute inset-0 flex items-stretch justify-center p-0"
             panelClassName="!h-full !max-h-none !max-w-none !rounded-none border-none bg-white"
             className="[&>.philani-overlay-backdrop]:!bg-white [&>.philani-overlay-backdrop]:!backdrop-blur-none"

@@ -91,6 +91,7 @@ export default function PublicFeedPostCard({
         }
       } : undefined}
       aria-expanded={onOpen ? expanded : undefined}
+      data-testid="public-feed-post-body"
     >
       <div className="px-4">
         <div className="text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{safeTitle}</div>
@@ -100,13 +101,14 @@ export default function PublicFeedPostCard({
         if (block.type === 'image') {
           const imageNode = <img src={block.imageUrl} alt={`${safeTitle} image`} className="block h-auto w-full" />
           if (!onOpenImage) {
-            return <div key={block.id} className={spacingClassName}>{imageNode}</div>
+            return <div key={block.id} className={spacingClassName} data-testid="public-feed-post-image-row">{imageNode}</div>
           }
           return (
             <button
               key={block.id}
               type="button"
-              className={`${spacingClassName} block w-full text-left`}
+              className={`${spacingClassName} block w-full appearance-none border-0 bg-transparent p-0 text-left`}
+              data-testid="public-feed-post-image-row"
               onClick={(event) => {
                 event.stopPropagation()
                 onOpenImage(block.imageUrl, `${safeTitle} image`)
@@ -175,12 +177,12 @@ export default function PublicFeedPostCard({
               {safeCreatedAt ? <div className="mt-0.5 text-[12px] font-medium tracking-[0.01em] text-[#65676b]">{safeCreatedAt}</div> : null}
             </div>
           </div>
-
-          {body}
         </div>
 
         {sideActions ? <div className="shrink-0">{sideActions}</div> : null}
       </div>
+
+      {body}
 
       {actions.length > 0 ? (
         <div className="mt-2 px-4 pt-1 text-[#65676b] sm:px-6">

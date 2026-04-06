@@ -387,8 +387,9 @@ export default function PostComposerOverlay(props: Props) {
             position="fixed"
             forceHeaderSafeTop
             respectBottomSafeArea={true}
-            respectHorizontalSafeArea={false}
-            disableContentPadding
+            respectHorizontalSafeArea={true}
+            // Enable content padding for header and action bar
+            disableContentPadding={false}
             frameClassName="absolute inset-0 flex items-stretch justify-center p-0"
             panelClassName="!h-full !max-h-none !max-w-none !rounded-none border-none bg-white"
             className="[&>.philani-overlay-backdrop]:!bg-white [&>.philani-overlay-backdrop]:!backdrop-blur-none"
@@ -397,14 +398,30 @@ export default function PostComposerOverlay(props: Props) {
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white p-0 text-[#1c1e21]">
               {renderHeader()}
 
+              {/* Full-bleed image rows */}
+              {Array.isArray(props.contentBlocks) && props.contentBlocks.some(b => b.type === 'image') ? (
+                props.contentBlocks.filter(b => b.type === 'image').map((block, idx) => (
+                  <button
+                    key={block.id}
+                    type="button"
+                    className="block w-full appearance-none border-0 bg-transparent p-0 text-left"
+                    data-testid="post-composer-image-row"
+                    onClick={() => props.onEditBlock?.(block, idx)}
+                  >
+                    <img src={block.imageUrl} alt="Post image" className="block h-auto w-full" />
+                  </button>
+                ))
+              ) : null}
+
+              {/* Padded content and action bar */}
               <div className="flex min-h-0 flex-1 flex-col gap-0">
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-t border-black/10 bg-white px-0 py-4 sm:px-1 sm:py-5">
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-t border-black/10 bg-white px-4 py-4 sm:px-6 sm:py-5">
                   <div
                     className="flex min-h-0 flex-1 cursor-text flex-col gap-3 overflow-y-auto py-3"
                     onClick={() => props.textareaRef?.current?.focus()}
                   >
                     <ComposerBlockList
-                      blocks={props.contentBlocks || []}
+                      blocks={props.contentBlocks ? props.contentBlocks.filter(b => b.type !== 'image') : []}
                       editingTarget={props.editingTarget}
                       onEditBlock={props.onEditBlock}
                       onBeginBlockLongPress={props.onBeginBlockLongPress}
@@ -413,7 +430,7 @@ export default function PostComposerOverlay(props: Props) {
                       onOpenBlockCrudOptions={props.onOpenBlockCrudOptions}
                     />
 
-                    <div className="px-4">
+                    <div>
                       <textarea
                         ref={props.textareaRef}
                         value={String(props.draftText || '')}
@@ -428,7 +445,7 @@ export default function PostComposerOverlay(props: Props) {
                 </div>
 
                 {parsedOpen && parsedJsonText ? (
-                  <div className="rounded-none border-t border-black/10 bg-[#eef2f7] px-0 py-3 sm:px-1 sm:py-4">
+                  <div className="rounded-none border-t border-black/10 bg-[#eef2f7] px-4 py-3 sm:px-6 sm:py-4">
                     <pre className="whitespace-pre-wrap text-xs text-slate-700">{parsedJsonText}</pre>
                   </div>
                 ) : null}

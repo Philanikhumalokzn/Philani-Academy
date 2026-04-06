@@ -1299,21 +1299,20 @@ export default function PublicUserProfilePage() {
 
     return (
       <article key={post.id} className="border-b border-black/10 bg-white py-3">
-        <div className="px-4 sm:px-6">
-          <PublicFeedPostCard
-            authorId={authorId}
-            authorName={authorName}
-            authorAvatar={authorAvatar}
-            authorVerified={authorVerified}
-            createdAt={formatShortDate(post.createdAt)}
-            title={String(post.title || '').trim() || 'Post'}
-            prompt={post.prompt || ''}
-            imageUrl={resolveImageUrl(post.imageUrl)}
-            contentBlocks={Array.isArray(post.contentBlocks) ? post.contentBlocks : null}
-            expanded={isExpanded}
-            onOpen={() => void openLocalPostThread(post, { forceOpen: true })}
-            onOpenImage={openImageViewer}
-            actions={[
+        <PublicFeedPostCard
+          authorId={authorId}
+          authorName={authorName}
+          authorAvatar={authorAvatar}
+          authorVerified={authorVerified}
+          createdAt={formatShortDate(post.createdAt)}
+          title={String(post.title || '').trim() || 'Post'}
+          prompt={post.prompt || ''}
+          imageUrl={resolveImageUrl(post.imageUrl)}
+          contentBlocks={Array.isArray(post.contentBlocks) ? post.contentBlocks : null}
+          expanded={isExpanded}
+          onOpen={() => void openLocalPostThread(post, { forceOpen: true })}
+          onOpenImage={openImageViewer}
+          actions={[
             {
               label: 'Like',
               active: Boolean(likedPostKeys[itemKey]),
@@ -1357,11 +1356,10 @@ export default function PublicUserProfilePage() {
                 </svg>
               ),
             },
-            ]}
-          >
-            {inlineThreadContent}
-          </PublicFeedPostCard>
-        </div>
+          ]}
+        >
+          {inlineThreadContent}
+        </PublicFeedPostCard>
       </article>
     )
   }

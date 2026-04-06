@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { PostReplyBlock } from '../lib/postReplyComposer'
+import { normalizePostReplyBlocks } from '../lib/postReplyComposer'
 import PostComposerBlocksPreview from './PostComposerBlocksPreview'
 import UserLink from './UserLink'
 
@@ -56,6 +57,13 @@ export default function PublicFeedPostCard({
   const hasAvatar = Boolean(safeAuthorAvatar)
   const showAuthorAvatarTick = authorVerified && hasAvatar
   const showAuthorNameTick = authorVerified && !hasAvatar
+  const normalizedBlocks = Array.isArray(contentBlocks) && contentBlocks.length > 0 ? normalizePostReplyBlocks(contentBlocks) : []
+  const contentRows = normalizedBlocks.length > 0
+    ? normalizedBlocks
+    : [
+        ...(safePrompt ? [{ id: '__legacy_text__', type: 'text', text: safePrompt } as PostReplyBlock] : []),
+        ...(safeImageUrl ? [{ id: '__legacy_image__', type: 'image', imageUrl: safeImageUrl } as PostReplyBlock] : []),
+      ]
 
   const renderSocialActionButton = (opts: PublicFeedPostAction) => (
     <button
@@ -84,26 +92,52 @@ export default function PublicFeedPostCard({
       } : undefined}
       aria-expanded={onOpen ? expanded : undefined}
     >
-      <div className="text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{safeTitle}</div>
-      <div className="mt-1.5">
-        <PostComposerBlocksPreview
-          blocks={contentBlocks}
-          prompt={safePrompt}
-          imageUrl={safeImageUrl}
-          compact
-          imageTitle={`${safeTitle} image`}
-          onOpenImage={(url, titleText) => {
-            if (!onOpenImage) return
-            onOpenImage(url, titleText)
-          }}
-        />
+      <div className="px-4">
+        <div className="text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{safeTitle}</div>
       </div>
+      {contentRows.map((block, index) => {
+        const spacingClassName = index === 0 ? 'mt-1.5' : 'mt-3'
+        if (block.type === 'image') {
+          const imageNode = <img src={block.imageUrl} alt={`${safeTitle} image`} className="block h-auto w-full" />
+          if (!onOpenImage) {
+            return <div key={block.id} className={spacingClassName}>{imageNode}</div>
+          }
+          return (
+            <button
+              key={block.id}
+              type="button"
+              className={`${spacingClassName} block w-full text-left`}
+              onClick={(event) => {
+                event.stopPropagation()
+                onOpenImage(block.imageUrl, `${safeTitle} image`)
+              }}
+            >
+              {imageNode}
+            </button>
+          )
+        }
+
+        return (
+          <div key={block.id} className={`${spacingClassName} px-4`}>
+            <PostComposerBlocksPreview
+              blocks={[block]}
+              compact
+              fullBleedImages={false}
+              imageTitle={`${safeTitle} image`}
+              onOpenImage={(url, titleText) => {
+                if (!onOpenImage) return
+                onOpenImage(url, titleText)
+              }}
+            />
+          </div>
+        )
+      })}
     </div>
   )
 
   return (
     <div>
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-3 px-4 sm:px-6">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
             <UserLink userId={authorId} className="shrink-0" title="View profile">
@@ -149,13 +183,13 @@ export default function PublicFeedPostCard({
       </div>
 
       {actions.length > 0 ? (
-        <div className="mt-2 pt-1 text-[#65676b]">
+        <div className="mt-2 px-4 pt-1 text-[#65676b] sm:px-6">
           <div className="flex items-center gap-1">
             {actions.map(renderSocialActionButton)}
           </div>
           {children ? children : null}
         </div>
-      ) : children ? <div className="mt-2 pt-1 text-[#65676b]">{children}</div> : null}
+      ) : children ? <div className="mt-2 px-4 pt-1 text-[#65676b] sm:px-6">{children}</div> : null}
     </div>
   )
 }

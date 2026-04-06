@@ -196,21 +196,22 @@ function ComposerBlockList({
 
         if (block.type === 'text') {
           return (
-            <div
-              key={block.id}
-              role="button"
-              tabIndex={0}
-              className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 whitespace-pre-wrap break-words text-slate-700"
-              onClick={() => onEditBlock?.(block, index)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  onEditBlock?.(block, index)
-                }
-              }}
-              {...blockHandlers}
-            >
-              {block.text}
+            <div key={block.id} className="px-4">
+              <div
+                role="button"
+                tabIndex={0}
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 whitespace-pre-wrap break-words text-slate-700"
+                onClick={() => onEditBlock?.(block, index)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    onEditBlock?.(block, index)
+                  }
+                }}
+                {...blockHandlers}
+              >
+                {block.text}
+              </div>
             </div>
           )
         }
@@ -218,11 +219,36 @@ function ComposerBlockList({
         if (block.type === 'latex') {
           const latexHtml = renderKatexDisplayHtml(block.latex)
           return (
-            <div
+            <div key={block.id} className="px-4">
+              <div
+                role="button"
+                tabIndex={0}
+                className="overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800"
+                onClick={() => onEditBlock?.(block, index)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    onEditBlock?.(block, index)
+                  }
+                }}
+                {...blockHandlers}
+              >
+                {latexHtml ? (
+                  <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
+                ) : (
+                  <div className="text-sm leading-6 whitespace-pre-wrap break-words">{renderTextWithKatex(block.latex)}</div>
+                )}
+              </div>
+            </div>
+          )
+        }
+
+        if (block.type === 'image') {
+          return (
+            <button
               key={block.id}
-              role="button"
-              tabIndex={0}
-              className="overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800"
+              type="button"
+              className="block w-full text-left"
               onClick={() => onEditBlock?.(block, index)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
@@ -232,31 +258,27 @@ function ComposerBlockList({
               }}
               {...blockHandlers}
             >
-              {latexHtml ? (
-                <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
-              ) : (
-                <div className="text-sm leading-6 whitespace-pre-wrap break-words">{renderTextWithKatex(block.latex)}</div>
-              )}
-            </div>
+              <img src={block.imageUrl} alt="Post image" className="block h-auto w-full" />
+            </button>
           )
         }
 
         return (
-          <div
-            key={block.id}
-            role="button"
-            tabIndex={0}
-            className={block.type === 'image' ? 'block' : 'pt-1'}
-            onClick={() => onEditBlock?.(block, index)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                onEditBlock?.(block, index)
-              }
-            }}
-            {...blockHandlers}
-          >
-            <PostComposerBlocksPreview blocks={[block]} compact />
+          <div key={block.id} className="px-4 pt-1">
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => onEditBlock?.(block, index)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onEditBlock?.(block, index)
+                }
+              }}
+              {...blockHandlers}
+            >
+              <PostComposerBlocksPreview blocks={[block]} compact />
+            </div>
           </div>
         )
       })}

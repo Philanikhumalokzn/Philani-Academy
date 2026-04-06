@@ -126,7 +126,7 @@ export default function ComposerActionBar({
 
         <div className="flex shrink-0 items-center gap-2">
           {trailingControls}
-          <button type="button" className="btn btn-primary" disabled={submitDisabled} onClick={() => void onSubmit()}>
+          <button type="button" className="btn btn-primary shadow-none hover:translate-y-0" disabled={submitDisabled} onClick={() => void onSubmit()}>
             {submitLabel}
           </button>
         </div>

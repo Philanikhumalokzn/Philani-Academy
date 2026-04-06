@@ -1969,8 +1969,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     timeline: HTMLDivElement | null
     sessions: HTMLDivElement | null
     groups: HTMLDivElement | null
-    discover: HTMLDivElement | null
-  }>({ timeline: null, sessions: null, groups: null, discover: null })
+    profile: HTMLDivElement | null
+  }>({ timeline: null, sessions: null, groups: null, profile: null })
   const [studentMobileActivePanelHeight, setStudentMobileActivePanelHeight] = useState<number | null>(null)
   const [studentMobileCarouselWidth, setStudentMobileCarouselWidth] = useState(0)
   const [studentMobileDragOffsetPx, setStudentMobileDragOffsetPx] = useState(0)
@@ -2540,7 +2540,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [discoverCacheKey, discoverLastQueryKey, session])
 
-  const discoverPanelActive = dashboardSectionOverlay === 'discover' || studentQuickOverlay === 'discover'
+  const discoverPanelActive = dashboardSectionOverlay === 'discover'
   const discoverPanelActiveRef = useRef(false)
 
   useEffect(() => {
@@ -3833,7 +3833,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const sessionCanOrchestrateLessons = hasLessonCapabilityForRole(sessionRole, 'canOrchestrateLesson')
   const canManageSessionThumbnails = sessionCanOrchestrateLessons
 
-  const studentMobileTabIndex = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
+  const studentMobileTabIndex = (tab: 'timeline' | 'sessions' | 'groups' | 'profile') => {
     if (tab === 'timeline') return 0
     if (tab === 'sessions') return 1
     if (tab === 'groups') return 2
@@ -3841,18 +3841,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }
 
   const studentMobileTabForIndex = (idx: number) =>
-    (idx <= 0 ? 'timeline' : idx === 1 ? 'sessions' : idx === 2 ? 'groups' : 'discover') as
+    (idx <= 0 ? 'timeline' : idx === 1 ? 'sessions' : idx === 2 ? 'groups' : 'profile') as
       | 'timeline'
       | 'sessions'
       | 'groups'
-      | 'discover'
+      | 'profile'
 
   const studentMobileActiveIndex = studentMobileTabIndex(studentMobileTab)
   const studentMobileVisualIndex = studentMobileCarouselWidth > 0
     ? Math.max(0, Math.min(3, studentMobileActiveIndex - (studentMobileDragOffsetPx / studentMobileCarouselWidth)))
     : studentMobileActiveIndex
 
-  const measureStudentMobilePanelHeight = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover') => {
+  const measureStudentMobilePanelHeight = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'profile') => {
     const panel = studentMobilePanelRefs.current[tab]
     if (!panel) return
     const content = panel.firstElementChild instanceof HTMLElement ? panel.firstElementChild : panel
@@ -3945,7 +3945,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     finishStudentMobileSwipe(event.pointerId)
   }, [finishStudentMobileSwipe])
 
-  const openStudentQuickOverlay = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'discover' | 'admin') => {
+  const openStudentQuickOverlay = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'admin') => {
     setStudentDashboardProfileOpen(false)
     setStudentQuickOverlay(tab)
     if (tab === 'timeline') setTimelineOpen(true)
@@ -6054,21 +6054,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </span>
           )}
           <span className="text-[10px] leading-none opacity-80 text-white">Alerts</span>
-        </button>
-
-        <button
-          type="button"
-          className={`${btnClass('discover')} flex-none snap-start`}
-          style={{ width: buttonWidth }}
-          onClick={() => openStudentQuickOverlay('discover')}
-          aria-label="Discover"
-          title="Discover"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" stroke="currentColor" strokeWidth="2" />
-            <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-          <span className={labelClass('discover')}>Discover</span>
         </button>
 
         {isAdmin && (
@@ -14074,7 +14059,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           }}
           className="w-full flex-none self-start"
         >
-          <div className="pb-8">{renderEmbeddedOwnProfilePanel('mobile')}</div>
+          {/* Render profile as a main panel, not an overlay, when accessed from the tab strip */}
+          <div className="pb-8">
+            {renderEmbeddedOwnProfilePanel('mobile')}
+          </div>
         </div>
       </div>
     </div>
@@ -14146,17 +14134,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 <BrandLogo height={34} className="drop-shadow-none shrink-0" />
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-[#f8fafc] text-[#1c1e21]"
-                  onClick={() => openStudentQuickOverlay('discover')}
-                  aria-label="Search and discover"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" stroke="currentColor" strokeWidth="2" />
-                    <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                </button>
                 <button
                   type="button"
                   className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-[#f8fafc] text-[#1c1e21]"
@@ -14252,7 +14229,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </div>
 
         <div>
-          {studentDashboardProfileOpen ? renderEmbeddedOwnProfilePanel('mobile') : renderMobileActivePanel()}
+          {/* Only show overlay if opened from header/avatar, not from tab strip */}
+          {studentDashboardProfileOpen && studentMobileTab !== 'profile'
+            ? renderEmbeddedOwnProfilePanel('mobile')
+            : renderMobileActivePanel()}
         </div>
 
         {renderDashboardFooter('mobile')}
@@ -14282,8 +14262,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     type="button"
                     className="mobile-menu-item"
                     onClick={() => {
-                      if (section.id === 'sessions' || section.id === 'groups' || section.id === 'discover') {
-                        switchMobileTab(section.id as 'sessions' | 'groups' | 'discover')
+                      if (section.id === 'sessions' || section.id === 'groups') {
+                        switchMobileTab(section.id as 'sessions' | 'groups')
                         return
                       }
                       closeMobileMenu()
@@ -15245,7 +15225,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               ? renderTimelineCard()
               : studentQuickOverlay === 'admin'
                 ? renderAdminToolsQuickPanel()
-                : renderStudentSurfaceSection(studentQuickOverlay)}
+                : (studentQuickOverlay === 'sessions' || studentQuickOverlay === 'groups')
+                  ? renderStudentSurfaceSection(studentQuickOverlay)
+                  : null}
           </div>
         </FullScreenGlassOverlay>
       )}

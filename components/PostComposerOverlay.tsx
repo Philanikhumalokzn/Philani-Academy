@@ -426,11 +426,6 @@ export default function PostComposerOverlay(props: Props) {
                 imageActionAriaLabel="Camera"
                 imageActionTitle="Camera"
                 imageActionDisabled={posting || uploading}
-                parseOnUpload={parseOnUpload}
-                onParseOnUploadChange={onParseOnUploadChange}
-                parsedJsonText={parsedJsonText}
-                parsedOpen={parsedOpen}
-                onToggleParsedOpen={onToggleParsedOpen}
                 posting={posting}
                 trailingControls={<AudiencePicker audienceDraft={audienceDraft} onAudienceChange={onAudienceChange} />}
                 submitLabel={posting ? (editingPostId ? 'Saving...' : 'Posting...') : (editingPostId ? 'Save' : 'Post')}
@@ -616,11 +611,6 @@ export default function PostComposerOverlay(props: Props) {
                   imageActionAriaLabel={uploading ? 'Uploading screenshot' : 'Upload screenshot'}
                   imageActionTitle={uploading ? 'Uploading...' : 'Upload screenshot'}
                   imageActionDisabled={uploading}
-                  parseOnUpload={parseOnUpload}
-                  onParseOnUploadChange={onParseOnUploadChange}
-                  parsedJsonText={parsedJsonText}
-                  parsedOpen={parsedOpen}
-                  onToggleParsedOpen={onToggleParsedOpen}
                   posting={posting}
                   extraLeadingActions={
                     <button type="button" className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50" onClick={props.onClearImage} disabled={!props.imageUrl || uploading} aria-label="Clear screenshot" title="Clear screenshot">

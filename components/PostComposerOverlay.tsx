@@ -386,7 +386,7 @@ export default function PostComposerOverlay(props: Props) {
             panelSize="full"
             position="fixed"
             forceHeaderSafeTop
-            respectBottomSafeArea={false}
+            respectBottomSafeArea={true}
             respectHorizontalSafeArea={false}
             disableContentPadding
             frameClassName="absolute inset-0 flex items-stretch justify-center p-0"

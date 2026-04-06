@@ -301,11 +301,9 @@ export default function PostComposerOverlay(props: Props) {
     if (!open || !usesUniversalComposer) return
     const textarea = props.textareaRef?.current
     if (!textarea) return
-    const maxHeightPx = 112
     textarea.style.height = 'auto'
-    const nextHeight = Math.min(textarea.scrollHeight, maxHeightPx)
-    textarea.style.height = `${nextHeight}px`
-    textarea.style.overflowY = textarea.scrollHeight > maxHeightPx ? 'auto' : 'hidden'
+    textarea.style.height = `${Math.max(textarea.scrollHeight, 160)}px`
+    textarea.style.overflowY = 'hidden'
   }, [open, props.draftText, props.editingTarget, props.textareaRef, usesUniversalComposer])
 
   if (!open) return null
@@ -376,28 +374,29 @@ export default function PostComposerOverlay(props: Props) {
 
               <div className="flex min-h-0 flex-1 flex-col gap-0">
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-t border-black/10 bg-white px-0 py-4 sm:px-1 sm:py-5">
-                  <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-                    <div className="min-w-0 rounded-[24px] border border-slate-200 bg-white px-4 py-3">
-                      <ComposerBlockList
-                        blocks={props.contentBlocks || []}
-                        editingTarget={props.editingTarget}
-                        onEditBlock={props.onEditBlock}
-                        onBeginBlockLongPress={props.onBeginBlockLongPress}
-                        onMoveBlockLongPress={props.onMoveBlockLongPress}
-                        onClearBlockLongPress={props.onClearBlockLongPress}
-                        onOpenBlockCrudOptions={props.onOpenBlockCrudOptions}
-                      />
+                  <div
+                    className="flex min-h-0 flex-1 cursor-text flex-col gap-3 overflow-y-auto px-4 py-3"
+                    onClick={() => props.textareaRef?.current?.focus()}
+                  >
+                    <ComposerBlockList
+                      blocks={props.contentBlocks || []}
+                      editingTarget={props.editingTarget}
+                      onEditBlock={props.onEditBlock}
+                      onBeginBlockLongPress={props.onBeginBlockLongPress}
+                      onMoveBlockLongPress={props.onMoveBlockLongPress}
+                      onClearBlockLongPress={props.onClearBlockLongPress}
+                      onOpenBlockCrudOptions={props.onOpenBlockCrudOptions}
+                    />
 
-                      <textarea
-                        ref={props.textareaRef}
-                        value={String(props.draftText || '')}
-                        onChange={(event) => props.onDraftTextChange?.(event.target.value)}
-                        placeholder={`Post as ${viewerName}`}
-                        rows={1}
-                        className="max-h-28 min-h-[1.5rem] w-full resize-none bg-transparent text-sm leading-6 text-slate-700 outline-none placeholder:text-slate-400"
-                        style={{ overflowY: 'hidden' }}
-                      />
-                    </div>
+                    <textarea
+                      ref={props.textareaRef}
+                      value={String(props.draftText || '')}
+                      onChange={(event) => props.onDraftTextChange?.(event.target.value)}
+                      placeholder={`Post as ${viewerName}`}
+                      rows={1}
+                      className="min-h-[160px] w-full resize-none bg-transparent text-sm leading-6 text-slate-700 outline-none placeholder:text-slate-400"
+                      style={{ overflowY: 'hidden' }}
+                    />
                   </div>
                 </div>
 

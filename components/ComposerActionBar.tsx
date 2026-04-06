@@ -57,10 +57,7 @@ export default function ComposerActionBar({
     : 'mt-auto shrink-0 border-t border-black/10 bg-white/95 backdrop-blur-xl'
 
   return (
-    <div
-      className={shellClassName}
-      style={{ paddingBottom: 'max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))' }}
-    >
+    <div className={shellClassName}>
       <div className="flex min-w-0 items-center justify-between gap-3 px-0 py-3 sm:px-1 sm:py-4">
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
           {showTypedAction ? (

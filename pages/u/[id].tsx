@@ -1075,7 +1075,27 @@ export default function PublicUserProfilePage() {
     if (typeof window === 'undefined') return
     if (window.parent === window) return
 
+    const overlayPinnedToViewport = Boolean(
+      postComposerOpen
+      || postSolveModeOverlay
+      || postSolveOverlay
+      || postTypedSolveOverlay
+      || postReplyImageSourceSheetOpen
+      || postReplyImageEditOpen
+      || composerBlockCrudTarget
+    )
+
     const postHeight = () => {
+      if (overlayPinnedToViewport) {
+        const viewportHeight = Math.max(window.innerHeight || 0, 720)
+        window.parent.postMessage({
+          type: 'pa:embedded-profile-height',
+          userId,
+          height: viewportHeight,
+        }, window.location.origin)
+        return
+      }
+
       const rootHeight = pageRootRef.current?.scrollHeight || 0
       const bodyHeight = document.body?.scrollHeight || 0
       const docHeight = document.documentElement?.scrollHeight || 0
@@ -1105,7 +1125,20 @@ export default function PublicUserProfilePage() {
       window.removeEventListener('resize', postHeight)
       resizeObserver?.disconnect()
     }
-  }, [isEmbedded, posts.length, postThreadLoading, postThreadResponses.length, userId])
+  }, [
+    composerBlockCrudTarget,
+    isEmbedded,
+    postComposerOpen,
+    postReplyImageEditOpen,
+    postReplyImageSourceSheetOpen,
+    postSolveModeOverlay,
+    postSolveOverlay,
+    postThreadLoading,
+    postThreadResponses.length,
+    postTypedSolveOverlay,
+    posts.length,
+    userId,
+  ])
 
   const displayName = profile?.name || 'Profile'
   const firstName = useMemo(() => String(displayName || '').trim().split(/\s+/).filter(Boolean)[0] || 'User', [displayName])

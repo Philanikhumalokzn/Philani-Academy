@@ -6798,26 +6798,28 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         postFeedItemRefs.current[itemKey] = el
                       }}
                       data-post-id={itemId || undefined}
-                      className="border-b border-black/10 bg-white px-4 py-3"
+                      className="border-b border-black/10 bg-white py-3"
                     >
-                      <PublicFeedPostCard
-                        authorId={authorId}
-                        authorName={authorName}
-                        authorAvatar={authorAvatar}
-                        authorVerified={authorVerified}
-                        createdAt={createdAt}
-                        title={title}
-                        prompt={prompt}
-                        imageUrl={imageUrl}
-                        contentBlocks={Array.isArray((p as any)?.contentBlocks) ? (p as any).contentBlocks : null}
-                        expanded={expandedSolutionThreadKey === itemKey && expandedSolutionThreadKind === 'post'}
-                        onOpen={() => void openPostThread(p, { forceOpen: true })}
-                        onOpenImage={openPostImageViewer}
-                        sideActions={postSideActions}
-                        actions={postActions}
-                      >
-                        {postExpandedContent}
-                      </PublicFeedPostCard>
+                      <div className="px-4">
+                        <PublicFeedPostCard
+                          authorId={authorId}
+                          authorName={authorName}
+                          authorAvatar={authorAvatar}
+                          authorVerified={authorVerified}
+                          createdAt={createdAt}
+                          title={title}
+                          prompt={prompt}
+                          imageUrl={imageUrl}
+                          contentBlocks={Array.isArray((p as any)?.contentBlocks) ? (p as any).contentBlocks : null}
+                          expanded={expandedSolutionThreadKey === itemKey && expandedSolutionThreadKind === 'post'}
+                          onOpen={() => void openPostThread(p, { forceOpen: true })}
+                          onOpenImage={openPostImageViewer}
+                          sideActions={postSideActions}
+                          actions={postActions}
+                        >
+                          {postExpandedContent}
+                        </PublicFeedPostCard>
+                      </div>
                     </li>
                   )
                 }

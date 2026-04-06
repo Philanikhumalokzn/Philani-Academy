@@ -375,7 +375,7 @@ export default function PostComposerOverlay(props: Props) {
               <div className="flex min-h-0 flex-1 flex-col gap-0">
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-t border-black/10 bg-white px-0 py-4 sm:px-1 sm:py-5">
                   <div
-                    className="flex min-h-0 flex-1 cursor-text flex-col gap-3 overflow-y-auto px-4 py-3"
+                    className="flex min-h-0 flex-1 cursor-text flex-col gap-3 overflow-y-auto py-3"
                     onClick={() => props.textareaRef?.current?.focus()}
                   >
                     <ComposerBlockList
@@ -388,15 +388,17 @@ export default function PostComposerOverlay(props: Props) {
                       onOpenBlockCrudOptions={props.onOpenBlockCrudOptions}
                     />
 
-                    <textarea
-                      ref={props.textareaRef}
-                      value={String(props.draftText || '')}
-                      onChange={(event) => props.onDraftTextChange?.(event.target.value)}
-                      placeholder={`Post as ${viewerName}`}
-                      rows={1}
-                      className="min-h-[160px] w-full resize-none bg-transparent text-sm leading-6 text-slate-700 outline-none placeholder:text-slate-400"
-                      style={{ overflowY: 'hidden' }}
-                    />
+                    <div className="px-4">
+                      <textarea
+                        ref={props.textareaRef}
+                        value={String(props.draftText || '')}
+                        onChange={(event) => props.onDraftTextChange?.(event.target.value)}
+                        placeholder={`Post as ${viewerName}`}
+                        rows={1}
+                        className="min-h-[160px] w-full resize-none bg-transparent text-sm leading-6 text-slate-700 outline-none placeholder:text-slate-400"
+                        style={{ overflowY: 'hidden' }}
+                      />
+                    </div>
                   </div>
                 </div>
 

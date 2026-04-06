@@ -38,7 +38,9 @@ import { renderTextWithKatex as renderTextWithKatexRaw } from '../lib/renderText
 import { toDisplayFileName } from '../lib/fileName'
 import { useTapToPeek } from '../lib/useTapToPeek'
 import { useOverlayRestore } from '../lib/overlayRestore'
+import { buildSocialPostComposerFields } from '../lib/postComposerContent'
 import { applyOwnFeedPostResponse, syncFeedPostThreadState } from '../lib/feedContract'
+import { buildHydratedCreatedPost, patchFeedPost } from '../lib/postComposerShared'
 import { useReplyLongPressCrud, type ReplyCrudTarget } from '../lib/replyCrud'
 
 const StackedCanvasWindow = dynamic(() => import('../components/StackedCanvasWindow'), { ssr: false })
@@ -901,6 +903,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     title: string
     prompt: string
     imageUrl?: string | null
+    postContentBlocks?: PostReplyBlock[] | null
     authorName?: string | null
     authorAvatarUrl?: string | null
     initialScene?: any | null
@@ -993,6 +996,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setCreateKind('post')
     setEditingChallengeId(null)
     setEditingPostId(null)
+    setPostSolveBlocks([])
+    setPostSolveText('')
+    setPostTypedSolveLatex('')
+    setPostSolveEditingTarget(null)
+    setComposerBlockCrudTarget(null)
+    setPostTypedSolveOverlay(null)
+    setPostSolveOverlay(null)
+    setPostTypedOverlayChromeVisible(false)
+    setPostReplyImageSourceSheetOpen(false)
+    setPostReplyImageEditOpen(false)
+    setPostReplyImageEditFile(null)
+    setChallengeParsedJsonText(null)
+    setChallengeParsedOpen(false)
     setCreateOverlayOpen(true)
   }, [])
 
@@ -1000,24 +1016,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setCreateKind('post')
     setEditingChallengeId(null)
     setEditingPostId(null)
+    setPostSolveBlocks([])
+    setPostSolveText('')
+    setPostTypedSolveLatex('')
+    setPostSolveEditingTarget(null)
+    setComposerBlockCrudTarget(null)
+    setPostTypedSolveOverlay(null)
+    setPostSolveOverlay(null)
+    setPostTypedOverlayChromeVisible(false)
+    setPostReplyImageSourceSheetOpen(true)
+    setPostReplyImageEditOpen(false)
+    setPostReplyImageEditFile(null)
+    setChallengeParsedJsonText(null)
+    setChallengeParsedOpen(false)
     setCreateOverlayOpen(true)
-    if (typeof window === 'undefined') return
-    let attempts = 0
-    const tick = () => {
-      const input = challengeUploadInputRef.current
-      if (input) {
-        try {
-          input.click()
-        } catch {
-          // ignore
-        }
-        return
-      }
-      attempts += 1
-      if (attempts > 12) return
-      window.setTimeout(tick, 50)
-    }
-    window.setTimeout(tick, 0)
   }, [])
 
   const [challengeImageEditOpen, setChallengeImageEditOpen] = useState(false)
@@ -1185,121 +1197,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setEditingChallengeId(null)
     setEditingPostId(null)
     setChallengeAudiencePickerOpen(false)
+    setPostReplyImageSourceSheetOpen(false)
+    setPostReplyImageEditOpen(false)
+    setPostReplyImageEditFile(null)
+    setPostTypedSolveOverlay(null)
+    setPostSolveOverlay(null)
+    setPostTypedOverlayChromeVisible(false)
+    setPostSolveEditingTarget(null)
+    setComposerBlockCrudTarget(null)
   }, [])
 
     const [viewerId, setViewerId] = useState<string | null>(null)
-
-  const postChallenge = useCallback(async () => {
-    if (status !== 'authenticated') return
-
-    const title = challengeTitleDraft.trim()
-    const prompt = challengePromptDraft.trim()
-    const audience = challengeAudienceDraft
-
-    if (!prompt && !challengeImageUrl) {
-      return alert('Please type a prompt or upload a screenshot.')
-    }
-
-    const grade = selectedGrade || normalizeGradeInput((session as any)?.user?.grade as string | undefined) || null
-    const maxAttempts = challengeMaxAttempts === 'unlimited' ? null : parseInt(challengeMaxAttempts, 10)
-    setChallengePosting(true)
-    try {
-      const isQuiz = createKind === 'quiz'
-      const isEditing = isQuiz ? Boolean(editingChallengeId) : Boolean(editingPostId)
-      const endpoint = isEditing
-        ? isQuiz
-          ? `/api/challenges/${encodeURIComponent(editingChallengeId as string)}`
-          : `/api/posts/${encodeURIComponent(editingPostId as string)}`
-        : isQuiz
-          ? '/api/challenges'
-          : '/api/posts'
-      const res = await fetch(endpoint, {
-        method: isEditing ? 'PATCH' : 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title,
-          prompt,
-          imageUrl: challengeImageUrl,
-          audience,
-          maxAttempts,
-          ...(isEditing ? {} : { grade }),
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        return alert(data?.message || `Failed to ${isEditing ? 'save' : 'post'} (${res.status})`)
-      }
-
-      if (isEditing && (editingChallengeId || editingPostId)) {
-        const id = String(isQuiz ? editingChallengeId : editingPostId)
-        const patch = {
-          id,
-          kind: isQuiz ? 'challenge' : 'post',
-          title,
-          prompt,
-          imageUrl: challengeImageUrl,
-          audience,
-          maxAttempts,
-        }
-        if (isQuiz) {
-          setSelectedChallengeData((prev: any) => (prev && String(prev?.id) === id ? { ...prev, ...patch } : prev))
-        }
-        setTimelineChallenges((prev: any[]) => (Array.isArray(prev) ? prev.map(p => (getDashboardItemKey(p) === `${isQuiz ? 'challenge' : 'post'}:${id}` ? { ...(p as any), ...patch } : p)) : prev))
-        setStudentFeedPosts((prev: any[]) => (Array.isArray(prev) ? prev.map(p => (getDashboardItemKey(p) === `${isQuiz ? 'challenge' : 'post'}:${id}` ? { ...(p as any), ...patch } : p)) : prev))
-        if (!isQuiz) {
-          setMyPosts((prev: any[]) => Array.isArray(prev) ? prev.map(p => (getDashboardItemKey(p) === `post:${id}` ? { ...(p as any), ...patch } : p)) : prev)
-        }
-      } else {
-        const createdItem = {
-          ...(data || {}),
-          kind: isQuiz ? 'challenge' : 'post',
-          createdBy: {
-            id: String((session as any)?.user?.id || viewerId || ''),
-            name: String(session?.user?.name || session?.user?.email || 'You'),
-            avatar: String((session as any)?.user?.avatar || ''),
-            role: String((session as any)?.user?.role || ''),
-          },
-          createdById: String((data as any)?.createdById || (session as any)?.user?.id || viewerId || ''),
-          threadKey: isQuiz ? undefined : `post:${String((data as any)?.id || '')}`,
-        }
-        setTimelineChallenges((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
-        setStudentFeedPosts((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
-        if (!isQuiz) {
-          const hydratedItem = {
-            ...(createdItem || {}),
-            kind: 'post' as const,
-            createdById: String((createdItem as any)?.createdById || (session as any)?.user?.id || viewerId || ''),
-            createdBy: {
-              id: String((session as any)?.user?.id || viewerId || ''),
-              name: String(session?.user?.name || session?.user?.email || 'You'),
-              avatar: String((session as any)?.user?.avatar || ''),
-              role: String((session as any)?.user?.role || ''),
-              grade: selectedGrade || null,
-            },
-          }
-          setMyPosts((prev: any[]) => sortDashboardItemsByCreatedAt([hydratedItem, ...(Array.isArray(prev) ? prev.filter((x: any) => getDashboardItemKey(x) !== getDashboardItemKey(createdItem)) : [])]))
-        }
-      }
-
-      discardRestore()
-      closeCreateOverlay()
-      setCreateKind('post')
-      setChallengeTitleDraft('')
-      setChallengePromptDraft('')
-      setChallengeAudienceDraft('public')
-      setChallengeMaxAttempts('unlimited')
-      setChallengeImageUrl(null)
-      setChallengeImageSourceFile(null)
-      setChallengeParsedJsonText(null)
-      setChallengeParsedOpen(false)
-      alert(isEditing ? 'Saved' : 'Posted')
-    } catch (err: any) {
-      alert(err?.message || `Failed to ${(editingChallengeId || editingPostId) ? 'save' : 'post'}`)
-    } finally {
-      setChallengePosting(false)
-    }
-  }, [status, createKind, challengeTitleDraft, challengePromptDraft, challengeAudienceDraft, challengeImageUrl, selectedGrade, session, challengeMaxAttempts, editingChallengeId, editingPostId, closeCreateOverlay, discardRestore, viewerId])
 
   const closeChallengeImageEdit = useCallback(() => {
     setChallengeImageEditOpen(false)
@@ -1487,6 +1395,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     try {
       const form = new FormData()
       form.append('file', file)
+      if (createOverlayOpen && createKind === 'post' && challengeParseOnUpload) {
+        form.append('parse', '1')
+      }
       const res = await fetch('/api/challenges/upload', {
         method: 'POST',
         body: form,
@@ -1499,11 +1410,30 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       const imageUrl = typeof data?.url === 'string' ? data.url.trim() : ''
       if (!imageUrl) throw new Error('Upload succeeded but returned no URL')
       setPostSolveBlocks((prev) => [...prev, { id: createPostReplyBlockId(), type: 'image', imageUrl }])
+      if (createOverlayOpen && createKind === 'post' && challengeParseOnUpload) {
+        const parsed = data?.parsed
+        const parseErr = typeof data?.parseError === 'string' ? data.parseError.trim() : ''
+        if (parsed) {
+          setChallengeParsedJsonText(JSON.stringify(parsed, null, 2))
+          setChallengeParsedOpen(true)
+        } else if (parseErr) {
+          setChallengeParsedJsonText(parseErr)
+          setChallengeParsedOpen(true)
+        } else {
+          setChallengeParsedJsonText(null)
+          setChallengeParsedOpen(false)
+        }
+
+        const parsedPrompt = typeof data?.parsedPrompt === 'string' ? data.parsedPrompt.trim() : ''
+        if (parsedPrompt) {
+          setPostSolveText((current) => (String(current || '').trim() ? current : parsedPrompt))
+        }
+      }
       setPostSolveError(null)
     } finally {
       setPostReplyImageUploading(false)
     }
-  }, [])
+  }, [challengeParseOnUpload, createKind, createOverlayOpen])
 
   const openPostReplyImagePicker = useCallback(() => {
     setPostReplyImageSourceSheetOpen(true)
@@ -3035,6 +2965,121 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     []
   )
 
+
+  async function postChallenge() {
+    if (status !== 'authenticated') return
+
+    const title = challengeTitleDraft.trim()
+    const audience = challengeAudienceDraft
+    const isQuiz = createKind === 'quiz'
+    const structuredFields = !isQuiz
+      ? buildSocialPostComposerFields(composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget))
+      : null
+    const prompt = isQuiz ? challengePromptDraft.trim() : (structuredFields?.storedPrompt || '')
+    const imageUrl = isQuiz ? challengeImageUrl : (structuredFields?.primaryImageUrl || null)
+
+    if ((isQuiz && !prompt && !challengeImageUrl) || (!isQuiz && (!structuredFields || structuredFields.contentBlocks.length === 0))) {
+      return alert(isQuiz ? 'Please type a prompt or upload a screenshot.' : 'Please add content before posting.')
+    }
+
+    const grade = selectedGrade || normalizeGradeInput((session as any)?.user?.grade as string | undefined) || null
+    const maxAttempts = challengeMaxAttempts === 'unlimited' ? null : parseInt(challengeMaxAttempts, 10)
+    setChallengePosting(true)
+    try {
+      const isEditing = isQuiz ? Boolean(editingChallengeId) : Boolean(editingPostId)
+      const endpoint = isEditing
+        ? isQuiz
+          ? `/api/challenges/${encodeURIComponent(editingChallengeId as string)}`
+          : `/api/posts/${encodeURIComponent(editingPostId as string)}`
+        : isQuiz
+          ? '/api/challenges'
+          : '/api/posts'
+      const res = await fetch(endpoint, {
+        method: isEditing ? 'PATCH' : 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          prompt,
+          imageUrl,
+          ...(isQuiz ? {} : { contentBlocks: structuredFields?.contentBlocks || [] }),
+          audience,
+          maxAttempts,
+          ...(isEditing ? {} : { grade }),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        return alert(data?.message || `Failed to ${isEditing ? 'save' : 'post'} (${res.status})`)
+      }
+
+      if (isEditing && (editingChallengeId || editingPostId)) {
+        const id = String(isQuiz ? editingChallengeId : editingPostId)
+        const patch = {
+          id,
+          kind: isQuiz ? 'challenge' : 'post',
+          title,
+          prompt,
+          imageUrl,
+          ...(isQuiz ? {} : { contentBlocks: structuredFields?.contentBlocks || [] }),
+          audience,
+          maxAttempts,
+        }
+        if (isQuiz) {
+          setSelectedChallengeData((prev: any) => (prev && String(prev?.id) === id ? { ...prev, ...patch } : prev))
+        }
+        setTimelineChallenges((prev: any[]) => (Array.isArray(prev) ? prev.map(p => {
+          if (getDashboardItemKey(p) !== `${isQuiz ? 'challenge' : 'post'}:${id}`) return p
+          return isQuiz ? { ...(p as any), ...patch } : patchFeedPost(p, id, patch as any)
+        }) : prev))
+        setStudentFeedPosts((prev: any[]) => (Array.isArray(prev) ? prev.map(p => {
+          if (getDashboardItemKey(p) !== `${isQuiz ? 'challenge' : 'post'}:${id}`) return p
+          return isQuiz ? { ...(p as any), ...patch } : patchFeedPost(p, id, patch as any)
+        }) : prev))
+        if (!isQuiz) {
+          setMyPosts((prev: any[]) => Array.isArray(prev) ? prev.map(p => (getDashboardItemKey(p) === `post:${id}` ? patchFeedPost(p, id, patch as any) : p)) : prev)
+        }
+      } else {
+        const createdItem = isQuiz ? {
+          ...(data || {}),
+          kind: isQuiz ? 'challenge' : 'post',
+          createdBy: {
+            id: String((session as any)?.user?.id || viewerId || ''),
+            name: String(session?.user?.name || session?.user?.email || 'You'),
+            avatar: String((session as any)?.user?.avatar || ''),
+            role: String((session as any)?.user?.role || ''),
+          },
+          createdById: String((data as any)?.createdById || (session as any)?.user?.id || viewerId || ''),
+          threadKey: isQuiz ? undefined : `post:${String((data as any)?.id || '')}`,
+        } : buildHydratedCreatedPost(data, session, String(viewerId || ''), selectedGrade || null)
+        setTimelineChallenges((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
+        setStudentFeedPosts((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
+        if (!isQuiz) {
+          setMyPosts((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev.filter((x: any) => getDashboardItemKey(x) !== getDashboardItemKey(createdItem)) : [])]))
+        }
+      }
+
+      discardRestore()
+      closeCreateOverlay()
+      setCreateKind('post')
+      setChallengeTitleDraft('')
+      setChallengePromptDraft('')
+      setChallengeAudienceDraft('public')
+      setChallengeMaxAttempts('unlimited')
+      setChallengeImageUrl(null)
+      setChallengeImageSourceFile(null)
+      setPostSolveBlocks([])
+      setPostSolveText('')
+      setPostTypedSolveLatex('')
+      setChallengeParsedJsonText(null)
+      setChallengeParsedOpen(false)
+      alert(isEditing ? 'Saved' : 'Posted')
+    } catch (err: any) {
+      alert(err?.message || `Failed to ${(editingChallengeId || editingPostId) ? 'save' : 'post'}`)
+    } finally {
+      setChallengePosting(false)
+    }
+  }
   const gradingAttentionStorageKey = useMemo(() => {
     const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
     return `pa:grading-attended-notifications:v1:${userKey}`
@@ -5006,10 +5051,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setEditingChallengeId(null)
     setEditingPostId(id)
     setChallengeTitleDraft(String(post?.title || ''))
-    setChallengePromptDraft(String(post?.prompt || ''))
     setChallengeAudienceDraft(audience)
     setChallengeMaxAttempts(typeof post?.maxAttempts === 'number' ? String(post.maxAttempts) : 'unlimited')
-    setChallengeImageUrl(typeof post?.imageUrl === 'string' ? post.imageUrl : null)
+    setPostSolveBlocks(normalizePostReplyBlocks(post?.contentBlocks || { studentText: post?.prompt, imageUrl: post?.imageUrl }))
+    setPostSolveText('')
+    setPostTypedSolveLatex('')
+    setPostSolveEditingTarget(null)
+    setComposerBlockCrudTarget(null)
+    setPostTypedSolveOverlay(null)
+    setPostSolveOverlay(null)
+    setPostTypedOverlayChromeVisible(false)
+    setPostReplyImageSourceSheetOpen(false)
+    setPostReplyImageEditOpen(false)
+    setPostReplyImageEditFile(null)
     setChallengeParsedJsonText(null)
     setChallengeParsedOpen(false)
     setCreateOverlayOpen(true)
@@ -9237,7 +9291,24 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const submitPostSolve = useCallback(async (scene: any) => {
     const activeDraft = postSolveOverlay || postSolvePreviewOverlay?.draft || null
     const normalizedScene = normalizePublicSolveScene(scene)
-    if (!activeDraft?.postId || !activeDraft?.threadKey || !normalizedScene) return
+    if (!activeDraft?.postId || !normalizedScene) return
+
+    if (createOverlayOpen && createKind === 'post') {
+      setPostSolveBlocks((prev) => {
+        if (postSolveEditingTarget?.type === 'canvas') {
+          return upsertPostSolveBlock(prev, { id: postSolveEditingTarget.blockId, type: 'canvas', scene: normalizedScene }, 'canvas')
+        }
+        const nextBlocks: PostReplyBlock[] = prev.filter((block) => block.type !== 'canvas')
+        nextBlocks.push({ id: createPostReplyBlockId(), type: 'canvas', scene: normalizedScene })
+        return nextBlocks
+      })
+      setPostSolveOverlay(null)
+      setPostSolveEditingTarget(null)
+      setPostSolveError(null)
+      return
+    }
+
+    if (!activeDraft.threadKey) return
 
     setPostSolveBlocks((prev) => {
       if (postSolveEditingTarget?.type === 'canvas') {
@@ -9257,29 +9328,31 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       initialStudentText: '',
     })
     setPostSolveError(null)
-  }, [postSolveEditingTarget, postSolveOverlay, postSolvePreviewOverlay, upsertPostSolveBlock])
+  }, [createKind, createOverlayOpen, postSolveEditingTarget, postSolveOverlay, postSolvePreviewOverlay, upsertPostSolveBlock])
 
   const submitTypedPostSolve = useCallback(async () => {
     const activeDraft = postTypedSolveOverlay
     const latex = String(postTypedSolveLatex || '').trim()
-    if (!activeDraft?.postId || !activeDraft?.threadKey) return
+    if (!activeDraft?.postId) return
     if (!latex) {
       setPostSolveError('Write a typed response before adding it.')
       return
     }
 
     setPostSolveBlocks((prev) => upsertPostSolveBlock(prev, { id: createPostReplyBlockId(), type: 'latex', latex }, 'latex'))
-    setPostSolveModeOverlay({
-      ...activeDraft,
-      initialLatex: '',
-      initialStudentText: '',
-    })
+    if (!(createOverlayOpen && createKind === 'post')) {
+      setPostSolveModeOverlay({
+        ...activeDraft,
+        initialLatex: '',
+        initialStudentText: '',
+      })
+    }
     setPostTypedSolveOverlay(null)
     setPostTypedOverlayChromeVisible(false)
     setPostTypedSolveLatex('')
     setPostSolveEditingTarget(null)
     setPostSolveError(null)
-  }, [postTypedSolveLatex, postTypedSolveOverlay, upsertPostSolveBlock])
+  }, [createKind, createOverlayOpen, postTypedSolveLatex, postTypedSolveOverlay, upsertPostSolveBlock])
 
   const removePostReplyImageBlock = useCallback((blockId: string) => {
     setPostSolveBlocks((prev) => prev.filter((block) => !(block.type === 'image' && block.id === blockId)))
@@ -9333,7 +9406,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       return
     }
     setComposerBlockCrudTarget(null)
-    if (!postSolveModeOverlay) return
+    const activeComposerDraft = postSolveModeOverlay || ((createOverlayOpen && createKind === 'post') ? {
+      postId: editingPostId || 'draft-post',
+      threadKey: editingPostId ? `post:${editingPostId}` : 'post:draft-post',
+      title: challengeTitleDraft || 'Post',
+      prompt: String(postSolveText || '').trim(),
+      imageUrl: null,
+      authorName: String(session?.user?.name || session?.user?.email || 'You'),
+      authorAvatarUrl: String((session as any)?.user?.avatar || ''),
+      postContentBlocks: composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget),
+    } : null)
+    if (!activeComposerDraft) return
 
     const target: ComposerBlockEditTarget = { blockId: block.id, type: block.type, index }
 
@@ -9345,7 +9428,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
 
     if (block.type === 'latex') {
-      openTypedPostSolveComposer(postSolveModeOverlay, 'keyboard', {
+      openTypedPostSolveComposer(activeComposerDraft, 'keyboard', {
         editTarget: target,
         initialLatex: block.latex,
       })
@@ -9353,12 +9436,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
 
     if (block.type === 'canvas') {
-      openHandwrittenPostSolveComposer(postSolveModeOverlay, { editTarget: target })
+      openHandwrittenPostSolveComposer(activeComposerDraft, { editTarget: target })
       return
     }
 
     openPostImageViewer(block.imageUrl, 'Reply attachment')
-  }, [focusPostSolveTextarea, openHandwrittenPostSolveComposer, openPostImageViewer, openTypedPostSolveComposer, postSolveModeOverlay])
+  }, [challengeTitleDraft, composePostSolveBlocksWithDraftText, createKind, createOverlayOpen, editingPostId, focusPostSolveTextarea, openHandwrittenPostSolveComposer, openPostImageViewer, openTypedPostSolveComposer, postSolveBlocks, postSolveEditingTarget, postSolveModeOverlay, postSolveText, session])
 
   const openHandwrittenLessonSolveComposer = useCallback((draft: LessonSolveOverlayState | null) => {
     if (!draft) return
@@ -14675,41 +14758,88 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           viewerName={String(session?.user?.name || session?.user?.email || 'You')}
           viewerAvatarUrl={learnerAvatarUrl}
           titleDraft={challengeTitleDraft}
-          promptDraft={challengePromptDraft}
           audienceDraft={challengeAudienceDraft}
           maxAttempts={challengeMaxAttempts}
-          imageUrl={challengeImageUrl}
-          imageSourceFile={challengeImageSourceFile}
           parseOnUpload={challengeParseOnUpload}
           parsedJsonText={challengeParsedJsonText}
           parsedOpen={challengeParsedOpen}
-          uploading={challengeUploading}
+          uploading={postReplyImageUploading}
           posting={challengePosting}
-          uploadInputRef={challengeUploadInputRef}
-          imageEditOpen={challengeImageEditOpen}
-          imageEditFile={challengeImageEditFile}
+          imageEditOpen={postReplyImageEditOpen}
+          imageEditFile={postReplyImageEditFile}
+          contentBlocks={postSolveBlocks}
+          draftText={postSolveText}
+          editingTarget={postSolveEditingTarget}
+          crudTarget={composerBlockCrudTarget}
+          typedOverlay={postTypedSolveOverlay}
+          canvasOverlay={postSolveOverlay}
+          typedLatex={postTypedSolveLatex}
+          typedChromeVisible={postTypedOverlayChromeVisible}
+          isMobile={isMobile}
+          viewerId={viewerId || ''}
+          gradeLabel={activeGradeLabel}
+          roleProfile={currentLessonRoleProfile}
+          imageSourceSheetOpen={postReplyImageSourceSheetOpen}
+          cameraInputRef={postReplyCameraInputRef}
+          galleryInputRef={postReplyGalleryInputRef}
+          textareaRef={postSolveTextareaRef}
           onClose={closeCreateOverlay}
           onTitleChange={setChallengeTitleDraft}
-          onPromptChange={setChallengePromptDraft}
           onAudienceChange={setChallengeAudienceDraft}
           onMaxAttemptsChange={setChallengeMaxAttempts}
           onParseOnUploadChange={setChallengeParseOnUpload}
           onToggleParsedOpen={() => setChallengeParsedOpen((value) => !value)}
-          onFilePicked={(event) => void onChallengeFilePicked(event)}
-          onOpenImageEdit={() => {
-            if (!challengeImageSourceFile) return
-            setChallengeImageEditFile(challengeImageSourceFile)
-            setChallengeImageEditOpen(true)
-          }}
-          onClearImage={() => {
-            setChallengeImageUrl(null)
-            setChallengeImageSourceFile(null)
-            setChallengeParsedJsonText(null)
-            setChallengeParsedOpen(false)
-          }}
+          onDraftTextChange={setPostSolveText}
+          onTypedLatexChange={setPostTypedSolveLatex}
+          onCloseBlockCrud={() => setComposerBlockCrudTarget(null)}
+          onOpenTyped={() => openTypedPostSolveComposer({
+            postId: editingPostId || 'draft-post',
+            threadKey: editingPostId ? `post:${editingPostId}` : 'post:draft-post',
+            title: challengeTitleDraft || 'Post',
+            prompt: String(postSolveText || '').trim(),
+            imageUrl: null,
+            authorName: String(session?.user?.name || session?.user?.email || 'You'),
+            authorAvatarUrl: learnerAvatarUrl,
+            postContentBlocks: composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget),
+          }, 'keyboard')}
+          onOpenHandwritten={() => openHandwrittenPostSolveComposer({
+            postId: editingPostId || 'draft-post',
+            threadKey: editingPostId ? `post:${editingPostId}` : 'post:draft-post',
+            title: challengeTitleDraft || 'Post',
+            prompt: String(postSolveText || '').trim(),
+            imageUrl: null,
+            authorName: String(session?.user?.name || session?.user?.email || 'You'),
+            authorAvatarUrl: learnerAvatarUrl,
+            postContentBlocks: composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget),
+          })}
+          onOpenImagePicker={openPostReplyImagePicker}
+          onImagePicked={onPostReplyImagePicked}
+          onCloseImageSourceSheet={() => setPostReplyImageSourceSheetOpen(false)}
+          onOpenCameraPicker={openPostReplyCameraPicker}
+          onOpenGalleryPicker={openPostReplyGalleryPicker}
           onSubmit={() => void postChallenge()}
-          onCancelImageEdit={cancelChallengeImageEdit}
-          onConfirmImageEdit={(file) => void confirmChallengeImageEdit(file)}
+          onCancelImageEdit={closePostReplyImageEdit}
+          onConfirmImageEdit={(file) => void confirmPostReplyImageEdit(file)}
+          onCanvasCancel={() => {
+            setPostSolveOverlay(null)
+            setPostSolveEditingTarget((current) => current?.type === 'canvas' ? null : current)
+            setPostSolveError(null)
+          }}
+          onCanvasSubmit={(scene) => void submitPostSolve(scene)}
+          onTypedClose={() => {
+            setPostTypedSolveOverlay(null)
+            setPostTypedOverlayChromeVisible(false)
+            setPostSolveEditingTarget((current) => current?.type === 'latex' ? null : current)
+            setPostSolveError(null)
+          }}
+          onSubmitTyped={() => void submitTypedPostSolve()}
+          onTypedChromeVisibilityChange={setPostTypedOverlayChromeVisible}
+          onEditBlock={editComposerBlock}
+          onDeleteBlock={deleteComposerBlock}
+          onBeginBlockLongPress={beginComposerBlockLongPress}
+          onMoveBlockLongPress={moveComposerBlockLongPress}
+          onClearBlockLongPress={clearComposerBlockLongPress}
+          onOpenBlockCrudOptions={openComposerBlockCrudOptions}
         />
       )}
 
@@ -15027,7 +15157,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       <PostToolsSheet
         open={postToolsSheetOpen}
-        hasDraft={Boolean(challengeTitleDraft.trim() || challengePromptDraft.trim() || challengeImageUrl)}
+        hasDraft={Boolean(challengeTitleDraft.trim() || composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget).length > 0)}
         onClose={() => setPostToolsSheetOpen(false)}
         onOpenManager={() => {
           setPostToolsSheetOpen(false)

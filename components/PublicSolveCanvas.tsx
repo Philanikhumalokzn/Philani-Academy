@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import LessonStyledExcalidraw from './LessonStyledExcalidraw'
 
 export type PublicSolveSegmentStatus = 'active' | 'closed' | 'normalized'
@@ -49,6 +50,7 @@ export function PublicSolvePromptReferenceLayer({
   authorName,
   authorAvatarUrl,
   presentation = 'interactive',
+  referenceBody,
   children,
 }: {
   title: string
@@ -57,6 +59,7 @@ export function PublicSolvePromptReferenceLayer({
   authorName?: string | null
   authorAvatarUrl?: string | null
   presentation?: PublicSolveReferencePresentation
+  referenceBody?: ReactNode
   children: React.ReactNode
 }) {
   const promptDismissDragRef = useRef<{ pointerId: number | null; startY: number; dragOffsetY: number }>({
@@ -95,7 +98,7 @@ export function PublicSolvePromptReferenceLayer({
     setPromptZoom(1)
     setPromptDismissDragOffset(0)
     promptDismissDragRef.current = { pointerId: null, startY: 0, dragOffsetY: 0 }
-  }, [title, prompt, imageUrl])
+  }, [title, prompt, imageUrl, referenceBody])
 
   const enterActivePromptMode = useCallback(() => {
     setPromptDismissDragOffset(0)
@@ -187,12 +190,12 @@ export function PublicSolvePromptReferenceLayer({
           </div>
         </div>
 
-        {prompt ? (
+        {referenceBody ? referenceBody : (prompt ? (
           <div className="mt-3 whitespace-pre-wrap text-[14px] leading-6 text-[#334155] break-words">{prompt}</div>
-        ) : null}
+        ) : null)}
       </div>
 
-      {imageUrl ? (
+      {!referenceBody && imageUrl ? (
         <div className="overflow-hidden border-t border-black/10 bg-[#f8fafc]">
           <img src={imageUrl} alt={title} className="max-h-[720px] w-full object-contain" />
         </div>
@@ -327,6 +330,7 @@ export function PublicSolveOpacityWorkspace({
   imageUrl,
   authorName,
   authorAvatarUrl,
+  referenceBody,
   children,
   canvasLabel = 'Adjust to see post',
   outerClassName = '',
@@ -341,6 +345,7 @@ export function PublicSolveOpacityWorkspace({
   imageUrl?: string | null
   authorName?: string | null
   authorAvatarUrl?: string | null
+  referenceBody?: ReactNode
   children: React.ReactNode
   canvasLabel?: string
   outerClassName?: string
@@ -358,7 +363,7 @@ export function PublicSolveOpacityWorkspace({
   useEffect(() => {
     setCanvasOpacityPercent(100)
     setSliderVisible(true)
-  }, [imageUrl, prompt, resetKey, title])
+  }, [imageUrl, prompt, referenceBody, resetKey, title])
 
   useEffect(() => {
     const scopeNode = interactionScopeRef.current
@@ -452,6 +457,7 @@ export function PublicSolveOpacityWorkspace({
             authorName={authorName}
             authorAvatarUrl={authorAvatarUrl}
             presentation={referencePresentation}
+            referenceBody={referenceBody}
           >
             <div
               className={canvasSurfaceClassName}
@@ -986,6 +992,7 @@ export function PublicSolveComposer({
   imageUrl,
   authorName,
   authorAvatarUrl,
+  referenceBody,
   initialScene,
   submitLabel = 'Submit solve',
   cancelLabel = 'Back',
@@ -1002,6 +1009,7 @@ export function PublicSolveComposer({
   imageUrl?: string | null
   authorName?: string | null
   authorAvatarUrl?: string | null
+  referenceBody?: ReactNode
   initialScene?: PublicSolveScene | null
   submitLabel?: string
   cancelLabel?: string
@@ -1091,6 +1099,7 @@ export function PublicSolveComposer({
         imageUrl={imageUrl}
         authorName={authorName}
         authorAvatarUrl={authorAvatarUrl}
+        referenceBody={referenceBody}
         resetKey={composerInstanceKey}
         outerClassName="bg-transparent"
         contentPaddingClassName={fullscreenCanvas ? 'relative flex-1 min-h-0 px-0 py-0' : undefined}

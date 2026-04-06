@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
 import BottomSheet from './BottomSheet'
+import PostComposerBlocksPreview from './PostComposerBlocksPreview'
 import { PublicSolveCanvasViewer, PublicSolveComposer, PublicSolveOpacityWorkspace, type PublicSolveScene } from './PublicSolveCanvas'
 import type { ComposerBlockCrudTarget, ComposerBlockEditTarget, PostReplyBlock, PostSolveOverlayState } from '../lib/postReplyComposer'
 import { composePostSolveBlocksWithDraftText } from '../lib/postReplyComposer'
@@ -417,6 +418,7 @@ export default function PostReplyComposerOverlays({
                 imageUrl={canvasOverlay.imageUrl || null}
                 authorName={canvasOverlay.authorName || null}
                 authorAvatarUrl={canvasOverlay.authorAvatarUrl || null}
+                referenceBody={canvasOverlay.postContentBlocks?.length ? <PostComposerBlocksPreview blocks={canvasOverlay.postContentBlocks} /> : undefined}
                 initialScene={canvasOverlay.initialScene || null}
                 cancelLabel="Cancel"
                 submitLabel="Finish"
@@ -463,6 +465,7 @@ export default function PostReplyComposerOverlays({
                       imageUrl={typedOverlay.imageUrl || null}
                       authorName={typedOverlay.authorName || null}
                       authorAvatarUrl={typedOverlay.authorAvatarUrl || null}
+                      referenceBody={typedOverlay.postContentBlocks?.length ? <PostComposerBlocksPreview blocks={typedOverlay.postContentBlocks} /> : undefined}
                       referencePresentation="background"
                       resetKey={typedOverlay.postId}
                       outerClassName="bg-transparent"

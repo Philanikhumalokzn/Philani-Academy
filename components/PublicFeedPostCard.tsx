@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import type { PostReplyBlock } from '../lib/postReplyComposer'
+import PostComposerBlocksPreview from './PostComposerBlocksPreview'
 import UserLink from './UserLink'
 
 type PublicFeedPostAction = {
@@ -19,6 +21,7 @@ export type PublicFeedPostCardProps = {
   title: string
   prompt?: string | null
   imageUrl?: string | null
+  contentBlocks?: PostReplyBlock[] | null
   expanded?: boolean
   onOpen?: () => void
   onOpenImage?: (url: string, title: string) => void
@@ -36,6 +39,7 @@ export default function PublicFeedPostCard({
   title,
   prompt,
   imageUrl,
+  contentBlocks,
   expanded = false,
   onOpen,
   onOpenImage,
@@ -81,20 +85,19 @@ export default function PublicFeedPostCard({
       aria-expanded={onOpen ? expanded : undefined}
     >
       <div className="text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{safeTitle}</div>
-      {safePrompt ? <div className="mt-1.5 text-[14px] leading-6 text-[#334155] break-words">{safePrompt.slice(0, 220)}{safePrompt.length > 220 ? '...' : ''}</div> : null}
-      {safeImageUrl ? (
-        <button
-          type="button"
-          className="mt-3 block w-full overflow-hidden rounded-2xl border border-black/10 bg-[#f8fafc]"
-          onClick={(event) => {
-            event.stopPropagation()
-            if (onOpenImage) onOpenImage(safeImageUrl, `${safeTitle} image`)
+      <div className="mt-1.5">
+        <PostComposerBlocksPreview
+          blocks={contentBlocks}
+          prompt={safePrompt}
+          imageUrl={safeImageUrl}
+          compact
+          imageTitle={`${safeTitle} image`}
+          onOpenImage={(url, titleText) => {
+            if (!onOpenImage) return
+            onOpenImage(url, titleText)
           }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={safeImageUrl} alt="Post screenshot" className="max-h-[420px] w-full object-cover" />
-        </button>
-      ) : null}
+        />
+      </div>
     </div>
   )
 

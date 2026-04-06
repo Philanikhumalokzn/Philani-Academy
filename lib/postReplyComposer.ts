@@ -43,6 +43,7 @@ export type PostSolveOverlayState = {
   title: string
   prompt: string
   imageUrl?: string | null
+  postContentBlocks?: PostReplyBlock[] | null
   authorName?: string | null
   authorAvatarUrl?: string | null
   initialScene?: any | null

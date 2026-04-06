@@ -1,4 +1,5 @@
 import type { FeedPost } from './feedContract'
+import { hydrateSocialPostRecord } from './postComposerContent'
 
 export type PostComposerAudience = 'public' | 'grade' | 'private'
 
@@ -13,7 +14,7 @@ export function sortFeedPostsByCreatedAt<T extends { createdAt?: string | null }
 export function buildHydratedCreatedPost(data: any, session: any, viewerId: string, selectedGrade?: string | null): FeedPost {
   const safeViewerId = String((data as any)?.createdById || (session as any)?.user?.id || viewerId || '')
   return {
-    ...(data || {}),
+    ...hydrateSocialPostRecord(data || {}),
     kind: 'post',
     createdById: safeViewerId,
     threadKey: `post:${String((data as any)?.id || '')}`,
@@ -29,10 +30,10 @@ export function buildHydratedCreatedPost(data: any, session: any, viewerId: stri
 
 export function patchFeedPost<T extends Partial<FeedPost>>(item: T, postId: string, patch: Partial<FeedPost>): T {
   if (String(item?.id || '') !== String(postId || '')) return item
-  return {
+  return hydrateSocialPostRecord({
     ...item,
     ...patch,
-  }
+  }) as T
 }
 
 export function removeFeedPost<T extends Partial<FeedPost>>(items: T[], postId: string) {

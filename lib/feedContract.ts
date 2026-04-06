@@ -1,3 +1,6 @@
+import type { PostReplyBlock } from './postReplyComposer'
+import { hydrateSocialPostRecord } from './postComposerContent'
+
 export type FeedScope = 'public' | 'user-timeline'
 
 export type FeedPost = {
@@ -6,6 +9,7 @@ export type FeedPost = {
   title?: string | null
   prompt?: string | null
   imageUrl?: string | null
+  contentBlocks?: PostReplyBlock[] | null
   grade?: string | null
   audience?: string | null
   attemptsOpen?: boolean | null
@@ -92,7 +96,7 @@ export function buildFeedPostActionState(item: Partial<FeedPost> | null | undefi
 
 export function enrichFeedPosts(items: any[], ownResponseByKey: Map<string, any>, attemptCountByKey: Map<string, number>, solutionCounts: Map<string, number>): FeedPost[] {
   return items.map((item: any) => ({
-    ...item,
+    ...hydrateSocialPostRecord(item),
     kind: 'post',
     threadKey: `post:${item.id}`,
     ownResponse: ownResponseByKey.get(`post:${item.id}`) || null,

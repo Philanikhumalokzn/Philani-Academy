@@ -2,6 +2,8 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../lib/prisma'
 import { getUserGrade, getUserIdFromReq, getUserRole } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
+import { buildSocialPostComposerFields } from '../../../lib/postComposerContent'
+import { normalizePostReplyBlocks } from '../../../lib/postReplyComposer'
 
 const MAX_TITLE_LENGTH = 120
 const MAX_PROMPT_LENGTH = 5000
@@ -120,6 +122,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (hasTitle) updateData.title = (typeof body.title === 'string' ? body.title.trim() : '').slice(0, MAX_TITLE_LENGTH)
 
     let nextPrompt = post.prompt
+    const nextBlocks = normalizePostReplyBlocks(Array.isArray(body.contentBlocks) ? body.contentBlocks : { studentText: hasPrompt ? body.prompt : post.prompt, imageUrl: hasImageUrl ? body.imageUrl : post.imageUrl })
+    const hasStructuredComposer = Array.isArray(body.contentBlocks)
+    const structuredFields = hasStructuredComposer ? buildSocialPostComposerFields(nextBlocks) : null
     if (hasPrompt) nextPrompt = (typeof body.prompt === 'string' ? body.prompt.trim() : '').slice(0, MAX_PROMPT_LENGTH)
 
     let nextImageUrl: string | null = post.imageUrl ?? null
@@ -127,7 +132,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       nextImageUrl = (typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '').slice(0, MAX_IMAGE_URL_LENGTH) || null
     }
 
-    if (!nextPrompt && !nextImageUrl) {
+    if (structuredFields) {
+      nextPrompt = structuredFields.storedPrompt
+      nextImageUrl = structuredFields.primaryImageUrl
+    }
+
+    if (!nextPrompt && !nextImageUrl && nextBlocks.length === 0) {
       return res.status(400).json({ message: 'Either text or an image is required' })
     }
 

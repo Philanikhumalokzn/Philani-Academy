@@ -21,6 +21,7 @@ import { gradeToLabel } from '../../lib/grades'
 import { renderKatexDisplayHtml } from '../../lib/latexRender'
 import { createLessonRoleProfile, normalizePlatformRole } from '../../lib/lessonAccessControl'
 import { buildHydratedCreatedPost, patchFeedPost, removeFeedPost, sortFeedPostsByCreatedAt, type PostComposerAudience } from '../../lib/postComposerShared'
+import { buildSocialPostComposerFields } from '../../lib/postComposerContent'
 import { renderTextWithKatex } from '../../lib/renderTextWithKatex'
 import { useReplyLongPressCrud, type ReplyCrudTarget } from '../../lib/replyCrud'
 import {
@@ -190,21 +191,14 @@ export default function PublicUserProfilePage() {
   const [editingOwnedPostId, setEditingOwnedPostId] = useState<string | null>(null)
   const [postAudienceDraft, setPostAudienceDraft] = useState<PostComposerAudience>('public')
   const [postTitleDraft, setPostTitleDraft] = useState('')
-  const [postPromptDraft, setPostPromptDraft] = useState('')
   const [postMaxAttemptsDraft, setPostMaxAttemptsDraft] = useState<string>('unlimited')
-  const [postImageUrlDraft, setPostImageUrlDraft] = useState<string | null>(null)
   const [postParseOnUpload, setPostParseOnUpload] = useState(false)
   const [postParsedJsonText, setPostParsedJsonText] = useState<string | null>(null)
   const [postParsedOpen, setPostParsedOpen] = useState(false)
-  const [postUploading, setPostUploading] = useState(false)
   const [postPosting, setPostPosting] = useState(false)
   const [postDeleting, setPostDeleting] = useState(false)
-  const [postImageEditOpen, setPostImageEditOpen] = useState(false)
-  const [postImageEditFile, setPostImageEditFile] = useState<File | null>(null)
-  const [postImageSourceFile, setPostImageSourceFile] = useState<File | null>(null)
   const [postToolsSheetOpen, setPostToolsSheetOpen] = useState(false)
   const [ownPostsManagerOpen, setOwnPostsManagerOpen] = useState(false)
-  const postUploadInputRef = useRef<HTMLInputElement | null>(null)
 
   const [viewerId, setViewerId] = useState('')
   const [followBusy, setFollowBusy] = useState(false)
@@ -271,108 +265,43 @@ export default function PublicUserProfilePage() {
   const closeOwnedPostComposer = useCallback(() => {
     setPostComposerOpen(false)
     setEditingOwnedPostId(null)
+    setPostSolveBlocks([])
+    setPostSolveText('')
+    setPostTypedSolveLatex('')
+    setPostSolveEditingTarget(null)
+    setComposerBlockCrudTarget(null)
+    setPostTypedSolveOverlay(null)
+    setPostSolveOverlay(null)
+    setPostTypedOverlayChromeVisible(false)
+    setPostReplyImageSourceSheetOpen(false)
+    setPostReplyImageEditOpen(false)
+    setPostReplyImageEditFile(null)
+    setPostParsedJsonText(null)
+    setPostParsedOpen(false)
   }, [])
 
   const openCreateOwnedPostComposer = useCallback(() => {
     setEditingOwnedPostId(null)
+    setPostSolveBlocks([])
+    setPostSolveText('')
+    setPostTypedSolveLatex('')
+    setPostSolveEditingTarget(null)
+    setComposerBlockCrudTarget(null)
+    setPostTypedSolveOverlay(null)
+    setPostSolveOverlay(null)
+    setPostTypedOverlayChromeVisible(false)
+    setPostReplyImageSourceSheetOpen(false)
+    setPostReplyImageEditOpen(false)
+    setPostReplyImageEditFile(null)
+    setPostParsedJsonText(null)
+    setPostParsedOpen(false)
     setPostComposerOpen(true)
   }, [])
 
   const openCreateOwnedPostScreenshotPicker = useCallback(() => {
-    setEditingOwnedPostId(null)
-    setPostComposerOpen(true)
-    if (typeof window === 'undefined') return
-    let attempts = 0
-    const tick = () => {
-      const input = postUploadInputRef.current
-      if (input) {
-        try {
-          input.click()
-        } catch {
-          // ignore
-        }
-        return
-      }
-      attempts += 1
-      if (attempts > 12) return
-      window.setTimeout(tick, 50)
-    }
-    window.setTimeout(tick, 0)
-  }, [])
-
-  const uploadOwnedPostImage = useCallback(async (file: File) => {
-    setPostUploading(true)
-    try {
-      const form = new FormData()
-      form.append('file', file)
-      if (postParseOnUpload) form.append('parse', '1')
-      const res = await fetch('/api/challenges/upload', {
-        method: 'POST',
-        body: form,
-        credentials: 'same-origin',
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.message || `Upload failed (${res.status})`)
-      const url = typeof data?.url === 'string' ? data.url.trim() : ''
-      if (!url) throw new Error('Upload succeeded but returned no URL')
-      setPostImageUrlDraft(url)
-
-      if (postParseOnUpload) {
-        const parsed = data?.parsed
-        const parseErr = typeof data?.parseError === 'string' ? data.parseError.trim() : ''
-        if (parsed) {
-          setPostParsedJsonText(JSON.stringify(parsed, null, 2))
-          setPostParsedOpen(true)
-        } else if (parseErr) {
-          setPostParsedJsonText(parseErr)
-          setPostParsedOpen(true)
-        } else {
-          setPostParsedJsonText(null)
-          setPostParsedOpen(false)
-        }
-
-        const parsedPrompt = typeof data?.parsedPrompt === 'string' ? data.parsedPrompt.trim() : ''
-        if (parsedPrompt) {
-          setPostPromptDraft((current) => (current.trim() ? current : parsedPrompt))
-        }
-      }
-    } finally {
-      setPostUploading(false)
-    }
-  }, [postParseOnUpload])
-
-  const onOwnedPostFilePicked = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    setPostImageEditFile(file)
-    setPostImageEditOpen(true)
-  }, [])
-
-  const closeOwnedPostImageEdit = useCallback(() => {
-    setPostImageEditOpen(false)
-    setPostImageEditFile(null)
-  }, [])
-
-  const cancelOwnedPostImageEdit = useCallback(() => {
-    closeOwnedPostImageEdit()
-  }, [closeOwnedPostImageEdit])
-
-  const confirmOwnedPostImageEdit = useCallback(async (file: File) => {
-    try {
-      closeOwnedPostImageEdit()
-      setPostImageSourceFile(file)
-      await uploadOwnedPostImage(file)
-    } catch (err: any) {
-      alert(err?.message || 'Failed to upload image')
-    }
-  }, [closeOwnedPostImageEdit, uploadOwnedPostImage])
-
-  const openOwnedPostImageEdit = useCallback(() => {
-    if (!postImageSourceFile) return
-    setPostImageEditFile(postImageSourceFile)
-    setPostImageEditOpen(true)
-  }, [postImageSourceFile])
+    openCreateOwnedPostComposer()
+    setPostReplyImageSourceSheetOpen(true)
+  }, [openCreateOwnedPostComposer])
 
   const openEditOwnedPostComposer = useCallback((post: ProfilePost) => {
     const id = post?.id ? String(post.id) : ''
@@ -381,10 +310,19 @@ export default function PublicUserProfilePage() {
     const audience = (audienceRaw === 'public' || audienceRaw === 'grade' || audienceRaw === 'private') ? audienceRaw : 'public'
     setEditingOwnedPostId(id)
     setPostTitleDraft(String(post?.title || ''))
-    setPostPromptDraft(String(post?.prompt || ''))
     setPostAudienceDraft(audience)
     setPostMaxAttemptsDraft(typeof post?.maxAttempts === 'number' ? String(post.maxAttempts) : 'unlimited')
-    setPostImageUrlDraft(typeof post?.imageUrl === 'string' ? post.imageUrl : null)
+    setPostSolveBlocks(normalizePostReplyBlocks((post as any)?.contentBlocks || { studentText: post?.prompt, imageUrl: post?.imageUrl }))
+    setPostSolveText('')
+    setPostTypedSolveLatex('')
+    setPostSolveEditingTarget(null)
+    setComposerBlockCrudTarget(null)
+    setPostTypedSolveOverlay(null)
+    setPostSolveOverlay(null)
+    setPostTypedOverlayChromeVisible(false)
+    setPostReplyImageSourceSheetOpen(false)
+    setPostReplyImageEditOpen(false)
+    setPostReplyImageEditFile(null)
     setPostParsedJsonText(null)
     setPostParsedOpen(false)
     setPostComposerOpen(true)
@@ -394,9 +332,9 @@ export default function PublicUserProfilePage() {
     if (status !== 'authenticated') return
 
     const title = postTitleDraft.trim()
-    const prompt = postPromptDraft.trim()
-    if (!prompt && !postImageUrlDraft) {
-      alert('Please type a prompt or upload a screenshot.')
+    const structuredFields = buildSocialPostComposerFields(composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget))
+    if (structuredFields.contentBlocks.length === 0) {
+      alert('Please add content before posting.')
       return
     }
 
@@ -415,8 +353,9 @@ export default function PublicUserProfilePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title,
-          prompt,
-          imageUrl: postImageUrlDraft,
+          prompt: structuredFields.storedPrompt,
+          imageUrl: structuredFields.primaryImageUrl,
+          contentBlocks: structuredFields.contentBlocks,
           audience: postAudienceDraft,
           maxAttempts,
           ...(isEditing ? {} : { grade: rawGrade }),
@@ -431,8 +370,9 @@ export default function PublicUserProfilePage() {
       if (isEditing && editingOwnedPostId) {
         const patch = {
           title,
-          prompt,
-          imageUrl: postImageUrlDraft,
+          prompt: structuredFields.storedPrompt,
+          imageUrl: structuredFields.primaryImageUrl,
+          contentBlocks: structuredFields.contentBlocks,
           audience: postAudienceDraft,
           maxAttempts,
         }
@@ -450,11 +390,8 @@ export default function PublicUserProfilePage() {
 
       closeOwnedPostComposer()
       setPostTitleDraft('')
-      setPostPromptDraft('')
       setPostAudienceDraft('public')
       setPostMaxAttemptsDraft('unlimited')
-      setPostImageUrlDraft(null)
-      setPostImageSourceFile(null)
       setPostParsedJsonText(null)
       setPostParsedOpen(false)
       alert(isEditing ? 'Saved' : 'Posted')
@@ -463,7 +400,7 @@ export default function PublicUserProfilePage() {
     } finally {
       setPostPosting(false)
     }
-  }, [closeOwnedPostComposer, currentViewerId, editingOwnedPostId, postAudienceDraft, postImageUrlDraft, postMaxAttemptsDraft, postPromptDraft, postTitleDraft, session, status])
+  }, [closeOwnedPostComposer, currentViewerId, editingOwnedPostId, postAudienceDraft, postMaxAttemptsDraft, postSolveBlocks, postSolveEditingTarget, postSolveText, postTitleDraft, session, status])
 
   const deleteOwnedPost = useCallback(async (postId: string) => {
     const id = String(postId || '')
@@ -513,6 +450,7 @@ export default function PublicUserProfilePage() {
     try {
       const form = new FormData()
       form.append('file', file)
+      if (postComposerOpen && postParseOnUpload) form.append('parse', '1')
       const res = await fetch('/api/challenges/upload', {
         method: 'POST',
         body: form,
@@ -523,11 +461,30 @@ export default function PublicUserProfilePage() {
       const imageUrl = typeof data?.url === 'string' ? data.url.trim() : ''
       if (!imageUrl) throw new Error('Upload succeeded but returned no URL')
       setPostSolveBlocks((prev) => [...prev, { id: createPostReplyBlockId(), type: 'image', imageUrl }])
+      if (postComposerOpen && postParseOnUpload) {
+        const parsed = data?.parsed
+        const parseErr = typeof data?.parseError === 'string' ? data.parseError.trim() : ''
+        if (parsed) {
+          setPostParsedJsonText(JSON.stringify(parsed, null, 2))
+          setPostParsedOpen(true)
+        } else if (parseErr) {
+          setPostParsedJsonText(parseErr)
+          setPostParsedOpen(true)
+        } else {
+          setPostParsedJsonText(null)
+          setPostParsedOpen(false)
+        }
+
+        const parsedPrompt = typeof data?.parsedPrompt === 'string' ? data.parsedPrompt.trim() : ''
+        if (parsedPrompt) {
+          setPostSolveText((current) => (String(current || '').trim() ? current : parsedPrompt))
+        }
+      }
       setPostSolveError(null)
     } finally {
       setPostReplyImageUploading(false)
     }
-  }, [])
+  }, [postComposerOpen, postParseOnUpload])
 
   const openPostReplyImagePicker = useCallback(() => {
     setPostReplyImageSourceSheetOpen(true)
@@ -855,7 +812,24 @@ export default function PublicUserProfilePage() {
   const submitPostSolve = useCallback(async (scene: PublicSolveScene) => {
     const activeDraft = postSolveOverlay
     const normalizedScene = normalizePublicSolveScene(scene)
-    if (!activeDraft?.postId || !activeDraft?.threadKey || !normalizedScene) return
+    if (!activeDraft?.postId || !normalizedScene) return
+
+    if (postComposerOpen) {
+      setPostSolveBlocks((prev) => {
+        if (postSolveEditingTarget?.type === 'canvas') {
+          return upsertPostReplyBlock(prev, { id: postSolveEditingTarget.blockId, type: 'canvas', scene: normalizedScene }, postSolveEditingTarget, 'canvas')
+        }
+        const nextBlocks: PostReplyBlock[] = prev.filter((block) => block.type !== 'canvas')
+        nextBlocks.push({ id: createPostReplyBlockId(), type: 'canvas', scene: normalizedScene })
+        return nextBlocks
+      })
+      setPostSolveOverlay(null)
+      setPostSolveEditingTarget(null)
+      setPostSolveError(null)
+      return
+    }
+
+    if (!activeDraft.threadKey) return
 
     setPostSolveBlocks((prev) => {
       if (postSolveEditingTarget?.type === 'canvas') {
@@ -874,28 +848,30 @@ export default function PublicUserProfilePage() {
       initialStudentText: '',
     })
     setPostSolveError(null)
-  }, [postSolveEditingTarget, postSolveOverlay])
+  }, [postComposerOpen, postSolveEditingTarget, postSolveOverlay])
 
   const submitTypedPostSolve = useCallback(async () => {
     const activeDraft = postTypedSolveOverlay
     const latex = String(postTypedSolveLatex || '').trim()
-    if (!activeDraft?.postId || !activeDraft?.threadKey) return
+    if (!activeDraft?.postId) return
     if (!latex) {
       setPostSolveError('Write a typed response before adding it.')
       return
     }
     setPostSolveBlocks((prev) => upsertPostReplyBlock(prev, { id: createPostReplyBlockId(), type: 'latex', latex }, postSolveEditingTarget, 'latex'))
-    setPostSolveModeOverlay({
-      ...activeDraft,
-      initialLatex: '',
-      initialStudentText: '',
-    })
+    if (!postComposerOpen) {
+      setPostSolveModeOverlay({
+        ...activeDraft,
+        initialLatex: '',
+        initialStudentText: '',
+      })
+    }
     setPostTypedSolveOverlay(null)
     setPostTypedOverlayChromeVisible(false)
     setPostTypedSolveLatex('')
     setPostSolveEditingTarget(null)
     setPostSolveError(null)
-  }, [postSolveEditingTarget, postTypedSolveLatex, postTypedSolveOverlay])
+  }, [postComposerOpen, postSolveEditingTarget, postTypedSolveLatex, postTypedSolveOverlay])
 
   const deleteComposerBlock = useCallback((blockId: string) => {
     setPostSolveBlocks((prev) => prev.filter((block) => block.id !== blockId))
@@ -942,7 +918,17 @@ export default function PublicUserProfilePage() {
       return
     }
     setComposerBlockCrudTarget(null)
-    if (!postSolveModeOverlay) return
+    const activeComposerDraft = postSolveModeOverlay || (postComposerOpen ? {
+      postId: editingOwnedPostId || 'draft-post',
+      threadKey: editingOwnedPostId ? `post:${editingOwnedPostId}` : 'post:draft-post',
+      title: postTitleDraft || 'Post',
+      prompt: String(postSolveText || '').trim(),
+      imageUrl: null,
+      authorName: currentViewerName,
+      authorAvatarUrl: String((session as any)?.user?.avatar || (session as any)?.user?.image || ''),
+      postContentBlocks: composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget),
+    } : null)
+    if (!activeComposerDraft) return
     const target: ComposerBlockEditTarget = { blockId: block.id, type: block.type, index }
     if (block.type === 'text') {
       setPostSolveEditingTarget(target)
@@ -951,15 +937,15 @@ export default function PublicUserProfilePage() {
       return
     }
     if (block.type === 'latex') {
-      openTypedPostSolveComposer(postSolveModeOverlay, 'keyboard', { editTarget: target, initialLatex: block.latex })
+      openTypedPostSolveComposer(activeComposerDraft, 'keyboard', { editTarget: target, initialLatex: block.latex })
       return
     }
     if (block.type === 'canvas') {
-      openHandwrittenPostSolveComposer(postSolveModeOverlay, { editTarget: target })
+      openHandwrittenPostSolveComposer(activeComposerDraft, { editTarget: target })
       return
     }
     setImageViewer({ url: block.imageUrl, title: 'Reply attachment' })
-  }, [focusPostSolveTextarea, openHandwrittenPostSolveComposer, openTypedPostSolveComposer, postSolveModeOverlay])
+  }, [composePostSolveBlocksWithDraftText, currentViewerName, editingOwnedPostId, focusPostSolveTextarea, openHandwrittenPostSolveComposer, openTypedPostSolveComposer, postComposerOpen, postSolveBlocks, postSolveEditingTarget, postSolveModeOverlay, postSolveText, session])
 
   const loadProfile = useCallback(async () => {
     if (!userId) return
@@ -1702,42 +1688,93 @@ export default function PublicUserProfilePage() {
         viewerName={currentViewerName}
         viewerAvatarUrl={avatarUrl || String((session as any)?.user?.avatar || (session as any)?.user?.image || '')}
         titleDraft={postTitleDraft}
-        promptDraft={postPromptDraft}
         audienceDraft={postAudienceDraft}
         maxAttempts={postMaxAttemptsDraft}
-        imageUrl={postImageUrlDraft}
-        imageSourceFile={postImageSourceFile}
         parseOnUpload={postParseOnUpload}
         parsedJsonText={postParsedJsonText}
         parsedOpen={postParsedOpen}
-        uploading={postUploading}
+        uploading={postReplyImageUploading}
         posting={postPosting}
-        uploadInputRef={postUploadInputRef}
-        imageEditOpen={postImageEditOpen}
-        imageEditFile={postImageEditFile}
+        imageEditOpen={postReplyImageEditOpen}
+        imageEditFile={postReplyImageEditFile}
+        contentBlocks={postSolveBlocks}
+        draftText={postSolveText}
+        editingTarget={postSolveEditingTarget}
+        crudTarget={composerBlockCrudTarget}
+        typedOverlay={postTypedSolveOverlay}
+        canvasOverlay={postSolveOverlay}
+        typedLatex={postTypedSolveLatex}
+        typedChromeVisible={postTypedOverlayChromeVisible}
+        isMobile={isMobile}
+        viewerId={currentViewerId}
+        gradeLabel={activeGradeLabel}
+        roleProfile={currentLessonRoleProfile}
+        imageSourceSheetOpen={postReplyImageSourceSheetOpen}
+        cameraInputRef={postReplyCameraInputRef}
+        galleryInputRef={postReplyGalleryInputRef}
+        textareaRef={postSolveTextareaRef}
         onClose={closeOwnedPostComposer}
         onTitleChange={setPostTitleDraft}
-        onPromptChange={setPostPromptDraft}
         onAudienceChange={setPostAudienceDraft}
         onMaxAttemptsChange={setPostMaxAttemptsDraft}
         onParseOnUploadChange={setPostParseOnUpload}
         onToggleParsedOpen={() => setPostParsedOpen((value) => !value)}
-        onFilePicked={(event) => void onOwnedPostFilePicked(event)}
-        onOpenImageEdit={openOwnedPostImageEdit}
-        onClearImage={() => {
-          setPostImageUrlDraft(null)
-          setPostImageSourceFile(null)
-          setPostParsedJsonText(null)
-          setPostParsedOpen(false)
-        }}
+        onDraftTextChange={setPostSolveText}
+        onTypedLatexChange={setPostTypedSolveLatex}
+        onCloseBlockCrud={() => setComposerBlockCrudTarget(null)}
+        onOpenTyped={() => openTypedPostSolveComposer({
+          postId: editingOwnedPostId || 'draft-post',
+          threadKey: editingOwnedPostId ? `post:${editingOwnedPostId}` : 'post:draft-post',
+          title: postTitleDraft || 'Post',
+          prompt: String(postSolveText || '').trim(),
+          imageUrl: null,
+          authorName: currentViewerName,
+          authorAvatarUrl: avatarUrl || String((session as any)?.user?.avatar || (session as any)?.user?.image || ''),
+          postContentBlocks: composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget),
+        }, 'keyboard')}
+        onOpenHandwritten={() => openHandwrittenPostSolveComposer({
+          postId: editingOwnedPostId || 'draft-post',
+          threadKey: editingOwnedPostId ? `post:${editingOwnedPostId}` : 'post:draft-post',
+          title: postTitleDraft || 'Post',
+          prompt: String(postSolveText || '').trim(),
+          imageUrl: null,
+          authorName: currentViewerName,
+          authorAvatarUrl: avatarUrl || String((session as any)?.user?.avatar || (session as any)?.user?.image || ''),
+          postContentBlocks: composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget),
+        })}
+        onOpenImagePicker={openPostReplyImagePicker}
+        onImagePicked={onPostReplyImagePicked}
+        onCloseImageSourceSheet={() => setPostReplyImageSourceSheetOpen(false)}
+        onOpenCameraPicker={openPostReplyCameraPicker}
+        onOpenGalleryPicker={openPostReplyGalleryPicker}
         onSubmit={() => void submitOwnedPost()}
-        onCancelImageEdit={cancelOwnedPostImageEdit}
-        onConfirmImageEdit={(file) => void confirmOwnedPostImageEdit(file)}
+        onCancelImageEdit={closePostReplyImageEdit}
+        onConfirmImageEdit={(file) => void confirmPostReplyImageEdit(file)}
+        onCanvasCancel={() => {
+          setPostSolveOverlay(null)
+          setPostSolveEditingTarget((current) => current?.type === 'canvas' ? null : current)
+          setPostSolveError(null)
+        }}
+        onCanvasSubmit={(scene) => void submitPostSolve(scene)}
+        onTypedClose={() => {
+          setPostTypedSolveOverlay(null)
+          setPostTypedOverlayChromeVisible(false)
+          setPostSolveEditingTarget((current) => current?.type === 'latex' ? null : current)
+          setPostSolveError(null)
+        }}
+        onSubmitTyped={() => void submitTypedPostSolve()}
+        onTypedChromeVisibilityChange={setPostTypedOverlayChromeVisible}
+        onEditBlock={editComposerBlock}
+        onDeleteBlock={deleteComposerBlock}
+        onBeginBlockLongPress={beginComposerBlockLongPress}
+        onMoveBlockLongPress={moveComposerBlockLongPress}
+        onClearBlockLongPress={clearComposerBlockLongPress}
+        onOpenBlockCrudOptions={openComposerBlockCrudOptions}
       />
 
       <PostToolsSheet
         open={postToolsSheetOpen}
-        hasDraft={Boolean(postTitleDraft.trim() || postPromptDraft.trim() || postImageUrlDraft)}
+        hasDraft={Boolean(postTitleDraft.trim() || composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget).length > 0)}
         onClose={() => setPostToolsSheetOpen(false)}
         onOpenManager={() => {
           setPostToolsSheetOpen(false)

@@ -2,6 +2,8 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../lib/prisma'
 import { getUserGrade, getUserIdFromReq } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
+import { buildSocialPostComposerFields } from '../../../lib/postComposerContent'
+import { normalizePostReplyBlocks } from '../../../lib/postReplyComposer'
 
 const MAX_TITLE_LENGTH = 120
 const MAX_PROMPT_LENGTH = 5000
@@ -29,9 +31,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === 'POST') {
     const body = req.body || {}
     const title = (typeof body.title === 'string' ? body.title.trim() : '').slice(0, MAX_TITLE_LENGTH)
+    const composerBlocks = normalizePostReplyBlocks(Array.isArray(body.contentBlocks) ? body.contentBlocks : { studentText: body.prompt, imageUrl: body.imageUrl })
+    const hasStructuredComposer = Array.isArray(body.contentBlocks)
     const requestedPrompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
-    const prompt = requestedPrompt.slice(0, MAX_PROMPT_LENGTH)
-    const imageUrl = (typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '').slice(0, MAX_IMAGE_URL_LENGTH) || null
+    const prompt = hasStructuredComposer ? requestedPrompt : requestedPrompt.slice(0, MAX_PROMPT_LENGTH)
+    const explicitImageUrl = (typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '').slice(0, MAX_IMAGE_URL_LENGTH) || null
+    const structuredFields = buildSocialPostComposerFields(composerBlocks)
+    const storedPrompt = hasStructuredComposer ? structuredFields.storedPrompt : prompt
+    const imageUrl = hasStructuredComposer ? structuredFields.primaryImageUrl : explicitImageUrl
     const audienceRaw = typeof body.audience === 'string' ? body.audience.trim().toLowerCase() : 'public'
     const audience = AUDIENCES.has(audienceRaw) ? audienceRaw : 'public'
     const maxAttempts = parseMaxAttempts(body.maxAttempts)
@@ -39,7 +46,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const bodyGrade = normalizeGradeInput(typeof body.grade === 'string' ? body.grade : undefined)
     const grade = bodyGrade || tokenGrade || null
 
-    if (!prompt && !imageUrl) {
+    if (!storedPrompt && !imageUrl && composerBlocks.length === 0) {
       return res.status(400).json({ message: 'Either text or an image is required' })
     }
 
@@ -48,7 +55,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         data: {
           createdById: userId,
           title,
-          prompt,
+          prompt: storedPrompt,
           imageUrl,
           audience,
           grade,

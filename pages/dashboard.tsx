@@ -15,6 +15,9 @@ import FeedComposerPill from '../components/FeedComposerPill'
 import HandwritingNormalizationOverlay from '../components/HandwritingNormalizationOverlay'
 import MathKeyboardOverlay from '../components/MathKeyboardOverlay'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
+import OwnPostsManagerOverlay from '../components/OwnPostsManagerOverlay'
+import PostComposerOverlay from '../components/PostComposerOverlay'
+import PostToolsSheet from '../components/PostToolsSheet'
 import { PublicSolveCanvasViewer, PublicSolveComposer, PublicSolveOpacityWorkspace, normalizePublicSolveScene, type PublicSolveScene } from '../components/PublicSolveCanvas'
 import TaskManageMenu from '../components/TaskManageMenu'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
@@ -14665,7 +14668,52 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         onClose={() => setMathKeyboardOverlayOpen(false)}
       />
 
-      {createOverlayOpen && (
+      {createOverlayOpen && createKind === 'post' && (
+        <PostComposerOverlay
+          open
+          editingPostId={editingPostId}
+          viewerName={String(session?.user?.name || session?.user?.email || 'You')}
+          viewerAvatarUrl={learnerAvatarUrl}
+          titleDraft={challengeTitleDraft}
+          promptDraft={challengePromptDraft}
+          audienceDraft={challengeAudienceDraft}
+          maxAttempts={challengeMaxAttempts}
+          imageUrl={challengeImageUrl}
+          imageSourceFile={challengeImageSourceFile}
+          parseOnUpload={challengeParseOnUpload}
+          parsedJsonText={challengeParsedJsonText}
+          parsedOpen={challengeParsedOpen}
+          uploading={challengeUploading}
+          posting={challengePosting}
+          uploadInputRef={challengeUploadInputRef}
+          imageEditOpen={challengeImageEditOpen}
+          imageEditFile={challengeImageEditFile}
+          onClose={closeCreateOverlay}
+          onTitleChange={setChallengeTitleDraft}
+          onPromptChange={setChallengePromptDraft}
+          onAudienceChange={setChallengeAudienceDraft}
+          onMaxAttemptsChange={setChallengeMaxAttempts}
+          onParseOnUploadChange={setChallengeParseOnUpload}
+          onToggleParsedOpen={() => setChallengeParsedOpen((value) => !value)}
+          onFilePicked={(event) => void onChallengeFilePicked(event)}
+          onOpenImageEdit={() => {
+            if (!challengeImageSourceFile) return
+            setChallengeImageEditFile(challengeImageSourceFile)
+            setChallengeImageEditOpen(true)
+          }}
+          onClearImage={() => {
+            setChallengeImageUrl(null)
+            setChallengeImageSourceFile(null)
+            setChallengeParsedJsonText(null)
+            setChallengeParsedOpen(false)
+          }}
+          onSubmit={() => void postChallenge()}
+          onCancelImageEdit={cancelChallengeImageEdit}
+          onConfirmImageEdit={(file) => void confirmChallengeImageEdit(file)}
+        />
+      )}
+
+      {createOverlayOpen && createKind === 'quiz' && (
         <OverlayPortal>
           <FullScreenGlassOverlay
             title={editingChallengeId ? 'Challenge' : 'Post'}
@@ -14977,83 +15025,29 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         confirmLabel="Upload"
       />
 
-      {postToolsSheetOpen && (
-        <BottomSheet
-          open
-          backdrop
-          title="Your posts"
-          subtitle="Create and manage your challenge posts"
-          onClose={() => setPostToolsSheetOpen(false)}
-          className="rounded-2xl"
-          style={{ bottom: 80 }}
-        >
-          <div className="flex flex-col gap-2">
-            <button
-              type="button"
-              className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left hover:bg-slate-50"
-              onClick={() => {
-                setPostToolsSheetOpen(false)
-                setTimelineOpen(true)
-              }}
-            >
-              <span>
-                <span className="block text-sm font-semibold text-slate-900">My posts</span>
-                <span className="block text-xs text-slate-500">Open your full post manager, including edit and delete tools.</span>
-              </span>
-              <span className="text-slate-400">{'>'}</span>
-            </button>
-
-            <button
-              type="button"
-              className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left hover:bg-slate-50"
-              onClick={() => {
-                setPostToolsSheetOpen(false)
-                setCreateKind('post')
-                openCreateChallengeComposer()
-              }}
-            >
-              <span>
-                <span className="block text-sm font-semibold text-slate-900">Create post</span>
-                <span className="block text-xs text-slate-500">Start a new text or image post for the public feed.</span>
-              </span>
-              <span className="text-slate-400">{'>'}</span>
-            </button>
-
-            <button
-              type="button"
-              className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left hover:bg-slate-50"
-              onClick={() => {
-                setPostToolsSheetOpen(false)
-                setCreateKind('post')
-                openCreateChallengeScreenshotPicker()
-              }}
-            >
-              <span>
-                <span className="block text-sm font-semibold text-slate-900">Post from screenshot</span>
-                <span className="block text-xs text-slate-500">Upload a screenshot and turn it into a post or a quiz.</span>
-              </span>
-              <span className="text-slate-400">{'>'}</span>
-            </button>
-
-            {(challengeTitleDraft.trim() || challengePromptDraft.trim() || challengeImageUrl) ? (
-              <button
-                type="button"
-                className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left hover:bg-slate-50"
-                onClick={() => {
-                  setPostToolsSheetOpen(false)
-                  openCreateChallengeComposer()
-                }}
-              >
-                <span>
-                  <span className="block text-sm font-semibold text-slate-900">{(editingChallengeId || editingPostId) ? 'Continue editing' : 'Continue draft'}</span>
-                  <span className="block text-xs text-slate-500">Resume the composer with your current content.</span>
-                </span>
-                <span className="text-slate-400">{'>'}</span>
-              </button>
-            ) : null}
-          </div>
-        </BottomSheet>
-      )}
+      <PostToolsSheet
+        open={postToolsSheetOpen}
+        hasDraft={Boolean(challengeTitleDraft.trim() || challengePromptDraft.trim() || challengeImageUrl)}
+        onClose={() => setPostToolsSheetOpen(false)}
+        onOpenManager={() => {
+          setPostToolsSheetOpen(false)
+          setTimelineOpen(true)
+        }}
+        onCreatePost={() => {
+          setPostToolsSheetOpen(false)
+          setCreateKind('post')
+          openCreateChallengeComposer()
+        }}
+        onPostFromScreenshot={() => {
+          setPostToolsSheetOpen(false)
+          setCreateKind('post')
+          openCreateChallengeScreenshotPicker()
+        }}
+        onContinueDraft={() => {
+          setPostToolsSheetOpen(false)
+          openCreateChallengeComposer()
+        }}
+      />
 
       {timelineOpen && (
         <OverlayPortal>

@@ -7,8 +7,11 @@ import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react'
 import FeedComposerPill from '../../components/FeedComposerPill'
 import FullScreenGlassOverlay from '../../components/FullScreenGlassOverlay'
 import InlinePostSolutionsThread from '../../components/InlinePostSolutionsThread'
+import OwnPostsManagerOverlay from '../../components/OwnPostsManagerOverlay'
+import PostComposerOverlay from '../../components/PostComposerOverlay'
 import PublicFeedPostCard from '../../components/PublicFeedPostCard'
 import PostReplyComposerOverlays from '../../components/PostReplyComposerOverlays'
+import PostToolsSheet from '../../components/PostToolsSheet'
 import ReplyCrudBottomSheet from '../../components/ReplyCrudBottomSheet'
 import { PublicSolveCanvasViewer, normalizePublicSolveScene, type PublicSolveScene } from '../../components/PublicSolveCanvas'
 import UserLink from '../../components/UserLink'
@@ -17,6 +20,7 @@ import { applyOwnFeedPostResponse, buildFeedPostActionState, syncFeedPostThreadS
 import { gradeToLabel } from '../../lib/grades'
 import { renderKatexDisplayHtml } from '../../lib/latexRender'
 import { createLessonRoleProfile, normalizePlatformRole } from '../../lib/lessonAccessControl'
+import { buildHydratedCreatedPost, patchFeedPost, removeFeedPost, sortFeedPostsByCreatedAt, type PostComposerAudience } from '../../lib/postComposerShared'
 import { renderTextWithKatex } from '../../lib/renderTextWithKatex'
 import { useReplyLongPressCrud, type ReplyCrudTarget } from '../../lib/replyCrud'
 import {
@@ -182,6 +186,26 @@ export default function PublicUserProfilePage() {
   const [discoverProfiles, setDiscoverProfiles] = useState<DiscoverProfile[]>([])
   const [discoverLoading, setDiscoverLoading] = useState(false)
 
+  const [postComposerOpen, setPostComposerOpen] = useState(false)
+  const [editingOwnedPostId, setEditingOwnedPostId] = useState<string | null>(null)
+  const [postAudienceDraft, setPostAudienceDraft] = useState<PostComposerAudience>('public')
+  const [postTitleDraft, setPostTitleDraft] = useState('')
+  const [postPromptDraft, setPostPromptDraft] = useState('')
+  const [postMaxAttemptsDraft, setPostMaxAttemptsDraft] = useState<string>('unlimited')
+  const [postImageUrlDraft, setPostImageUrlDraft] = useState<string | null>(null)
+  const [postParseOnUpload, setPostParseOnUpload] = useState(false)
+  const [postParsedJsonText, setPostParsedJsonText] = useState<string | null>(null)
+  const [postParsedOpen, setPostParsedOpen] = useState(false)
+  const [postUploading, setPostUploading] = useState(false)
+  const [postPosting, setPostPosting] = useState(false)
+  const [postDeleting, setPostDeleting] = useState(false)
+  const [postImageEditOpen, setPostImageEditOpen] = useState(false)
+  const [postImageEditFile, setPostImageEditFile] = useState<File | null>(null)
+  const [postImageSourceFile, setPostImageSourceFile] = useState<File | null>(null)
+  const [postToolsSheetOpen, setPostToolsSheetOpen] = useState(false)
+  const [ownPostsManagerOpen, setOwnPostsManagerOpen] = useState(false)
+  const postUploadInputRef = useRef<HTMLInputElement | null>(null)
+
   const [viewerId, setViewerId] = useState('')
   const [followBusy, setFollowBusy] = useState(false)
   const [activeTab, setActiveTab] = useState<ProfileTab>('all')
@@ -243,6 +267,233 @@ export default function PublicUserProfilePage() {
     const rawGrade = typeof (session as any)?.user?.grade === 'string' ? (session as any).user.grade : ''
     return rawGrade ? gradeToLabel(rawGrade as any) : null
   }, [session])
+
+  const closeOwnedPostComposer = useCallback(() => {
+    setPostComposerOpen(false)
+    setEditingOwnedPostId(null)
+  }, [])
+
+  const openCreateOwnedPostComposer = useCallback(() => {
+    setEditingOwnedPostId(null)
+    setPostComposerOpen(true)
+  }, [])
+
+  const openCreateOwnedPostScreenshotPicker = useCallback(() => {
+    setEditingOwnedPostId(null)
+    setPostComposerOpen(true)
+    if (typeof window === 'undefined') return
+    let attempts = 0
+    const tick = () => {
+      const input = postUploadInputRef.current
+      if (input) {
+        try {
+          input.click()
+        } catch {
+          // ignore
+        }
+        return
+      }
+      attempts += 1
+      if (attempts > 12) return
+      window.setTimeout(tick, 50)
+    }
+    window.setTimeout(tick, 0)
+  }, [])
+
+  const uploadOwnedPostImage = useCallback(async (file: File) => {
+    setPostUploading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      if (postParseOnUpload) form.append('parse', '1')
+      const res = await fetch('/api/challenges/upload', {
+        method: 'POST',
+        body: form,
+        credentials: 'same-origin',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Upload failed (${res.status})`)
+      const url = typeof data?.url === 'string' ? data.url.trim() : ''
+      if (!url) throw new Error('Upload succeeded but returned no URL')
+      setPostImageUrlDraft(url)
+
+      if (postParseOnUpload) {
+        const parsed = data?.parsed
+        const parseErr = typeof data?.parseError === 'string' ? data.parseError.trim() : ''
+        if (parsed) {
+          setPostParsedJsonText(JSON.stringify(parsed, null, 2))
+          setPostParsedOpen(true)
+        } else if (parseErr) {
+          setPostParsedJsonText(parseErr)
+          setPostParsedOpen(true)
+        } else {
+          setPostParsedJsonText(null)
+          setPostParsedOpen(false)
+        }
+
+        const parsedPrompt = typeof data?.parsedPrompt === 'string' ? data.parsedPrompt.trim() : ''
+        if (parsedPrompt) {
+          setPostPromptDraft((current) => (current.trim() ? current : parsedPrompt))
+        }
+      }
+    } finally {
+      setPostUploading(false)
+    }
+  }, [postParseOnUpload])
+
+  const onOwnedPostFilePicked = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setPostImageEditFile(file)
+    setPostImageEditOpen(true)
+  }, [])
+
+  const closeOwnedPostImageEdit = useCallback(() => {
+    setPostImageEditOpen(false)
+    setPostImageEditFile(null)
+  }, [])
+
+  const cancelOwnedPostImageEdit = useCallback(() => {
+    closeOwnedPostImageEdit()
+  }, [closeOwnedPostImageEdit])
+
+  const confirmOwnedPostImageEdit = useCallback(async (file: File) => {
+    try {
+      closeOwnedPostImageEdit()
+      setPostImageSourceFile(file)
+      await uploadOwnedPostImage(file)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to upload image')
+    }
+  }, [closeOwnedPostImageEdit, uploadOwnedPostImage])
+
+  const openOwnedPostImageEdit = useCallback(() => {
+    if (!postImageSourceFile) return
+    setPostImageEditFile(postImageSourceFile)
+    setPostImageEditOpen(true)
+  }, [postImageSourceFile])
+
+  const openEditOwnedPostComposer = useCallback((post: ProfilePost) => {
+    const id = post?.id ? String(post.id) : ''
+    if (!id) return
+    const audienceRaw = typeof post?.audience === 'string' ? post.audience : 'public'
+    const audience = (audienceRaw === 'public' || audienceRaw === 'grade' || audienceRaw === 'private') ? audienceRaw : 'public'
+    setEditingOwnedPostId(id)
+    setPostTitleDraft(String(post?.title || ''))
+    setPostPromptDraft(String(post?.prompt || ''))
+    setPostAudienceDraft(audience)
+    setPostMaxAttemptsDraft(typeof post?.maxAttempts === 'number' ? String(post.maxAttempts) : 'unlimited')
+    setPostImageUrlDraft(typeof post?.imageUrl === 'string' ? post.imageUrl : null)
+    setPostParsedJsonText(null)
+    setPostParsedOpen(false)
+    setPostComposerOpen(true)
+  }, [])
+
+  const submitOwnedPost = useCallback(async () => {
+    if (status !== 'authenticated') return
+
+    const title = postTitleDraft.trim()
+    const prompt = postPromptDraft.trim()
+    if (!prompt && !postImageUrlDraft) {
+      alert('Please type a prompt or upload a screenshot.')
+      return
+    }
+
+    const rawGrade = typeof (session as any)?.user?.grade === 'string' ? (session as any).user.grade : null
+    const maxAttempts = postMaxAttemptsDraft === 'unlimited' ? null : parseInt(postMaxAttemptsDraft, 10)
+    const isEditing = Boolean(editingOwnedPostId)
+    const endpoint = isEditing
+      ? `/api/posts/${encodeURIComponent(String(editingOwnedPostId))}`
+      : '/api/posts'
+
+    setPostPosting(true)
+    try {
+      const res = await fetch(endpoint, {
+        method: isEditing ? 'PATCH' : 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          prompt,
+          imageUrl: postImageUrlDraft,
+          audience: postAudienceDraft,
+          maxAttempts,
+          ...(isEditing ? {} : { grade: rawGrade }),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data?.message || `Failed to ${isEditing ? 'save' : 'post'} (${res.status})`)
+        return
+      }
+
+      if (isEditing && editingOwnedPostId) {
+        const patch = {
+          title,
+          prompt,
+          imageUrl: postImageUrlDraft,
+          audience: postAudienceDraft,
+          maxAttempts,
+        }
+        setPosts((current) => Array.isArray(current)
+          ? current.map((item) => patchFeedPost(item, editingOwnedPostId, patch))
+          : current)
+      } else {
+        const createdItem = buildHydratedCreatedPost(data, session, currentViewerId, rawGrade)
+        setPosts((current) => sortFeedPostsByCreatedAt([
+          createdItem,
+          ...(Array.isArray(current) ? current.filter((item) => String(item?.id || '') !== String(createdItem.id || '')) : []),
+        ]))
+        setActiveTab('all')
+      }
+
+      closeOwnedPostComposer()
+      setPostTitleDraft('')
+      setPostPromptDraft('')
+      setPostAudienceDraft('public')
+      setPostMaxAttemptsDraft('unlimited')
+      setPostImageUrlDraft(null)
+      setPostImageSourceFile(null)
+      setPostParsedJsonText(null)
+      setPostParsedOpen(false)
+      alert(isEditing ? 'Saved' : 'Posted')
+    } catch (err: any) {
+      alert(err?.message || `Failed to ${editingOwnedPostId ? 'save' : 'post'}`)
+    } finally {
+      setPostPosting(false)
+    }
+  }, [closeOwnedPostComposer, currentViewerId, editingOwnedPostId, postAudienceDraft, postImageUrlDraft, postMaxAttemptsDraft, postPromptDraft, postTitleDraft, session, status])
+
+  const deleteOwnedPost = useCallback(async (postId: string) => {
+    const id = String(postId || '')
+    if (!id) return
+    const ok = typeof window !== 'undefined'
+      ? window.confirm('Delete this post? This will remove it from your timeline and delete its public solutions thread.')
+      : false
+    if (!ok) return
+
+    setPostDeleting(true)
+    try {
+      const res = await fetch(`/api/posts/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data?.message || `Failed to delete (${res.status})`)
+        return
+      }
+      setPosts((current) => removeFeedPost(current, id))
+      setExpandedProfilePostId((current) => current === id ? null : current)
+      setPostThreadOverlay((current) => current?.postId === id ? null : current)
+      alert('Deleted')
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete')
+    } finally {
+      setPostDeleting(false)
+    }
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1318,9 +1569,12 @@ export default function PublicUserProfilePage() {
                 avatarUrl={avatarUrl}
                 avatarAlt={displayName}
                 avatarFallback={<span>{extractInitials(displayName)}</span>}
-                message="What's on your mind?"
-                rightActionIcon="photo"
-                rightActionLabel="Add photo"
+                message={`What's on your mind, ${firstName}?`}
+                onMessageClick={openCreateOwnedPostComposer}
+                rightActionIcon="menu"
+                onRightActionClick={() => setPostToolsSheetOpen(true)}
+                rightActionLabel="Open posts menu"
+                rightActionTitle="Posts menu"
               />
               <div className="border-t border-slate-100 px-5 py-4">
                 <div className="flex flex-wrap items-center gap-3">
@@ -1354,7 +1608,7 @@ export default function PublicUserProfilePage() {
 
           {isSelf ? (
             <div className="mt-5">
-              <button type="button" className="inline-flex w-full items-center justify-center gap-2 rounded-[22px] border border-slate-200 bg-slate-100 px-5 py-4 text-[17px] font-semibold tracking-[-0.03em] text-slate-900 shadow-sm transition hover:bg-slate-200">
+              <button type="button" className="inline-flex w-full items-center justify-center gap-2 rounded-[22px] border border-slate-200 bg-slate-100 px-5 py-4 text-[17px] font-semibold tracking-[-0.03em] text-slate-900 shadow-sm transition hover:bg-slate-200" onClick={() => setOwnPostsManagerOpen(true)}>
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
                   <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H11l-4.5 3v-3H6.5A2.5 2.5 0 0 1 4 13.5v-7Z" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
@@ -1453,6 +1707,78 @@ export default function PublicUserProfilePage() {
         onMoveBlockLongPress={moveComposerBlockLongPress}
         onClearBlockLongPress={clearComposerBlockLongPress}
         onOpenBlockCrudOptions={openComposerBlockCrudOptions}
+      />
+
+      <PostComposerOverlay
+        open={postComposerOpen}
+        editingPostId={editingOwnedPostId}
+        viewerName={currentViewerName}
+        viewerAvatarUrl={avatarUrl || String((session as any)?.user?.avatar || (session as any)?.user?.image || '')}
+        titleDraft={postTitleDraft}
+        promptDraft={postPromptDraft}
+        audienceDraft={postAudienceDraft}
+        maxAttempts={postMaxAttemptsDraft}
+        imageUrl={postImageUrlDraft}
+        imageSourceFile={postImageSourceFile}
+        parseOnUpload={postParseOnUpload}
+        parsedJsonText={postParsedJsonText}
+        parsedOpen={postParsedOpen}
+        uploading={postUploading}
+        posting={postPosting}
+        uploadInputRef={postUploadInputRef}
+        imageEditOpen={postImageEditOpen}
+        imageEditFile={postImageEditFile}
+        onClose={closeOwnedPostComposer}
+        onTitleChange={setPostTitleDraft}
+        onPromptChange={setPostPromptDraft}
+        onAudienceChange={setPostAudienceDraft}
+        onMaxAttemptsChange={setPostMaxAttemptsDraft}
+        onParseOnUploadChange={setPostParseOnUpload}
+        onToggleParsedOpen={() => setPostParsedOpen((value) => !value)}
+        onFilePicked={(event) => void onOwnedPostFilePicked(event)}
+        onOpenImageEdit={openOwnedPostImageEdit}
+        onClearImage={() => {
+          setPostImageUrlDraft(null)
+          setPostImageSourceFile(null)
+          setPostParsedJsonText(null)
+          setPostParsedOpen(false)
+        }}
+        onSubmit={() => void submitOwnedPost()}
+        onCancelImageEdit={cancelOwnedPostImageEdit}
+        onConfirmImageEdit={(file) => void confirmOwnedPostImageEdit(file)}
+      />
+
+      <PostToolsSheet
+        open={postToolsSheetOpen}
+        hasDraft={Boolean(postTitleDraft.trim() || postPromptDraft.trim() || postImageUrlDraft)}
+        onClose={() => setPostToolsSheetOpen(false)}
+        onOpenManager={() => {
+          setPostToolsSheetOpen(false)
+          setOwnPostsManagerOpen(true)
+        }}
+        onCreatePost={() => {
+          setPostToolsSheetOpen(false)
+          openCreateOwnedPostComposer()
+        }}
+        onPostFromScreenshot={() => {
+          setPostToolsSheetOpen(false)
+          openCreateOwnedPostScreenshotPicker()
+        }}
+        onContinueDraft={() => {
+          setPostToolsSheetOpen(false)
+          openCreateOwnedPostComposer()
+        }}
+      />
+
+      <OwnPostsManagerOverlay
+        open={ownPostsManagerOpen}
+        posts={posts}
+        onClose={() => setOwnPostsManagerOpen(false)}
+        onEdit={(post) => {
+          setOwnPostsManagerOpen(false)
+          openEditOwnedPostComposer(post)
+        }}
+        onDelete={(postId) => deleteOwnedPost(postId)}
       />
 
       <ReplyCrudBottomSheet

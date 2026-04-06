@@ -1298,7 +1298,7 @@ export default function PublicUserProfilePage() {
     }
 
     return (
-      <article key={post.id} className="border-b border-black/10 bg-white py-3">
+      <article key={post.id} className="border-b border-black/10 bg-white px-4 py-3 sm:px-6">
         <PublicFeedPostCard
           authorId={authorId}
           authorName={authorName}

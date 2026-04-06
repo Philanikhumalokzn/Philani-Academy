@@ -6798,7 +6798,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         postFeedItemRefs.current[itemKey] = el
                       }}
                       data-post-id={itemId || undefined}
-                      className="border-b border-black/10 bg-white py-3"
+                      className="border-b border-black/10 bg-white px-4 py-3"
                     >
                       <PublicFeedPostCard
                         authorId={authorId}

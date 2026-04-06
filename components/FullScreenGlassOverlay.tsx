@@ -26,8 +26,6 @@ export type FullScreenGlassOverlayProps = {
   hideHeader?: boolean
   forceHeaderSafeTop?: boolean
   respectBottomSafeArea?: boolean
-  respectHorizontalSafeArea?: boolean
-  disableContentPadding?: boolean
 
   leftActions?: React.ReactNode
   rightActions?: React.ReactNode
@@ -56,8 +54,6 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     hideHeader = false,
     forceHeaderSafeTop = false,
     respectBottomSafeArea = true,
-    respectHorizontalSafeArea = true,
-    disableContentPadding = false,
     leftActions,
     rightActions,
     className,
@@ -181,19 +177,15 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
   const showDragThumb = panelSizing !== 'full'
 
   const contentClassBase = panelSizing === 'full'
-    ? (disableContentPadding
-      ? 'flex-1 min-h-0 overflow-y-auto'
-      : 'flex-1 min-h-0 overflow-y-auto pt-3 px-3 pb-[calc(0.35rem+var(--app-safe-bottom))] sm:pt-5 sm:px-5 sm:pb-[calc(0.85rem+var(--app-safe-bottom))]')
-    : (disableContentPadding
-      ? 'overflow-y-auto'
-      : 'overflow-y-auto pt-3 px-3 pb-[calc(0.35rem+var(--app-safe-bottom))] sm:pt-5 sm:px-5 sm:pb-[calc(0.85rem+var(--app-safe-bottom))]')
+    ? 'flex-1 min-h-0 overflow-y-auto pt-3 px-3 pb-[calc(0.35rem+var(--app-safe-bottom))] sm:pt-5 sm:px-5 sm:pb-[calc(0.85rem+var(--app-safe-bottom))]'
+    : 'overflow-y-auto pt-3 px-3 pb-[calc(0.35rem+var(--app-safe-bottom))] sm:pt-5 sm:px-5 sm:pb-[calc(0.85rem+var(--app-safe-bottom))]'
 
   const frameSafeAreaStyle = rootPosition === 'fixed'
     ? {
         paddingTop: 'max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px))',
-        paddingRight: respectHorizontalSafeArea ? 'max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px))' : '0px',
+        paddingRight: 'max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px))',
         paddingBottom: respectBottomSafeArea ? 'max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))' : '0px',
-        paddingLeft: respectHorizontalSafeArea ? 'max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px))' : '0px',
+        paddingLeft: 'max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px))',
       }
     : undefined
 

@@ -196,22 +196,21 @@ function ComposerBlockList({
 
         if (block.type === 'text') {
           return (
-            <div key={block.id} className="px-4">
-              <div
-                role="button"
-                tabIndex={0}
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 whitespace-pre-wrap break-words text-slate-700"
-                onClick={() => onEditBlock?.(block, index)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    onEditBlock?.(block, index)
-                  }
-                }}
-                {...blockHandlers}
-              >
-                {block.text}
-              </div>
+            <div
+              key={block.id}
+              role="button"
+              tabIndex={0}
+              className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 whitespace-pre-wrap break-words text-slate-700"
+              onClick={() => onEditBlock?.(block, index)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onEditBlock?.(block, index)
+                }
+              }}
+              {...blockHandlers}
+            >
+              {block.text}
             </div>
           )
         }
@@ -219,37 +218,11 @@ function ComposerBlockList({
         if (block.type === 'latex') {
           const latexHtml = renderKatexDisplayHtml(block.latex)
           return (
-            <div key={block.id} className="px-4">
-              <div
-                role="button"
-                tabIndex={0}
-                className="overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800"
-                onClick={() => onEditBlock?.(block, index)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    onEditBlock?.(block, index)
-                  }
-                }}
-                {...blockHandlers}
-              >
-                {latexHtml ? (
-                  <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
-                ) : (
-                  <div className="text-sm leading-6 whitespace-pre-wrap break-words">{renderTextWithKatex(block.latex)}</div>
-                )}
-              </div>
-            </div>
-          )
-        }
-
-        if (block.type === 'image') {
-          return (
-            <button
+            <div
               key={block.id}
-              type="button"
-              className="block w-full appearance-none border-0 bg-transparent p-0 text-left"
-              data-testid="post-composer-image-row"
+              role="button"
+              tabIndex={0}
+              className="overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800"
               onClick={() => onEditBlock?.(block, index)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
@@ -259,27 +232,31 @@ function ComposerBlockList({
               }}
               {...blockHandlers}
             >
-              <img src={block.imageUrl} alt="Post image" className="block h-auto w-full" />
-            </button>
+              {latexHtml ? (
+                <div className="leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
+              ) : (
+                <div className="text-sm leading-6 whitespace-pre-wrap break-words">{renderTextWithKatex(block.latex)}</div>
+              )}
+            </div>
           )
         }
 
         return (
-          <div key={block.id} className="px-4 pt-1">
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => onEditBlock?.(block, index)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  onEditBlock?.(block, index)
-                }
-              }}
-              {...blockHandlers}
-            >
-              <PostComposerBlocksPreview blocks={[block]} compact />
-            </div>
+          <div
+            key={block.id}
+            role="button"
+            tabIndex={0}
+            className={block.type === 'image' ? 'inline-flex max-w-full' : 'pt-1'}
+            onClick={() => onEditBlock?.(block, index)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onEditBlock?.(block, index)
+              }
+            }}
+            {...blockHandlers}
+          >
+            <PostComposerBlocksPreview blocks={[block]} compact />
           </div>
         )
       })}
@@ -386,10 +363,7 @@ export default function PostComposerOverlay(props: Props) {
             panelSize="full"
             position="fixed"
             forceHeaderSafeTop
-            respectBottomSafeArea={true}
-            respectHorizontalSafeArea={true}
-            // Enable content padding for header and action bar
-            disableContentPadding={false}
+            respectBottomSafeArea={false}
             frameClassName="absolute inset-0 flex items-stretch justify-center p-0"
             panelClassName="!h-full !max-h-none !max-w-none !rounded-none border-none bg-white"
             className="[&>.philani-overlay-backdrop]:!bg-white [&>.philani-overlay-backdrop]:!backdrop-blur-none"
@@ -398,30 +372,14 @@ export default function PostComposerOverlay(props: Props) {
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white p-0 text-[#1c1e21]">
               {renderHeader()}
 
-              {/* Full-bleed image rows */}
-              {Array.isArray(props.contentBlocks) && props.contentBlocks.some(b => b.type === 'image') ? (
-                props.contentBlocks.filter(b => b.type === 'image').map((block, idx) => (
-                  <button
-                    key={block.id}
-                    type="button"
-                    className="block w-full appearance-none border-0 bg-transparent p-0 text-left"
-                    data-testid="post-composer-image-row"
-                    onClick={() => props.onEditBlock?.(block, idx)}
-                  >
-                    <img src={block.imageUrl} alt="Post image" className="block h-auto w-full" />
-                  </button>
-                ))
-              ) : null}
-
-              {/* Padded content and action bar */}
               <div className="flex min-h-0 flex-1 flex-col gap-0">
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-t border-black/10 bg-white px-4 py-4 sm:px-6 sm:py-5">
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-t border-black/10 bg-white px-0 py-4 sm:px-1 sm:py-5">
                   <div
-                    className="flex min-h-0 flex-1 cursor-text flex-col gap-3 overflow-y-auto py-3"
+                    className="flex min-h-0 flex-1 cursor-text flex-col gap-3 overflow-y-auto px-4 py-3"
                     onClick={() => props.textareaRef?.current?.focus()}
                   >
                     <ComposerBlockList
-                      blocks={props.contentBlocks ? props.contentBlocks.filter(b => b.type !== 'image') : []}
+                      blocks={props.contentBlocks || []}
                       editingTarget={props.editingTarget}
                       onEditBlock={props.onEditBlock}
                       onBeginBlockLongPress={props.onBeginBlockLongPress}
@@ -430,22 +388,20 @@ export default function PostComposerOverlay(props: Props) {
                       onOpenBlockCrudOptions={props.onOpenBlockCrudOptions}
                     />
 
-                    <div>
-                      <textarea
-                        ref={props.textareaRef}
-                        value={String(props.draftText || '')}
-                        onChange={(event) => props.onDraftTextChange?.(event.target.value)}
-                        placeholder={`Post as ${viewerName}`}
-                        rows={1}
-                        className="min-h-[160px] w-full resize-none bg-transparent text-sm leading-6 text-slate-700 outline-none placeholder:text-slate-400"
-                        style={{ overflowY: 'hidden' }}
-                      />
-                    </div>
+                    <textarea
+                      ref={props.textareaRef}
+                      value={String(props.draftText || '')}
+                      onChange={(event) => props.onDraftTextChange?.(event.target.value)}
+                      placeholder={`Post as ${viewerName}`}
+                      rows={1}
+                      className="min-h-[160px] w-full resize-none bg-transparent text-sm leading-6 text-slate-700 outline-none placeholder:text-slate-400"
+                      style={{ overflowY: 'hidden' }}
+                    />
                   </div>
                 </div>
 
                 {parsedOpen && parsedJsonText ? (
-                  <div className="rounded-none border-t border-black/10 bg-[#eef2f7] px-4 py-3 sm:px-6 sm:py-4">
+                  <div className="rounded-none border-t border-black/10 bg-[#eef2f7] px-0 py-3 sm:px-1 sm:py-4">
                     <pre className="whitespace-pre-wrap text-xs text-slate-700">{parsedJsonText}</pre>
                   </div>
                 ) : null}

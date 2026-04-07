@@ -8,6 +8,7 @@ import type { ComposerBlockCrudTarget, ComposerBlockEditTarget, PostReplyBlock, 
 import { composePostSolveBlocksWithDraftText } from '../lib/postReplyComposer'
 import { renderKatexDisplayHtml } from '../lib/latexRender'
 import { renderTextWithKatex } from '../lib/renderTextWithKatex'
+import useViewportBottomOffset from '../lib/useViewportBottomOffset'
 
 const StackedCanvasWindow = dynamic(() => import('./StackedCanvasWindow'), { ssr: false })
 const ImageCropperModal = dynamic(() => import('./ImageCropperModal'), { ssr: false })
@@ -124,6 +125,8 @@ export default function PostReplyComposerOverlays({
   onClearBlockLongPress,
   onOpenBlockCrudOptions,
 }: Props) {
+  const viewportBottomOffsetPx = useViewportBottomOffset({ requireEditableFocus: true })
+
   return (
     <>
       {crudTarget ? (
@@ -329,7 +332,14 @@ export default function PostReplyComposerOverlays({
                     </div>
                   </div>
 
-                  <div className="shrink-0 -mx-4 mt-auto border-t border-slate-200/80 bg-[linear-gradient(180deg,rgba(251,252,255,0.72)_0%,#f0f6ff_24%,#f0f6ff_100%)] px-5 pb-[calc(var(--app-safe-bottom)+0.75rem)] pt-3 backdrop-blur-xl sm:-mx-5 sm:px-6 sm:pb-5">
+                  <div
+                    className="shrink-0 -mx-4 mt-auto border-t border-slate-200/80 bg-[linear-gradient(180deg,rgba(251,252,255,0.72)_0%,#f0f6ff_24%,#f0f6ff_100%)] px-5 pb-[calc(var(--app-safe-bottom)+0.75rem)] pt-3 backdrop-blur-xl transition-[padding-bottom] duration-150 sm:-mx-5 sm:px-6 sm:pb-5"
+                    style={viewportBottomOffsetPx > 0
+                      ? {
+                          paddingBottom: `calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + ${viewportBottomOffsetPx}px + 0.75rem)`,
+                        }
+                      : undefined}
+                  >
                     <div className="flex items-center justify-between gap-3 px-1">
                       <div className="flex items-center gap-4">
                         <button type="button" className={iconButtonClassName} onClick={onOpenTyped} disabled={submitting} aria-label="Math input" title="Math input">

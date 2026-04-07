@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
+import useViewportBottomOffset from '../lib/useViewportBottomOffset'
 
 type Props = {
   tone?: 'bare' | 'outlined'
@@ -39,15 +40,21 @@ export default function ComposerActionBar({
   submitDisabled,
   onSubmit,
 }: Props) {
+  const viewportBottomOffsetPx = useViewportBottomOffset({ requireEditableFocus: true })
   const iconButtonClassName = tone === 'outlined'
     ? 'inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50'
     : 'inline-flex h-10 items-center justify-center text-slate-700 transition hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
   const shellClassName = tone === 'outlined'
     ? 'mt-auto shrink-0 border-t border-black/10 bg-white'
     : 'mt-auto shrink-0 border-t border-black/10 bg-white/95 backdrop-blur-xl'
+  const shellStyle: CSSProperties | undefined = viewportBottomOffsetPx > 0
+    ? {
+        paddingBottom: `calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + ${viewportBottomOffsetPx}px)`,
+      }
+    : undefined
 
   return (
-    <div className={shellClassName}>
+    <div className={`${shellClassName} transition-[padding-bottom] duration-150`} style={shellStyle}>
       <div className="flex min-w-0 items-center justify-between gap-3 px-0 py-3 sm:px-1 sm:py-4">
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
           {showTypedAction ? (

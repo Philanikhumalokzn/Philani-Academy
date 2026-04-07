@@ -14099,6 +14099,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const mobileAdminSections = availableSections.filter(section =>
       section.id === 'live' || section.id === 'users' || section.id === 'billing'
     )
+    const discoverAvailable = mobilePrimarySections.some(section => section.id === 'discover')
 
     const jumpHome = () => {
       setStudentDashboardProfileOpen(false)
@@ -14160,6 +14161,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-[#f8fafc] text-[#1c1e21] disabled:opacity-50"
+                  onClick={() => {
+                    if (discoverAvailable) {
+                      openDashboardOverlay('discover')
+                    }
+                  }}
+                  aria-label="Open Discovery"
+                  title="Discover"
+                  disabled={!discoverAvailable}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="2" />
+                    <path d="m16 16 4.25 4.25" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
                   className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-[#f8fafc] text-[#1c1e21]"
                   onClick={openNotificationsOverlay}
                   aria-label="Notifications"
@@ -14171,18 +14189,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <span className="absolute -right-0.5 -top-0.5 min-w-[18px] rounded-full bg-[#1877f2] px-1.5 text-center text-[10px] font-semibold leading-5 text-white shadow-[0_8px_18px_rgba(24,119,242,0.45)]">
                       {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
                     </span>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={openOwnDashboardProfile}
-                  className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f8fafc]"
-                  aria-label="Open your profile"
-                >
-                  {effectiveAvatarUrl ? (
-                    <img src={effectiveAvatarUrl} alt={learnerName} className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="text-sm font-semibold text-[#1c1e21]">{String(learnerName || 'U').slice(0, 1).toUpperCase()}</span>
                   )}
                 </button>
               </div>

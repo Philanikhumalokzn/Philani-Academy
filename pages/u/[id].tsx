@@ -1724,13 +1724,13 @@ export function PublicUserProfileSurface({
               disabled={coverUploading}
             />
           ) : null}
-          <div className="public-profile-hero__chrome relative z-[2] min-h-[17rem] px-4 pb-32 pt-[calc(var(--app-safe-top)+0.85rem)] sm:min-h-[20rem] sm:px-6">
-            <div className="flex items-start justify-between gap-3">
+          <div className="public-profile-hero__chrome pointer-events-none relative z-[2] min-h-[17rem] px-4 pb-32 pt-[calc(var(--app-safe-top)+0.85rem)] sm:min-h-[20rem] sm:px-6">
+            <div className="pointer-events-none flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={handleBack}
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-sm transition hover:bg-black/50"
+                  className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-sm transition hover:bg-black/50"
                   aria-label="Go back"
                 >
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
@@ -1741,7 +1741,7 @@ export function PublicUserProfileSurface({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-sm transition hover:bg-black/50"
+                  className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-sm transition hover:bg-black/50"
                   aria-label="Search profile"
                 >
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
@@ -1751,7 +1751,7 @@ export function PublicUserProfileSurface({
                 </button>
                 <button
                   type="button"
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-sm transition hover:bg-black/50"
+                  className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/35 text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-sm transition hover:bg-black/50"
                   aria-label="More options"
                 >
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
@@ -1768,8 +1768,8 @@ export function PublicUserProfileSurface({
         <section className="relative -mt-24 bg-transparent">
           <div className="mx-auto w-full max-w-5xl">
             <div className="relative px-4 pb-5 pt-0 sm:px-6">
-              <div className="absolute inset-x-0 bottom-0 top-20 bg-white sm:top-24" aria-hidden="true" />
-              <div className="flex flex-col gap-4">
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 top-20 bg-white sm:top-24" aria-hidden="true" />
+              <div className="relative z-[1] flex flex-col gap-4">
                 <div className="relative flex items-end justify-between gap-4">
                   <div className="-mt-10 flex min-w-0 flex-1 items-end gap-4 sm:-mt-12">
                     {isSelf ? (

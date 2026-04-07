@@ -2249,27 +2249,27 @@ export function PublicUserProfileSurface({
         onDelete={(postId) => deleteOwnedPost(postId)}
       />
 
-      <PostCrudBottomSheet
-        open={Boolean(postCrudTarget)}
-        onClose={() => setPostCrudTarget(null)}
-        onEdit={() => {
-          if (postCrudTarget) editPostFromCrudTarget(postCrudTarget)
-        }}
-        onDelete={() => {
-          if (postCrudTarget) void deletePostFromCrudTarget(postCrudTarget)
-        }}
-      />
+      {postCrudTarget ? (
+        <OverlayPortal>
+          <PostCrudBottomSheet
+            open
+            onClose={() => setPostCrudTarget(null)}
+            onEdit={() => editPostFromCrudTarget(postCrudTarget)}
+            onDelete={() => void deletePostFromCrudTarget(postCrudTarget)}
+          />
+        </OverlayPortal>
+      ) : null}
 
-      <ReplyCrudBottomSheet
-        open={Boolean(replyCrudTarget)}
-        onClose={() => setReplyCrudTarget(null)}
-        onEdit={() => {
-          if (replyCrudTarget) editReplyFromCrudTarget(replyCrudTarget)
-        }}
-        onDelete={() => {
-          if (replyCrudTarget) void deleteReplyFromCrudTarget(replyCrudTarget)
-        }}
-      />
+      {replyCrudTarget ? (
+        <OverlayPortal>
+          <ReplyCrudBottomSheet
+            open
+            onClose={() => setReplyCrudTarget(null)}
+            onEdit={() => editReplyFromCrudTarget(replyCrudTarget)}
+            onDelete={() => void deleteReplyFromCrudTarget(replyCrudTarget)}
+          />
+        </OverlayPortal>
+      ) : null}
 
       {postThreadOverlay ? (
         <FullScreenGlassOverlay

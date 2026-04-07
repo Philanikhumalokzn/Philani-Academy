@@ -75,6 +75,13 @@ type DiscoverProfile = {
 
 type ProfileTab = 'all' | 'photos' | 'reels'
 
+export type PublicUserProfileSurfaceProps = {
+  userId?: string
+  embedded?: boolean
+  dashboardEmbed?: boolean
+  onBack?: () => void
+}
+
 const defaultMobileHeroBg = (() => {
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
@@ -165,14 +172,27 @@ const renderProfilePostReplyBlocks = (blocks: PostReplyBlock[], keyPrefix: strin
   )
 }
 
-export default function PublicUserProfilePage() {
+export function PublicUserProfileSurface({
+  userId: userIdProp,
+  embedded: embeddedProp,
+  dashboardEmbed: dashboardEmbedProp,
+  onBack,
+}: PublicUserProfileSurfaceProps = {}) {
   const router = useRouter()
   const { status, data: session } = useSession()
   const pageRootRef = useRef<HTMLElement | null>(null)
 
-  const userId = typeof router.query?.id === 'string' ? router.query.id : ''
-  const isEmbedded = typeof router.query?.embedded === 'string' && router.query.embedded === '1'
-  const isDashboardEmbed = isEmbedded && typeof router.query?.dashboard === 'string' && router.query.dashboard === '1'
+  const userId = typeof userIdProp === 'string'
+    ? userIdProp
+    : typeof router.query?.id === 'string'
+      ? router.query.id
+      : ''
+  const isEmbedded = typeof embeddedProp === 'boolean'
+    ? embeddedProp
+    : typeof router.query?.embedded === 'string' && router.query.embedded === '1'
+  const isDashboardEmbed = typeof dashboardEmbedProp === 'boolean'
+    ? dashboardEmbedProp
+    : isEmbedded && typeof router.query?.dashboard === 'string' && router.query.dashboard === '1'
 
   const [profile, setProfile] = useState<PublicUser | null>(null)
   const [profileLoading, setProfileLoading] = useState(false)
@@ -1181,12 +1201,16 @@ export default function PublicUserProfilePage() {
   )
 
   const handleBack = useCallback(() => {
+    if (onBack) {
+      onBack()
+      return
+    }
     if (typeof window !== 'undefined' && window.history.length > 1) {
       window.history.back()
       return
     }
     void router.push('/dashboard?panel=discover')
-  }, [router])
+  }, [onBack, router])
 
   const toggleFollow = useCallback(async () => {
     if (!profile || !viewerId || isSelf) return
@@ -1979,6 +2003,10 @@ export default function PublicUserProfilePage() {
       ) : null}
     </main>
   )
+}
+
+export default function PublicUserProfilePage() {
+  return <PublicUserProfileSurface />
 }
 
 export const getServerSideProps: GetServerSideProps = async () => {

@@ -27,6 +27,7 @@ import BottomSheet from '../components/BottomSheet'
 import InlinePostSolutionsThread from '../components/InlinePostSolutionsThread'
 import PostReplyComposerOverlays from '../components/PostReplyComposerOverlays'
 import ReplyCrudBottomSheet from '../components/ReplyCrudBottomSheet'
+import { PublicUserProfileSurface } from './u/[id]'
 import { getSession, signOut, useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
@@ -1821,7 +1822,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'profile'>('timeline')
   const [studentDashboardProfileOpen, setStudentDashboardProfileOpen] = useState(false)
-  const [studentDashboardProfileHeight, setStudentDashboardProfileHeight] = useState(960)
+  const [, setStudentDashboardProfileHeight] = useState(960)
   const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'profile' | 'admin' | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [booksOverlayOpen, setBooksOverlayOpen] = useState(false)
@@ -13680,29 +13681,35 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       )
     }
 
-    const src = `/u/${encodeURIComponent(currentViewerId)}?embedded=1&dashboard=1`
-
-    // For mobile, make the iframe full-bleed, no extra wrapper, matching other dashboard panels
-    if (tone === 'mobile') {
-      return (
-        <iframe
-          title="Your profile"
-          src={src}
-          className="block w-full h-full min-h-[480px] border-0 bg-white"
-          style={{ height: `${studentDashboardProfileHeight}px` }}
-        />
-      )
+    const handleBack = () => {
+      if (tone === 'desktop') {
+        closeOwnDashboardProfile()
+        return
+      }
+      setStudentDashboardProfileOpen(false)
+      setStudentMobileIsDragging(false)
+      setStudentMobileDragOffsetPx(0)
+      setStudentMobileTab('timeline')
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }
     }
 
-    // For desktop, retain any needed spacing
+    const panel = (
+      <PublicUserProfileSurface
+        userId={currentViewerId}
+        embedded
+        onBack={handleBack}
+      />
+    )
+
+    if (tone === 'mobile') {
+      return panel
+    }
+
     return (
       <div className="space-y-4">
-        <iframe
-          title="Your profile"
-          src={src}
-          className="block w-full border-0 bg-white"
-          style={{ height: `${studentDashboardProfileHeight}px` }}
-        />
+        {panel}
       </div>
     )
   }

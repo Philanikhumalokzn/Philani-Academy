@@ -3981,7 +3981,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (typeof window === 'undefined') return
     const handleMessage = (event: MessageEvent) => {
       const data = event.data as any
-      if (!data || data.type !== 'pa:embedded-profile-height') return
+      if (!data) return
+      if (data.type === 'pa:embedded-profile-open-post-composer') {
+        const reportedUserId = String(data.userId || '')
+        if (reportedUserId && reportedUserId !== currentViewerId) return
+        openCreateChallengeComposer()
+        return
+      }
+      if (data.type === 'pa:embedded-profile-open-post-screenshot') {
+        const reportedUserId = String(data.userId || '')
+        if (reportedUserId && reportedUserId !== currentViewerId) return
+        openCreateChallengeScreenshotPicker()
+        return
+      }
+      if (data.type !== 'pa:embedded-profile-height') return
       const reportedUserId = String(data.userId || '')
       if (reportedUserId && reportedUserId !== currentViewerId) return
       const nextHeight = Number(data.height || 0)
@@ -3990,7 +4003,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [currentViewerId])
+  }, [currentViewerId, openCreateChallengeComposer, openCreateChallengeScreenshotPicker])
 
   const isPdfResource = useCallback((item: ResourceBankItem) => {
     const filename = (item.filename || '').toLowerCase()

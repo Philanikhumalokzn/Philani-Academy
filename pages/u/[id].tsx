@@ -172,6 +172,7 @@ export default function PublicUserProfilePage() {
 
   const userId = typeof router.query?.id === 'string' ? router.query.id : ''
   const isEmbedded = typeof router.query?.embedded === 'string' && router.query.embedded === '1'
+  const isDashboardEmbed = isEmbedded && typeof router.query?.dashboard === 'string' && router.query.dashboard === '1'
 
   const [profile, setProfile] = useState<PublicUser | null>(null)
   const [profileLoading, setProfileLoading] = useState(false)
@@ -282,7 +283,19 @@ export default function PublicUserProfilePage() {
     setPostParsedOpen(false)
   }, [])
 
+  const requestDashboardCreatePostComposer = useCallback((mode: 'post' | 'screenshot' = 'post') => {
+    if (!isDashboardEmbed) return false
+    if (typeof window === 'undefined') return false
+    if (window.parent === window) return false
+    window.parent.postMessage({
+      type: mode === 'screenshot' ? 'pa:embedded-profile-open-post-screenshot' : 'pa:embedded-profile-open-post-composer',
+      userId,
+    }, window.location.origin)
+    return true
+  }, [isDashboardEmbed, userId])
+
   const openCreateOwnedPostComposer = useCallback(() => {
+    if (requestDashboardCreatePostComposer('post')) return
     setEditingOwnedPostId(null)
     setPostSolveBlocks([])
     setPostSolveText('')
@@ -298,12 +311,13 @@ export default function PublicUserProfilePage() {
     setPostParsedJsonText(null)
     setPostParsedOpen(false)
     setPostComposerOpen(true)
-  }, [])
+  }, [requestDashboardCreatePostComposer])
 
   const openCreateOwnedPostScreenshotPicker = useCallback(() => {
+    if (requestDashboardCreatePostComposer('screenshot')) return
     openCreateOwnedPostComposer()
     setPostReplyImageSourceSheetOpen(true)
-  }, [openCreateOwnedPostComposer])
+  }, [openCreateOwnedPostComposer, requestDashboardCreatePostComposer])
 
   const openEditOwnedPostComposer = useCallback((post: ProfilePost) => {
     const id = post?.id ? String(post.id) : ''
@@ -1087,11 +1101,18 @@ export default function PublicUserProfilePage() {
 
     const postHeight = () => {
       if (overlayPinnedToViewport) {
-        const viewportHeight = Math.max(window.innerHeight || 0, 720)
+        let viewportHeight = window.innerHeight || 0
+        try {
+          if (window.parent !== window && typeof window.parent.innerHeight === 'number' && window.parent.innerHeight > 0) {
+            viewportHeight = window.parent.innerHeight
+          }
+        } catch {
+          // Ignore cross-context access issues and fall back to the embedded viewport height.
+        }
         window.parent.postMessage({
           type: 'pa:embedded-profile-height',
           userId,
-          height: viewportHeight,
+          height: Math.max(viewportHeight, 720),
         }, window.location.origin)
         return
       }

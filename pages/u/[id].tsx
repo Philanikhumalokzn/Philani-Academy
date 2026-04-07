@@ -1587,18 +1587,21 @@ export default function PublicUserProfilePage() {
 
           {isSelf ? (
             <div className="mt-5 overflow-hidden rounded-[30px] border border-slate-200 bg-white px-4 py-2.5 shadow-[0_16px_34px_rgba(15,23,42,0.08)]">
-              <FeedComposerPill
-                size="compact"
-                avatarUrl={currentViewerAvatarUrl}
-                avatarAlt={currentViewerName}
-                avatarFallback={<span>{extractInitials(currentViewerName)}</span>}
-                message={`What's on your mind, ${currentViewerFirstName}?`}
-                onMessageClick={openCreateOwnedPostComposer}
-                rightActionIcon="menu"
-                onRightActionClick={() => setPostToolsSheetOpen(true)}
-                rightActionLabel="Open posts menu"
-                rightActionTitle="Posts menu"
-              />
+                <FeedComposerPill
+                  size="compact"
+                  avatarUrl={currentViewerAvatarUrl}
+                  avatarAlt={currentViewerName}
+                  avatarFallback={<span>{extractInitials(currentViewerName)}</span>}
+                  message={`What's on your mind, ${currentViewerFirstName}?`}
+                  onMessageClick={() => {
+                    // Always open modal overlay composer
+                    openCreateOwnedPostComposer()
+                  }}
+                  rightActionIcon="menu"
+                  onRightActionClick={() => setPostToolsSheetOpen(true)}
+                  rightActionLabel="Open posts menu"
+                  rightActionTitle="Posts menu"
+                />
             </div>
           ) : canFollow ? (
             <div className="mt-5 overflow-hidden rounded-[30px] border border-slate-200 bg-white px-4 py-2.5 shadow-[0_16px_34px_rgba(15,23,42,0.08)]">

@@ -13661,7 +13661,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const renderEmbeddedOwnProfilePanel = (tone: 'mobile' | 'desktop') => {
     if (!currentViewerId) {
       return (
-        <div className="rounded-[28px] border border-black/10 bg-white px-5 py-8 text-center text-sm text-[#65676b] shadow-[0_14px_30px_rgba(15,23,42,0.06)]">
+        <div className="w-full text-center text-sm text-[#65676b] py-8">
           Your profile is unavailable right now.
         </div>
       )
@@ -13669,16 +13669,27 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     const src = `/u/${encodeURIComponent(currentViewerId)}?embedded=1&dashboard=1`
 
+    // For mobile, make the iframe full-bleed, no extra wrapper, matching other dashboard panels
+    if (tone === 'mobile') {
+      return (
+        <iframe
+          title="Your profile"
+          src={src}
+          className="block w-full h-full min-h-[480px] border-0 bg-white"
+          style={{ height: `${studentDashboardProfileHeight}px` }}
+        />
+      )
+    }
+
+    // For desktop, retain any needed spacing
     return (
-      <div className={tone === 'mobile' ? 'pb-8' : 'space-y-4'}>
-        <div className="overflow-hidden rounded-[30px] border border-black/10 bg-white shadow-[0_16px_34px_rgba(15,23,42,0.08)]">
-          <iframe
-            title="Your profile"
-            src={src}
-            className="block w-full border-0 bg-white"
-            style={{ height: `${studentDashboardProfileHeight}px` }}
-          />
-        </div>
+      <div className="space-y-4">
+        <iframe
+          title="Your profile"
+          src={src}
+          className="block w-full border-0 bg-white"
+          style={{ height: `${studentDashboardProfileHeight}px` }}
+        />
       </div>
     )
   }

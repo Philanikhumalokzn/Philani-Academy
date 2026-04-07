@@ -1,3 +1,4 @@
+import type { HTMLAttributes } from 'react'
 import type { FeedPost } from '../lib/feedContract'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import OverlayPortal from './OverlayPortal'
@@ -9,9 +10,10 @@ type Props = {
   onClose: () => void
   onEdit: (post: FeedPost) => void
   onDelete: (postId: string) => void | Promise<void>
+  getPostContentProps?: (post: FeedPost) => Pick<HTMLAttributes<HTMLDivElement>, 'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onPointerCancel' | 'onPointerLeave' | 'onContextMenu'>
 }
 
-export default function OwnPostsManagerOverlay({ open, posts, onClose, onEdit, onDelete }: Props) {
+export default function OwnPostsManagerOverlay({ open, posts, onClose, onEdit, onDelete, getPostContentProps }: Props) {
   if (!open) return null
 
   return (
@@ -35,7 +37,7 @@ export default function OwnPostsManagerOverlay({ open, posts, onClose, onEdit, o
                 return (
                   <li key={String(post.id)} className="rounded-xl border border-white/10 bg-white p-3 text-[#1c1e21]">
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
+                      <div className="min-w-0" {...getPostContentProps?.(post)}>
                         <div className="font-medium break-words text-[#1c1e21]">{title}</div>
                         {createdAt ? <div className="text-xs text-[#65676b]">{createdAt}</div> : null}
                         <div className="mt-2">

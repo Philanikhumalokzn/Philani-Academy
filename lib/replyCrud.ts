@@ -1,5 +1,4 @@
-import { useCallback, useRef } from 'react'
-import type { PointerEvent as ReactPointerEvent } from 'react'
+import { useOwnedLongPressCrud } from './ownedLongPressCrud'
 
 export type ReplyCrudTarget = {
   kind: 'post' | 'challenge'
@@ -24,49 +23,12 @@ export function useReplyLongPressCrud<T extends { response: any }>({
   delayMs = 420,
   maxMovePx = 10,
 }: UseReplyLongPressCrudOptions<T>) {
-  const replyLongPressTimeoutRef = useRef<number | null>(null)
-  const replyLongPressStateRef = useRef<null | { x: number; y: number; target: T }>(null)
-
-  const clearReplyLongPress = useCallback(() => {
-    if (replyLongPressTimeoutRef.current !== null && typeof window !== 'undefined') {
-      window.clearTimeout(replyLongPressTimeoutRef.current)
-    }
-    replyLongPressTimeoutRef.current = null
-    replyLongPressStateRef.current = null
-  }, [])
-
-  const openReplyCrudOptions = useCallback((target: T) => {
-    clearReplyLongPress()
-    onOpenCrud(target)
-  }, [clearReplyLongPress, onOpenCrud])
-
-  const beginReplyLongPress = useCallback((event: ReactPointerEvent, target: T) => {
-    const responseUserId = getResponseOwnerId(target?.response)
-    if (!responseUserId || responseUserId !== String(currentUserId || '')) return
-    if (typeof window === 'undefined') return
-    if (event.button !== 0) return
-
-    clearReplyLongPress()
-    replyLongPressStateRef.current = { x: event.clientX, y: event.clientY, target }
-    replyLongPressTimeoutRef.current = window.setTimeout(() => {
-      openReplyCrudOptions(target)
-    }, delayMs)
-  }, [clearReplyLongPress, currentUserId, delayMs, openReplyCrudOptions])
-
-  const moveReplyLongPress = useCallback((event: ReactPointerEvent) => {
-    const state = replyLongPressStateRef.current
-    if (!state) return
-    const dx = event.clientX - state.x
-    const dy = event.clientY - state.y
-    if (Math.hypot(dx, dy) > maxMovePx) {
-      clearReplyLongPress()
-    }
-  }, [clearReplyLongPress, maxMovePx])
-
-  return {
-    clearReplyLongPress,
-    openReplyCrudOptions,
-    beginReplyLongPress,
-    moveReplyLongPress,
-  }
+  return useOwnedLongPressCrud<T>({
+    currentUserId,
+    onOpenCrud,
+    delayMs,
+    maxMovePx,
+    getOwnerId: (target) => getResponseOwnerId(target?.response),
+    getTargetKey: (target) => String(target?.response?.id || ''),
+  })
 }

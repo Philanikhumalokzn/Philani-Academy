@@ -27,6 +27,7 @@ import ScriptPhotosEditor from '../components/ScriptPhotosEditor'
 import BottomSheet from '../components/BottomSheet'
 import InlinePostSolutionsThread from '../components/InlinePostSolutionsThread'
 import PostReplyComposerOverlays from '../components/PostReplyComposerOverlays'
+import PostCrudBottomSheet from '../components/PostCrudBottomSheet'
 import ReplyCrudBottomSheet from '../components/ReplyCrudBottomSheet'
 import { PublicUserProfileSurface } from './u/[id]'
 import { getSession, signOut, useSession } from 'next-auth/react'
@@ -42,6 +43,7 @@ import { useTapToPeek } from '../lib/useTapToPeek'
 import { useOverlayRestore } from '../lib/overlayRestore'
 import { buildSocialPostComposerFields } from '../lib/postComposerContent'
 import { applyOwnFeedPostResponse, syncFeedPostThreadState } from '../lib/feedContract'
+import { usePostLongPressCrud, type PostCrudTarget } from '../lib/postCrud'
 import { buildHydratedCreatedPost, patchFeedPost } from '../lib/postComposerShared'
 import { useReplyLongPressCrud, type ReplyCrudTarget } from '../lib/replyCrud'
 
@@ -1366,6 +1368,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [postThreadError, setPostThreadError] = useState<string | null>(null)
   const [postThreadResponses, setPostThreadResponses] = useState<any[]>([])
   const [replyCrudTarget, setReplyCrudTarget] = useState<ReplyCrudTarget | null>(null)
+  const [postCrudTarget, setPostCrudTarget] = useState<PostCrudTarget<any> | null>(null)
   const [pendingFeedThreadJumpKey, setPendingFeedThreadJumpKey] = useState<string | null>(null)
   const [expandedSolutionThreadKey, setExpandedSolutionThreadKey] = useState<string | null>(null)
   const [expandedSolutionThreadKind, setExpandedSolutionThreadKind] = useState<'post' | 'challenge' | null>(null)
@@ -1375,13 +1378,24 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [mathKeyboardOverlayOpen, setMathKeyboardOverlayOpen] = useState(false)
 
   const {
-    clearReplyLongPress,
-    openReplyCrudOptions,
-    beginReplyLongPress,
-    moveReplyLongPress,
+    clearLongPress: clearReplyLongPress,
+    openCrudOptions: openReplyCrudOptions,
+    beginLongPress: beginReplyLongPress,
+    moveLongPress: moveReplyLongPress,
   } = useReplyLongPressCrud<ReplyCrudTarget>({
     currentUserId: String((session as any)?.user?.id || viewerId || ''),
     onOpenCrud: setReplyCrudTarget,
+  })
+  const {
+    clearLongPress: clearPostLongPress,
+    openCrudOptions: openPostCrudOptions,
+    beginLongPress: beginPostLongPress,
+    moveLongPress: movePostLongPress,
+    consumeLongPressOpen: consumePostLongPressOpen,
+    isOwnedByCurrentUser: isOwnedPostByCurrentUser,
+  } = usePostLongPressCrud<PostCrudTarget<any>>({
+    currentUserId: String((session as any)?.user?.id || viewerId || ''),
+    onOpenCrud: setPostCrudTarget,
   })
   const [accountSnapshotOverlayOpen, setAccountSnapshotOverlayOpen] = useState(false)
   const postReplyCameraInputRef = useRef<HTMLInputElement | null>(null)
@@ -5156,6 +5170,38 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [])
 
+  const buildPostCrudTarget = useCallback((post: any): PostCrudTarget<any> => ({ post }), [])
+
+  const getPostCrudBodyProps = useCallback((post: any) => {
+    const target = buildPostCrudTarget(post)
+    return {
+      onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => beginPostLongPress(event, target),
+      onPointerMove: movePostLongPress,
+      onPointerUp: clearPostLongPress,
+      onPointerCancel: clearPostLongPress,
+      onPointerLeave: clearPostLongPress,
+      onContextMenu: (event: React.MouseEvent<HTMLDivElement>) => {
+        if (!isOwnedPostByCurrentUser(target)) return
+        event.preventDefault()
+        openPostCrudOptions(target)
+      },
+    }
+  }, [beginPostLongPress, buildPostCrudTarget, clearPostLongPress, isOwnedPostByCurrentUser, movePostLongPress, openPostCrudOptions])
+
+  const consumePostLongPressForPost = useCallback((post: any) => {
+    return consumePostLongPressOpen(buildPostCrudTarget(post))
+  }, [buildPostCrudTarget, consumePostLongPressOpen])
+
+  const editPostFromCrudTarget = useCallback((target: PostCrudTarget<any>) => {
+    setPostCrudTarget(null)
+    openEditPostComposer(target.post)
+  }, [openEditPostComposer])
+
+  const deletePostFromCrudTarget = useCallback(async (target: PostCrudTarget<any>) => {
+    setPostCrudTarget(null)
+    await deletePost(String(target?.post?.id || ''))
+  }, [deletePost])
+
   const activeChallengeGradingResponse = useMemo(() => {
     if (!challengeGradingResponseId) return null
     const responses = Array.isArray(selectedSubmissionDetail?.responses) ? selectedSubmissionDetail.responses : []
@@ -5765,7 +5811,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         return (
           <li key={getDashboardItemKey(c)} className="rounded-xl border border-white/10 bg-white/5 p-3">
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
+              <div className="min-w-0" {...(isPost ? getPostCrudBodyProps(c) : {})}>
                 <div className="font-medium text-white break-words">{title}</div>
                 {createdAt ? <div className="text-xs text-white/60">{createdAt}</div> : null}
                 {isPost ? (
@@ -6246,7 +6292,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         className="border-b border-black/10 bg-white px-4 py-3"
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
+                          <div className="min-w-0" {...getPostCrudBodyProps(p)}>
                             <div className="flex items-center gap-3">
                               <UserLink userId={mpAuthorId} className="shrink-0" title="View profile">
                                 <div className="h-9 w-9 aspect-square rounded-full border border-black/10 bg-[#f0f2f5] overflow-hidden flex items-center justify-center">
@@ -6272,6 +6318,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 prompt={mpPrompt}
                                 imageUrl={mpImageUrl}
                                 compact
+                                consumeLongPressOpen={() => consumePostLongPressForPost(p)}
                                 onOpenImage={(url, titleText) => openPostImageViewer(url, titleText)}
                                 imageTitle={`${mpTitle} image`}
                               />
@@ -6824,8 +6871,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         imageUrl={imageUrl}
                         contentBlocks={Array.isArray((p as any)?.contentBlocks) ? (p as any).contentBlocks : null}
                         expanded={expandedSolutionThreadKey === itemKey && expandedSolutionThreadKind === 'post'}
-                        onOpen={() => void openPostThread(p, { forceOpen: true })}
+                        onOpen={() => {
+                          if (consumePostLongPressForPost(p)) return
+                          void openPostThread(p, { forceOpen: true })
+                        }}
                         onOpenImage={openPostImageViewer}
+                        consumeLongPressOpen={() => consumePostLongPressForPost(p)}
+                        bodyPointerProps={getPostCrudBodyProps(p)}
                         sideActions={postSideActions}
                         actions={postActions}
                       >
@@ -16149,6 +16201,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             onClose={() => setReplyCrudTarget(null)}
             onEdit={() => editReplyFromCrudTarget(replyCrudTarget)}
             onDelete={() => void deleteReplyFromCrudTarget(replyCrudTarget)}
+          />
+        </OverlayPortal>
+      ) : null}
+
+      {postCrudTarget ? (
+        <OverlayPortal>
+          <PostCrudBottomSheet
+            open
+            onClose={() => setPostCrudTarget(null)}
+            onEdit={() => editPostFromCrudTarget(postCrudTarget)}
+            onDelete={() => void deletePostFromCrudTarget(postCrudTarget)}
           />
         </OverlayPortal>
       ) : null}

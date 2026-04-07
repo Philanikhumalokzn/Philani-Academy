@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { HTMLAttributes, ReactNode } from 'react'
 import type { PostReplyBlock } from '../lib/postReplyComposer'
 import { normalizePostReplyBlocks } from '../lib/postReplyComposer'
 import PostComposerBlocksPreview from './PostComposerBlocksPreview'
@@ -26,6 +26,8 @@ export type PublicFeedPostCardProps = {
   expanded?: boolean
   onOpen?: () => void
   onOpenImage?: (url: string, title: string) => void
+  consumeLongPressOpen?: () => boolean
+  bodyPointerProps?: Pick<HTMLAttributes<HTMLDivElement>, 'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onPointerCancel' | 'onPointerLeave' | 'onContextMenu'>
   sideActions?: ReactNode
   actions?: PublicFeedPostAction[]
   children?: ReactNode
@@ -44,6 +46,8 @@ export default function PublicFeedPostCard({
   expanded = false,
   onOpen,
   onOpenImage,
+  consumeLongPressOpen,
+  bodyPointerProps,
   sideActions,
   actions = [],
   children,
@@ -83,7 +87,10 @@ export default function PublicFeedPostCard({
       className={onOpen ? 'mt-3 block w-full cursor-pointer text-left' : 'mt-3 block w-full text-left'}
       role={onOpen ? 'button' : undefined}
       tabIndex={onOpen ? 0 : undefined}
-      onClick={onOpen}
+      onClick={onOpen ? () => {
+        if (consumeLongPressOpen?.()) return
+        onOpen()
+      } : undefined}
       onKeyDown={onOpen ? (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
@@ -92,6 +99,7 @@ export default function PublicFeedPostCard({
       } : undefined}
       aria-expanded={onOpen ? expanded : undefined}
       data-testid="public-feed-post-body"
+      {...bodyPointerProps}
     >
       <div className="px-4">
         <div className="text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{safeTitle}</div>
@@ -110,6 +118,11 @@ export default function PublicFeedPostCard({
               className={`${spacingClassName} block w-full appearance-none border-0 bg-transparent p-0 text-left`}
               data-testid="public-feed-post-image-row"
               onClick={(event) => {
+                if (consumeLongPressOpen?.()) {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  return
+                }
                 event.stopPropagation()
                 onOpenImage(block.imageUrl, `${safeTitle} image`)
               }}

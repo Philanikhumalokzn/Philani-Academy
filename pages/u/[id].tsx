@@ -13,6 +13,7 @@ import InlinePostSolutionsThread from '../../components/InlinePostSolutionsThrea
 import OverlayPortal from '../../components/OverlayPortal'
 import OwnPostsManagerOverlay from '../../components/OwnPostsManagerOverlay'
 import PostComposerOverlay from '../../components/PostComposerOverlay'
+import PostCrudBottomSheet from '../../components/PostCrudBottomSheet'
 import PublicFeedPostCard from '../../components/PublicFeedPostCard'
 import PostReplyComposerOverlays from '../../components/PostReplyComposerOverlays'
 import PostToolsSheet from '../../components/PostToolsSheet'
@@ -26,6 +27,7 @@ import { renderKatexDisplayHtml } from '../../lib/latexRender'
 import { createLessonRoleProfile, normalizePlatformRole } from '../../lib/lessonAccessControl'
 import { buildHydratedCreatedPost, patchFeedPost, removeFeedPost, sortFeedPostsByCreatedAt, type PostComposerAudience } from '../../lib/postComposerShared'
 import { buildSocialPostComposerFields } from '../../lib/postComposerContent'
+import { usePostLongPressCrud, type PostCrudTarget } from '../../lib/postCrud'
 import { renderTextWithKatex } from '../../lib/renderTextWithKatex'
 import { useReplyLongPressCrud, type ReplyCrudTarget } from '../../lib/replyCrud'
 import {
@@ -253,6 +255,7 @@ export function PublicUserProfileSurface({
   const [postThreadError, setPostThreadError] = useState<string | null>(null)
   const [postThreadResponses, setPostThreadResponses] = useState<any[]>([])
   const [replyCrudTarget, setReplyCrudTarget] = useState<ReplyCrudTarget | null>(null)
+  const [postCrudTarget, setPostCrudTarget] = useState<PostCrudTarget<ProfilePost> | null>(null)
   const [postSolveBlocks, setPostSolveBlocks] = useState<PostReplyBlock[]>([])
   const [postSolveText, setPostSolveText] = useState('')
   const [postTypedSolveLatex, setPostTypedSolveLatex] = useState('')
@@ -291,13 +294,24 @@ export function PublicUserProfileSurface({
   const currentViewerAvatarUrl = resolveImageUrl(String((session as any)?.user?.avatar || (session as any)?.user?.image || '')) || null
   const currentViewerFirstName = useMemo(() => String(currentViewerName || '').trim().split(/\s+/).filter(Boolean)[0] || 'You', [currentViewerName])
   const {
-    clearReplyLongPress,
-    openReplyCrudOptions,
-    beginReplyLongPress,
-    moveReplyLongPress,
+    clearLongPress: clearReplyLongPress,
+    openCrudOptions: openReplyCrudOptions,
+    beginLongPress: beginReplyLongPress,
+    moveLongPress: moveReplyLongPress,
   } = useReplyLongPressCrud<ReplyCrudTarget>({
     currentUserId: currentViewerId,
     onOpenCrud: setReplyCrudTarget,
+  })
+  const {
+    clearLongPress: clearPostLongPress,
+    openCrudOptions: openPostCrudOptions,
+    beginLongPress: beginPostLongPress,
+    moveLongPress: movePostLongPress,
+    consumeLongPressOpen: consumePostLongPressOpen,
+    isOwnedByCurrentUser: isOwnedPostByCurrentUser,
+  } = usePostLongPressCrud<PostCrudTarget<ProfilePost>>({
+    currentUserId: currentViewerId,
+    onOpenCrud: setPostCrudTarget,
   })
   const activeGradeLabel = useMemo(() => {
     const rawGrade = typeof (session as any)?.user?.grade === 'string' ? (session as any).user.grade : ''
@@ -486,6 +500,54 @@ export function PublicUserProfileSurface({
       setPostDeleting(false)
     }
   }, [])
+
+  const buildPostCrudTarget = useCallback((post: ProfilePost): PostCrudTarget<ProfilePost> => ({ post }), [])
+
+  const getPostCrudBodyProps = useCallback((post: ProfilePost) => {
+    const target = buildPostCrudTarget(post)
+    return {
+      onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => beginPostLongPress(event, target),
+      onPointerMove: movePostLongPress,
+      onPointerUp: clearPostLongPress,
+      onPointerCancel: clearPostLongPress,
+      onPointerLeave: clearPostLongPress,
+      onContextMenu: (event: React.MouseEvent<HTMLDivElement>) => {
+        if (!isOwnedPostByCurrentUser(target)) return
+        event.preventDefault()
+        openPostCrudOptions(target)
+      },
+    }
+  }, [beginPostLongPress, buildPostCrudTarget, clearPostLongPress, isOwnedPostByCurrentUser, movePostLongPress, openPostCrudOptions])
+
+  const getOwnPostManagerContentProps = useCallback((post: FeedPost) => {
+    const target = buildPostCrudTarget(post as ProfilePost)
+    return {
+      onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => beginPostLongPress(event, target),
+      onPointerMove: movePostLongPress,
+      onPointerUp: clearPostLongPress,
+      onPointerCancel: clearPostLongPress,
+      onPointerLeave: clearPostLongPress,
+      onContextMenu: (event: React.MouseEvent<HTMLDivElement>) => {
+        if (!isOwnedPostByCurrentUser(target)) return
+        event.preventDefault()
+        openPostCrudOptions(target)
+      },
+    }
+  }, [beginPostLongPress, buildPostCrudTarget, clearPostLongPress, isOwnedPostByCurrentUser, movePostLongPress, openPostCrudOptions])
+
+  const consumePostLongPressForPost = useCallback((post: ProfilePost) => {
+    return consumePostLongPressOpen(buildPostCrudTarget(post))
+  }, [buildPostCrudTarget, consumePostLongPressOpen])
+
+  const editPostFromCrudTarget = useCallback((target: PostCrudTarget<ProfilePost>) => {
+    setPostCrudTarget(null)
+    openEditOwnedPostComposer(target.post)
+  }, [openEditOwnedPostComposer])
+
+  const deletePostFromCrudTarget = useCallback(async (target: PostCrudTarget<ProfilePost>) => {
+    setPostCrudTarget(null)
+    await deleteOwnedPost(String(target?.post?.id || ''))
+  }, [deleteOwnedPost])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1596,7 +1658,7 @@ export function PublicUserProfileSurface({
     }
 
     return (
-      <article key={post.id} className="border-b border-black/10 bg-white px-4 py-3 sm:px-6">
+      <article key={post.id} data-post-id={postId || undefined} className="border-b border-black/10 bg-white px-4 py-3 sm:px-6">
         <PublicFeedPostCard
           authorId={authorId}
           authorName={authorName}
@@ -1608,8 +1670,13 @@ export function PublicUserProfileSurface({
           imageUrl={resolveImageUrl(post.imageUrl)}
           contentBlocks={Array.isArray(post.contentBlocks) ? post.contentBlocks : null}
           expanded={isExpanded}
-          onOpen={() => void openLocalPostThread(post, { forceOpen: true })}
+          onOpen={() => {
+            if (consumePostLongPressForPost(post)) return
+            void openLocalPostThread(post, { forceOpen: true })
+          }}
           onOpenImage={openImageViewer}
+          consumeLongPressOpen={() => consumePostLongPressForPost(post)}
+          bodyPointerProps={getPostCrudBodyProps(post)}
           actions={[
             {
               label: 'Like',
@@ -2174,11 +2241,23 @@ export function PublicUserProfileSurface({
         open={ownPostsManagerOpen}
         posts={posts}
         onClose={() => setOwnPostsManagerOpen(false)}
+        getPostContentProps={getOwnPostManagerContentProps}
         onEdit={(post) => {
           setOwnPostsManagerOpen(false)
           openEditOwnedPostComposer(post)
         }}
         onDelete={(postId) => deleteOwnedPost(postId)}
+      />
+
+      <PostCrudBottomSheet
+        open={Boolean(postCrudTarget)}
+        onClose={() => setPostCrudTarget(null)}
+        onEdit={() => {
+          if (postCrudTarget) editPostFromCrudTarget(postCrudTarget)
+        }}
+        onDelete={() => {
+          if (postCrudTarget) void deletePostFromCrudTarget(postCrudTarget)
+        }}
       />
 
       <ReplyCrudBottomSheet

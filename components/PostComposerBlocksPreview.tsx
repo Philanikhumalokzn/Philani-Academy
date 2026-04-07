@@ -9,6 +9,7 @@ type Props = {
   prompt?: string | null
   imageUrl?: string | null
   onOpenImage?: (url: string, title: string) => void
+  consumeLongPressOpen?: () => boolean
   imageTitle?: string
   compact?: boolean
   textClassName?: string
@@ -21,6 +22,7 @@ export default function PostComposerBlocksPreview({
   prompt,
   imageUrl,
   onOpenImage,
+  consumeLongPressOpen,
   imageTitle = 'Post image',
   compact = false,
   textClassName,
@@ -72,7 +74,10 @@ export default function PostComposerBlocksPreview({
             key={blockKey}
             type="button"
             className={fullBleedImages ? `${imageContainerClassName} text-left` : `block w-full ${imageContainerClassName} text-left`}
-            onClick={() => onOpenImage(block.imageUrl, imageTitle)}
+            onClick={() => {
+              if (consumeLongPressOpen?.()) return
+              onOpenImage(block.imageUrl, imageTitle)
+            }}
           >
             {imageElement}
           </button>

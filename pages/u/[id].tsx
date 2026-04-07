@@ -4,8 +4,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react'
+import AccountControlOverlay from '../../components/AccountControlOverlay'
+import BottomSheet from '../../components/BottomSheet'
 import FeedComposerPill from '../../components/FeedComposerPill'
 import FullScreenGlassOverlay from '../../components/FullScreenGlassOverlay'
+import ImageCropperModal from '../../components/ImageCropperModal'
 import InlinePostSolutionsThread from '../../components/InlinePostSolutionsThread'
 import OwnPostsManagerOverlay from '../../components/OwnPostsManagerOverlay'
 import PostComposerOverlay from '../../components/PostComposerOverlay'
@@ -80,6 +83,8 @@ export type PublicUserProfileSurfaceProps = {
   embedded?: boolean
   dashboardEmbed?: boolean
   onBack?: () => void
+  onAvatarChange?: (url: string | null) => void
+  onCoverChange?: (url: string | null) => void
 }
 
 const defaultMobileHeroBg = (() => {
@@ -177,9 +182,11 @@ export function PublicUserProfileSurface({
   embedded: embeddedProp,
   dashboardEmbed: dashboardEmbedProp,
   onBack,
+  onAvatarChange,
+  onCoverChange,
 }: PublicUserProfileSurfaceProps = {}) {
   const router = useRouter()
-  const { status, data: session } = useSession()
+  const { status, data: session, update: updateSession } = useSession()
   const pageRootRef = useRef<HTMLElement | null>(null)
 
   const userId = typeof userIdProp === 'string'
@@ -258,12 +265,23 @@ export function PublicUserProfileSurface({
   const [composerBlockCrudTarget, setComposerBlockCrudTarget] = useState<ComposerBlockCrudTarget | null>(null)
   const [postTypedOverlayChromeVisible, setPostTypedOverlayChromeVisible] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [profileEditSheetOpen, setProfileEditSheetOpen] = useState(false)
+  const [profileMediaSheetTarget, setProfileMediaSheetTarget] = useState<null | 'avatar' | 'cover'>(null)
+  const [accountControlOpen, setAccountControlOpen] = useState(false)
+  const [avatarUploadError, setAvatarUploadError] = useState<string | null>(null)
+  const [coverUploadError, setCoverUploadError] = useState<string | null>(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [coverUploading, setCoverUploading] = useState(false)
+  const [avatarCropFile, setAvatarCropFile] = useState<File | null>(null)
+  const [coverCropFile, setCoverCropFile] = useState<File | null>(null)
   const composerBlockLongPressTimeoutRef = useRef<number | null>(null)
   const composerBlockLongPressStateRef = useRef<null | { x: number; y: number; target: ComposerBlockCrudTarget }>(null)
   const composerBlockLongPressOpenedRef = useRef(false)
   const postReplyCameraInputRef = useRef<HTMLInputElement | null>(null)
   const postReplyGalleryInputRef = useRef<HTMLInputElement | null>(null)
   const postSolveTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const avatarInputRef = useRef<HTMLInputElement | null>(null)
+  const coverInputRef = useRef<HTMLInputElement | null>(null)
 
   const sessionPlatformRole = normalizePlatformRole((session as any)?.user?.role)
   const currentLessonRoleProfile = useMemo(() => createLessonRoleProfile({ platformRole: sessionPlatformRole }), [sessionPlatformRole])
@@ -1014,6 +1032,11 @@ export function PublicUserProfileSurface({
     }
   }, [userId])
 
+  const closeAccountControl = useCallback(() => {
+    setAccountControlOpen(false)
+    void loadProfile()
+  }, [loadProfile])
+
   const loadPosts = useCallback(async () => {
     if (!userId) return
     setPostsLoading(true)
@@ -1184,11 +1207,240 @@ export function PublicUserProfileSurface({
   const displayName = profile?.name || 'Profile'
   const firstName = useMemo(() => String(displayName || '').trim().split(/\s+/).filter(Boolean)[0] || 'User', [displayName])
   const profileHandle = `@${displayName.replace(/[^a-zA-Z0-9]+/g, '').trim() || 'profile'}`
+  const profileCoverAssetUrl = resolveImageUrl(profile?.profileCoverUrl)
+  const profileThemeAssetUrl = resolveImageUrl(profile?.profileThemeBgUrl)
   const coverUrl = resolveImageUrl(profile?.profileCoverUrl) || resolveImageUrl(profile?.profileThemeBgUrl) || defaultMobileHeroBg
+  const editableCoverUrl = profileCoverAssetUrl || profileThemeAssetUrl
   const avatarUrl = resolveImageUrl(profile?.avatar)
   const isSelf = Boolean(profile && viewerId && String(profile.id) === String(viewerId))
   const canFollow = Boolean(profile && viewerId && !isSelf)
   const gradeLabel = profile?.grade ? gradeToLabel(profile.grade as any) : null
+  const avatarInitials = useMemo(() => extractInitials(displayName || currentViewerName || 'You'), [currentViewerName, displayName])
+
+  const updateOwnProfileAvatar = useCallback((nextAvatarUrl: string | null) => {
+    const nextAvatar = nextAvatarUrl || null
+    setProfile((current) => (current ? { ...current, avatar: nextAvatar } : current))
+    setPosts((current) => Array.isArray(current)
+      ? current.map((post) => {
+          const authorId = String((post as any)?.createdBy?.id || (post as any)?.createdById || '')
+          const selfId = String(profile?.id || currentViewerId || '')
+          if (!selfId || authorId !== selfId) return post
+          return {
+            ...post,
+            createdBy: {
+              ...((post as any)?.createdBy || {}),
+              avatar: nextAvatar,
+            },
+          }
+        })
+      : current)
+    onAvatarChange?.(nextAvatar)
+  }, [currentViewerId, onAvatarChange, profile?.id])
+
+  const updateOwnProfileCover = useCallback((nextCoverUrl: string | null) => {
+    const nextCover = nextCoverUrl || null
+    setProfile((current) => (current ? { ...current, profileCoverUrl: nextCover } : current))
+    onCoverChange?.(nextCover)
+  }, [onCoverChange])
+
+  const openAvatarPicker = useCallback(() => {
+    setAvatarUploadError(null)
+    setProfileMediaSheetTarget(null)
+    setProfileEditSheetOpen(false)
+    if (avatarUploading) return
+    avatarInputRef.current?.click()
+  }, [avatarUploading])
+
+  const openCoverPicker = useCallback(() => {
+    setCoverUploadError(null)
+    setProfileMediaSheetTarget(null)
+    setProfileEditSheetOpen(false)
+    if (coverUploading) return
+    coverInputRef.current?.click()
+  }, [coverUploading])
+
+  const openProfileDetailsEditor = useCallback(() => {
+    setProfileEditSheetOpen(false)
+    if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+      void router.push('/profile')
+      return
+    }
+    setAccountControlOpen(true)
+  }, [router])
+
+  const handleAvatarSurfaceTap = useCallback(() => {
+    if (!isSelf) return
+    if (avatarUrl) {
+      setProfileEditSheetOpen(false)
+      setProfileMediaSheetTarget('avatar')
+      return
+    }
+    openAvatarPicker()
+  }, [avatarUrl, isSelf, openAvatarPicker])
+
+  const handleCoverSurfaceTap = useCallback(() => {
+    if (!isSelf) return
+    if (editableCoverUrl) {
+      setProfileEditSheetOpen(false)
+      setProfileMediaSheetTarget('cover')
+      return
+    }
+    openCoverPicker()
+  }, [editableCoverUrl, isSelf, openCoverPicker])
+
+  const onAvatarFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setAvatarUploadError('Please choose an image file.')
+      return
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setAvatarUploadError('Please keep images under 4 MB.')
+      return
+    }
+    setAvatarUploadError(null)
+    setAvatarCropFile(file)
+  }, [])
+
+  const onCoverFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setCoverUploadError('Please choose an image file.')
+      return
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setCoverUploadError('Please keep images under 8 MB.')
+      return
+    }
+    setCoverUploadError(null)
+    setCoverCropFile(file)
+  }, [])
+
+  const confirmAvatarCrop = useCallback(async (file: File) => {
+    setAvatarCropFile(null)
+    setAvatarUploading(true)
+    setAvatarUploadError(null)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/profile/avatar', {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: form,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to upload avatar (${res.status})`)
+      }
+      const nextAvatarUrl = typeof data?.url === 'string' ? data.url.trim() : ''
+      if (!nextAvatarUrl) {
+        throw new Error('Upload succeeded but returned no avatar URL')
+      }
+      updateOwnProfileAvatar(nextAvatarUrl)
+      try {
+        await updateSession?.({ image: nextAvatarUrl } as any)
+      } catch {
+        // ignore session refresh failures
+      }
+    } catch (err: any) {
+      setAvatarUploadError(err?.message || 'Unable to upload avatar right now')
+    } finally {
+      setAvatarUploading(false)
+    }
+  }, [updateOwnProfileAvatar, updateSession])
+
+  const confirmCoverCrop = useCallback(async (file: File) => {
+    setCoverCropFile(null)
+    setCoverUploading(true)
+    setCoverUploadError(null)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/profile/cover', {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: form,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to upload background image (${res.status})`)
+      }
+      const nextCoverUrl = typeof data?.url === 'string' ? data.url.trim() : ''
+      if (!nextCoverUrl) {
+        throw new Error('Upload succeeded but returned no background URL')
+      }
+      updateOwnProfileCover(nextCoverUrl)
+    } catch (err: any) {
+      setCoverUploadError(err?.message || 'Unable to upload background image right now')
+    } finally {
+      setCoverUploading(false)
+    }
+  }, [updateOwnProfileCover])
+
+  const removeAvatar = useCallback(async () => {
+    const ok = typeof window !== 'undefined' ? window.confirm('Remove your profile photo?') : false
+    if (!ok) return
+    setAvatarUploading(true)
+    setAvatarUploadError(null)
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avatar: '' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to remove avatar (${res.status})`)
+      }
+      updateOwnProfileAvatar(null)
+      try {
+        await updateSession?.({ image: null } as any)
+      } catch {
+        // ignore session refresh failures
+      }
+      setProfileMediaSheetTarget(null)
+    } catch (err: any) {
+      setAvatarUploadError(err?.message || 'Unable to remove avatar right now')
+    } finally {
+      setAvatarUploading(false)
+    }
+  }, [updateOwnProfileAvatar, updateSession])
+
+  const removeCover = useCallback(async () => {
+    const ok = typeof window !== 'undefined' ? window.confirm('Remove your profile background image?') : false
+    if (!ok) return
+    setCoverUploading(true)
+    setCoverUploadError(null)
+    try {
+      const shouldClearCover = Boolean(profileCoverAssetUrl)
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(shouldClearCover ? { profileCoverUrl: '' } : { profileThemeBgUrl: '' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to remove background image (${res.status})`)
+      }
+      setProfile((current) => (current ? {
+        ...current,
+        profileCoverUrl: shouldClearCover ? null : current.profileCoverUrl,
+        profileThemeBgUrl: shouldClearCover ? current.profileThemeBgUrl : null,
+      } : current))
+      onCoverChange?.(null)
+      setProfileMediaSheetTarget(null)
+    } catch (err: any) {
+      setCoverUploadError(err?.message || 'Unable to remove background image right now')
+    } finally {
+      setCoverUploading(false)
+    }
+  }, [onCoverChange, profileCoverAssetUrl])
 
   const photoPosts = useMemo(
     () => posts.filter((post) => Boolean(resolveImageUrl(post.imageUrl))),
@@ -1460,10 +1712,19 @@ export function PublicUserProfileSurface({
     <main ref={pageRootRef} className={`public-profile-page bg-[linear-gradient(180deg,#ffffff_0%,#f5f8fd_30%,#f7f8fb_100%)] text-slate-900 ${isEmbedded ? '' : 'min-h-screen'}`}>
       <div className={`${isEmbedded ? '' : 'min-h-screen'} pb-[calc(var(--app-safe-bottom)+2rem)]`}>
         <section className="public-profile-hero relative w-full overflow-hidden bg-slate-900">
-          <div className="public-profile-hero__image absolute inset-0" style={{ backgroundImage: `url("${coverUrl}")`, backgroundSize: 'cover', backgroundPosition: 'center' }} aria-hidden="true" />
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.42)_0%,rgba(0,0,0,0.18)_30%,rgba(0,0,0,0.32)_100%)]" aria-hidden="true" />
-          <div className="absolute inset-x-0 bottom-0 h-40 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,rgba(255,255,255,0.7)_72%,#ffffff_100%)]" aria-hidden="true" />
-          <div className="public-profile-hero__chrome relative min-h-[17rem] px-4 pb-32 pt-[calc(var(--app-safe-top)+0.85rem)] sm:min-h-[20rem] sm:px-6">
+          <div className="public-profile-hero__image pointer-events-none absolute inset-0" style={{ backgroundImage: `url("${coverUrl}")`, backgroundSize: 'cover', backgroundPosition: 'center' }} aria-hidden="true" />
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.42)_0%,rgba(0,0,0,0.18)_30%,rgba(0,0,0,0.32)_100%)]" aria-hidden="true" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,rgba(255,255,255,0.7)_72%,#ffffff_100%)]" aria-hidden="true" />
+          {isSelf ? (
+            <button
+              type="button"
+              className="absolute inset-0 z-[1] bg-transparent"
+              onClick={handleCoverSurfaceTap}
+              aria-label={editableCoverUrl ? 'Manage profile background image' : 'Add profile background image'}
+              disabled={coverUploading}
+            />
+          ) : null}
+          <div className="public-profile-hero__chrome relative z-[2] min-h-[17rem] px-4 pb-32 pt-[calc(var(--app-safe-top)+0.85rem)] sm:min-h-[20rem] sm:px-6">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
                 <button
@@ -1511,18 +1772,40 @@ export function PublicUserProfileSurface({
               <div className="flex flex-col gap-4">
                 <div className="relative flex items-end justify-between gap-4">
                   <div className="-mt-10 flex min-w-0 flex-1 items-end gap-4 sm:-mt-12">
-                    <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border-[5px] border-white bg-slate-100 text-2xl font-semibold text-slate-700 shadow-[0_12px_24px_rgba(15,23,42,0.18)] sm:h-32 sm:w-32">
-                      <div className="h-full w-full overflow-hidden rounded-full bg-slate-100">
-                        {avatarUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center">
-                            <span>{extractInitials(displayName)}</span>
-                          </div>
-                        )}
+                    {isSelf ? (
+                      <button
+                        type="button"
+                        onClick={handleAvatarSurfaceTap}
+                        className="relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border-[5px] border-white bg-slate-100 text-2xl font-semibold text-slate-700 shadow-[0_12px_24px_rgba(15,23,42,0.18)] transition hover:scale-[1.01] sm:h-32 sm:w-32"
+                        aria-label={avatarUrl ? 'Manage profile photo' : 'Add profile photo'}
+                        disabled={avatarUploading}
+                      >
+                        <div className="h-full w-full overflow-hidden rounded-full bg-slate-100">
+                          {avatarUrl ? (
+                            <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center">
+                              <span>{avatarInitials}</span>
+                            </div>
+                          )}
+                        </div>
+                        <span className="absolute bottom-1 right-1 inline-flex items-center justify-center rounded-full border border-white/75 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-700 shadow-sm">
+                          Edit
+                        </span>
+                      </button>
+                    ) : (
+                      <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border-[5px] border-white bg-slate-100 text-2xl font-semibold text-slate-700 shadow-[0_12px_24px_rgba(15,23,42,0.18)] sm:h-32 sm:w-32">
+                        <div className="h-full w-full overflow-hidden rounded-full bg-slate-100">
+                          {avatarUrl ? (
+                            <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center">
+                              <span>{avatarInitials}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
                     <div className="min-w-0 pb-1 pt-16 sm:pt-20">
                       <div className="flex items-center gap-2">
                         <h1 className="truncate text-[28px] font-semibold tracking-[-0.04em] text-slate-900 sm:text-[34px]">{displayName}</h1>
@@ -1544,7 +1827,7 @@ export function PublicUserProfileSurface({
                   </div>
 
                   {profileLoading ? null : isSelf ? (
-                    <button type="button" className="inline-flex h-10 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900 transition hover:bg-slate-50">
+                    <button type="button" className="inline-flex h-10 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900 transition hover:bg-slate-50" onClick={() => setProfileEditSheetOpen(true)}>
                       Edit profile
                     </button>
                   ) : canFollow ? (
@@ -1560,6 +1843,12 @@ export function PublicUserProfileSurface({
                 </div>
 
                 {profile?.statusBio ? <p className="relative max-w-3xl text-[15px] leading-7 text-slate-700">{profile?.statusBio}</p> : null}
+
+                {isSelf && (avatarUploadError || coverUploadError) ? (
+                  <div className="relative rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {avatarUploadError || coverUploadError}
+                  </div>
+                ) : null}
 
                 <div className="relative flex flex-wrap items-center gap-4 text-[14px] font-medium text-slate-500">
                   <span><span className="font-semibold text-slate-900">{Number(profile?.followingCount || 0)}</span> Following</span>
@@ -2000,6 +2289,139 @@ export function PublicUserProfileSurface({
           title={imageViewer.title}
           onClose={closeImageViewer}
         />
+      ) : null}
+
+      {isSelf && profileEditSheetOpen ? (
+        <BottomSheet
+          open
+          backdrop
+          title="Edit profile"
+          subtitle="Choose what you want to update"
+          onClose={() => setProfileEditSheetOpen(false)}
+          zIndexClassName="z-[68]"
+          className="bottom-0"
+          sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
+          contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5"
+        >
+          <div className="space-y-2">
+            <button type="button" className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100" onClick={handleAvatarSurfaceTap}>
+              <span>
+                <span className="block text-sm font-semibold">{avatarUrl ? 'Change profile photo' : 'Add profile photo'}</span>
+                <span className="block text-xs text-slate-500">Upload, replace, or manage your avatar.</span>
+              </span>
+              <span className="text-slate-400">{'>'}</span>
+            </button>
+            <button type="button" className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100" onClick={handleCoverSurfaceTap}>
+              <span>
+                <span className="block text-sm font-semibold">{editableCoverUrl ? 'Change background image' : 'Add background image'}</span>
+                <span className="block text-xs text-slate-500">Set the large profile hero image.</span>
+              </span>
+              <span className="text-slate-400">{'>'}</span>
+            </button>
+            <button type="button" className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100" onClick={openProfileDetailsEditor}>
+              <span>
+                <span className="block text-sm font-semibold">Edit details</span>
+                <span className="block text-xs text-slate-500">Update your info, settings, and visibility.</span>
+              </span>
+              <span className="text-slate-400">{'>'}</span>
+            </button>
+          </div>
+        </BottomSheet>
+      ) : null}
+
+      {isSelf && profileMediaSheetTarget ? (
+        <BottomSheet
+          open
+          backdrop
+          title={profileMediaSheetTarget === 'avatar' ? 'Profile photo' : 'Profile background'}
+          subtitle={profileMediaSheetTarget === 'avatar' ? 'Manage your avatar' : 'Manage your background image'}
+          onClose={() => setProfileMediaSheetTarget(null)}
+          zIndexClassName="z-[69]"
+          className="bottom-0"
+          sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
+          contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5"
+        >
+          <div className="space-y-2">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
+              onClick={() => {
+                if (profileMediaSheetTarget === 'avatar' && avatarUrl) {
+                  openImageViewer(avatarUrl, `${displayName} profile photo`)
+                }
+                if (profileMediaSheetTarget === 'cover' && editableCoverUrl) {
+                  openImageViewer(editableCoverUrl, `${displayName} background image`)
+                }
+                setProfileMediaSheetTarget(null)
+              }}
+            >
+              <span>
+                <span className="block text-sm font-semibold">View image</span>
+                <span className="block text-xs text-slate-500">Open the current image in the viewer.</span>
+              </span>
+              <span className="text-slate-400">{'>'}</span>
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
+              onClick={profileMediaSheetTarget === 'avatar' ? openAvatarPicker : openCoverPicker}
+            >
+              <span>
+                <span className="block text-sm font-semibold">Replace image</span>
+                <span className="block text-xs text-slate-500">Choose a new {profileMediaSheetTarget === 'avatar' ? 'profile photo' : 'background image'}.</span>
+              </span>
+              <span className="text-slate-400">{'>'}</span>
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-left text-red-700 transition hover:border-red-300 hover:bg-red-100"
+              onClick={() => {
+                if (profileMediaSheetTarget === 'avatar') {
+                  void removeAvatar()
+                  return
+                }
+                void removeCover()
+              }}
+              disabled={profileMediaSheetTarget === 'avatar' ? avatarUploading : coverUploading}
+            >
+              <span>
+                <span className="block text-sm font-semibold">Remove image</span>
+                <span className="block text-xs text-red-500">Clear the current {profileMediaSheetTarget === 'avatar' ? 'profile photo' : 'background image'}.</span>
+              </span>
+              <span className="text-red-300">{'>'}</span>
+            </button>
+          </div>
+        </BottomSheet>
+      ) : null}
+
+      {isSelf && accountControlOpen ? <AccountControlOverlay onRequestClose={closeAccountControl} /> : null}
+
+      {isSelf ? (
+        <>
+          <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={onAvatarFileChange} />
+          <input ref={coverInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={onCoverFileChange} />
+          <ImageCropperModal
+            open={Boolean(avatarCropFile)}
+            file={avatarCropFile}
+            title="Crop profile photo"
+            aspectRatio={1}
+            circularCrop
+            onCancel={() => setAvatarCropFile(null)}
+            onUseOriginal={confirmAvatarCrop}
+            onConfirm={confirmAvatarCrop}
+            confirmLabel="Set as avatar"
+          />
+          <ImageCropperModal
+            open={Boolean(coverCropFile)}
+            file={coverCropFile}
+            title="Crop background image"
+            aspectRatio={16 / 9}
+            onCancel={() => setCoverCropFile(null)}
+            onUseOriginal={confirmCoverCrop}
+            onConfirm={confirmCoverCrop}
+            confirmLabel="Set as background"
+          />
+        </>
       ) : null}
     </main>
   )

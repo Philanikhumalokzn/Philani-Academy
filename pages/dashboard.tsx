@@ -13700,6 +13700,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         userId={currentViewerId}
         embedded
         onBack={handleBack}
+        onAvatarChange={setProfileAvatarUrl}
       />
     )
 

@@ -1,6 +1,7 @@
 import type { FeedPost } from '../lib/feedContract'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import OverlayPortal from './OverlayPortal'
+import PostComposerBlocksPreview from './PostComposerBlocksPreview'
 
 type Props = {
   open: boolean
@@ -29,14 +30,22 @@ export default function OwnPostsManagerOverlay({ open, posts, onClose, onEdit, o
               {posts.map((post) => {
                 const title = String(post?.title || '').trim() || 'Post'
                 const prompt = String(post?.prompt || '').trim()
+                const imageUrl = typeof post?.imageUrl === 'string' ? post.imageUrl.trim() : ''
                 const createdAt = post?.createdAt ? new Date(post.createdAt).toLocaleString() : ''
                 return (
-                  <li key={String(post.id)} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <li key={String(post.id)} className="rounded-xl border border-white/10 bg-white p-3 text-[#1c1e21]">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="font-medium break-words text-white">{title}</div>
-                        {createdAt ? <div className="text-xs text-white/60">{createdAt}</div> : null}
-                        {prompt ? <div className="mt-1 text-sm break-words text-white/75">{prompt.slice(0, 140)}{prompt.length > 140 ? '...' : ''}</div> : null}
+                        <div className="font-medium break-words text-[#1c1e21]">{title}</div>
+                        {createdAt ? <div className="text-xs text-[#65676b]">{createdAt}</div> : null}
+                        <div className="mt-2">
+                          <PostComposerBlocksPreview
+                            blocks={Array.isArray(post?.contentBlocks) ? post.contentBlocks : null}
+                            prompt={prompt}
+                            imageUrl={imageUrl}
+                            compact
+                          />
+                        </div>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-2">
                         <button

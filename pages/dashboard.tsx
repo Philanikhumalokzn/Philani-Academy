@@ -16,6 +16,7 @@ import HandwritingNormalizationOverlay from '../components/HandwritingNormalizat
 import MathKeyboardOverlay from '../components/MathKeyboardOverlay'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import OwnPostsManagerOverlay from '../components/OwnPostsManagerOverlay'
+import PostComposerBlocksPreview from '../components/PostComposerBlocksPreview'
 import PostComposerOverlay from '../components/PostComposerOverlay'
 import PostToolsSheet from '../components/PostToolsSheet'
 import { PublicSolveCanvasViewer, PublicSolveComposer, PublicSolveOpacityWorkspace, normalizePublicSolveScene, type PublicSolveScene } from '../components/PublicSolveCanvas'
@@ -5753,6 +5754,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         const maxAttempts = typeof c?.maxAttempts === 'number' ? c.maxAttempts : null
         const attemptsOpen = c?.attemptsOpen !== false
         const prompt = typeof c?.prompt === 'string' ? c.prompt.trim() : ''
+        const imageUrl = typeof c?.imageUrl === 'string' ? c.imageUrl.trim() : ''
 
         const isOwner = viewerId && c?.createdById && String(c.createdById) === String(viewerId)
         const usesAttemptRules = Boolean(c?.usesAttemptRules || maxAttempts !== null || c?.attemptsOpen === false || c?.solutionsVisible === true)
@@ -5766,7 +5768,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <div className="min-w-0">
                 <div className="font-medium text-white break-words">{title}</div>
                 {createdAt ? <div className="text-xs text-white/60">{createdAt}</div> : null}
-                {prompt ? <div className="mt-1 text-sm text-white/75 break-words">{prompt.slice(0, 140)}{prompt.length > 140 ? '...' : ''}</div> : null}
+                {isPost ? (
+                  <div className="mt-2 rounded-2xl bg-white p-3 text-[#1c1e21] shadow-sm">
+                    <PostComposerBlocksPreview
+                      blocks={Array.isArray((c as any)?.contentBlocks) ? (c as any).contentBlocks : null}
+                      prompt={prompt}
+                      imageUrl={imageUrl}
+                      compact
+                    />
+                  </div>
+                ) : prompt ? <div className="mt-1 text-sm text-white/75 break-words">{prompt.slice(0, 140)}{prompt.length > 140 ? '...' : ''}</div> : null}
               </div>
               {c?.id ? (
                 isPost ? (
@@ -6255,13 +6266,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               </div>
                             </div>
                             <div className="mt-3 text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{mpTitle}</div>
-                            {mpPrompt ? <div className="mt-1.5 text-[14px] leading-6 text-[#334155] break-words">{mpPrompt.slice(0, 220)}{mpPrompt.length > 220 ? '...' : ''}</div> : null}
-                            {mpImageUrl ? (
-                              <div className="mt-3 overflow-hidden rounded-2xl border border-black/10 bg-[#f8fafc]">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={mpImageUrl} alt="Post screenshot" className="max-h-[420px] w-full object-cover" />
-                              </div>
-                            ) : null}
+                            <div className="mt-1.5">
+                              <PostComposerBlocksPreview
+                                blocks={Array.isArray((p as any)?.contentBlocks) ? (p as any).contentBlocks : null}
+                                prompt={mpPrompt}
+                                imageUrl={mpImageUrl}
+                                compact
+                                onOpenImage={(url, titleText) => openPostImageViewer(url, titleText)}
+                                imageTitle={`${mpTitle} image`}
+                              />
+                            </div>
                           </div>
                           {mpItemId ? (
                             <div className="flex flex-col items-end gap-2 shrink-0">

@@ -13,8 +13,9 @@ const toAbsoluteUrl = (value: string) => {
 
 const ensureOnDashboard = async (page: Page) => {
   if (!/\/dashboard/i.test(page.url())) {
-    await page.goto(toAbsoluteUrl('/dashboard'), { waitUntil: 'domcontentloaded' })
+    await page.goto(toAbsoluteUrl('/dashboard'), { waitUntil: 'commit' }).catch(() => null)
   }
+  await expect(page).toHaveURL(/\/dashboard|\/board/i, { timeout: 30_000 })
 }
 
 const createSignedInStorageState = async (browser: Browser) => {
@@ -83,7 +84,7 @@ test.describe('mobile dashboard profile media actions', () => {
     })
     const page = await context.newPage()
 
-    await page.goto(toAbsoluteUrl('/dashboard'), { waitUntil: 'domcontentloaded' })
+    await page.goto(toAbsoluteUrl('/dashboard'), { waitUntil: 'commit' }).catch(() => null)
     await ensureOnDashboard(page)
     await page.reload({ waitUntil: 'domcontentloaded' })
 
@@ -157,6 +158,15 @@ test.describe('mobile dashboard profile media actions', () => {
       await page.mouse.click(coverClickX, coverClickY)
       await fileChooser
     }
+
+    const homeTabButton = page.getByRole('button', { name: /^home$/i })
+    await expect(homeTabButton).toBeVisible({ timeout: 10_000 })
+    await homeTabButton.click()
+
+    await expect(page.locator('[role="dialog"]')).toHaveCount(0)
+    const bodyOverflow = await page.evaluate(() => document.body.style.overflow || '')
+    expect(bodyOverflow).not.toBe('hidden')
+    await expect(page.getByRole('button', { name: /what's on your mind/i }).first()).toBeVisible({ timeout: 20_000 })
 
     await context.close()
   })

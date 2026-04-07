@@ -10,6 +10,7 @@ import FeedComposerPill from '../../components/FeedComposerPill'
 import FullScreenGlassOverlay from '../../components/FullScreenGlassOverlay'
 import ImageCropperModal from '../../components/ImageCropperModal'
 import InlinePostSolutionsThread from '../../components/InlinePostSolutionsThread'
+import OverlayPortal from '../../components/OverlayPortal'
 import OwnPostsManagerOverlay from '../../components/OwnPostsManagerOverlay'
 import PostComposerOverlay from '../../components/PostComposerOverlay'
 import PublicFeedPostCard from '../../components/PublicFeedPostCard'
@@ -2283,144 +2284,158 @@ export function PublicUserProfileSurface({
       ) : null}
 
       {imageViewer ? (
-        <ZoomableImageOverlay
-          open={Boolean(imageViewer)}
-          imageUrl={imageViewer.url}
-          title={imageViewer.title}
-          onClose={closeImageViewer}
-        />
+        <OverlayPortal>
+          <ZoomableImageOverlay
+            open={Boolean(imageViewer)}
+            imageUrl={imageViewer.url}
+            title={imageViewer.title}
+            onClose={closeImageViewer}
+          />
+        </OverlayPortal>
       ) : null}
 
       {isSelf && profileEditSheetOpen ? (
-        <BottomSheet
-          open
-          backdrop
-          title="Edit profile"
-          subtitle="Choose what you want to update"
-          onClose={() => setProfileEditSheetOpen(false)}
-          zIndexClassName="z-[68]"
-          className="bottom-0"
-          sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
-          contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5"
-        >
-          <div className="space-y-2">
-            <button type="button" className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100" onClick={handleAvatarSurfaceTap}>
-              <span>
-                <span className="block text-sm font-semibold">{avatarUrl ? 'Change profile photo' : 'Add profile photo'}</span>
-                <span className="block text-xs text-slate-500">Upload, replace, or manage your avatar.</span>
-              </span>
-              <span className="text-slate-400">{'>'}</span>
-            </button>
-            <button type="button" className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100" onClick={handleCoverSurfaceTap}>
-              <span>
-                <span className="block text-sm font-semibold">{editableCoverUrl ? 'Change background image' : 'Add background image'}</span>
-                <span className="block text-xs text-slate-500">Set the large profile hero image.</span>
-              </span>
-              <span className="text-slate-400">{'>'}</span>
-            </button>
-            <button type="button" className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100" onClick={openProfileDetailsEditor}>
-              <span>
-                <span className="block text-sm font-semibold">Edit details</span>
-                <span className="block text-xs text-slate-500">Update your info, settings, and visibility.</span>
-              </span>
-              <span className="text-slate-400">{'>'}</span>
-            </button>
-          </div>
-        </BottomSheet>
+        <OverlayPortal>
+          <BottomSheet
+            open
+            backdrop
+            title="Edit profile"
+            subtitle="Choose what you want to update"
+            onClose={() => setProfileEditSheetOpen(false)}
+            zIndexClassName="z-[68]"
+            className="bottom-0"
+            sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
+            contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5"
+          >
+            <div className="space-y-2">
+              <button type="button" className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100" onClick={handleAvatarSurfaceTap}>
+                <span>
+                  <span className="block text-sm font-semibold">{avatarUrl ? 'Change profile photo' : 'Add profile photo'}</span>
+                  <span className="block text-xs text-slate-500">Upload, replace, or manage your avatar.</span>
+                </span>
+                <span className="text-slate-400">{'>'}</span>
+              </button>
+              <button type="button" className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100" onClick={handleCoverSurfaceTap}>
+                <span>
+                  <span className="block text-sm font-semibold">{editableCoverUrl ? 'Change background image' : 'Add background image'}</span>
+                  <span className="block text-xs text-slate-500">Set the large profile hero image.</span>
+                </span>
+                <span className="text-slate-400">{'>'}</span>
+              </button>
+              <button type="button" className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100" onClick={openProfileDetailsEditor}>
+                <span>
+                  <span className="block text-sm font-semibold">Edit details</span>
+                  <span className="block text-xs text-slate-500">Update your info, settings, and visibility.</span>
+                </span>
+                <span className="text-slate-400">{'>'}</span>
+              </button>
+            </div>
+          </BottomSheet>
+        </OverlayPortal>
       ) : null}
 
       {isSelf && profileMediaSheetTarget ? (
-        <BottomSheet
-          open
-          backdrop
-          title={profileMediaSheetTarget === 'avatar' ? 'Profile photo' : 'Profile background'}
-          subtitle={profileMediaSheetTarget === 'avatar' ? 'Manage your avatar' : 'Manage your background image'}
-          onClose={() => setProfileMediaSheetTarget(null)}
-          zIndexClassName="z-[69]"
-          className="bottom-0"
-          sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
-          contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5"
-        >
-          <div className="space-y-2">
-            <button
-              type="button"
-              className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
-              onClick={() => {
-                if (profileMediaSheetTarget === 'avatar' && avatarUrl) {
-                  openImageViewer(avatarUrl, `${displayName} profile photo`)
-                }
-                if (profileMediaSheetTarget === 'cover' && editableCoverUrl) {
-                  openImageViewer(editableCoverUrl, `${displayName} background image`)
-                }
-                setProfileMediaSheetTarget(null)
-              }}
-            >
-              <span>
-                <span className="block text-sm font-semibold">View image</span>
-                <span className="block text-xs text-slate-500">Open the current image in the viewer.</span>
-              </span>
-              <span className="text-slate-400">{'>'}</span>
-            </button>
-            <button
-              type="button"
-              className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
-              onClick={profileMediaSheetTarget === 'avatar' ? openAvatarPicker : openCoverPicker}
-            >
-              <span>
-                <span className="block text-sm font-semibold">Replace image</span>
-                <span className="block text-xs text-slate-500">Choose a new {profileMediaSheetTarget === 'avatar' ? 'profile photo' : 'background image'}.</span>
-              </span>
-              <span className="text-slate-400">{'>'}</span>
-            </button>
-            <button
-              type="button"
-              className="flex w-full items-center justify-between rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-left text-red-700 transition hover:border-red-300 hover:bg-red-100"
-              onClick={() => {
-                if (profileMediaSheetTarget === 'avatar') {
-                  void removeAvatar()
-                  return
-                }
-                void removeCover()
-              }}
-              disabled={profileMediaSheetTarget === 'avatar' ? avatarUploading : coverUploading}
-            >
-              <span>
-                <span className="block text-sm font-semibold">Remove image</span>
-                <span className="block text-xs text-red-500">Clear the current {profileMediaSheetTarget === 'avatar' ? 'profile photo' : 'background image'}.</span>
-              </span>
-              <span className="text-red-300">{'>'}</span>
-            </button>
-          </div>
-        </BottomSheet>
+        <OverlayPortal>
+          <BottomSheet
+            open
+            backdrop
+            title={profileMediaSheetTarget === 'avatar' ? 'Profile photo' : 'Profile background'}
+            subtitle={profileMediaSheetTarget === 'avatar' ? 'Manage your avatar' : 'Manage your background image'}
+            onClose={() => setProfileMediaSheetTarget(null)}
+            zIndexClassName="z-[69]"
+            className="bottom-0"
+            sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
+            contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5"
+          >
+            <div className="space-y-2">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
+                onClick={() => {
+                  if (profileMediaSheetTarget === 'avatar' && avatarUrl) {
+                    openImageViewer(avatarUrl, `${displayName} profile photo`)
+                  }
+                  if (profileMediaSheetTarget === 'cover' && editableCoverUrl) {
+                    openImageViewer(editableCoverUrl, `${displayName} background image`)
+                  }
+                  setProfileMediaSheetTarget(null)
+                }}
+              >
+                <span>
+                  <span className="block text-sm font-semibold">View image</span>
+                  <span className="block text-xs text-slate-500">Open the current image in the viewer.</span>
+                </span>
+                <span className="text-slate-400">{'>'}</span>
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
+                onClick={profileMediaSheetTarget === 'avatar' ? openAvatarPicker : openCoverPicker}
+              >
+                <span>
+                  <span className="block text-sm font-semibold">Replace image</span>
+                  <span className="block text-xs text-slate-500">Choose a new {profileMediaSheetTarget === 'avatar' ? 'profile photo' : 'background image'}.</span>
+                </span>
+                <span className="text-slate-400">{'>'}</span>
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-left text-red-700 transition hover:border-red-300 hover:bg-red-100"
+                onClick={() => {
+                  if (profileMediaSheetTarget === 'avatar') {
+                    void removeAvatar()
+                    return
+                  }
+                  void removeCover()
+                }}
+                disabled={profileMediaSheetTarget === 'avatar' ? avatarUploading : coverUploading}
+              >
+                <span>
+                  <span className="block text-sm font-semibold">Remove image</span>
+                  <span className="block text-xs text-red-500">Clear the current {profileMediaSheetTarget === 'avatar' ? 'profile photo' : 'background image'}.</span>
+                </span>
+                <span className="text-red-300">{'>'}</span>
+              </button>
+            </div>
+          </BottomSheet>
+        </OverlayPortal>
       ) : null}
 
-      {isSelf && accountControlOpen ? <AccountControlOverlay onRequestClose={closeAccountControl} /> : null}
+      {isSelf && accountControlOpen ? (
+        <OverlayPortal>
+          <AccountControlOverlay onRequestClose={closeAccountControl} />
+        </OverlayPortal>
+      ) : null}
 
       {isSelf ? (
         <>
           <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={onAvatarFileChange} />
           <input ref={coverInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={onCoverFileChange} />
-          <ImageCropperModal
-            open={Boolean(avatarCropFile)}
-            file={avatarCropFile}
-            title="Crop profile photo"
-            aspectRatio={1}
-            circularCrop
-            onCancel={() => setAvatarCropFile(null)}
-            onUseOriginal={confirmAvatarCrop}
-            onConfirm={confirmAvatarCrop}
-            confirmLabel="Set as avatar"
-          />
-          <ImageCropperModal
-            open={Boolean(coverCropFile)}
-            file={coverCropFile}
-            title="Crop background image"
-            aspectRatio={16 / 9}
-            onCancel={() => setCoverCropFile(null)}
-            onUseOriginal={confirmCoverCrop}
-            onConfirm={confirmCoverCrop}
-            confirmLabel="Set as background"
-          />
+          <OverlayPortal>
+            <ImageCropperModal
+              open={Boolean(avatarCropFile)}
+              file={avatarCropFile}
+              title="Crop profile photo"
+              aspectRatio={1}
+              circularCrop
+              onCancel={() => setAvatarCropFile(null)}
+              onUseOriginal={confirmAvatarCrop}
+              onConfirm={confirmAvatarCrop}
+              confirmLabel="Set as avatar"
+            />
+          </OverlayPortal>
+          <OverlayPortal>
+            <ImageCropperModal
+              open={Boolean(coverCropFile)}
+              file={coverCropFile}
+              title="Crop background image"
+              aspectRatio={16 / 9}
+              onCancel={() => setCoverCropFile(null)}
+              onUseOriginal={confirmCoverCrop}
+              onConfirm={confirmCoverCrop}
+              confirmLabel="Set as background"
+            />
+          </OverlayPortal>
         </>
       ) : null}
     </main>

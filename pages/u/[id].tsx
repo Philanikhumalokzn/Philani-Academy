@@ -1927,7 +1927,7 @@ export function PublicUserProfileSurface({
           </div>
         </section>
 
-        <div className="public-profile-content public-profile-feed w-full">
+        <div className="public-profile-content public-profile-feed w-full bg-white">
         <section className="public-profile-feed-row border-t border-slate-200 bg-white pt-3">
           <div className="flex items-center gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {(['all', 'photos', 'reels'] as ProfileTab[]).map((tab) => {
@@ -1948,7 +1948,7 @@ export function PublicUserProfileSurface({
           </div>
         </section>
 
-        <section className="public-profile-feed-row pt-2">
+        <section className="public-profile-feed-row bg-white pt-2">
           <div className="flex gap-5 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {(discoverProfiles.length > 0 ? discoverProfiles : []).map((item) => {
               const suggestionAvatar = resolveImageUrl(item.avatar)
@@ -1975,7 +1975,7 @@ export function PublicUserProfileSurface({
           </div>
         </section>
 
-        <section className="public-profile-feed-row pt-6">
+        <section className="public-profile-feed-row bg-white pt-6">
           <div className="flex items-center justify-between gap-4 px-4 sm:px-6">
             <h2 className="text-[26px] font-semibold tracking-[-0.05em] text-slate-900">{isSelf ? 'All posts' : `${firstName}'s posts`}</h2>
             <button
@@ -2034,7 +2034,7 @@ export function PublicUserProfileSurface({
           ) : null}
         </section>
 
-        <section className="public-profile-feed-row space-y-0 pb-8 pt-6">
+        <section className="public-profile-feed-row bg-white space-y-0 pb-8 pt-6">
           {profileLoading ? <div className="public-profile-feed-message border-y border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">Loading profile...</div> : null}
           {profileError ? <div className="public-profile-feed-message border-y border-red-200 bg-red-50 px-4 py-8 text-center text-sm text-red-700">{profileError}</div> : null}
 

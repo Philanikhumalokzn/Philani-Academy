@@ -443,10 +443,13 @@ body{
 .public-profile-feed-list,
 .public-profile-feed-message,
 .public-profile-feed-post{
-  width:100%;
-  max-width:none;
-  margin-left:0;
-  margin-right:0;
+  position:relative;
+  width:100vw;
+  max-width:100vw;
+  margin-left:calc(50% - 50vw);
+  margin-right:calc(50% - 50vw);
+  padding-left:0 !important;
+  padding-right:0 !important;
 }
 
 .public-profile-hero{

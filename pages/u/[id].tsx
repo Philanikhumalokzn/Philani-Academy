@@ -1988,7 +1988,7 @@ export function PublicUserProfileSurface({
           </div>
 
           {isSelf ? (
-            <div className="public-profile-feed-row mt-5 border-y border-slate-200 bg-white px-4 py-3">
+            <div className="mt-5 border-y border-slate-200 bg-white px-4 py-2.5">
                 <FeedComposerPill
                   size="compact"
                   avatarUrl={currentViewerAvatarUrl}
@@ -2006,7 +2006,7 @@ export function PublicUserProfileSurface({
                 />
             </div>
           ) : canFollow ? (
-            <div className="public-profile-feed-row mt-5 border-y border-slate-200 bg-white px-4 py-3">
+            <div className="mt-5 border-y border-slate-200 bg-white px-4 py-2.5">
               <FeedComposerPill
                 size="compact"
                 avatarUrl={currentViewerAvatarUrl}

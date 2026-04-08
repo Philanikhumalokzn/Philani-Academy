@@ -33,23 +33,26 @@ math-field.keyboard-mathlive-field::part(virtual-keyboard-toggle) {
   font-family: 'KaTeX_Main', 'KaTeX_Math', 'Latin Modern Math', 'Cambria Math', 'STIX Two Math', 'Times New Roman', serif;
 }
 
-/* Modern crop styling - hide default dotted lines, use clean corner borders */
-.ReactCrop__crop-area {
-  /* Hide the dotted border grid */
+/* Modern crop styling - replace marching ants with a clean frame */
+.ReactCrop__crop-selection {
   border: none !important;
   background: none !important;
-  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.6) !important;
+  background-image: none !important;
+  animation: none !important;
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.72) !important;
 }
 
-/* Remove the grid lines */
-.ReactCrop__crop-area::before,
-.ReactCrop__crop-area::after {
+.ReactCrop__crop-selection::before,
+.ReactCrop__crop-selection::after {
   display: none !important;
 }
 
-/* Hide default edge guides (the grid lines) */
-.ReactCrop__crop-area--fixed-aspect::after {
-  display: none !important;
+.ReactCrop__crop-selection:focus {
+  outline: none !important;
+}
+
+.ReactCrop__crop-mask {
+  background: rgba(2, 6, 23, 0.18) !important;
 }
 
 /* Custom corner indicators - draw clean borders only at corners */
@@ -60,14 +63,14 @@ math-field.keyboard-mathlive-field::part(virtual-keyboard-toggle) {
 }
 
 /* Style the drag bars to be invisible but still functional */
-.ReactCrop__drag-bar--ord-n,
-.ReactCrop__drag-bar--ord-s,
-.ReactCrop__drag-bar--ord-e,
-.ReactCrop__drag-bar--ord-w,
-.ReactCrop__drag-bar--ord-nw,
-.ReactCrop__drag-bar--ord-ne,
-.ReactCrop__drag-bar--ord-se,
-.ReactCrop__drag-bar--ord-sw {
+.ReactCrop__drag-bar.ord-n,
+.ReactCrop__drag-bar.ord-s,
+.ReactCrop__drag-bar.ord-e,
+.ReactCrop__drag-bar.ord-w,
+.ReactCrop__drag-bar.ord-nw,
+.ReactCrop__drag-bar.ord-ne,
+.ReactCrop__drag-bar.ord-se,
+.ReactCrop__drag-bar.ord-sw {
   background: transparent !important;
   outline: none !important;
   box-shadow: none !important;
@@ -99,19 +102,19 @@ math-field.keyboard-mathlive-field::part(virtual-keyboard-toggle) {
 }
 
 /* Corner-specific styling */
-.ReactCrop__drag-handle--ord-nw,
-.ReactCrop__drag-handle--ord-ne,
-.ReactCrop__drag-handle--ord-se,
-.ReactCrop__drag-handle--ord-sw {
+.ReactCrop__drag-handle.ord-nw,
+.ReactCrop__drag-handle.ord-ne,
+.ReactCrop__drag-handle.ord-se,
+.ReactCrop__drag-handle.ord-sw {
   background: rgba(33, 150, 243, 0.85) !important;
   border-color: rgba(255, 255, 255, 1) !important;
 }
 
 /* Side handle styling (middle of each side) - slightly different color */
-.ReactCrop__drag-handle--ord-n,
-.ReactCrop__drag-handle--ord-s,
-.ReactCrop__drag-handle--ord-e,
-.ReactCrop__drag-handle--ord-w {
+.ReactCrop__drag-handle.ord-n,
+.ReactCrop__drag-handle.ord-s,
+.ReactCrop__drag-handle.ord-e,
+.ReactCrop__drag-handle.ord-w {
   background: rgba(255, 255, 255, 0.75) !important;
   border-color: rgba(255, 255, 255, 0.95) !important;
   width: 10px !important;
@@ -120,7 +123,7 @@ math-field.keyboard-mathlive-field::part(virtual-keyboard-toggle) {
 
 /* Add corner bracket indicators for visual feedback */
 @supports (box-shadow: inset 0 0 0 100px rgba(255,255,255,0.1)) {
-  .ReactCrop__crop-area::before {
+  .ReactCrop__crop-selection::before {
     content: '';
     position: absolute;
     inset: -1px;

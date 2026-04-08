@@ -292,51 +292,64 @@ export default function ImageCropperModal(props: {
       {/* Main editing area */}
       <div
         ref={containerRef}
-        className="relative flex-1 overflow-hidden bg-black"
+        className="relative flex-1 overflow-hidden bg-[#05070c]"
       >
         {error ? (
           <div className="absolute left-3 right-3 top-3 z-10 rounded-xl border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
             {error}
           </div>
         ) : null}
-
         {objectUrl ? (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="relative">
-              <div onMouseDownCapture={handleMouseDown} onTouchStartCapture={handleMouseDown}>
-                <ReactCrop
-                  crop={crop}
-                  onChange={(_, percentCrop) => {
-                    setCrop(percentCrop)
-                  }}
-                  onComplete={(px) => setCompletedCropPx(px)}
-                  keepSelection
-                  aspect={aspectRatio}
-                  circularCrop={circularCrop}
-                >
-                  <img
-                    ref={imgRef}
-                    alt="Crop preview"
-                    src={objectUrl}
-                    style={{
-                      width: '100vmin',
-                      height: '100vmin',
-                      objectFit: 'contain',
-                      display: 'block',
-                      transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
-                      transition: isDragging ? 'none' : 'transform 0.1s ease-out',
-                      ...getFilterStyle(),
+          <>
+            <div className="absolute inset-0 overflow-hidden">
+              <img
+                aria-hidden="true"
+                alt=""
+                src={objectUrl}
+                className="h-full w-full scale-110 object-cover opacity-35 blur-3xl"
+                draggable="false"
+              />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.05)_0%,rgba(5,7,12,0.38)_52%,rgba(5,7,12,0.74)_100%)]" />
+            </div>
+
+            <div className="absolute inset-0 flex items-center justify-center px-4 py-5 sm:px-6 sm:py-6">
+              <div className="relative max-h-full max-w-full">
+                <div onMouseDownCapture={handleMouseDown} onTouchStartCapture={handleMouseDown}>
+                  <ReactCrop
+                    crop={crop}
+                    onChange={(_, percentCrop) => {
+                      setCrop(percentCrop)
                     }}
-                    onLoad={() => {
-                      setCrop(initialCrop)
-                      setCompletedCropPx(null)
-                    }}
-                    draggable="false"
-                  />
-                </ReactCrop>
+                    onComplete={(px) => setCompletedCropPx(px)}
+                    keepSelection
+                    aspect={aspectRatio}
+                    circularCrop={circularCrop}
+                  >
+                    <img
+                      ref={imgRef}
+                      alt="Crop preview"
+                      src={objectUrl}
+                      style={{
+                        display: 'block',
+                        width: 'auto',
+                        height: 'auto',
+                        maxWidth: 'min(calc(100vw - 5.75rem), 48rem)',
+                        maxHeight: 'calc(100dvh - 11.5rem)',
+                        transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
+                        transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+                        ...getFilterStyle(),
+                      }}
+                      onLoad={() => {
+                        setCrop(initialCrop)
+                        setCompletedCropPx(null)
+                      }}
+                      draggable="false"
+                    />
+                  </ReactCrop>
+                </div>
               </div>
             </div>
-          </div>
+          </>
         ) : (
           <div className="w-full h-full flex items-center justify-center text-sm text-white/70">Loading image…</div>
         )}

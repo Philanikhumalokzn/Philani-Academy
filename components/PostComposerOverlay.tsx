@@ -472,7 +472,9 @@ export default function PostComposerOverlay(props: Props) {
           </OverlayPortal>
         ) : null}
 
-        <ImageCropperModal open={imageEditOpen} file={imageEditFile} title="Add post photo" onCancel={onCancelImageEdit} onUseOriginal={onConfirmImageEdit} onConfirm={onConfirmImageEdit} confirmLabel="Add" />
+        <OverlayPortal>
+          <ImageCropperModal open={imageEditOpen} file={imageEditFile} title="Add post photo" onCancel={onCancelImageEdit} onUseOriginal={onConfirmImageEdit} onConfirm={onConfirmImageEdit} confirmLabel="Add" />
+        </OverlayPortal>
 
         {props.cameraInputRef ? <input ref={props.cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={props.onImagePicked} /> : null}
         {props.galleryInputRef ? <input ref={props.galleryInputRef} type="file" accept="image/*" className="hidden" onChange={props.onImagePicked} /> : null}
@@ -616,7 +618,9 @@ export default function PostComposerOverlay(props: Props) {
             </FullScreenGlassOverlay>
           </OverlayPortal>
 
-          <ImageCropperModal open={imageEditOpen} file={imageEditFile} title="Edit screenshot" onCancel={onCancelImageEdit} onUseOriginal={onConfirmImageEdit} onConfirm={onConfirmImageEdit} confirmLabel="Upload" />
+          <OverlayPortal>
+            <ImageCropperModal open={imageEditOpen} file={imageEditFile} title="Edit screenshot" onCancel={onCancelImageEdit} onUseOriginal={onConfirmImageEdit} onConfirm={onConfirmImageEdit} confirmLabel="Upload" />
+          </OverlayPortal>
         </>
       )}
     </>

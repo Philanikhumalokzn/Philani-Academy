@@ -417,7 +417,9 @@ export default function PostReplyComposerOverlays({
       ) : null}
 
       {modeOverlay ? (
-        <ImageCropperModal open={imageEditOpen} file={imageEditFile} title="Add reply photo" onCancel={onCancelImageEdit} onUseOriginal={onConfirmImageEdit} onConfirm={onConfirmImageEdit} confirmLabel="Add" />
+        <OverlayPortal>
+          <ImageCropperModal open={imageEditOpen} file={imageEditFile} title="Add reply photo" onCancel={onCancelImageEdit} onUseOriginal={onConfirmImageEdit} onConfirm={onConfirmImageEdit} confirmLabel="Add" />
+        </OverlayPortal>
       ) : null}
 
       {canvasOverlay ? (

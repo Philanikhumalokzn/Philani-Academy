@@ -1058,11 +1058,36 @@ body{
 }
 
 .mobile-dashboard-edge .session-focus-card{
-  padding:1rem;
   border:1px solid rgba(15,23,42,0.08);
-  border-radius:24px;
-  background:linear-gradient(180deg,#fbfcff 0%,#f4f7fb 100%);
-  box-shadow:0 14px 32px rgba(15,23,42,0.06);
+  border-radius:28px;
+  background:linear-gradient(180deg,#fbfcff 0%,#f3f7fc 100%);
+  box-shadow:0 20px 44px rgba(15,23,42,0.08);
+  overflow:hidden;
+}
+
+.mobile-dashboard-edge .session-focus-banner{
+  position:relative;
+}
+
+.mobile-dashboard-edge .session-focus-visual{
+  min-height:12rem;
+}
+
+.mobile-dashboard-edge .session-focus-thumbnail{
+  opacity:0.92;
+}
+
+.mobile-dashboard-edge .session-focus-visual-backdrop{
+  background:linear-gradient(180deg,rgba(255,255,255,0.06) 0%,rgba(15,23,42,0.52) 68%,rgba(15,23,42,0.74) 100%) !important;
+}
+
+.mobile-dashboard-edge .session-focus-body{
+  padding:1rem;
+}
+
+.mobile-dashboard-edge .session-focus-copy{
+  color:#5a6574 !important;
+  max-width:34rem;
 }
 
 .mobile-dashboard-edge .session-focus-heading,
@@ -1081,11 +1106,16 @@ body{
   min-height:1.75rem;
   padding:0 0.75rem;
   border-radius:999px;
-  background:#e8f1ff;
+  background:rgba(232,241,255,0.88);
   color:#2557b7;
   font-size:0.72rem;
   font-weight:700;
   letter-spacing:0.01em;
+}
+
+.mobile-dashboard-edge .session-focus-grade-chip{
+  background:rgba(255,255,255,0.2);
+  color:#fff;
 }
 
 .mobile-dashboard-edge .session-focus-meta{
@@ -1094,12 +1124,31 @@ body{
   justify-content:center;
   min-height:1.75rem;
   padding:0 0.75rem;
-  border:1px solid rgba(15,23,42,0.08);
+  border:1px solid rgba(255,255,255,0.18);
   border-radius:999px;
-  background:rgba(255,255,255,0.84);
-  color:#5b6574;
+  background:rgba(255,255,255,0.16);
+  color:#f8fbff;
   font-size:0.72rem;
   font-weight:600;
+  backdrop-filter:blur(14px);
+}
+
+.mobile-dashboard-edge .session-focus-edit{
+  border-color:rgba(255,255,255,0.14) !important;
+  background:rgba(15,23,42,0.28) !important;
+  color:#f8fbff !important;
+}
+
+.mobile-dashboard-edge .session-focus-primary{
+  min-height:3rem;
+  border-radius:18px;
+  background:linear-gradient(135deg,#2563eb 0%,#0ea5e9 100%) !important;
+  border:none !important;
+  box-shadow:0 18px 32px rgba(37,99,235,0.22);
+}
+
+.mobile-dashboard-edge .session-focus-primary:hover:not(:disabled){
+  filter:brightness(1.03);
 }
 
 .mobile-dashboard-edge .session-focus-secondary{
@@ -1112,12 +1161,13 @@ body{
   min-height:2.75rem;
   padding:0.6rem 0.9rem;
   border:1px solid rgba(15,23,42,0.08);
-  border-radius:999px;
-  background:rgba(255,255,255,0.88);
+  border-radius:16px;
+  background:#ffffff;
   color:#1f2937;
-  font-size:0.9rem;
+  font-size:0.88rem;
   font-weight:600;
-  transition:background-color 160ms ease,border-color 160ms ease,transform 160ms ease;
+  transition:background-color 180ms ease,border-color 180ms ease,transform 180ms ease,box-shadow 180ms ease;
+  box-shadow:0 8px 18px rgba(15,23,42,0.05);
 }
 
 .mobile-dashboard-edge .session-focus-secondary .session-focus-secondary-button{
@@ -1125,8 +1175,9 @@ body{
 }
 
 .mobile-dashboard-edge .session-focus-secondary button:hover:not(:disabled){
-  background:#eef4ff;
+  background:#f3f8ff;
   border-color:rgba(37,87,183,0.2);
+  box-shadow:0 12px 24px rgba(37,87,183,0.1);
 }
 
 .mobile-dashboard-edge .session-focus-secondary button:disabled{

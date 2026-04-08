@@ -755,6 +755,31 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return startLabel || endLabel
   }, [formatSessionDate])
 
+  const formatSessionDayCompact = useCallback((value: unknown) => {
+    if (!value) return ''
+    const dt = value instanceof Date ? value : new Date(String(value))
+    if (Number.isNaN(dt.getTime())) return ''
+    return new Intl.DateTimeFormat(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    }).format(dt)
+  }, [])
+
+  const formatSessionTimeCompact = useCallback((start: unknown, end?: unknown) => {
+    if (!start) return ''
+    const startDt = start instanceof Date ? start : new Date(String(start))
+    const endDt = end ? (end instanceof Date ? end : new Date(String(end))) : startDt
+    if (Number.isNaN(startDt.getTime()) || Number.isNaN(endDt.getTime())) return ''
+    const formatter = new Intl.DateTimeFormat(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+    const startLabel = formatter.format(startDt)
+    const endLabel = formatter.format(endDt)
+    return startLabel === endLabel ? startLabel : `${startLabel} - ${endLabel}`
+  }, [])
+
   const formatFeedPostDate = useCallback((value: unknown) => {
     if (!value) return ''
     const dt = value instanceof Date ? value : new Date(String(value))
@@ -9972,45 +9997,87 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     const renderSessionFocusCard = (session: any, accentLabel = 'Live now') => {
       const isJoinDisabled = !canLaunchCanvasOverlay || isSubscriptionBlocked
+      const lessonTitle = typeof session?.title === 'string' && session.title.trim() ? session.title.trim() : 'Current lesson'
+      const lessonThumb = typeof session?.thumbnailUrl === 'string' && session.thumbnailUrl.trim() ? session.thumbnailUrl.trim() : ''
+      const sessionDay = formatSessionDayCompact(session?.startsAt)
+      const sessionTime = formatSessionTimeCompact(session?.startsAt, (session as any)?.endsAt || session?.startsAt)
+      const sessionSummary = isSubscriptionBlocked
+        ? 'Subscription required to join this lesson and unlock assignments.'
+        : canLaunchCanvasOverlay
+        ? 'Join the live board, open quizzes, and stay on top of assignments from one clean banner.'
+        : 'This lesson is ready, but the classroom tools are not available yet.'
 
       return (
-        <div className="session-focus-card rounded-2xl border border-white/10 bg-white/5 p-4 space-y-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 space-y-2">
+        <div className="session-focus-card session-focus-banner overflow-hidden rounded-[28px] border border-white/10 bg-white/5 p-0">
+          <div className="session-focus-visual relative min-h-[11rem] overflow-hidden border-b border-white/10 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.28),transparent_42%),linear-gradient(135deg,rgba(15,23,42,0.96),rgba(30,41,59,0.86))]">
+            {lessonThumb ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={lessonThumb}
+                alt="Lesson thumbnail"
+                className="session-focus-thumbnail absolute inset-0 h-full w-full object-cover"
+              />
+            ) : null}
+            <div className="session-focus-visual-backdrop absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.08),rgba(15,23,42,0.68))]" />
+            <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-sky-300/20 blur-3xl" />
+            <div className="pointer-events-none absolute bottom-0 left-0 h-28 w-28 rounded-full bg-cyan-200/12 blur-3xl" />
+
+            <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="session-focus-chip inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/80">
+                <span className="session-focus-chip inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/88">
                   {accentLabel}
                 </span>
-                {session.startsAt ? (
-                  <span className="session-focus-meta inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white/62">
-                    {formatSessionRange(session.startsAt, (session as any).endsAt || session.startsAt)}
+                <span className="session-focus-grade-chip inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/82">
+                  {activeGradeLabel}
+                </span>
+              </div>
+              {isAdmin && (
+                <button
+                  type="button"
+                  className="session-focus-edit inline-flex h-9 items-center justify-center rounded-full border border-white/12 bg-black/25 px-4 text-xs font-semibold text-white/88 backdrop-blur-md transition hover:bg-black/40"
+                  onClick={() => openEditSession(String(session.id))}
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+
+            <div className="absolute inset-x-0 bottom-0 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {sessionDay ? (
+                  <span className="session-focus-meta inline-flex items-center justify-center rounded-full border border-white/14 bg-black/20 px-3 py-1 text-[11px] font-semibold text-white/90 backdrop-blur-md">
+                    {sessionDay}
+                  </span>
+                ) : null}
+                {sessionTime ? (
+                  <span className="session-focus-meta inline-flex items-center justify-center rounded-full border border-white/14 bg-black/20 px-3 py-1 text-[11px] font-semibold text-white/90 backdrop-blur-md">
+                    {sessionTime}
                   </span>
                 ) : null}
               </div>
-              <div className="session-focus-title text-base font-semibold leading-snug break-words text-white">
-                {session.title}
-              </div>
             </div>
-            {isAdmin && (
-              <button
-                type="button"
-                className="btn btn-secondary shrink-0"
-                onClick={() => openEditSession(String(session.id))}
-              >
-                Edit
-              </button>
-            )}
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <div className="session-focus-body space-y-4 p-4 sm:p-5">
+            <div className="space-y-2">
+              <div className="session-focus-title text-lg font-semibold leading-tight break-words text-white sm:text-[1.35rem]">
+                {lessonTitle}
+              </div>
+              <p className="session-focus-copy text-sm leading-6 text-white/72">
+                {sessionSummary}
+              </p>
+            </div>
+
+            <div className="space-y-2">
             <button
               type="button"
-              className="btn btn-primary w-full"
+              className="btn btn-primary session-focus-primary w-full"
               onClick={() => showCanvasWindow(String(session.id), { quizMode: false })}
               disabled={isJoinDisabled}
             >
               Enter class
             </button>
+
             <div className="session-focus-secondary grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -10029,6 +10096,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 Assignments
               </button>
             </div>
+            </div>
           </div>
         </div>
       )
@@ -10037,10 +10105,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return (
       <div className="space-y-6">
         <div className="card space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
               <h2 className="session-focus-heading text-base font-semibold text-white">Current lesson</h2>
-              <div className="session-focus-subtitle text-xs muted">{activeGradeLabel}</div>
+              <div className="session-focus-subtitle text-xs muted">Live classroom for {activeGradeLabel}</div>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
               {sessionCanOrchestrateLessons ? (
@@ -10100,7 +10168,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   {sessionsLoading ? 'Refreshing...' : 'Refresh'}
                 </button>
               )}
-              {resolvedCurrentLesson ? <span className="session-focus-chip inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/80">Now</span> : null}
             </div>
           </div>
           {sessionsError ? (

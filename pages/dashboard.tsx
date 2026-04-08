@@ -801,95 +801,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [pullRefreshOffset, setPullRefreshOffset] = useState(0)
   const [pullRefreshActive, setPullRefreshActive] = useState(false)
   const [pullRefreshLoading, setPullRefreshLoading] = useState(false)
-  const currentLessonCardRef = useRef<HTMLDivElement | null>(null)
-  const currentLessonCardContentRef = useRef<HTMLDivElement | null>(null)
-  const [currentLessonCardNaturalHeight, setCurrentLessonCardNaturalHeight] = useState(0)
-  const currentLessonCardNaturalHeightRef = useRef(0)
-  const [currentLessonCardCollapsePx, setCurrentLessonCardCollapsePx] = useState(0)
-  const currentLessonCardCollapsePxRef = useRef(0)
   const [title, setTitle] = useState('')
   const [joinUrl, setJoinUrl] = useState('')
   const [startsAt, setStartsAt] = useState('')
   const [endsAt, setEndsAt] = useState('')
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
-
-  useEffect(() => {
-    currentLessonCardNaturalHeightRef.current = currentLessonCardNaturalHeight
-  }, [currentLessonCardNaturalHeight])
-
-  useEffect(() => {
-    currentLessonCardCollapsePxRef.current = currentLessonCardCollapsePx
-  }, [currentLessonCardCollapsePx])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const measure = () => {
-      const el = currentLessonCardContentRef.current
-      if (!el) return
-      const h = el.getBoundingClientRect().height
-      if (!Number.isFinite(h) || h <= 0) return
-      const next = Math.round(h)
-      if (next !== currentLessonCardNaturalHeightRef.current) {
-        currentLessonCardNaturalHeightRef.current = next
-        setCurrentLessonCardNaturalHeight(next)
-      }
-    }
-
-    // Initial + resize re-measure.
-    const onResize = () => {
-      window.requestAnimationFrame(measure)
-    }
-
-    window.requestAnimationFrame(measure)
-    const resizeObserver = typeof ResizeObserver !== 'undefined'
-      ? new ResizeObserver(() => {
-          window.requestAnimationFrame(measure)
-        })
-      : null
-    if (resizeObserver && currentLessonCardContentRef.current) {
-      resizeObserver.observe(currentLessonCardContentRef.current)
-    }
-    window.addEventListener('resize', onResize)
-    return () => {
-      window.removeEventListener('resize', onResize)
-      resizeObserver?.disconnect()
-    }
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    let lastY = window.scrollY || 0
-    let rafId: number | null = null
-
-    const onScroll = () => {
-      const y = window.scrollY || 0
-      if (rafId) return
-      rafId = window.requestAnimationFrame(() => {
-        rafId = null
-        const delta = y - lastY
-        lastY = y
-
-        const maxH = currentLessonCardNaturalHeightRef.current || 0
-        if (!maxH) return
-
-        // 1:1 proportional collapse: every px scrolled down collapses 1px; scrolling up expands 1px.
-        let next = currentLessonCardCollapsePxRef.current + delta
-        if (next < 0) next = 0
-        if (next > maxH) next = maxH
-        if (next === currentLessonCardCollapsePxRef.current) return
-        currentLessonCardCollapsePxRef.current = next
-        setCurrentLessonCardCollapsePx(next)
-      })
-    }
-
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => {
-      window.removeEventListener('scroll', onScroll)
-      if (rafId) window.cancelAnimationFrame(rafId)
-    }
-  }, [])
   type LessonPhaseKey = 'engage' | 'explore' | 'explain' | 'elaborate' | 'evaluate'
   type LessonDiagramSnapshot = { title: string; imageUrl: string; annotations: any }
   type LessonPointDraft = {
@@ -1772,15 +1688,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [studentFeedPosts, setStudentFeedPosts] = useState<any[]>([])
   const [studentFeedLoading, setStudentFeedLoading] = useState(false)
   const [studentFeedError, setStudentFeedError] = useState<string | null>(null)
-  const [myPosts, setMyPosts] = useState<any[]>([])
-  const [myPostsLoading, setMyPostsLoading] = useState(false)
-  const [myPostsError, setMyPostsError] = useState<string | null>(null)
-  const [myPostsExpanded, setMyPostsExpanded] = useState(false)
-  const [myPostsContentMaxHeightPx, setMyPostsContentMaxHeightPx] = useState<number | null>(null)
-  const [myPostsShouldLockPageScroll, setMyPostsShouldLockPageScroll] = useState(false)
-  const myPostsHeaderRef = useRef<HTMLButtonElement | null>(null)
-  const myPostsScrollRef = useRef<HTMLDivElement | null>(null)
-  const myPostsTouchStartYRef = useRef<number | null>(null)
   const [socialLikedItems, setSocialLikedItems] = useState<Record<string, boolean>>({})
   const [lastSharedSocialItemKey, setLastSharedSocialItemKey] = useState<string | null>(null)
   const [interactiveViewportSavingByResponseId, setInteractiveViewportSavingByResponseId] = useState<Record<string, boolean>>({})
@@ -2245,151 +2152,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const makeOfflineCacheKey = useCallback((suffix: string) => {
     return `${offlineCachePrefix}:${suffix}`
   }, [offlineCachePrefix])
-
-  useEffect(() => {
-    if (status !== 'authenticated' || !currentViewerId) {
-      setMyPosts([])
-      setMyPostsError(null)
-      setMyPostsLoading(false)
-      return
-    }
-
-    let cancelled = false
-    setMyPostsLoading(true)
-    setMyPostsError(null)
-
-    void (async () => {
-      try {
-        const res = await fetch(`/api/profile/view/${encodeURIComponent(currentViewerId)}/posts`, { credentials: 'same-origin' })
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok) {
-          if (!cancelled) {
-            setMyPostsError(data?.message || `Unable to load your posts (${res.status})`)
-            setMyPosts([])
-          }
-          return
-        }
-
-        const items = Array.isArray(data?.posts)
-          ? sortDashboardItemsByCreatedAt(data.posts.map((item: any) => hydrateOwnPostFeedItem(item)))
-          : []
-        if (!cancelled) setMyPosts(items)
-      } catch (err: any) {
-        if (!cancelled) {
-          setMyPostsError(err?.message || 'Unable to load your posts')
-          setMyPosts([])
-        }
-      } finally {
-        if (!cancelled) setMyPostsLoading(false)
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [currentViewerId, hydrateOwnPostFeedItem, status])
-
-  useEffect(() => {
-    if (!myPostsExpanded) {
-      setMyPostsContentMaxHeightPx(null)
-      setMyPostsShouldLockPageScroll(false)
-      return
-    }
-
-    if (typeof window === 'undefined') return
-
-    const updateScrollableHeight = () => {
-      const headerBottom = myPostsHeaderRef.current?.getBoundingClientRect()?.bottom
-      if (typeof headerBottom !== 'number') return
-      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0
-      const available = Math.max(180, Math.floor(viewportHeight - headerBottom - 12))
-      setMyPostsContentMaxHeightPx(available)
-      window.requestAnimationFrame(() => {
-        const el = myPostsScrollRef.current
-        if (!el) {
-          setMyPostsShouldLockPageScroll(false)
-          return
-        }
-        const needsInternalScroll = el.scrollHeight > available + 1
-        setMyPostsShouldLockPageScroll(needsInternalScroll)
-      })
-    }
-
-    updateScrollableHeight()
-    window.addEventListener('resize', updateScrollableHeight)
-
-    return () => {
-      window.removeEventListener('resize', updateScrollableHeight)
-    }
-  }, [myPostsExpanded, myPosts.length, myPostsLoading, myPostsError])
-
-  useEffect(() => {
-    if (!myPostsExpanded || !myPostsShouldLockPageScroll) return
-    if (typeof document === 'undefined') return
-
-    const prevHtmlOverflow = document.documentElement.style.overflow
-    const prevBodyOverflow = document.body.style.overflow
-    const prevHtmlOverscrollBehaviorY = document.documentElement.style.overscrollBehaviorY
-    const prevBodyOverscrollBehaviorY = document.body.style.overscrollBehaviorY
-    document.documentElement.style.overflow = 'hidden'
-    document.body.style.overflow = 'hidden'
-    document.documentElement.style.overscrollBehaviorY = 'none'
-    document.body.style.overscrollBehaviorY = 'none'
-
-    return () => {
-      document.documentElement.style.overflow = prevHtmlOverflow
-      document.body.style.overflow = prevBodyOverflow
-      document.documentElement.style.overscrollBehaviorY = prevHtmlOverscrollBehaviorY
-      document.body.style.overscrollBehaviorY = prevBodyOverscrollBehaviorY
-    }
-  }, [myPostsExpanded, myPostsShouldLockPageScroll])
-
-  useEffect(() => {
-    if (!myPostsExpanded || !myPostsShouldLockPageScroll) {
-      myPostsTouchStartYRef.current = null
-      return
-    }
-
-    const el = myPostsScrollRef.current
-    if (!el) return
-
-    const handleTouchStart = (event: TouchEvent) => {
-      if (event.touches.length !== 1) return
-      myPostsTouchStartYRef.current = event.touches[0].clientY
-    }
-
-    const handleTouchMove = (event: TouchEvent) => {
-      if (event.touches.length !== 1) return
-      const startY = myPostsTouchStartYRef.current
-      if (typeof startY !== 'number') return
-
-      const currentY = event.touches[0].clientY
-      const deltaY = currentY - startY
-      const atTop = el.scrollTop <= 0
-      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1
-
-      // Prevent pull-to-refresh at top (downward drag) and overscroll at bottom (any vertical motion)
-      if ((deltaY > 0 && atTop) || atBottom) {
-        event.preventDefault()
-      }
-    }
-
-    const handleTouchEnd = () => {
-      myPostsTouchStartYRef.current = null
-    }
-
-    el.addEventListener('touchstart', handleTouchStart, { passive: true })
-    el.addEventListener('touchmove', handleTouchMove, { passive: false })
-    el.addEventListener('touchend', handleTouchEnd, { passive: true })
-    el.addEventListener('touchcancel', handleTouchEnd, { passive: true })
-
-    return () => {
-      el.removeEventListener('touchstart', handleTouchStart)
-      el.removeEventListener('touchmove', handleTouchMove)
-      el.removeEventListener('touchend', handleTouchEnd)
-      el.removeEventListener('touchcancel', handleTouchEnd)
-    }
-  }, [myPostsExpanded, myPostsShouldLockPageScroll])
 
   const offlineDocsKey = useMemo(() => makeOfflineCacheKey('offline-docs'), [makeOfflineCacheKey])
 
@@ -3052,9 +2814,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           if (getDashboardItemKey(p) !== `${isQuiz ? 'challenge' : 'post'}:${id}`) return p
           return isQuiz ? { ...(p as any), ...patch } : patchFeedPost(p, id, patch as any)
         }) : prev))
-        if (!isQuiz) {
-          setMyPosts((prev: any[]) => Array.isArray(prev) ? prev.map(p => (getDashboardItemKey(p) === `post:${id}` ? patchFeedPost(p, id, patch as any) : p)) : prev)
-        }
       } else {
         const createdItem = isQuiz ? {
           ...(data || {}),
@@ -3070,9 +2829,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         } : buildHydratedCreatedPost(data, session, String(viewerId || ''), selectedGrade || null)
         setTimelineChallenges((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
         setStudentFeedPosts((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
-        if (!isQuiz) {
-          setMyPosts((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev.filter((x: any) => getDashboardItemKey(x) !== getDashboardItemKey(createdItem)) : [])]))
-        }
       }
 
       discardRestore()
@@ -5159,7 +4915,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       setTimelineChallenges(prev => (Array.isArray(prev) ? prev.filter((item: any) => getDashboardItemKey(item) !== `post:${id}`) : prev))
       setStudentFeedPosts(prev => (Array.isArray(prev) ? prev.filter((item: any) => getDashboardItemKey(item) !== `post:${id}`) : prev))
-      setMyPosts(prev => Array.isArray(prev) ? prev.filter((item: any) => getDashboardItemKey(item) !== `post:${id}`) : prev)
       setPostThreadOverlay((prev) => (prev?.postId === id ? null : prev))
       setPostSolveOverlay((prev) => (prev?.postId === id ? null : prev))
       alert('Deleted')
@@ -6176,42 +5931,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       </button>
     )
 
-    const nowMs = Date.now()
     const getStartMs = (s: any) => (s?.startsAt ? new Date(s.startsAt).getTime() : 0)
     const getEndMs = (s: any) => {
       if (s?.endsAt) return new Date(s.endsAt).getTime()
       const startMs = getStartMs(s)
       return startMs ? startMs + 60 * 60 * 1000 : 0
     }
-    const isCurrentWindow = (s: any) => {
-      const startMs = getStartMs(s)
-      const endMs = getEndMs(s)
-      return Boolean(startMs && endMs && startMs <= nowMs && nowMs <= endMs)
-    }
-
-    const sortedSessions = [...(sessions || [])].sort((a, b) => getStartMs(a) - getStartMs(b))
-    const currentSessions = sortedSessions.filter(s => isCurrentWindow(s))
-    const pastSessions = sortedSessions
+    const nowMs = Date.now()
+    const pastSessions = [...(sessions || [])]
       .filter(s => getEndMs(s) < nowMs)
       .sort((a, b) => getStartMs(b) - getStartMs(a))
     const pastSessionIds = pastSessions.map(s => String(s?.id || '')).filter(Boolean)
-    const defaultCurrentSessionId = currentSessions.length
-      ? String([...currentSessions].sort((a, b) => getStartMs(b) - getStartMs(a))[0].id)
-      : null
-
-    const resolvedCurrentLessonId =
-      (resolvedLiveSessionId && sessionById.has(String(resolvedLiveSessionId)) ? String(resolvedLiveSessionId) : null) ??
-      (defaultCurrentSessionId && sessionById.has(String(defaultCurrentSessionId)) ? String(defaultCurrentSessionId) : null)
-
-    const resolvedCurrentLesson = resolvedCurrentLessonId ? sessionById.get(resolvedCurrentLessonId) : null
-    const lessonThumb = typeof (resolvedCurrentLesson as any)?.thumbnailUrl === 'string' ? (resolvedCurrentLesson as any).thumbnailUrl : ''
-    const currentLessonPostKey = resolvedCurrentLesson ? `lesson:${String(resolvedCurrentLesson.id)}` : ''
-    const currentLessonIsOwner = viewerId && String((resolvedCurrentLesson as any)?.createdBy || '') === String(viewerId)
-    const currentLessonAuthorName = currentLessonIsOwner ? 'You' : 'Admin'
-    const currentLessonDate = resolvedCurrentLesson
-      ? formatFeedPostDate((resolvedCurrentLesson as any)?.startsAt || (resolvedCurrentLesson as any)?.createdAt)
-      : ''
-    const currentLessonDescription = String((resolvedCurrentLesson as any)?.description || '').trim()
 
     return (
       <section className="space-y-0 bg-[#f0f2f5] text-[#1c1e21]">
@@ -6233,403 +5963,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           />
         </section>
 
-        <section className="border-b border-black/10 bg-white">
-          <button
-            ref={myPostsHeaderRef}
-            type="button"
-            className={`flex w-full items-center justify-between px-4 py-3 text-left bg-white ${myPostsExpanded ? 'border-b border-black/10 shadow-[0_6px_12px_rgba(15,23,42,0.06)]' : ''}`}
-            onClick={() => setMyPostsExpanded(prev => !prev)}
-            aria-expanded={myPostsExpanded}
-            aria-controls="dashboard-my-posts-section"
-          >
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Your posts</div>
-              <div className="mt-0.5 text-[15px] font-semibold text-[#1c1e21]">My posts</div>
-            </div>
-            <div className="flex items-center gap-3">
-              {myPosts.length > 0 && (
-                <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#1877f2] px-1.5 text-[11px] font-semibold text-white">
-                  {myPosts.length}
-                </span>
-              )}
-              <svg
-                width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"
-                className={`transition-transform ${myPostsExpanded ? 'rotate-180' : ''}`}
-              >
-                <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-          </button>
-          {myPostsExpanded && (
-            <div
-              ref={myPostsScrollRef}
-              id="dashboard-my-posts-section"
-              className="overflow-y-auto overscroll-contain"
-              style={myPostsContentMaxHeightPx ? { maxHeight: `${myPostsContentMaxHeightPx}px` } : undefined}
-            >
-              {myPostsLoading ? (
-                <div className="px-4 py-6 text-sm text-[#65676b]">Loading...</div>
-              ) : myPostsError ? (
-                <div className="px-4 py-6 text-sm text-red-500">{myPostsError}</div>
-              ) : myPosts.length === 0 ? (
-                <div className="px-4 py-6 text-sm text-[#65676b]">You haven&apos;t posted anything yet.</div>
-              ) : (
-                <ul className="space-y-0">
-                  {myPosts.map((p: any) => {
-                    const mpTitle = (p?.title || '').trim() || 'Post'
-                    const mpCreatedAt = p?.createdAt ? formatFeedPostDate(p.createdAt) : ''
-                    const mpAuthorName = (p?.createdBy?.name || '').trim() || 'You'
-                    const mpAuthorId = p?.createdBy?.id ? String(p.createdBy.id) : null
-                    const mpAuthorAvatar = typeof p?.createdBy?.avatar === 'string' ? p.createdBy.avatar.trim() : ''
-                    const mpPrompt = (p?.prompt || '').trim()
-                    const mpImageUrl = typeof p?.imageUrl === 'string' ? p.imageUrl.trim() : ''
-                    const mpItemId = p?.id ? String(p.id) : ''
-                    const mpSocialKey = mpItemId ? `post:${mpItemId}` : `post:${mpTitle}`
-                    return (
-                      <li
-                        key={getDashboardItemKey(p)}
-                        data-post-id={mpItemId || undefined}
-                        className="border-b border-black/10 bg-white px-4 py-3"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0" {...getPostCrudBodyProps(p)}>
-                            <div className="flex items-center gap-3">
-                              <UserLink userId={mpAuthorId} className="shrink-0" title="View profile">
-                                <div className="h-9 w-9 aspect-square rounded-full border border-black/10 bg-[#f0f2f5] overflow-hidden flex items-center justify-center">
-                                  {mpAuthorAvatar ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={mpAuthorAvatar} alt={mpAuthorName} className="h-full w-full object-cover" />
-                                  ) : (
-                                    <span className="text-xs font-semibold text-[#1c1e21]">{mpAuthorName.slice(0, 1).toUpperCase()}</span>
-                                  )}
-                                </div>
-                              </UserLink>
-                              <div className="min-w-0">
-                                <UserLink userId={mpAuthorId} className="truncate text-[15px] font-semibold tracking-[-0.015em] text-[#1c1e21] hover:underline" title="View profile">
-                                  {mpAuthorName}
-                                </UserLink>
-                                {mpCreatedAt ? <div className="mt-0.5 text-[12px] font-medium tracking-[0.01em] text-[#65676b]">{mpCreatedAt}</div> : null}
-                              </div>
-                            </div>
-                            <div className="mt-3 text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{mpTitle}</div>
-                            <div className="mt-1.5">
-                              <PostComposerBlocksPreview
-                                blocks={Array.isArray((p as any)?.contentBlocks) ? (p as any).contentBlocks : null}
-                                prompt={mpPrompt}
-                                imageUrl={mpImageUrl}
-                                compact
-                                consumeLongPressOpen={() => consumePostLongPressForPost(p)}
-                                onOpenImage={(url, titleText) => openPostImageViewer(url, titleText)}
-                                imageTitle={`${mpTitle} image`}
-                              />
-                            </div>
-                          </div>
-                          {mpItemId ? (
-                            <div className="flex flex-col items-end gap-2 shrink-0">
-                              <button
-                                type="button"
-                                className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
-                                onClick={() => openEditPostComposer(p)}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                className="text-xs font-semibold text-[#65676b] shrink-0"
-                                onClick={() => void deletePost(mpItemId)}
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
-                        <div className="mt-3 border-t border-black/10 pt-2 text-[#65676b]">
-                          <div className="flex items-center gap-1">
-                            {renderSocialActionButton({
-                              label: 'Like',
-                              active: Boolean(socialLikedItems[mpSocialKey]),
-                              onClick: () => toggleSocialLike(mpSocialKey),
-                              icon: (
-                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-                                  <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                                  <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                              ),
-                            })}
-                            {renderSocialActionButton({
-                              label: p?.solutionCount ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solutions',
-                              onClick: () => void openPostThread(p),
-                              disabled: !mpItemId,
-                              icon: (
-                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-                                  <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                              ),
-                            })}
-                            {renderSocialActionButton({
-                              label: 'Share',
-                              statusLabel: lastSharedSocialItemKey === mpSocialKey ? 'Copied' : undefined,
-                              onClick: () => shareDashboardItem({
-                                itemKey: mpSocialKey,
-                                title: mpTitle,
-                                text: mpPrompt || mpTitle,
-                                path: `/dashboard?postId=${encodeURIComponent(mpItemId)}`,
-                              }),
-                              disabled: !mpItemId,
-                              icon: (
-                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-                                  <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                                  <path d="M4 19V17C4 13.6863 6.68629 11 10 11H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                              ),
-                            })}
-                          </div>
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </div>
-          )}
-        </section>
-
-        <section
-          ref={currentLessonCardRef}
-          className="overflow-hidden border-b border-black/10 bg-white"
-          style={(() => {
-            const maxH = currentLessonCardNaturalHeight || 0
-            if (!maxH) return undefined
-            const collapsed = Math.min(maxH, Math.max(0, currentLessonCardCollapsePx))
-            const progress = maxH ? collapsed / maxH : 0
-            const heightPx = Math.max(0, Math.round(maxH - collapsed))
-            return {
-              height: `${heightPx}px`,
-              opacity: String(Math.max(0, 1 - progress)),
-              pointerEvents: progress >= 1 ? 'none' : 'auto',
-            } as React.CSSProperties
-          })()}
-        >
-            <div ref={currentLessonCardContentRef} className="space-y-0">
-              <div className="flex items-center justify-between gap-3 px-4 pt-3">
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Live now</div>
-                  <div className="mt-1 font-semibold text-[#1c1e21]">Current lesson</div>
-                </div>
-                {sessionCanOrchestrateLessons ? (
-                  <div className="flex items-center gap-1 text-xs font-semibold text-[#65676b]">
-                    <span>Grade</span>
-                    <button
-                      type="button"
-                      className="inline-flex items-center justify-center min-w-[32px] h-8 px-3 rounded-xl border border-black/10 bg-[#f0f2f5] text-[#1c1e21] touch-none"
-                      onPointerDown={(e) => {
-                        // Touch/pen: allow press + slide to select in one gesture.
-                        if ((e as any).pointerType === 'mouse') return
-                        const el = e.currentTarget as HTMLElement
-                        const r = el.getBoundingClientRect()
-                        setGradeWorkspaceSelectorAnchor({
-                          top: r.top,
-                          right: r.right,
-                          bottom: r.bottom,
-                          left: r.left,
-                          width: r.width,
-                          height: r.height,
-                        })
-                        setGradeWorkspaceSelectorPreview(null)
-                        setGradeWorkspaceSelectorExternalDrag({ pointerId: e.pointerId, startClientY: e.clientY })
-                        setGradeWorkspaceSelectorOpen(true)
-
-                        // Prevent the browser from treating this as a scroll gesture.
-                        e.preventDefault()
-                        e.stopPropagation()
-                      }}
-                      onClick={(e) => {
-                        // Mouse: keep simple click-to-open.
-                        const el = e.currentTarget as HTMLElement
-                        const r = el.getBoundingClientRect()
-                        setGradeWorkspaceSelectorAnchor({
-                          top: r.top,
-                          right: r.right,
-                          bottom: r.bottom,
-                          left: r.left,
-                          width: r.width,
-                          height: r.height,
-                        })
-                        setGradeWorkspaceSelectorPreview(null)
-                        setGradeWorkspaceSelectorOpen(true)
-                      }}
-                      aria-label="Select grade workspace"
-                      title="Select grade workspace"
-                    >
-                      {(() => {
-                        const g = gradeWorkspaceSelectorPreview ?? selectedGrade
-                        return g ? String(g).replace('GRADE_', '') : '-'
-                      })()}
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    className="justify-self-end text-xs font-semibold text-[#65676b] hover:text-[#1c1e21] disabled:opacity-50"
-                    onClick={() => selectedGrade && fetchSessionsForGrade(selectedGrade)}
-                    disabled={sessionsLoading || !selectedGrade}
-                  >
-                    {sessionsLoading ? 'Refreshing...' : 'Refresh'}
-                  </button>
-                )}
-              </div>
-
-              {!resolvedCurrentLesson ? (
-                <div className="px-4 pb-3 pt-2 text-sm text-[#65676b]">No current lesson right now.</div>
-              ) : (
-                <div className="space-y-0 overflow-hidden">
-                  {lessonThumb ? (
-                    <button
-                      type="button"
-                      className="block w-full text-left disabled:cursor-not-allowed"
-                      onClick={() => showCanvasWindow(String(resolvedCurrentLesson.id), { quizMode: false })}
-                      disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
-                      aria-label={`Enter class for ${resolvedCurrentLesson.title || 'current lesson'}`}
-                      title={canLaunchCanvasOverlay && !isSubscriptionBlocked ? 'Enter class' : undefined}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={lessonThumb} alt="Lesson thumbnail" className="h-52 w-full object-cover" />
-                    </button>
-                  ) : null}
-
-                  <div className="space-y-3 px-4 py-3">
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-sm font-semibold text-white shadow-[0_10px_24px_rgba(24,119,242,0.2)]">
-                        {currentLessonAuthorName.slice(0, 1).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Live now</div>
-                        <div className="mt-0.5 flex items-center gap-2">
-                          <div className="truncate text-[15px] font-semibold tracking-[-0.015em] text-[#1c1e21]">{currentLessonAuthorName}</div>
-                          {currentLessonDate ? <div className="text-[12px] font-medium tracking-[0.01em] text-[#65676b]">{currentLessonDate}</div> : null}
-                        </div>
-                        <div className="text-[13px] text-[#65676b]">Current lesson</div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="text-[16px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{resolvedCurrentLesson.title || 'Lesson'}</div>
-                      {currentLessonDescription ? (
-                        <div className="mt-1.5 text-[14px] leading-6 text-[#334155] break-words">{currentLessonDescription.slice(0, 220)}{currentLessonDescription.length > 220 ? '...' : ''}</div>
-                      ) : null}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          className="inline-flex h-11 items-center justify-center rounded-xl bg-[#1877f2] px-5 text-sm font-semibold text-white"
-                          onClick={() => showCanvasWindow(String(resolvedCurrentLesson.id), { quizMode: false })}
-                          disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
-                        >
-                          Enter class
-                        </button>
-
-                        <button
-                          type="button"
-                          className="inline-flex h-11 items-center justify-center rounded-xl border border-black/10 bg-[#f0f2f5] px-4 text-sm font-semibold text-[#1c1e21] disabled:opacity-50"
-                          onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'responses')}
-                          disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
-                        >
-                          Quizzes
-                        </button>
-
-                        <div className="relative ml-auto flex items-center gap-2 pr-2">
-                          {resolvedCurrentLesson.startsAt ? (
-                            <div className="absolute bottom-full right-2 mb-1 grid grid-cols-[44px_minmax(0,1fr)] gap-x-2 whitespace-nowrap text-[11px] leading-4 text-[#65676b]">
-                              <span className="font-semibold text-[#4b5563]">Start:</span>
-                              <span>{formatCompactLessonMoment(resolvedCurrentLesson.startsAt)}</span>
-                              <span className="font-semibold text-[#4b5563]">End:</span>
-                              <span>{formatCompactLessonMoment((resolvedCurrentLesson as any).endsAt || resolvedCurrentLesson.startsAt)}</span>
-                            </div>
-                          ) : null}
-                          <button
-                            type="button"
-                            className="inline-flex h-11 items-center justify-center rounded-xl border border-black/10 bg-[#f0f2f5] px-4 text-sm font-semibold text-[#1c1e21] disabled:opacity-50"
-                            onClick={() => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'assignments')}
-                            disabled={isSubscriptionBlocked}
-                          >
-                            Assignments
-                          </button>
-                          {(() => {
-                            const isOwner = viewerId && String((resolvedCurrentLesson as any)?.createdBy || '') === String(viewerId)
-                            const canManage = sessionCanOrchestrateLessons && isOwner
-                            if (!canManage) return null
-                            return (
-                              <TaskManageMenu
-                                actions={[
-                                  {
-                                    label: 'Manage assignments',
-                                    onClick: () => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'assignments'),
-                                  },
-                                  {
-                                    label: 'Manage quizzes',
-                                    onClick: () => openSessionDetails([String(resolvedCurrentLesson.id)], 0, 'responses'),
-                                  },
-                                ]}
-                              />
-                            )
-                          })()}
-                        </div>
-                    </div>
-
-                    <div className="border-t border-black/10 pt-2 text-[#65676b]">
-                      <div className="flex items-center gap-1">
-                        {renderSocialActionButton({
-                          label: 'Like',
-                          active: Boolean(socialLikedItems[currentLessonPostKey]),
-                          onClick: () => toggleSocialLike(currentLessonPostKey),
-                          icon: (
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-                              <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                              <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          ),
-                        })}
-                        {renderSocialActionButton({
-                          label: 'Solve',
-                          onClick: () => openLessonCommentThread(String(resolvedCurrentLesson.id)),
-                          icon: (
-                            <span className="flex items-center gap-1" aria-hidden="true">
-                              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
-                                <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                              </svg>
-                              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none">
-                                <path d="M4 20H8L18.5 9.5C19.3284 8.67157 19.3284 7.32843 18.5 6.5C17.6716 5.67157 16.3284 5.67157 15.5 6.5L5 17V20Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                                <path d="M14.5 7.5L17.5 10.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                              </svg>
-                            </span>
-                          ),
-                        })}
-                        {renderSocialActionButton({
-                          label: 'Share',
-                          statusLabel: lastSharedSocialItemKey === currentLessonPostKey ? 'Copied' : undefined,
-                          onClick: () => shareDashboardItem({
-                            itemKey: currentLessonPostKey,
-                            title: resolvedCurrentLesson.title || 'Current lesson',
-                            text: 'Open this lesson in Philani Academy.',
-                            path: `/dashboard?section=live&lessonSessionId=${encodeURIComponent(String(resolvedCurrentLesson.id))}&lessonTab=responses`,
-                          }),
-                          icon: (
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-                              <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                              <path d="M4 19V17C4 13.6863 6.68629 11 10 11H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          ),
-                        })}
-                      </div>
-                    </div>
-
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-black/10 px-4 py-3">
+        <section className="border-b border-black/10 bg-white px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">History</div>
@@ -6651,7 +5985,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   {pastSessionIds.length} past lesson{pastSessionIds.length === 1 ? '' : 's'}
                 </div>
               )}
-            </div>
         </section>
 
         {studentFeedLoading ? (
@@ -9245,7 +8578,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     setStudentFeedPosts((prev: any[]) => Array.isArray(prev) ? prev.map((item) => syncFeedPostThreadState(item, safePostId, responses, effectiveCurrentUserId)) : prev)
     setTimelineChallenges((prev: any[]) => Array.isArray(prev) ? prev.map((item) => syncFeedPostThreadState(item, safePostId, responses, effectiveCurrentUserId)) : prev)
-    setMyPosts((prev: any[]) => Array.isArray(prev) ? prev.map((item) => syncFeedPostThreadState(item, safePostId, responses, effectiveCurrentUserId)) : prev)
   }, [currentUserId, viewerId])
 
   const deleteReplyFromCrudTarget = useCallback(async (target: ReplyCrudTarget) => {
@@ -10740,7 +10072,66 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <h2 className="session-focus-heading text-base font-semibold text-white">Current lesson</h2>
               <div className="session-focus-subtitle text-xs muted">{activeGradeLabel}</div>
             </div>
-            {resolvedCurrentLesson ? <span className="session-focus-chip inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/80">Now</span> : null}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {sessionCanOrchestrateLessons ? (
+                <div className="flex items-center gap-2 text-xs font-semibold text-white/70">
+                  <span>Grade</span>
+                  <button
+                    type="button"
+                    className="inline-flex min-w-[40px] items-center justify-center rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-white touch-none"
+                    onPointerDown={(e) => {
+                      if ((e as any).pointerType === 'mouse') return
+                      const el = e.currentTarget as HTMLElement
+                      const r = el.getBoundingClientRect()
+                      setGradeWorkspaceSelectorAnchor({
+                        top: r.top,
+                        right: r.right,
+                        bottom: r.bottom,
+                        left: r.left,
+                        width: r.width,
+                        height: r.height,
+                      })
+                      setGradeWorkspaceSelectorPreview(null)
+                      setGradeWorkspaceSelectorExternalDrag({ pointerId: e.pointerId, startClientY: e.clientY })
+                      setGradeWorkspaceSelectorOpen(true)
+                      e.preventDefault()
+                      e.stopPropagation()
+                    }}
+                    onClick={(e) => {
+                      const el = e.currentTarget as HTMLElement
+                      const r = el.getBoundingClientRect()
+                      setGradeWorkspaceSelectorAnchor({
+                        top: r.top,
+                        right: r.right,
+                        bottom: r.bottom,
+                        left: r.left,
+                        width: r.width,
+                        height: r.height,
+                      })
+                      setGradeWorkspaceSelectorPreview(null)
+                      setGradeWorkspaceSelectorOpen(true)
+                    }}
+                    aria-label="Select grade workspace"
+                    title="Select grade workspace"
+                  >
+                    {(() => {
+                      const g = gradeWorkspaceSelectorPreview ?? selectedGrade
+                      return g ? String(g).replace('GRADE_', '') : '-'
+                    })()}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="inline-flex h-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-3 text-xs font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-50"
+                  onClick={() => selectedGrade && fetchSessionsForGrade(selectedGrade)}
+                  disabled={sessionsLoading || !selectedGrade}
+                >
+                  {sessionsLoading ? 'Refreshing...' : 'Refresh'}
+                </button>
+              )}
+              {resolvedCurrentLesson ? <span className="session-focus-chip inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/80">Now</span> : null}
+            </div>
           </div>
           {sessionsError ? (
             <div className="text-sm text-red-600">{sessionsError}</div>

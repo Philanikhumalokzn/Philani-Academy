@@ -1834,7 +1834,7 @@ export function PublicUserProfileSurface({
         </section>
 
         <section className="relative -mt-24 bg-transparent">
-          <div className="mx-auto w-full max-w-5xl">
+          <div className="public-profile-content w-full">
             <div className="relative px-4 pb-5 pt-0 sm:px-6">
               <div className="pointer-events-none absolute inset-x-0 bottom-0 top-20 bg-white sm:top-24" aria-hidden="true" />
               <div className="relative z-[1] flex flex-col gap-4">
@@ -1927,7 +1927,7 @@ export function PublicUserProfileSurface({
           </div>
         </section>
 
-        <div className="mx-auto w-full max-w-5xl">
+        <div className="public-profile-content w-full">
         <section className="border-t border-slate-200 bg-white px-4 pt-3 sm:px-6">
           <div className="flex items-center gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {(['all', 'photos', 'reels'] as ProfileTab[]).map((tab) => {

@@ -428,6 +428,13 @@ body{
   overflow-x:clip;
 }
 
+.public-profile-content{
+  width:100%;
+  max-width:none;
+  margin-left:0;
+  margin-right:0;
+}
+
 .public-profile-hero{
   position:relative;
   width:100vw;

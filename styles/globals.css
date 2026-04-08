@@ -43,7 +43,11 @@ math-field.keyboard-mathlive-field::part(virtual-keyboard-toggle) {
 }
 
 .philani-image-crop--settling .ReactCrop__crop-selection {
-  transition: top 0.24s cubic-bezier(0.22, 1, 0.36, 1), left 0.24s cubic-bezier(0.22, 1, 0.36, 1) !important;
+  transition:
+    top 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+    left 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+    width 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+    height 0.38s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 .ReactCrop__crop-selection::before,

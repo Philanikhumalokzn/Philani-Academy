@@ -98,6 +98,7 @@ export default function ImageCropperModal(props: {
     setSaving(false)
     setError(null)
     setFiltersOpen(false)
+    setIsSettlingCrop(false)
     setFilters({
       brightness: 0,
       contrast: 0,
@@ -263,28 +264,59 @@ export default function ImageCropperModal(props: {
     const cropXPx = targetCrop.unit === '%' ? (displayWidth * targetCrop.x) / 100 : targetCrop.x
     const cropYPx = targetCrop.unit === '%' ? (displayHeight * targetCrop.y) / 100 : targetCrop.y
 
-    const nextCropXPx = (displayWidth - cropWidthPx) / 2
-    const nextCropYPx = (displayHeight - cropHeightPx) / 2
-    const deltaX = nextCropXPx - cropXPx
-    const deltaY = nextCropYPx - cropYPx
-    if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) return
+    const currentScale = Math.max(0.0001, scale)
+    const sourceX = (cropXPx - panX) / currentScale
+    const sourceY = (cropYPx - panY) / currentScale
+    const sourceWidth = cropWidthPx / currentScale
+    const sourceHeight = cropHeightPx / currentScale
+    if (!sourceWidth || !sourceHeight) return
+
+    const nextScale = clamp(Math.min(displayWidth / sourceWidth, displayHeight / sourceHeight), 1, 12)
+    const nextCropWidthPx = sourceWidth * nextScale
+    const nextCropHeightPx = sourceHeight * nextScale
+    const nextCropXPx = (displayWidth - nextCropWidthPx) / 2
+    const nextCropYPx = (displayHeight - nextCropHeightPx) / 2
+    const nextPanX = nextCropXPx - sourceX * nextScale
+    const nextPanY = nextCropYPx - sourceY * nextScale
+
+    if (
+      Math.abs(nextCropXPx - cropXPx) < 0.5
+      && Math.abs(nextCropYPx - cropYPx) < 0.5
+      && Math.abs(nextCropWidthPx - cropWidthPx) < 0.5
+      && Math.abs(nextCropHeightPx - cropHeightPx) < 0.5
+      && Math.abs(nextScale - currentScale) < 0.01
+      && Math.abs(nextPanX - panX) < 0.5
+      && Math.abs(nextPanY - panY) < 0.5
+    ) return
 
     const nextCrop = targetCrop.unit === '%'
       ? {
           ...targetCrop,
           x: (nextCropXPx / displayWidth) * 100,
           y: (nextCropYPx / displayHeight) * 100,
+          width: (nextCropWidthPx / displayWidth) * 100,
+          height: (nextCropHeightPx / displayHeight) * 100,
         }
       : {
           ...targetCrop,
           x: nextCropXPx,
           y: nextCropYPx,
+          width: nextCropWidthPx,
+          height: nextCropHeightPx,
         }
 
     setIsSettlingCrop(true)
     setCrop(nextCrop)
-    setPanX((current) => current + deltaX)
-    setPanY((current) => current + deltaY)
+    setCompletedCropPx({
+      unit: 'px',
+      x: Math.round(nextCropXPx),
+      y: Math.round(nextCropYPx),
+      width: Math.round(nextCropWidthPx),
+      height: Math.round(nextCropHeightPx),
+    })
+    setScale(nextScale)
+    setPanX(nextPanX)
+    setPanY(nextPanY)
 
     if (typeof window !== 'undefined') {
       if (settleTimeoutRef.current !== null) {
@@ -293,9 +325,9 @@ export default function ImageCropperModal(props: {
       settleTimeoutRef.current = window.setTimeout(() => {
         settleTimeoutRef.current = null
         setIsSettlingCrop(false)
-      }, 260)
+      }, 420)
     }
-  }, [])
+  }, [panX, panY, scale])
 
   const scheduleCropRecentering = useCallback((targetCrop: Crop | PixelCrop) => {
     if (typeof window === 'undefined') return
@@ -368,7 +400,7 @@ export default function ImageCropperModal(props: {
   return (
     <FullScreenGlassOverlay
       title={title || 'Enhance & crop'}
-      subtitle="Adjust, pan, crop. Tap image to pan."
+      subtitle="Adjust, crop, and release to settle."
       onClose={onCancel}
       onBackdropClick={onCancel}
       closeDisabled={saving}
@@ -437,7 +469,7 @@ export default function ImageCropperModal(props: {
                         maxHeight: 'calc(100dvh - 11.5rem)',
                         transformOrigin: 'top left',
                         transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
-                        transition: isDragging ? 'none' : 'transform 0.24s cubic-bezier(0.22, 1, 0.36, 1)',
+                        transition: isDragging ? 'none' : 'transform 0.38s cubic-bezier(0.16, 1, 0.3, 1)',
                         cursor: 'default',
                         ...getFilterStyle(),
                       }}
@@ -720,7 +752,7 @@ export default function ImageCropperModal(props: {
 
           <div className="mt-2 flex items-center justify-between px-1 text-[0.68rem] text-white/42">
             <span>{rotating ? 'Applying rotation...' : 'Modern crop editor'}</span>
-            <span>Crop frame and selected snapshot settle together</span>
+            <span>Release to center and zoom the selected frame</span>
           </div>
         </div>
       </div>

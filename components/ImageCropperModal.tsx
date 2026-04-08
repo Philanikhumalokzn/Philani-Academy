@@ -252,6 +252,34 @@ export default function ImageCropperModal(props: {
     onUseOriginal(file)
   }, [file, onUseOriginal])
 
+  const resetFilters = useCallback(() => {
+    setFilters({
+      brightness: 0,
+      contrast: 0,
+      saturation: 0,
+      temperature: 0,
+      hue: 0,
+    })
+  }, [])
+
+  const resetCropStage = useCallback(() => {
+    setCrop(initialCrop)
+    setCompletedCropPx(null)
+    setPanX(0)
+    setPanY(0)
+    setScale(1)
+  }, [initialCrop])
+
+  const revertAllEdits = useCallback(() => {
+    if (!file) return
+    setWorkingFile(file)
+    setRotation(0)
+    resetCropStage()
+    resetFilters()
+    setFiltersOpen(false)
+    setError(null)
+  }, [file, resetCropStage, resetFilters])
+
   const getFilterStyle = (): React.CSSProperties => {
     const brightness = Math.max(0, 100 + filters.brightness)
     const contrast = Math.max(0, 100 + filters.contrast)
@@ -274,6 +302,10 @@ export default function ImageCropperModal(props: {
   }
 
   if (!open) return null
+
+  const editorActionClassName = 'inline-flex min-w-[4.35rem] flex-col items-center justify-center gap-1 rounded-[1.15rem] px-2 py-2 text-[0.72rem] font-medium text-white/72 transition active:scale-[0.98] disabled:opacity-45'
+  const editorActionActiveClassName = 'bg-white/14 text-white shadow-[0_10px_22px_rgba(0,0,0,0.22)]'
+  const editorActionIdleClassName = 'hover:bg-white/8'
 
   return (
     <FullScreenGlassOverlay
@@ -354,82 +386,80 @@ export default function ImageCropperModal(props: {
           <div className="w-full h-full flex items-center justify-center text-sm text-white/70">Loading image…</div>
         )}
 
-        {/* Top controls (floating) */}
+        {/* Editor top bar */}
         <div
           className="absolute inset-x-0 top-0 z-20 pointer-events-none"
-          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 6px)' }}
+          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 4px)' }}
         >
-          <div className="px-3 pb-3 sm:px-5 bg-gradient-to-b from-black/70 via-black/35 to-transparent">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-white text-base font-semibold">{title || 'Enhance & crop'}</div>
-                <div className="text-white/70 text-xs">Tap image to pan • Drag handles to crop</div>
+          <div className="px-3 pb-4 sm:px-5 bg-gradient-to-b from-black/82 via-black/48 to-transparent">
+            <div className="flex items-center justify-between gap-3">
+              <div className="pointer-events-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  className="flex h-11 w-11 items-center justify-center rounded-full border border-white/14 bg-white/10 text-white backdrop-blur-md transition hover:bg-white/18 disabled:opacity-50"
+                  onClick={onCancel}
+                  disabled={saving}
+                  aria-label="Back"
+                  title="Back"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
+                    <path d="M15 6 9 12l6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full px-3 py-2 text-[0.78rem] font-semibold tracking-[0.01em] text-white/82 transition hover:bg-white/10 disabled:opacity-50"
+                  onClick={revertAllEdits}
+                  disabled={saving || !file}
+                >
+                  Revert
+                </button>
               </div>
-              <button
-                type="button"
-                className="pointer-events-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20 transition disabled:opacity-50"
-                onClick={onCancel}
-                disabled={saving}
-                aria-label="Close"
-              >
-                <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
-                  <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              </button>
+
+              <div className="min-w-0 text-center">
+                <div className="text-[0.95rem] font-semibold text-white">{title || 'Edit photo'}</div>
+                <div className="text-[0.7rem] text-white/58">Drag corners to crop</div>
+              </div>
+
+              <div className="pointer-events-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  className="rounded-full bg-[#3b82f6] px-4 py-2 text-[0.8rem] font-semibold tracking-[0.01em] text-white shadow-[0_12px_28px_rgba(59,130,246,0.36)] transition hover:bg-[#2563eb] disabled:opacity-50"
+                  onClick={() => void doConfirm()}
+                  disabled={saving}
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-
-        {/* Right side rotate buttons (floating) */}
-        <div
-          className="absolute right-0 top-1/2 z-20 -translate-y-1/2 pointer-events-none"
-          style={{ right: 'calc(env(safe-area-inset-right, 0px) + 8px)' }}
-        >
-          <div className="flex flex-col items-center gap-2 px-2">
-            <button
-              type="button"
-              className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-black hover:bg-white shadow-lg backdrop-blur-sm transition disabled:opacity-50"
-              onClick={() => void rotateBy(-90)}
-              disabled={saving || rotating}
-              aria-label="Rotate counterclockwise"
-              title="Rotate ↶"
-            >
-              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" aria-hidden="true">
-                <path d="M7 7H4v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M4 10a8 8 0 1 0 3-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </button>
-
-            <button
-              type="button"
-              className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-black hover:bg-white shadow-lg backdrop-blur-sm transition disabled:opacity-50"
-              onClick={() => void rotateBy(90)}
-              disabled={saving || rotating}
-              aria-label="Rotate clockwise"
-              title="Rotate ↷"
-            >
-              <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" aria-hidden="true">
-                <path d="M17 7h3v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M20 10a8 8 0 1 1-3-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </button>
-
-            {rotating ? <div className="text-[10px] text-white font-medium">…</div> : null}
           </div>
         </div>
       </div>
 
-      {/* Bottom overlays: transparent filters drawer + action bar */}
+      {/* Bottom overlays: Android-style tools rail */}
       <div
         className="absolute inset-x-0 bottom-0 z-30"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
         {filtersOpen ? (
-          <div className="max-h-[55vh] overflow-y-auto px-3 py-3 sm:px-5 pointer-events-auto bg-transparent">
-            <div className="space-y-4">
-          {/* Filter sliders */}
+          <div className="pointer-events-auto border-t border-white/12 bg-[linear-gradient(180deg,rgba(3,7,18,0.14),rgba(3,7,18,0.88)_22%,rgba(3,7,18,0.96)_100%)] px-4 pb-3 pt-4 backdrop-blur-xl sm:px-5">
+            <div className="mx-auto max-w-xl space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-white/48">Adjust</div>
+              <div className="mt-1 text-sm font-medium text-white/88">Tune the image before saving</div>
+            </div>
+            <button
+              type="button"
+              className="rounded-full border border-white/12 bg-white/6 px-3 py-1.5 text-[0.72rem] font-semibold text-white/76 transition hover:bg-white/10 disabled:opacity-50"
+              onClick={resetFilters}
+              disabled={saving || rotating}
+            >
+              Reset
+            </button>
+          </div>
+
           <div className="space-y-3">
-            <div className="text-xs font-semibold text-white/80 uppercase tracking-wider">Adjust</div>
 
             {/* Brightness */}
             <div className="space-y-1.5">
@@ -512,73 +542,111 @@ export default function ImageCropperModal(props: {
             </div>
           </div>
 
-          {/* Quick actions */}
-          <div className="flex flex-wrap items-center gap-2 pt-2">
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <div className="text-[0.72rem] text-white/52">Filters match the preview as you crop.</div>
             <button
               type="button"
-              className="text-xs font-medium px-3 py-1.5 rounded-full border border-white/30 bg-white/10 text-white hover:bg-white/15 transition disabled:opacity-50"
-              onClick={() => setFilters({ brightness: 0, contrast: 0, saturation: 0, temperature: 0, hue: 0 })}
-              disabled={saving || rotating}
-            >
-              Reset
-            </button>
-            <button
-              type="button"
-              className="text-xs font-medium px-3 py-1.5 rounded-full border border-white/30 bg-white/10 text-white hover:bg-white/15 transition disabled:opacity-50"
-              onClick={() => {
-                setCrop(initialCrop)
-                setCompletedCropPx(null)
-              }}
-              disabled={saving || rotating}
-            >
-              Reset crop
-            </button>
-            <button
-              type="button"
-              className="text-xs font-medium px-3 py-1.5 rounded-full border border-white/30 bg-white/10 text-white hover:bg-white/15 transition"
+              className="rounded-full border border-white/12 bg-white/6 px-3 py-1.5 text-[0.72rem] font-semibold text-white/76 transition hover:bg-white/10"
               onClick={() => setFiltersOpen(false)}
             >
-              Close filters
+              Done
             </button>
           </div>
             </div>
           </div>
         ) : null}
 
-        <div className="px-3 pb-3 sm:px-5 pt-2 pointer-events-auto bg-transparent">
-          <div className="grid grid-cols-4 gap-2">
+        <div className="pointer-events-auto border-t border-white/10 bg-[linear-gradient(180deg,rgba(5,7,12,0.18),rgba(5,7,12,0.86)_18%,rgba(5,7,12,0.96)_100%)] px-3 pb-3 pt-2 backdrop-blur-xl sm:px-5">
+          <div className="mx-auto flex max-w-xl items-start justify-between gap-1">
             <button
               type="button"
-              className="text-xs font-medium px-3 py-2.5 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/15 transition disabled:opacity-50"
+              className={`${editorActionClassName} ${editorActionIdleClassName}`}
+              onClick={resetCropStage}
+              disabled={saving || rotating}
+              aria-label="Reset crop"
+              title="Crop"
+            >
+              <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
+                <path d="M8 4H6a2 2 0 0 0-2 2v2" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+                <path d="M16 4h2a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+                <path d="M20 16v2a2 2 0 0 1-2 2h-2" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+                <path d="M8 20H6a2 2 0 0 1-2-2v-2" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+              </svg>
+              <span>Crop</span>
+            </button>
+
+            <button
+              type="button"
+              className={`${editorActionClassName} ${filtersOpen ? editorActionActiveClassName : editorActionIdleClassName}`}
               onClick={() => setFiltersOpen((prev) => !prev)}
               disabled={saving || rotating}
+              aria-label="Adjust filters"
+              title="Adjust"
             >
-              {filtersOpen ? 'Hide filters' : 'Filters'}
+              <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
+                <path d="M4 7h10" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+                <path d="M18 7h2" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+                <path d="M4 12h4" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+                <path d="M12 12h8" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+                <path d="M4 17h8" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+                <path d="M16 17h4" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+                <circle cx="14" cy="7" r="2" fill="currentColor" />
+                <circle cx="10" cy="12" r="2" fill="currentColor" />
+                <circle cx="14" cy="17" r="2" fill="currentColor" />
+              </svg>
+              <span>Adjust</span>
             </button>
+
             <button
               type="button"
-              className="text-xs font-medium px-3 py-2.5 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/15 transition disabled:opacity-50"
-              onClick={onCancel}
-              disabled={saving}
+              className={`${editorActionClassName} ${editorActionIdleClassName}`}
+              onClick={() => void rotateBy(-90)}
+              disabled={saving || rotating}
+              aria-label="Rotate left"
+              title="Rotate left"
             >
-              Cancel
+              <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
+                <path d="M7 7H4v3" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M4 10a8 8 0 1 0 3-6" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+              </svg>
+              <span>Rotate</span>
             </button>
+
             <button
               type="button"
-              className="text-xs font-medium px-3 py-2.5 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/15 transition disabled:opacity-50"
+              className={`${editorActionClassName} ${editorActionIdleClassName}`}
+              onClick={() => void rotateBy(90)}
+              disabled={saving || rotating}
+              aria-label="Rotate right"
+              title="Rotate right"
+            >
+              <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
+                <path d="M17 7h3v3" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M20 10a8 8 0 1 1-3-6" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+              </svg>
+              <span>Rotate</span>
+            </button>
+
+            <button
+              type="button"
+              className={`${editorActionClassName} ${editorActionIdleClassName}`}
               onClick={doUseOriginal}
               disabled={saving}
+              aria-label="Use original image"
+              title="Original"
             >
-              Use original
+              <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
+                <rect x="4" y="5" width="16" height="14" rx="3" stroke="currentColor" strokeWidth="2" />
+                <path d="M8 15.5 11 12.5l2.2 2.2L16 11.9 18 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="9" cy="9" r="1.2" fill="currentColor" />
+              </svg>
+              <span>Original</span>
             </button>
-            <button
-              type="button"
-              className="text-xs font-medium px-3 py-2.5 rounded-xl bg-blue-500 text-white hover:bg-blue-600 transition disabled:opacity-50 shadow-lg"
-              onClick={() => void doConfirm()}
-              disabled={saving}
-            >
-              {saving ? 'Processing…' : confirmLabel || 'Upload'}
-            </button>
+          </div>
+
+          <div className="mt-2 flex items-center justify-between px-1 text-[0.68rem] text-white/42">
+            <span>{rotating ? 'Applying rotation...' : 'Modern crop editor'}</span>
+            <span>Pinch and drag to refine</span>
           </div>
         </div>
       </div>

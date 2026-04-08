@@ -432,7 +432,8 @@ body{
   position:relative;
   width:100vw;
   max-width:100vw;
-    margin-right:calc(50% - 50vw);
+  margin-left:calc(50% - 50vw);
+  margin-right:calc(50% - 50vw);
   padding-left:0 !important;
   padding-right:0 !important;
 }

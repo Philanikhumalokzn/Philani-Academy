@@ -1792,8 +1792,8 @@ export function PublicUserProfileSurface({
 
         <section className="relative -mt-24 bg-transparent">
           <div className="public-profile-content w-full">
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 top-20 bg-white sm:top-24" aria-hidden="true" />
             <div className="relative px-4 pb-5 pt-0 sm:px-6">
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 top-20 bg-white sm:top-24" aria-hidden="true" />
               <div className="relative z-[1] flex flex-col gap-4">
                 <div className="relative flex items-end justify-between gap-4">
                   <div className="-mt-10 flex min-w-0 flex-1 items-end gap-4 sm:-mt-12">

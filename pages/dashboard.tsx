@@ -5937,12 +5937,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       const startMs = getStartMs(s)
       return startMs ? startMs + 60 * 60 * 1000 : 0
     }
-    const nowMs = Date.now()
-    const pastSessions = [...(sessions || [])]
-      .filter(s => getEndMs(s) < nowMs)
-      .sort((a, b) => getStartMs(b) - getStartMs(a))
-    const pastSessionIds = pastSessions.map(s => String(s?.id || '')).filter(Boolean)
-
     return (
       <section className="space-y-0 bg-[#f0f2f5] text-[#1c1e21]">
         <section className="border-b border-black/10 bg-white px-4 py-2.5">
@@ -5961,30 +5955,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             rightActionLabel="Open posts menu"
             rightActionTitle="Posts menu"
           />
-        </section>
-
-        <section className="border-b border-black/10 bg-white px-4 py-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">History</div>
-                  <div className="mt-1 font-semibold text-[#1c1e21]">Past lessons</div>
-                </div>
-                <button
-                  type="button"
-                  className="inline-flex h-10 items-center justify-center rounded-xl border border-black/10 bg-[#f0f2f5] px-4 text-xs font-semibold text-[#1c1e21]"
-                  onClick={() => openPastSessionsList(pastSessionIds)}
-                  disabled={pastSessionIds.length === 0}
-                >
-                  Open
-                </button>
-              </div>
-              {pastSessionIds.length === 0 ? (
-                <div className="mt-2 text-sm text-[#65676b]">No past lessons yet.</div>
-              ) : (
-                <div className="mt-2 text-sm text-[#65676b]">
-                  {pastSessionIds.length} past lesson{pastSessionIds.length === 1 ? '' : 's'}
-                </div>
-              )}
         </section>
 
         {studentFeedLoading ? (

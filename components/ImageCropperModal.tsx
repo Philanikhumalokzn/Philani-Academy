@@ -30,6 +30,7 @@ export default function ImageCropperModal(props: {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const settleCropOnCompleteRef = useRef(false)
   const recenterFrameRef = useRef<number | null>(null)
+  const settleTimeoutRef = useRef<number | null>(null)
 
   const [workingFile, setWorkingFile] = useState<File | null>(null)
   const [rotation, setRotation] = useState(0)
@@ -62,6 +63,7 @@ export default function ImageCropperModal(props: {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [isSettlingCrop, setIsSettlingCrop] = useState(false)
 
   const objectUrl = useMemo(() => {
     if (!open) return null
@@ -246,7 +248,7 @@ export default function ImageCropperModal(props: {
     })
   }, [])
 
-  const recenterPreviewToCrop = useCallback((targetCrop: Crop | PixelCrop) => {
+  const recenterCropSnapshot = useCallback((targetCrop: Crop | PixelCrop) => {
     const img = imgRef.current
     if (!img) return
 
@@ -261,27 +263,50 @@ export default function ImageCropperModal(props: {
     const cropXPx = targetCrop.unit === '%' ? (displayWidth * targetCrop.x) / 100 : targetCrop.x
     const cropYPx = targetCrop.unit === '%' ? (displayHeight * targetCrop.y) / 100 : targetCrop.y
 
-    const nextScale = clamp(Math.min(displayWidth / cropWidthPx, displayHeight / cropHeightPx), 1, 4)
-    const cropCenterX = cropXPx + cropWidthPx / 2
-    const cropCenterY = cropYPx + cropHeightPx / 2
-    const nextPanX = displayWidth / 2 - nextScale * cropCenterX
-    const nextPanY = displayHeight / 2 - nextScale * cropCenterY
+    const nextCropXPx = (displayWidth - cropWidthPx) / 2
+    const nextCropYPx = (displayHeight - cropHeightPx) / 2
+    const deltaX = nextCropXPx - cropXPx
+    const deltaY = nextCropYPx - cropYPx
+    if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) return
 
-    setScale((current) => Math.abs(current - nextScale) < 0.001 ? current : nextScale)
-    setPanX((current) => Math.abs(current - nextPanX) < 0.5 ? current : nextPanX)
-    setPanY((current) => Math.abs(current - nextPanY) < 0.5 ? current : nextPanY)
+    const nextCrop = targetCrop.unit === '%'
+      ? {
+          ...targetCrop,
+          x: (nextCropXPx / displayWidth) * 100,
+          y: (nextCropYPx / displayHeight) * 100,
+        }
+      : {
+          ...targetCrop,
+          x: nextCropXPx,
+          y: nextCropYPx,
+        }
+
+    setIsSettlingCrop(true)
+    setCrop(nextCrop)
+    setPanX((current) => current + deltaX)
+    setPanY((current) => current + deltaY)
+
+    if (typeof window !== 'undefined') {
+      if (settleTimeoutRef.current !== null) {
+        window.clearTimeout(settleTimeoutRef.current)
+      }
+      settleTimeoutRef.current = window.setTimeout(() => {
+        settleTimeoutRef.current = null
+        setIsSettlingCrop(false)
+      }, 260)
+    }
   }, [])
 
-  const schedulePreviewRecentering = useCallback((targetCrop: Crop | PixelCrop) => {
+  const scheduleCropRecentering = useCallback((targetCrop: Crop | PixelCrop) => {
     if (typeof window === 'undefined') return
     if (recenterFrameRef.current !== null) {
       window.cancelAnimationFrame(recenterFrameRef.current)
     }
     recenterFrameRef.current = window.requestAnimationFrame(() => {
       recenterFrameRef.current = null
-      recenterPreviewToCrop(targetCrop)
+      recenterCropSnapshot(targetCrop)
     })
-  }, [recenterPreviewToCrop])
+  }, [recenterCropSnapshot])
 
   const resetCropStage = useCallback(() => {
     setCrop({ ...initialCrop })
@@ -289,8 +314,8 @@ export default function ImageCropperModal(props: {
     setPanX(0)
     setPanY(0)
     setScale(1)
-    schedulePreviewRecentering({ ...initialCrop })
-  }, [initialCrop, schedulePreviewRecentering])
+    setIsSettlingCrop(false)
+  }, [initialCrop])
 
   const revertAllEdits = useCallback(() => {
     if (!file) return
@@ -328,15 +353,11 @@ export default function ImageCropperModal(props: {
       if (typeof window !== 'undefined' && recenterFrameRef.current !== null) {
         window.cancelAnimationFrame(recenterFrameRef.current)
       }
+      if (typeof window !== 'undefined' && settleTimeoutRef.current !== null) {
+        window.clearTimeout(settleTimeoutRef.current)
+      }
     }
   }, [])
-
-  useEffect(() => {
-    if (scale <= 1.001) {
-      setPanX(0)
-      setPanY(0)
-    }
-  }, [scale])
 
   if (!open) return null
 
@@ -385,6 +406,7 @@ export default function ImageCropperModal(props: {
               <div className="relative max-h-full max-w-full">
                 <div onMouseDownCapture={handleMouseDown} onTouchStartCapture={handleMouseDown}>
                   <ReactCrop
+                    className={isSettlingCrop ? 'philani-image-crop philani-image-crop--settling' : 'philani-image-crop'}
                     crop={crop}
                     onChange={(_, percentCrop) => {
                       setCrop(percentCrop)
@@ -393,7 +415,7 @@ export default function ImageCropperModal(props: {
                       setCompletedCropPx(px)
                       if (settleCropOnCompleteRef.current) {
                         settleCropOnCompleteRef.current = false
-                        schedulePreviewRecentering(percentCrop)
+                        scheduleCropRecentering(percentCrop)
                       }
                     }}
                     onDragEnd={() => {
@@ -422,7 +444,10 @@ export default function ImageCropperModal(props: {
                       onLoad={() => {
                         setCrop({ ...initialCrop })
                         setCompletedCropPx(null)
-                        schedulePreviewRecentering({ ...initialCrop })
+                        setPanX(0)
+                        setPanY(0)
+                        setScale(1)
+                        setIsSettlingCrop(false)
                       }}
                       draggable="false"
                     />
@@ -695,7 +720,7 @@ export default function ImageCropperModal(props: {
 
           <div className="mt-2 flex items-center justify-between px-1 text-[0.68rem] text-white/42">
             <span>{rotating ? 'Applying rotation...' : 'Modern crop editor'}</span>
-            <span>Crop settles into place after you release</span>
+            <span>Crop frame and selected snapshot settle together</span>
           </div>
         </div>
       </div>

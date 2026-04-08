@@ -1,6 +1,5 @@
 import { useSession } from 'next-auth/react'
 import type { GetServerSideProps } from 'next'
-import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react'
@@ -66,17 +65,6 @@ type ProfileChallenge = {
   prompt?: string | null
   imageUrl?: string | null
   createdAt?: string | null
-}
-
-type DiscoverProfile = {
-  id: string
-  name: string
-  role?: string | null
-  grade?: string | null
-  avatar?: string | null
-  schoolName?: string | null
-  verified?: boolean
-  sharedGroupsCount?: number
 }
 
 type ProfileTab = 'all' | 'photos' | 'reels'
@@ -214,9 +202,6 @@ export function PublicUserProfileSurface({
 
   const [challenges, setChallenges] = useState<ProfileChallenge[]>([])
   const [challengesLoading, setChallengesLoading] = useState(false)
-
-  const [discoverProfiles, setDiscoverProfiles] = useState<DiscoverProfile[]>([])
-  const [discoverLoading, setDiscoverLoading] = useState(false)
 
   const [postComposerOpen, setPostComposerOpen] = useState(false)
   const [editingOwnedPostId, setEditingOwnedPostId] = useState<string | null>(null)
@@ -1135,30 +1120,6 @@ export function PublicUserProfileSurface({
     }
   }, [userId])
 
-  const loadDiscoverProfiles = useCallback(async () => {
-    if (status !== 'authenticated') {
-      setDiscoverProfiles([])
-      return
-    }
-    setDiscoverLoading(true)
-    try {
-      const res = await fetch('/api/discover/users?limit=8', { credentials: 'same-origin', cache: 'no-store' })
-      const data = await res.json().catch(() => ([]))
-      if (!res.ok) {
-        setDiscoverProfiles([])
-        return
-      }
-      const nextProfiles = (Array.isArray(data) ? data : [])
-        .filter((item: any) => String(item?.id || '') !== String(userId || ''))
-        .slice(0, 8)
-      setDiscoverProfiles(nextProfiles)
-    } catch {
-      setDiscoverProfiles([])
-    } finally {
-      setDiscoverLoading(false)
-    }
-  }, [status, userId])
-
   useEffect(() => {
     void loadProfile()
     void loadPosts()
@@ -1185,10 +1146,6 @@ export function PublicUserProfileSurface({
       cancelled = true
     }
   }, [status])
-
-  useEffect(() => {
-    void loadDiscoverProfiles()
-  }, [loadDiscoverProfiles])
 
   useEffect(() => {
     if (!isEmbedded) return
@@ -1948,33 +1905,6 @@ export function PublicUserProfileSurface({
           </div>
         </section>
 
-        <section className="public-profile-feed-row bg-white pt-2">
-          <div className="flex gap-5 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {(discoverProfiles.length > 0 ? discoverProfiles : []).map((item) => {
-              const suggestionAvatar = resolveImageUrl(item.avatar)
-              return (
-                <Link key={item.id} href={`/u/${encodeURIComponent(item.id)}`} className="block min-w-[9rem] max-w-[9rem] text-left">
-                  <div className="overflow-hidden rounded-[28px] bg-transparent">
-                    <div className="mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-white text-lg font-semibold text-slate-700 shadow-[0_12px_22px_rgba(15,23,42,0.08)]">
-                      {suggestionAvatar ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={suggestionAvatar} alt={item.name} className="h-full w-full object-cover" />
-                      ) : (
-                        <span>{extractInitials(item.name)}</span>
-                      )}
-                    </div>
-                    <div className="mt-3 text-[15px] font-semibold tracking-[-0.03em] text-slate-900">{item.name}</div>
-                    {item.sharedGroupsCount ? <div className="mt-1 text-[12px] leading-5 text-slate-500">{item.sharedGroupsCount} shared groups</div> : <div className="mt-1 text-[12px] leading-5 text-slate-500">{item.schoolName || roleLabel(item.role)}</div>}
-                  </div>
-                </Link>
-              )
-            })}
-            {!discoverLoading && discoverProfiles.length === 0 ? (
-              <div className="rounded-[24px] border border-dashed border-slate-200 bg-white/80 px-4 py-5 text-sm text-slate-500">No profile suggestions yet.</div>
-            ) : null}
-          </div>
-        </section>
-
         <section className="public-profile-feed-row bg-white pt-6">
           <div className="flex items-center justify-between gap-4 px-4 sm:px-6">
             <h2 className="text-[26px] font-semibold tracking-[-0.05em] text-slate-900">{isSelf ? 'All posts' : `${firstName}'s posts`}</h2>
@@ -2019,17 +1949,6 @@ export function PublicUserProfileSurface({
                 rightActionLabel="Open posts menu"
                 rightActionTitle="Posts menu"
               />
-            </div>
-          ) : null}
-
-          {isSelf ? (
-            <div className="mt-5">
-              <button type="button" className="inline-flex w-full items-center justify-center gap-2 border-y border-slate-200 bg-white px-4 py-4 text-[17px] font-semibold tracking-[-0.03em] text-slate-900 transition hover:bg-slate-50" onClick={() => setOwnPostsManagerOpen(true)}>
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
-                  <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H11l-4.5 3v-3H6.5A2.5 2.5 0 0 1 4 13.5v-7Z" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Manage posts
-              </button>
             </div>
           ) : null}
         </section>

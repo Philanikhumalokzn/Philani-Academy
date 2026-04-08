@@ -44,10 +44,10 @@ math-field.keyboard-mathlive-field::part(virtual-keyboard-toggle) {
 
 .philani-image-crop--settling .ReactCrop__crop-selection {
   transition:
-    top 0.68s cubic-bezier(0.22, 0.61, 0.36, 1),
-    left 0.68s cubic-bezier(0.22, 0.61, 0.36, 1),
-    width 0.68s cubic-bezier(0.22, 0.61, 0.36, 1),
-    height 0.68s cubic-bezier(0.22, 0.61, 0.36, 1) !important;
+    top 0.76s cubic-bezier(0.22, 0.61, 0.36, 1),
+    left 0.76s cubic-bezier(0.22, 0.61, 0.36, 1),
+    width 0.76s cubic-bezier(0.22, 0.61, 0.36, 1),
+    height 0.76s cubic-bezier(0.22, 0.61, 0.36, 1) !important;
   will-change: top, left, width, height;
 }
 

@@ -4,7 +4,9 @@ import { cropAndRotateImageToFile, rotateImageFile } from '../lib/imageEdit'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
-const CROP_SETTLE_MS = 680
+const CROP_SETTLE_MS = 760
+const CHROME_HIDE_DELAY_MS = 1500
+const CHROME_FADE_MS = 520
 
 type Filters = {
   brightness: number // -100 to 100
@@ -121,7 +123,7 @@ export default function ImageCropperModal(props: {
     }
   }, [])
 
-  const scheduleChromeHide = useCallback((delay = 2000) => {
+  const scheduleChromeHide = useCallback((delay = CHROME_HIDE_DELAY_MS) => {
     if (typeof window === 'undefined') return
     clearChromeHideTimeout()
     chromeHideTimeoutRef.current = window.setTimeout(() => {
@@ -130,7 +132,7 @@ export default function ImageCropperModal(props: {
     }, delay)
   }, [clearChromeHideTimeout])
 
-  const bumpChromeVisibility = useCallback((delay = 2000) => {
+  const bumpChromeVisibility = useCallback((delay = CHROME_HIDE_DELAY_MS) => {
     setChromeVisible(true)
     if (filtersOpen || saving) {
       clearChromeHideTimeout()
@@ -573,8 +575,12 @@ export default function ImageCropperModal(props: {
 
         {/* Editor top bar */}
         <div
-          className={`absolute inset-x-0 top-0 z-20 pointer-events-none transition-all duration-300 ${chromeShown ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-3'}`}
-          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 4px)' }}
+          className={`absolute inset-x-0 top-0 z-20 pointer-events-none transition-all ${chromeShown ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-3'}`}
+          style={{
+            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 4px)',
+            transitionDuration: `${CHROME_FADE_MS}ms`,
+            transitionTimingFunction: 'cubic-bezier(0.22, 0.61, 0.36, 1)',
+          }}
         >
           <div className="px-3 pb-4 sm:px-5 bg-gradient-to-b from-black/50 via-black/20 to-transparent">
             <div className="flex items-center justify-between gap-3">
@@ -623,8 +629,12 @@ export default function ImageCropperModal(props: {
 
       {/* Bottom overlays: Android-style tools rail */}
       <div
-        className={`absolute inset-x-0 bottom-0 z-30 pointer-events-none transition-all duration-300 ${chromeShown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
-        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        className={`absolute inset-x-0 bottom-0 z-30 pointer-events-none transition-all ${chromeShown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
+        style={{
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          transitionDuration: `${CHROME_FADE_MS}ms`,
+          transitionTimingFunction: 'cubic-bezier(0.22, 0.61, 0.36, 1)',
+        }}
       >
         {filtersOpen ? (
           <div className="pointer-events-auto border-t border-white/12 bg-[linear-gradient(180deg,rgba(3,7,18,0.10),rgba(3,7,18,0.62)_22%,rgba(3,7,18,0.82)_100%)] px-4 pb-3 pt-4 backdrop-blur-xl sm:px-5">

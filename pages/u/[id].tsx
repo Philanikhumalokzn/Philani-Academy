@@ -1658,7 +1658,7 @@ export function PublicUserProfileSurface({
     }
 
     return (
-      <article key={post.id} data-post-id={postId || undefined} className="border-b border-black/10 bg-white px-4 py-3 sm:px-6">
+      <article key={post.id} data-post-id={postId || undefined} className="public-profile-feed-post bg-white py-3">
         <PublicFeedPostCard
           authorId={authorId}
           authorName={authorName}
@@ -1730,17 +1730,17 @@ export function PublicUserProfileSurface({
   }
 
   const renderPhotoGrid = () => {
-    if (postsLoading) return <div className="rounded-[24px] border border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-500 shadow-[0_14px_30px_rgba(15,23,42,0.06)]">Loading photos...</div>
-    if (photoPosts.length === 0) return <div className="rounded-[24px] border border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-500 shadow-[0_14px_30px_rgba(15,23,42,0.06)]">No photos yet.</div>
+    if (postsLoading) return <div className="public-profile-feed-message border-y border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">Loading photos...</div>
+    if (photoPosts.length === 0) return <div className="public-profile-feed-message border-y border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">No photos yet.</div>
     return (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-px bg-slate-200 sm:grid-cols-3">
         {photoPosts.map((post) => {
           const postImageUrl = resolveImageUrl(post.imageUrl)
           return (
             <button
               key={post.id}
               type="button"
-              className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
+              className="overflow-hidden bg-white"
               onClick={() => openImageViewer(postImageUrl, post.title || `${displayName} photo`)}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1753,19 +1753,19 @@ export function PublicUserProfileSurface({
   }
 
   const renderReels = () => {
-    if (challengesLoading) return <div className="rounded-[24px] border border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-500 shadow-[0_14px_30px_rgba(15,23,42,0.06)]">Loading reels...</div>
-    if (reelItems.length === 0) return <div className="rounded-[24px] border border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-500 shadow-[0_14px_30px_rgba(15,23,42,0.06)]">No reels yet.</div>
+    if (challengesLoading) return <div className="public-profile-feed-message border-y border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">Loading reels...</div>
+    if (reelItems.length === 0) return <div className="public-profile-feed-message border-y border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">No reels yet.</div>
     return (
-      <div className="space-y-4">
+      <div className="public-profile-feed-list divide-y divide-slate-200 border-y border-slate-200 bg-white">
         {reelItems.map((item) => {
           const imageUrl = resolveImageUrl(item.imageUrl)
           return (
-            <article key={item.id} className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_16px_36px_rgba(15,23,42,0.08)]">
+            <article key={item.id} className="overflow-hidden bg-white">
               <button type="button" className="block w-full text-left" onClick={() => openImageViewer(imageUrl, item.title || 'Reel')}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={imageUrl} alt={item.title || 'Reel'} className="max-h-[36rem] w-full object-cover" />
               </button>
-              <div className="px-5 py-4">
+              <div className="px-4 py-4 sm:px-6">
                 <div className="text-[17px] font-semibold tracking-[-0.03em] text-slate-900">{item.title || 'Reel'}</div>
                 {item.prompt ? <p className="mt-2 text-[15px] leading-7 text-slate-700">{item.prompt}</p> : null}
               </div>
@@ -1927,8 +1927,8 @@ export function PublicUserProfileSurface({
           </div>
         </section>
 
-        <div className="public-profile-content w-full">
-        <section className="border-t border-slate-200 bg-white px-4 pt-3 sm:px-6">
+        <div className="public-profile-content public-profile-feed w-full">
+        <section className="public-profile-feed-row border-t border-slate-200 bg-white pt-3">
           <div className="flex items-center gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {(['all', 'photos', 'reels'] as ProfileTab[]).map((tab) => {
               const active = activeTab === tab
@@ -1948,7 +1948,7 @@ export function PublicUserProfileSurface({
           </div>
         </section>
 
-        <section className="px-4 pt-2 sm:px-6">
+        <section className="public-profile-feed-row pt-2">
           <div className="flex gap-5 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {(discoverProfiles.length > 0 ? discoverProfiles : []).map((item) => {
               const suggestionAvatar = resolveImageUrl(item.avatar)
@@ -1975,8 +1975,8 @@ export function PublicUserProfileSurface({
           </div>
         </section>
 
-        <section className="px-4 pt-6 sm:px-6">
-          <div className="flex items-center justify-between gap-4">
+        <section className="public-profile-feed-row pt-6">
+          <div className="flex items-center justify-between gap-4 px-4 sm:px-6">
             <h2 className="text-[26px] font-semibold tracking-[-0.05em] text-slate-900">{isSelf ? 'All posts' : `${firstName}'s posts`}</h2>
             <button
               type="button"
@@ -1988,7 +1988,7 @@ export function PublicUserProfileSurface({
           </div>
 
           {isSelf ? (
-            <div className="mt-5 overflow-hidden rounded-[30px] border border-slate-200 bg-white px-4 py-2.5 shadow-[0_16px_34px_rgba(15,23,42,0.08)]">
+            <div className="public-profile-feed-row mt-5 border-y border-slate-200 bg-white px-4 py-3">
                 <FeedComposerPill
                   size="compact"
                   avatarUrl={currentViewerAvatarUrl}
@@ -2006,7 +2006,7 @@ export function PublicUserProfileSurface({
                 />
             </div>
           ) : canFollow ? (
-            <div className="mt-5 overflow-hidden rounded-[30px] border border-slate-200 bg-white px-4 py-2.5 shadow-[0_16px_34px_rgba(15,23,42,0.08)]">
+            <div className="public-profile-feed-row mt-5 border-y border-slate-200 bg-white px-4 py-3">
               <FeedComposerPill
                 size="compact"
                 avatarUrl={currentViewerAvatarUrl}
@@ -2024,7 +2024,7 @@ export function PublicUserProfileSurface({
 
           {isSelf ? (
             <div className="mt-5">
-              <button type="button" className="inline-flex w-full items-center justify-center gap-2 rounded-[22px] border border-slate-200 bg-slate-100 px-5 py-4 text-[17px] font-semibold tracking-[-0.03em] text-slate-900 shadow-sm transition hover:bg-slate-200" onClick={() => setOwnPostsManagerOpen(true)}>
+              <button type="button" className="inline-flex w-full items-center justify-center gap-2 border-y border-slate-200 bg-white px-4 py-4 text-[17px] font-semibold tracking-[-0.03em] text-slate-900 transition hover:bg-slate-50" onClick={() => setOwnPostsManagerOpen(true)}>
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
                   <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H11l-4.5 3v-3H6.5A2.5 2.5 0 0 1 4 13.5v-7Z" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
@@ -2034,12 +2034,12 @@ export function PublicUserProfileSurface({
           ) : null}
         </section>
 
-        <section className="space-y-5 px-4 pb-8 pt-6 sm:px-6">
-          {profileLoading ? <div className="rounded-[24px] border border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-500 shadow-[0_14px_30px_rgba(15,23,42,0.06)]">Loading profile...</div> : null}
-          {profileError ? <div className="rounded-[24px] border border-red-200 bg-red-50 px-5 py-8 text-center text-sm text-red-700 shadow-[0_14px_30px_rgba(220,38,38,0.08)]">{profileError}</div> : null}
+        <section className="public-profile-feed-row space-y-0 pb-8 pt-6">
+          {profileLoading ? <div className="public-profile-feed-message border-y border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">Loading profile...</div> : null}
+          {profileError ? <div className="public-profile-feed-message border-y border-red-200 bg-red-50 px-4 py-8 text-center text-sm text-red-700">{profileError}</div> : null}
 
           {!profileLoading && !profileError && activeTab === 'all' ? (
-            postsLoading ? <div className="rounded-[24px] border border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-500 shadow-[0_14px_30px_rgba(15,23,42,0.06)]">Loading posts...</div> : postsError ? <div className="rounded-[24px] border border-red-200 bg-red-50 px-5 py-8 text-center text-sm text-red-700 shadow-[0_14px_30px_rgba(220,38,38,0.08)]">{postsError}</div> : posts.length === 0 ? <div className="rounded-[24px] border border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-500 shadow-[0_14px_30px_rgba(15,23,42,0.06)]">No posts yet.</div> : posts.map(renderPostCard)
+            postsLoading ? <div className="public-profile-feed-message border-y border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">Loading posts...</div> : postsError ? <div className="public-profile-feed-message border-y border-red-200 bg-red-50 px-4 py-8 text-center text-sm text-red-700">{postsError}</div> : posts.length === 0 ? <div className="public-profile-feed-message border-y border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">No posts yet.</div> : <div className="public-profile-feed-list divide-y divide-black/10 border-y border-black/10 bg-white">{posts.map(renderPostCard)}</div>
           ) : null}
 
           {!profileLoading && !profileError && activeTab === 'photos' ? renderPhotoGrid() : null}

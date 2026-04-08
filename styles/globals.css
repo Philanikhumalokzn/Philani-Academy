@@ -435,6 +435,17 @@ body{
   margin-right:0;
 }
 
+.public-profile-feed,
+.public-profile-feed-row,
+.public-profile-feed-list,
+.public-profile-feed-message,
+.public-profile-feed-post{
+  width:100%;
+  max-width:none;
+  margin-left:0;
+  margin-right:0;
+}
+
 .public-profile-hero{
   position:relative;
   width:100vw;

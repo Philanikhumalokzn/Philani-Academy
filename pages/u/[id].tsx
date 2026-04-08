@@ -1953,7 +1953,7 @@ export function PublicUserProfileSurface({
           ) : null}
         </section>
 
-        <section className="public-profile-feed-row bg-white space-y-0 pb-8 pt-6">
+        <section className="public-profile-feed-row bg-white space-y-0 pb-8">
           {profileLoading ? <div className="public-profile-feed-message border-y border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">Loading profile...</div> : null}
           {profileError ? <div className="public-profile-feed-message border-y border-red-200 bg-red-50 px-4 py-8 text-center text-sm text-red-700">{profileError}</div> : null}
 

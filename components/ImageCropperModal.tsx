@@ -28,6 +28,8 @@ export default function ImageCropperModal(props: {
 
   const imgRef = useRef<HTMLImageElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const settleCropOnCompleteRef = useRef(false)
+  const recenterFrameRef = useRef<number | null>(null)
 
   const [workingFile, setWorkingFile] = useState<File | null>(null)
   const [rotation, setRotation] = useState(0)
@@ -103,29 +105,10 @@ export default function ImageCropperModal(props: {
     })
   }, [open, file, initialCrop])
 
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
-    if (scale <= 1.001) return
-    if (!containerRef.current) return
-    const target = e.target as HTMLElement | null
-    if (!target) return
-
-    // Pan only when dragging inside crop selection body; edge/corner handles remain crop-only.
-    const onHandle = target.closest('.ReactCrop__drag-handle, .ReactCrop__drag-bar')
-    const onCropBody = target.closest('.ReactCrop__crop-selection')
-    if (onHandle || !onCropBody) return
-
-    e.preventDefault()
-    e.stopPropagation()
-
-    const rect = containerRef.current.getBoundingClientRect()
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
-    setIsDragging(true)
-    setDragStart({
-      x: clientX - rect.left - panX,
-      y: clientY - rect.top - panY,
-    })
-  }, [panX, panY, scale])
+  const handleMouseDown = useCallback((_e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+    // Intentionally disabled: dragging the crop body should adjust the crop box,
+    // not pan the source image under it.
+  }, [])
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     if (!isDragging || !dragStart || !containerRef.current) return
@@ -263,13 +246,51 @@ export default function ImageCropperModal(props: {
     })
   }, [])
 
+  const recenterPreviewToCrop = useCallback((targetCrop: Crop | PixelCrop) => {
+    const img = imgRef.current
+    if (!img) return
+
+    const displayWidth = img.clientWidth || img.width
+    const displayHeight = img.clientHeight || img.height
+    if (!displayWidth || !displayHeight) return
+
+    const cropWidthPx = targetCrop.unit === '%' ? (displayWidth * targetCrop.width) / 100 : targetCrop.width
+    const cropHeightPx = targetCrop.unit === '%' ? (displayHeight * targetCrop.height) / 100 : targetCrop.height
+    if (!cropWidthPx || !cropHeightPx) return
+
+    const cropXPx = targetCrop.unit === '%' ? (displayWidth * targetCrop.x) / 100 : targetCrop.x
+    const cropYPx = targetCrop.unit === '%' ? (displayHeight * targetCrop.y) / 100 : targetCrop.y
+
+    const nextScale = clamp(Math.min(displayWidth / cropWidthPx, displayHeight / cropHeightPx), 1, 4)
+    const cropCenterX = cropXPx + cropWidthPx / 2
+    const cropCenterY = cropYPx + cropHeightPx / 2
+    const nextPanX = displayWidth / 2 - nextScale * cropCenterX
+    const nextPanY = displayHeight / 2 - nextScale * cropCenterY
+
+    setScale((current) => Math.abs(current - nextScale) < 0.001 ? current : nextScale)
+    setPanX((current) => Math.abs(current - nextPanX) < 0.5 ? current : nextPanX)
+    setPanY((current) => Math.abs(current - nextPanY) < 0.5 ? current : nextPanY)
+  }, [])
+
+  const schedulePreviewRecentering = useCallback((targetCrop: Crop | PixelCrop) => {
+    if (typeof window === 'undefined') return
+    if (recenterFrameRef.current !== null) {
+      window.cancelAnimationFrame(recenterFrameRef.current)
+    }
+    recenterFrameRef.current = window.requestAnimationFrame(() => {
+      recenterFrameRef.current = null
+      recenterPreviewToCrop(targetCrop)
+    })
+  }, [recenterPreviewToCrop])
+
   const resetCropStage = useCallback(() => {
     setCrop({ ...initialCrop })
     setCompletedCropPx(null)
     setPanX(0)
     setPanY(0)
     setScale(1)
-  }, [initialCrop])
+    schedulePreviewRecentering({ ...initialCrop })
+  }, [initialCrop, schedulePreviewRecentering])
 
   const revertAllEdits = useCallback(() => {
     if (!file) return
@@ -303,31 +324,12 @@ export default function ImageCropperModal(props: {
   }
 
   useEffect(() => {
-    if (!open) return
-    const img = imgRef.current
-    if (!img) return
-
-    const displayWidth = img.clientWidth || img.width
-    const displayHeight = img.clientHeight || img.height
-    if (!displayWidth || !displayHeight) return
-
-    const cropWidthPx = crop.unit === '%' ? (displayWidth * crop.width) / 100 : crop.width
-    const cropHeightPx = crop.unit === '%' ? (displayHeight * crop.height) / 100 : crop.height
-    if (!cropWidthPx || !cropHeightPx) return
-
-    const cropXPx = crop.unit === '%' ? (displayWidth * crop.x) / 100 : crop.x
-    const cropYPx = crop.unit === '%' ? (displayHeight * crop.y) / 100 : crop.y
-
-    const nextScale = clamp(Math.min(displayWidth / cropWidthPx, displayHeight / cropHeightPx), 1, 4)
-    const cropCenterX = cropXPx + cropWidthPx / 2
-    const cropCenterY = cropYPx + cropHeightPx / 2
-    const nextPanX = displayWidth / 2 - nextScale * cropCenterX
-    const nextPanY = displayHeight / 2 - nextScale * cropCenterY
-
-    setScale((current) => Math.abs(current - nextScale) < 0.001 ? current : nextScale)
-    setPanX((current) => Math.abs(current - nextPanX) < 0.5 ? current : nextPanX)
-    setPanY((current) => Math.abs(current - nextPanY) < 0.5 ? current : nextPanY)
-  }, [crop, open])
+    return () => {
+      if (typeof window !== 'undefined' && recenterFrameRef.current !== null) {
+        window.cancelAnimationFrame(recenterFrameRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (scale <= 1.001) {
@@ -387,7 +389,16 @@ export default function ImageCropperModal(props: {
                     onChange={(_, percentCrop) => {
                       setCrop(percentCrop)
                     }}
-                    onComplete={(px) => setCompletedCropPx(px)}
+                    onComplete={(px, percentCrop) => {
+                      setCompletedCropPx(px)
+                      if (settleCropOnCompleteRef.current) {
+                        settleCropOnCompleteRef.current = false
+                        schedulePreviewRecentering(percentCrop)
+                      }
+                    }}
+                    onDragEnd={() => {
+                      settleCropOnCompleteRef.current = true
+                    }}
                     keepSelection
                     aspect={aspectRatio}
                     circularCrop={circularCrop}
@@ -404,13 +415,14 @@ export default function ImageCropperModal(props: {
                         maxHeight: 'calc(100dvh - 11.5rem)',
                         transformOrigin: 'top left',
                         transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
-                        transition: isDragging ? 'none' : 'transform 0.1s ease-out',
-                        cursor: scale > 1.001 ? (isDragging ? 'grabbing' : 'grab') : 'default',
+                        transition: isDragging ? 'none' : 'transform 0.24s cubic-bezier(0.22, 1, 0.36, 1)',
+                        cursor: 'default',
                         ...getFilterStyle(),
                       }}
                       onLoad={() => {
                         setCrop({ ...initialCrop })
                         setCompletedCropPx(null)
+                        schedulePreviewRecentering({ ...initialCrop })
                       }}
                       draggable="false"
                     />
@@ -683,7 +695,7 @@ export default function ImageCropperModal(props: {
 
           <div className="mt-2 flex items-center justify-between px-1 text-[0.68rem] text-white/42">
             <span>{rotating ? 'Applying rotation...' : 'Modern crop editor'}</span>
-            <span>{scale > 1.001 ? 'Selected crop auto-centers as you refine' : 'Crop stays locked until zoomed'}</span>
+            <span>Crop settles into place after you release</span>
           </div>
         </div>
       </div>

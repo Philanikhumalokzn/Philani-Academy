@@ -1085,6 +1085,18 @@ body{
   padding:1rem;
 }
 
+.mobile-dashboard-edge .session-focus-pill-grid,
+.mobile-dashboard-edge .session-focus-meta-grid{
+  width:100%;
+  max-width:16rem;
+}
+
+.mobile-dashboard-edge .session-focus-pill-grid > span,
+.mobile-dashboard-edge .session-focus-meta-grid > span{
+  width:100%;
+  text-align:center;
+}
+
 .mobile-dashboard-edge .session-focus-copy{
   color:#5a6574 !important;
   max-width:34rem;
@@ -1114,8 +1126,9 @@ body{
 }
 
 .mobile-dashboard-edge .session-focus-grade-chip{
-  background:rgba(255,255,255,0.2);
-  color:#fff;
+  background:#ffffff;
+  color:#163b75;
+  border-color:rgba(37,87,183,0.12) !important;
 }
 
 .mobile-dashboard-edge .session-focus-meta{
@@ -1188,6 +1201,30 @@ body{
   padding:1rem !important;
 }
 
+.mobile-dashboard-edge .group-surface-toolbar,
+.mobile-dashboard-edge .group-surface-detail{
+  background:linear-gradient(180deg,#fbfcff 0%,#f4f8fd 100%) !important;
+  box-shadow:0 18px 40px rgba(15,23,42,0.07);
+}
+
+.mobile-dashboard-edge .group-surface-toolbar-grid,
+.mobile-dashboard-edge .group-surface-admin-grid,
+.mobile-dashboard-edge .group-surface-members-grid{
+  align-items:stretch;
+}
+
+.mobile-dashboard-edge .group-surface-panel{
+  padding:1rem;
+  border:1px solid rgba(15,23,42,0.08);
+  border-radius:22px;
+  background:rgba(255,255,255,0.92);
+  box-shadow:0 10px 24px rgba(15,23,42,0.05);
+}
+
+.mobile-dashboard-edge .group-surface-panel-emphasis{
+  background:linear-gradient(180deg,#f7fbff 0%,#eef5ff 100%);
+}
+
 .mobile-dashboard-edge .group-surface-heading{
   color:#1c1e21 !important;
   font-size:0.95rem;
@@ -1201,8 +1238,27 @@ body{
   line-height:1.4;
 }
 
+.mobile-dashboard-edge .group-surface-chip{
+  background:#eef4ff;
+  color:#2858aa;
+  border:1px solid rgba(37,87,183,0.1);
+}
+
+.mobile-dashboard-edge .group-surface-role-pill{
+  background:#ffffff;
+  color:#1f3f75;
+  border:1px solid rgba(37,87,183,0.12);
+  box-shadow:0 6px 16px rgba(37,87,183,0.08);
+}
+
 .mobile-dashboard-edge .group-surface-item{
   transition:background-color 160ms ease,border-color 160ms ease,box-shadow 160ms ease;
+}
+
+.mobile-dashboard-edge .group-surface-list-item,
+.mobile-dashboard-edge .group-surface-request-card,
+.mobile-dashboard-edge .group-surface-member-card{
+  border-radius:22px !important;
 }
 
 .mobile-dashboard-edge .group-surface-item-active{

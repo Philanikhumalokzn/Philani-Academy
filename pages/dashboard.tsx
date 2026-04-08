@@ -780,6 +780,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return startLabel === endLabel ? startLabel : `${startLabel} - ${endLabel}`
   }, [])
 
+  const formatCompactLabel = useCallback((value: unknown) => {
+    const raw = String(value || '').replace(/_/g, ' ').trim()
+    if (!raw) return ''
+    return raw.replace(/\b\w/g, (char) => char.toUpperCase())
+  }, [])
+
   const formatFeedPostDate = useCallback((value: unknown) => {
     if (!value) return ''
     const dt = value instanceof Date ? value : new Date(String(value))
@@ -10001,11 +10007,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       const lessonThumb = typeof session?.thumbnailUrl === 'string' && session.thumbnailUrl.trim() ? session.thumbnailUrl.trim() : ''
       const sessionDay = formatSessionDayCompact(session?.startsAt)
       const sessionTime = formatSessionTimeCompact(session?.startsAt, (session as any)?.endsAt || session?.startsAt)
+      const schedulePills = [sessionDay, sessionTime].filter(Boolean)
       const sessionSummary = isSubscriptionBlocked
-        ? 'Subscription required to join this lesson and unlock assignments.'
+        ? 'Subscribe to join and unlock assignments.'
         : canLaunchCanvasOverlay
-        ? 'Join the live board, open quizzes, and stay on top of assignments from one clean banner.'
-        : 'This lesson is ready, but the classroom tools are not available yet.'
+        ? 'Board, quizzes and assignments in one place.'
+        : 'Lesson tools are not available yet.'
 
       return (
         <div className="session-focus-card session-focus-banner overflow-hidden rounded-[28px] border border-white/10 bg-white/5 p-0">
@@ -10023,11 +10030,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div className="pointer-events-none absolute bottom-0 left-0 h-28 w-28 rounded-full bg-cyan-200/12 blur-3xl" />
 
             <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="session-focus-chip inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/88">
+              <div className="session-focus-pill-grid grid min-w-0 flex-1 max-w-[15rem] grid-cols-2 gap-2">
+                <span className="session-focus-chip inline-flex w-full items-center justify-center rounded-full border border-white/12 bg-white/82 px-3 py-1 text-[11px] font-semibold text-[#2557b7] backdrop-blur-md">
                   {accentLabel}
                 </span>
-                <span className="session-focus-grade-chip inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/82">
+                <span className="session-focus-grade-chip inline-flex w-full items-center justify-center rounded-full border border-black/10 bg-white/92 px-3 py-1 text-[11px] font-semibold text-slate-900/78 backdrop-blur-md">
                   {activeGradeLabel}
                 </span>
               </div>
@@ -10043,17 +10050,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </div>
 
             <div className="absolute inset-x-0 bottom-0 p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                {sessionDay ? (
-                  <span className="session-focus-meta inline-flex items-center justify-center rounded-full border border-white/14 bg-black/20 px-3 py-1 text-[11px] font-semibold text-white/90 backdrop-blur-md">
-                    {sessionDay}
+              <div className={`session-focus-meta-grid grid max-w-[16rem] gap-2 ${schedulePills.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                {schedulePills.map((label) => (
+                  <span key={label} className="session-focus-meta inline-flex w-full items-center justify-center rounded-full border border-white/14 bg-black/20 px-3 py-1 text-[11px] font-semibold text-white/90 backdrop-blur-md">
+                    {label}
                   </span>
-                ) : null}
-                {sessionTime ? (
-                  <span className="session-focus-meta inline-flex items-center justify-center rounded-full border border-white/14 bg-black/20 px-3 py-1 text-[11px] font-semibold text-white/90 backdrop-blur-md">
-                    {sessionTime}
-                  </span>
-                ) : null}
+                ))}
               </div>
             </div>
           </div>
@@ -10108,7 +10110,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 className="session-focus-heading text-base font-semibold text-white">Current lesson</h2>
-              <div className="session-focus-subtitle text-xs muted">Live classroom for {activeGradeLabel}</div>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
               {sessionCanOrchestrateLessons ? (
@@ -10558,7 +10559,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         )}
 
         <div className="card space-y-3">
-          <h2 className="text-lg font-semibold text-center">Scheduled lesson - {activeGradeLabel}</h2>
+          <h2 className="text-lg font-semibold text-center">Upcoming lessons</h2>
           {isAdmin && (
             <div className="p-3 border border-white/10 rounded bg-white/5 space-y-2">
               <div className="font-medium">Subscription gating</div>
@@ -10601,7 +10602,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   onClick={() => openPastSessionsList(pastSessionIds)}
                   disabled={isSubscriptionBlocked}
                 >
-                  Browse past sessions
+                  Past lessons
                 </button>
               )}
               <ul className="space-y-3">
@@ -12593,65 +12594,105 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         return <AnnouncementsSection />
       case 'sessions':
         return renderSessionsSection()
-      case 'groups':
+      case 'groups': {
+        const selectedMembership = selectedGroupId ? myGroups.find((g) => g.group.id === selectedGroupId) ?? null : null
+        const selectedGroupRecord = selectedMembership?.group ?? null
+        const selectedGroupMeta = [
+          formatCompactLabel(selectedGroupRecord?.type),
+          selectedGroupRecord?.grade ? gradeToLabel(selectedGroupRecord.grade as GradeValue) : '',
+          typeof selectedGroupRecord?.membersCount === 'number'
+            ? `${selectedGroupRecord.membersCount} member${selectedGroupRecord.membersCount === 1 ? '' : 's'}`
+            : '',
+        ].filter(Boolean)
+        const myId = (session as any)?.user?.id as string | undefined
+        const myRole = selectedMembership?.memberRole || ''
+        const canManageSelectedGroup = Boolean(
+          selectedGroupId && (
+            currentLessonRoleProfile.capabilities.canOrchestrateLesson ||
+            myRole === 'owner' ||
+            myRole === 'instructor' ||
+            (myId && selectedGroupCreatedById && myId === selectedGroupCreatedById)
+          )
+        )
+        const pendingForGroup = selectedGroupId
+          ? actionJoinRequests.filter((r) => String(r?.groupId || r?.group?.id || '') === selectedGroupId)
+          : []
+        const groupsIntro = currentLessonRoleProfile.capabilities.canOrchestrateLesson
+          ? 'Create, invite and manage circles from one clean workspace.'
+          : 'Create a study circle or join one with a code.'
+
         return (
-          <div className="space-y-3 p-1">
-            <section className="group-surface-card card p-4 space-y-3">
-              <div className="group-surface-heading text-sm font-semibold text-white">New group</div>
-              <div className="grid gap-2">
-                <input
-                  className="input"
-                  value={createGroupName}
-                  onChange={(e) => setCreateGroupName(e.target.value)}
-                  placeholder="e.g. Grade 12 Maths - Study Group"
-                  maxLength={80}
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <select className="input" value={createGroupType} onChange={(e) => setCreateGroupType((e.target.value as any) || 'study_group')}>
-                    <option value="study_group">Study group</option>
-                    <option value="class">Class</option>
-                    <option value="cohort">Cohort</option>
-                  </select>
-                  <select className="input" value={createGroupGrade} onChange={(e) => setCreateGroupGrade(e.target.value)}>
-                    <option value="">Grade (optional)</option>
-                    {GRADE_VALUES.map((g) => (
-                      <option key={g} value={g}>
-                        {gradeToLabel(g)}
-                      </option>
-                    ))}
-                  </select>
+          <div className="group-surface-shell space-y-4 p-1">
+            <section className="group-surface-card group-surface-toolbar card p-4">
+              <div className="group-surface-toolbar-grid grid gap-3 md:grid-cols-2">
+                <div className="group-surface-panel group-surface-panel-emphasis space-y-3">
+                  <div className="space-y-1">
+                    <div className="group-surface-heading text-sm font-semibold text-white">Start a group</div>
+                    <div className="group-surface-note text-xs muted">{groupsIntro}</div>
+                  </div>
+                  <div className="grid gap-2">
+                    <input
+                      className="input"
+                      value={createGroupName}
+                      onChange={(e) => setCreateGroupName(e.target.value)}
+                      placeholder="Group name"
+                      maxLength={80}
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <select className="input" value={createGroupType} onChange={(e) => setCreateGroupType((e.target.value as any) || 'study_group')}>
+                        <option value="study_group">Study group</option>
+                        <option value="class">Class</option>
+                        <option value="cohort">Cohort</option>
+                      </select>
+                      <select className="input" value={createGroupGrade} onChange={(e) => setCreateGroupGrade(e.target.value)}>
+                        <option value="">Grade</option>
+                        {GRADE_VALUES.map((g) => (
+                          <option key={g} value={g}>
+                            {gradeToLabel(g)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary w-full"
+                      disabled={createGroupBusy || !createGroupName.trim()}
+                      onClick={createGroup}
+                    >
+                      {createGroupBusy ? 'Creating...' : 'Create group'}
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  className="btn btn-secondary w-full sm:w-auto"
-                  disabled={createGroupBusy || !createGroupName.trim()}
-                  onClick={createGroup}
-                >
-                  {createGroupBusy ? 'Creating...' : 'Create group'}
-                </button>
-                <div className="group-surface-note text-xs muted">Learners can create groups for their grade or below.</div>
+
+                <div className="group-surface-panel space-y-3">
+                  <div className="space-y-1">
+                    <div className="group-surface-heading text-sm font-semibold text-white">Join with code</div>
+                    <div className="group-surface-note text-xs muted">Paste a code and enter straight away.</div>
+                  </div>
+                  <div className="grid gap-2">
+                    <input
+                      className="input"
+                      value={joinCode}
+                      onChange={(e) => setJoinCode(e.target.value)}
+                      placeholder="Enter join code"
+                      maxLength={16}
+                    />
+                    <button type="button" className="btn btn-secondary w-full" disabled={joinBusy || !joinCode.trim()} onClick={joinGroupByCode}>
+                      {joinBusy ? 'Joining...' : 'Join group'}
+                    </button>
+                  </div>
+                </div>
               </div>
             </section>
 
             <section className="group-surface-card card p-4 space-y-3">
-              <div className="group-surface-heading text-sm font-semibold text-white">Join group</div>
-              <div className="flex items-center gap-2">
-                <input
-                  className="input flex-1"
-                  value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value)}
-                  placeholder="Enter join code"
-                  maxLength={16}
-                />
-                <button type="button" className="btn btn-secondary" disabled={joinBusy || !joinCode.trim()} onClick={joinGroupByCode}>
-                  {joinBusy ? 'Joining...' : 'Join'}
-                </button>
-              </div>
-            </section>
-
-            <section className="group-surface-card card p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="group-surface-heading text-sm font-semibold text-white">Groups</div>
+              <div className="flex items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="group-surface-heading text-sm font-semibold text-white">My groups</div>
+                  <div className="group-surface-note text-xs muted">
+                    {myGroups.length === 0 ? 'Nothing joined yet.' : `${myGroups.length} active group${myGroups.length === 1 ? '' : 's'}`}
+                  </div>
+                </div>
                 <button type="button" className="btn btn-ghost" onClick={() => void loadMyGroups()}>
                   Refresh
                 </button>
@@ -12662,56 +12703,73 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               ) : myGroupsError ? (
                 <div className="text-sm text-red-200">{myGroupsError}</div>
               ) : myGroups.length === 0 ? (
-                <div className="text-sm muted">No groups yet.</div>
+                <div className="text-sm muted">Groups you create or join will appear here.</div>
               ) : (
-                <div className="grid gap-2">
-                  {myGroups.map((row) => (
-                    <button
-                      key={row.group.id}
-                      type="button"
-                      className={`group-surface-item card p-3 text-left ${selectedGroupId === row.group.id ? 'group-surface-item-active' : ''}`}
-                      onClick={() => void loadGroupMembers(row.group.id)}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="font-semibold text-white break-words">{row.group.name}</div>
-                          <div className="text-xs muted">
-                            {row.group.type.replace('_', ' ')}
-                            {row.group.grade ? ` - ${gradeToLabel(row.group.grade as GradeValue)}` : ''}
-                            {` - ${row.group.membersCount} member${row.group.membersCount === 1 ? '' : 's'}`}
+                <div className="group-surface-list grid gap-2">
+                  {myGroups.map((row) => {
+                    const groupMeta = [
+                      formatCompactLabel(row.group.type),
+                      row.group.grade ? gradeToLabel(row.group.grade as GradeValue) : '',
+                      `${row.group.membersCount} member${row.group.membersCount === 1 ? '' : 's'}`,
+                    ].filter(Boolean)
+
+                    return (
+                      <button
+                        key={row.group.id}
+                        type="button"
+                        className={`group-surface-item group-surface-list-item card p-3 text-left ${selectedGroupId === row.group.id ? 'group-surface-item-active' : ''}`}
+                        onClick={() => void loadGroupMembers(row.group.id)}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0 space-y-2">
+                            <div className="font-semibold text-white break-words">{row.group.name}</div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {groupMeta.map((meta) => (
+                                <span key={meta} className="group-surface-chip inline-flex items-center justify-center rounded-full px-3 py-1 text-[11px] font-semibold">
+                                  {meta}
+                                </span>
+                              ))}
+                            </div>
                           </div>
+                          <span className="group-surface-role-pill shrink-0 inline-flex items-center justify-center rounded-full px-3 py-1 text-[11px] font-semibold">
+                            {formatCompactLabel(row.memberRole) || 'Member'}
+                          </span>
                         </div>
-                        <div className="text-xs muted">{row.memberRole}</div>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    )
+                  })}
                 </div>
               )}
             </section>
 
-            {selectedGroupId && (
-              <section className="group-surface-card card p-4 space-y-3">
-                {(() => {
-                  const myId = (session as any)?.user?.id as string | undefined
-                  const membership = myGroups.find((g) => g.group.id === selectedGroupId)
-                  const myRole = membership?.memberRole || ''
-                  const canManage =
-                    currentLessonRoleProfile.capabilities.canOrchestrateLesson ||
-                    myRole === 'owner' ||
-                    myRole === 'instructor' ||
-                    (myId && selectedGroupCreatedById && myId === selectedGroupCreatedById)
+            {selectedGroupId ? (
+              <section className="group-surface-card group-surface-detail card p-4 space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div className="min-w-0 space-y-2">
+                    <div className="group-surface-heading text-base font-semibold text-white break-words">
+                      {selectedGroupRecord?.name || 'Selected group'}
+                    </div>
+                    {selectedGroupMeta.length > 0 ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {selectedGroupMeta.map((meta) => (
+                          <span key={meta} className="group-surface-chip inline-flex items-center justify-center rounded-full px-3 py-1 text-[11px] font-semibold">
+                            {meta}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  {selectedGroupLoading ? <div className="text-xs muted">Refreshing...</div> : null}
+                </div>
 
-                  if (!canManage) return null
-
-                  const pendingForGroup = actionJoinRequests.filter((r) => String(r?.groupId || r?.group?.id || '') === selectedGroupId)
-
-                  return (
-                    <>
-                      <div className="card p-3 space-y-3">
-                        <div className="group-surface-heading text-sm font-semibold text-white">Code</div>
-                        {selectedGroupJoinCode ? (
-                          <div className="flex items-center gap-2">
-                            <input className="input flex-1" value={selectedGroupJoinCode} readOnly />
+                {canManageSelectedGroup ? (
+                  <div className="group-surface-admin-grid grid gap-3 lg:grid-cols-2">
+                    <div className="group-surface-panel space-y-3">
+                      <div className="group-surface-heading text-sm font-semibold text-white">Join code</div>
+                      {selectedGroupJoinCode ? (
+                        <>
+                          <input className="input" value={selectedGroupJoinCode} readOnly />
+                          <div className="grid grid-cols-2 gap-2">
                             <button
                               type="button"
                               className="btn btn-ghost"
@@ -12730,156 +12788,167 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               {regenerateJoinCodeBusy ? 'Regenerating...' : 'Regenerate'}
                             </button>
                           </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <div className="text-sm muted flex-1">Members do not see the code.</div>
-                            <button type="button" className="btn btn-secondary" disabled={regenerateJoinCodeBusy} onClick={regenerateSelectedGroupJoinCode}>
-                              {regenerateJoinCodeBusy ? 'Regenerating...' : 'Regenerate'}
-                            </button>
-                          </div>
-                        )}
-
-                        <div className="group-surface-heading text-sm font-semibold text-white">Invite</div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            className="input flex-1"
-                            placeholder="learner@example.com"
-                            value={inviteEmail}
-                            onChange={(e) => setInviteEmail(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault()
-                                void sendSelectedGroupInvite()
-                              }
-                            }}
-                          />
-                          <button type="button" className="btn btn-secondary" disabled={inviteBusy || !inviteEmail.trim()} onClick={() => void sendSelectedGroupInvite()}>
-                            {inviteBusy ? 'Sending...' : 'Invite'}
+                        </>
+                      ) : (
+                        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                          <div className="text-sm muted">Join code is hidden from members.</div>
+                          <button type="button" className="btn btn-secondary" disabled={regenerateJoinCodeBusy} onClick={regenerateSelectedGroupJoinCode}>
+                            {regenerateJoinCodeBusy ? 'Regenerating...' : 'Generate'}
                           </button>
                         </div>
+                      )}
+                    </div>
 
-                        {selectedGroupAllowJoinRequests && (
-                          <div className="group-surface-note text-xs muted">Requests can also come from Discover.</div>
-                        )}
-                      </div>
+                    <div className="group-surface-panel space-y-3">
+                      <div className="group-surface-heading text-sm font-semibold text-white">Invite learner</div>
+                      <input
+                        className="input"
+                        placeholder="Email address"
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            void sendSelectedGroupInvite()
+                          }
+                        }}
+                      />
+                      <button type="button" className="btn btn-secondary w-full" disabled={inviteBusy || !inviteEmail.trim()} onClick={() => void sendSelectedGroupInvite()}>
+                        {inviteBusy ? 'Sending...' : 'Send invite'}
+                      </button>
+                    </div>
 
-                      <div className="card p-3 space-y-2">
+                    <div className="group-surface-panel space-y-3 lg:col-span-2">
+                      <div className="flex items-center justify-between gap-2">
                         <div className="group-surface-heading text-sm font-semibold text-white">Requests</div>
-                        {notificationsLoading ? (
-                          <div className="text-sm muted">Loading...</div>
-                        ) : pendingForGroup.length === 0 ? (
-                          <div className="text-sm muted">No pending requests.</div>
-                        ) : (
-                          <div className="grid gap-2">
-                            {pendingForGroup.map((r: any) => {
-                              const requesterVerified = r?.requestedBy?.verified || hasLessonCapabilityForRole(r?.requestedBy?.role, 'canOrchestrateLesson')
-                              return (
-                                <div key={r.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                                  <div className="text-sm text-white/90">
-                                    <UserLink
-                                      userId={r.requestedBy?.id}
-                                      className="font-semibold text-white/90 hover:underline"
-                                      title="View profile"
-                                    >
-                                      {r.requestedBy?.name || r.requestedBy?.email || 'Learner'}
+                        {pendingForGroup.length > 0 ? (
+                          <span className="group-surface-role-pill inline-flex items-center justify-center rounded-full px-3 py-1 text-[11px] font-semibold">
+                            {pendingForGroup.length} pending
+                          </span>
+                        ) : null}
+                      </div>
+                      {notificationsLoading ? (
+                        <div className="text-sm muted">Loading...</div>
+                      ) : pendingForGroup.length === 0 ? (
+                        <div className="text-sm muted">No pending requests.</div>
+                      ) : (
+                        <div className="grid gap-2">
+                          {pendingForGroup.map((r: any) => {
+                            const requesterVerified = r?.requestedBy?.verified || hasLessonCapabilityForRole(r?.requestedBy?.role, 'canOrchestrateLesson')
+                            return (
+                              <div key={r.id} className="group-surface-request-card rounded-2xl border border-white/10 bg-white/5 p-3">
+                                <div className="text-sm text-white/90">
+                                  <UserLink
+                                    userId={r.requestedBy?.id}
+                                    className="font-semibold text-white/90 hover:underline"
+                                    title="View profile"
+                                  >
+                                    {r.requestedBy?.name || r.requestedBy?.email || 'Learner'}
+                                  </UserLink>
+                                  {requesterVerified ? (
+                                    <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white align-middle" aria-label="Verified" title="Verified">
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                        <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                                      </svg>
+                                    </span>
+                                  ) : null}{' '}
+                                  wants to join
+                                </div>
+                                <div className="mt-3 grid grid-cols-2 gap-2">
+                                  <button type="button" className="btn btn-secondary" onClick={() => void respondJoinRequest(r.id, 'accept')}>Accept</button>
+                                  <button type="button" className="btn btn-ghost" onClick={() => void respondJoinRequest(r.id, 'decline')}>Decline</button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="group-surface-heading text-sm font-semibold text-white">Members</div>
+                    <div className="group-surface-note text-xs muted">
+                      {selectedGroupMembers.length} person{selectedGroupMembers.length === 1 ? '' : 's'}
+                    </div>
+                  </div>
+                  {selectedGroupMembers.length === 0 ? (
+                    <div className="text-sm muted">No members found.</div>
+                  ) : (
+                    <div className="group-surface-members-grid grid gap-2 md:grid-cols-2">
+                      {selectedGroupMembers.map((m) => {
+                        const verified = hasLessonCapabilityForRole(m.user.role, 'canOrchestrateLesson')
+                        const label = getPlatformRoleDisplayLabel(m.user.role, {
+                          learnerGradeLabel: m.user.grade ? gradeToLabel(m.user.grade as GradeValue) : '',
+                          variant: 'dashboard',
+                        })
+                        const memberMeta = [label, m.user.statusBio].filter(Boolean).join(' • ')
+                        const showRoleTick = verified && Boolean(label)
+                        const showAvatarTick = verified && !showRoleTick && Boolean(m.user.avatar)
+                        const showNameTick = verified && !showRoleTick && !m.user.avatar
+
+                        return (
+                          <div key={m.membershipId} className="group-surface-member-card card p-3 text-left">
+                            <div className="flex items-center gap-3">
+                              <UserLink userId={m.user.id} className="shrink-0" title="View profile">
+                                <div className="relative overflow-visible">
+                                  <div className="h-10 w-10 aspect-square rounded-full border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90 profile-avatar-container">
+                                    {m.user.avatar ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img src={m.user.avatar} alt={m.user.name} className="h-full w-full object-cover" />
+                                    ) : (
+                                      <span className="text-sm font-semibold">{(m.user.name || 'U').slice(0, 1).toUpperCase()}</span>
+                                    )}
+                                  </div>
+                                  {showAvatarTick ? (
+                                    <span className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                        <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                                      </svg>
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </UserLink>
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <UserLink userId={m.user.id} className="font-semibold text-white truncate hover:underline" title="View profile">
+                                      {m.user.name}
                                     </UserLink>
-                                    {requesterVerified ? (
-                                      <span className="ml-1 inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white align-middle" aria-label="Verified" title="Verified">
+                                    {showNameTick ? (
+                                      <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                           <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
                                         </svg>
                                       </span>
-                                    ) : null}{' '}
-                                    wants to join
+                                    ) : null}
                                   </div>
-                                  <div className="mt-2 flex gap-2">
-                                    <button type="button" className="btn btn-secondary" onClick={() => void respondJoinRequest(r.id, 'accept')}>Accept</button>
-                                    <button type="button" className="btn btn-ghost" onClick={() => void respondJoinRequest(r.id, 'decline')}>Decline</button>
-                                  </div>
+                                  <span className="group-surface-role-pill shrink-0 inline-flex items-center justify-center rounded-full px-3 py-1 text-[11px] font-semibold">
+                                    {formatCompactLabel(m.memberRole) || 'Member'}
+                                  </span>
                                 </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )
-                })()}
-
-                <div className="flex items-center justify-between gap-2">
-                  <div className="group-surface-heading text-sm font-semibold text-white">Members</div>
-                  {selectedGroupLoading && <div className="text-xs muted">Loading...</div>}
-                </div>
-                {selectedGroupMembers.length === 0 ? (
-                  <div className="text-sm muted">No members found.</div>
-                ) : (
-                  <div className="grid gap-2">
-                    {selectedGroupMembers.map((m) => {
-                      const verified = hasLessonCapabilityForRole(m.user.role, 'canOrchestrateLesson')
-                      const label = getPlatformRoleDisplayLabel(m.user.role, {
-                        learnerGradeLabel: m.user.grade ? gradeToLabel(m.user.grade as GradeValue) : '',
-                        variant: 'dashboard',
-                      })
-                      const showRoleTick = verified && Boolean(label)
-                      const showAvatarTick = verified && !showRoleTick && Boolean(m.user.avatar)
-                      const showNameTick = verified && !showRoleTick && !m.user.avatar
-                      return (
-                        <div
-                          key={m.membershipId}
-                          className="card p-3 text-left"
-                        >
-                          <div className="flex items-center gap-3">
-                            <UserLink userId={m.user.id} className="shrink-0" title="View profile">
-                              <div className="relative overflow-visible">
-                                <div className="h-10 w-10 aspect-square rounded-full border border-white/15 bg-white/5 overflow-hidden flex items-center justify-center text-white/90 profile-avatar-container">
-                                  {m.user.avatar ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={m.user.avatar} alt={m.user.name} className="h-full w-full object-cover" />
-                                  ) : (
-                                    <span className="text-sm font-semibold">{(m.user.name || 'U').slice(0, 1).toUpperCase()}</span>
-                                  )}
+                                <div className="text-xs muted truncate inline-flex items-center gap-1">
+                                  <span className="truncate">{memberMeta}</span>
+                                  {showRoleTick ? (
+                                    <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                        <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
+                                      </svg>
+                                    </span>
+                                  ) : null}
                                 </div>
-                                {showAvatarTick ? (
-                                  <span className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-blue-500 text-white flex items-center justify-center border border-white/50 shadow-md pointer-events-none" aria-label="Verified" title="Verified">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                      <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                                    </svg>
-                                  </span>
-                                ) : null}
-                              </div>
-                            </UserLink>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <UserLink userId={m.user.id} className="font-semibold text-white truncate hover:underline" title="View profile">
-                                  {m.user.name}
-                                </UserLink>
-                                {showNameTick ? (
-                                  <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                      <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                                    </svg>
-                                  </span>
-                                ) : null}
-                              </div>
-                              <div className="text-xs muted truncate inline-flex items-center gap-1">
-                                <span className="truncate">{label}{m.user.statusBio ? ` - ${m.user.statusBio}` : ''}</span>
-                                {showRoleTick ? (
-                                  <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-500 text-white" aria-label="Verified" title="Verified">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                      <path d="M9.0 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" fill="currentColor" />
-                                    </svg>
-                                  </span>
-                                ) : null}
                               </div>
                             </div>
                           </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               </section>
-            )}
+            ) : null}
 
             {(profilePeekError || profilePeek) && (
               <section className="space-y-2">
@@ -13108,14 +13177,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   ) => {
     const meta = {
       sessions: {
-        eyebrow: 'Classroom Flow',
-        title: 'Classroom',
-        subtitle: 'Sessions, quizzes and assignments'
+        eyebrow: '',
+        title: 'Lessons',
+        subtitle: 'Now, next and past'
       },
       groups: {
-        eyebrow: 'Your Circle',
+        eyebrow: '',
         title: 'Groups',
-        subtitle: 'Study circles'
+        subtitle: 'Create, join and manage'
       },
       discover: {
         eyebrow: 'Search & Connect',
@@ -13137,10 +13206,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <div className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e8f1ff] text-[#1877f2]">
                 {renderStudentSurfaceIcon(id)}
               </div>
-              <div className="min-w-0">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">{meta.eyebrow}</div>
-                <div className="mt-1 font-semibold text-[#1c1e21]">{meta.title}</div>
-                <div className="text-[12px] text-[#65676b]">{meta.subtitle}</div>
+              <div className="min-w-0 space-y-0.5">
+                {meta.eyebrow ? <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">{meta.eyebrow}</div> : null}
+                <div className="font-semibold text-[#1c1e21]">{meta.title}</div>
+                {meta.subtitle ? <div className="text-[12px] text-[#65676b]">{meta.subtitle}</div> : null}
               </div>
             </div>
             {action ? <div className="shrink-0">{action}</div> : null}

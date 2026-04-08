@@ -32,6 +32,7 @@ export default function ImageCropperModal(props: {
   const recenterFrameRef = useRef<number | null>(null)
   const settleApplyFrameRef = useRef<number | null>(null)
   const settleTimeoutRef = useRef<number | null>(null)
+  const chromeHideTimeoutRef = useRef<number | null>(null)
 
   const [workingFile, setWorkingFile] = useState<File | null>(null)
   const [rotation, setRotation] = useState(0)
@@ -65,6 +66,7 @@ export default function ImageCropperModal(props: {
   const [error, setError] = useState<string | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [isSettlingCrop, setIsSettlingCrop] = useState(false)
+  const [chromeVisible, setChromeVisible] = useState(true)
 
   const objectUrl = useMemo(() => {
     if (!open) return null
@@ -100,6 +102,7 @@ export default function ImageCropperModal(props: {
     setError(null)
     setFiltersOpen(false)
     setIsSettlingCrop(false)
+    setChromeVisible(true)
     setFilters({
       brightness: 0,
       contrast: 0,
@@ -108,6 +111,46 @@ export default function ImageCropperModal(props: {
       hue: 0,
     })
   }, [open, file, initialCrop])
+
+  const clearChromeHideTimeout = useCallback(() => {
+    if (typeof window === 'undefined') return
+    if (chromeHideTimeoutRef.current !== null) {
+      window.clearTimeout(chromeHideTimeoutRef.current)
+      chromeHideTimeoutRef.current = null
+    }
+  }, [])
+
+  const scheduleChromeHide = useCallback((delay = 2000) => {
+    if (typeof window === 'undefined') return
+    clearChromeHideTimeout()
+    chromeHideTimeoutRef.current = window.setTimeout(() => {
+      chromeHideTimeoutRef.current = null
+      setChromeVisible(false)
+    }, delay)
+  }, [clearChromeHideTimeout])
+
+  const bumpChromeVisibility = useCallback((delay = 2000) => {
+    setChromeVisible(true)
+    if (filtersOpen || saving) {
+      clearChromeHideTimeout()
+      return
+    }
+    scheduleChromeHide(delay)
+  }, [clearChromeHideTimeout, filtersOpen, saving, scheduleChromeHide])
+
+  const handleEditorInteraction = useCallback(() => {
+    bumpChromeVisibility()
+  }, [bumpChromeVisibility])
+
+  useEffect(() => {
+    if (!open) return
+    if (filtersOpen || saving) {
+      setChromeVisible(true)
+      clearChromeHideTimeout()
+      return
+    }
+    scheduleChromeHide()
+  }, [clearChromeHideTimeout, filtersOpen, open, saving, scheduleChromeHide])
 
   const handleMouseDown = useCallback((_e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     // Intentionally disabled: dragging the crop body should adjust the crop box,
@@ -144,6 +187,7 @@ export default function ImageCropperModal(props: {
 
   const rotateBy = useCallback(async (deltaDeg: number) => {
     if (!workingFile) return
+    bumpChromeVisibility()
     setRotating(true)
     setError(null)
     try {
@@ -160,11 +204,12 @@ export default function ImageCropperModal(props: {
     } finally {
       setRotating(false)
     }
-  }, [workingFile, initialCrop])
+  }, [bumpChromeVisibility, workingFile, initialCrop])
 
   const doConfirm = useCallback(async () => {
     if (!workingFile) return
     if (!objectUrl) return
+    bumpChromeVisibility()
 
     const img = imgRef.current
     if (!img) return
@@ -233,14 +278,16 @@ export default function ImageCropperModal(props: {
       setError(e?.message || 'Failed to process image')
       setSaving(false)
     }
-  }, [completedCropPx, file, objectUrl, onConfirm, onUseOriginal, panX, panY, scale, workingFile])
+  }, [bumpChromeVisibility, completedCropPx, file, objectUrl, onConfirm, onUseOriginal, panX, panY, scale, workingFile])
 
   const doUseOriginal = useCallback(() => {
     if (!file) return
+    bumpChromeVisibility()
     onUseOriginal(file)
-  }, [file, onUseOriginal])
+  }, [bumpChromeVisibility, file, onUseOriginal])
 
   const resetFilters = useCallback(() => {
+    bumpChromeVisibility()
     setFilters({
       brightness: 0,
       contrast: 0,
@@ -248,7 +295,7 @@ export default function ImageCropperModal(props: {
       temperature: 0,
       hue: 0,
     })
-  }, [])
+  }, [bumpChromeVisibility])
 
   const recenterCropSnapshot = useCallback((targetCrop: Crop | PixelCrop) => {
     const img = imgRef.current
@@ -359,23 +406,25 @@ export default function ImageCropperModal(props: {
   }, [recenterCropSnapshot])
 
   const resetCropStage = useCallback(() => {
+    bumpChromeVisibility()
     setCrop({ ...initialCrop })
     setCompletedCropPx(null)
     setPanX(0)
     setPanY(0)
     setScale(1)
     setIsSettlingCrop(false)
-  }, [initialCrop])
+  }, [bumpChromeVisibility, initialCrop])
 
   const revertAllEdits = useCallback(() => {
     if (!file) return
+    bumpChromeVisibility()
     setWorkingFile(file)
     setRotation(0)
     resetCropStage()
     resetFilters()
     setFiltersOpen(false)
     setError(null)
-  }, [file, resetCropStage, resetFilters])
+  }, [bumpChromeVisibility, file, resetCropStage, resetFilters])
 
   const getFilterStyle = (): React.CSSProperties => {
     const brightness = Math.max(0, 100 + filters.brightness)
@@ -409,6 +458,9 @@ export default function ImageCropperModal(props: {
       if (typeof window !== 'undefined' && settleTimeoutRef.current !== null) {
         window.clearTimeout(settleTimeoutRef.current)
       }
+      if (typeof window !== 'undefined' && chromeHideTimeoutRef.current !== null) {
+        window.clearTimeout(chromeHideTimeoutRef.current)
+      }
     }
   }, [])
 
@@ -417,6 +469,7 @@ export default function ImageCropperModal(props: {
   const editorActionClassName = 'inline-flex min-w-[4.35rem] flex-col items-center justify-center gap-1 rounded-[1.15rem] px-2 py-2 text-[0.72rem] font-medium text-white/72 transition active:scale-[0.98] disabled:opacity-45'
   const editorActionActiveClassName = 'bg-white/14 text-white shadow-[0_10px_22px_rgba(0,0,0,0.22)]'
   const editorActionIdleClassName = 'hover:bg-white/8'
+  const chromeShown = chromeVisible || filtersOpen || saving
 
   return (
     <FullScreenGlassOverlay
@@ -436,6 +489,8 @@ export default function ImageCropperModal(props: {
       <div
         ref={containerRef}
         className="relative flex-1 overflow-hidden bg-[#05070c]"
+        onPointerDownCapture={handleEditorInteraction}
+        onTouchStartCapture={handleEditorInteraction}
       >
         {error ? (
           <div className="absolute left-3 right-3 top-3 z-10 rounded-xl border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
@@ -462,6 +517,7 @@ export default function ImageCropperModal(props: {
                     className={isSettlingCrop ? 'philani-image-crop philani-image-crop--settling' : 'philani-image-crop'}
                     crop={crop}
                     onChange={(_, percentCrop) => {
+                      bumpChromeVisibility()
                       setCrop(percentCrop)
                     }}
                     onComplete={(px, percentCrop) => {
@@ -515,12 +571,12 @@ export default function ImageCropperModal(props: {
 
         {/* Editor top bar */}
         <div
-          className="absolute inset-x-0 top-0 z-20 pointer-events-none"
+          className={`absolute inset-x-0 top-0 z-20 pointer-events-none transition-all duration-300 ${chromeShown ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-3'}`}
           style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 4px)' }}
         >
-          <div className="px-3 pb-4 sm:px-5 bg-gradient-to-b from-black/82 via-black/48 to-transparent">
+          <div className="px-3 pb-4 sm:px-5 bg-gradient-to-b from-black/50 via-black/20 to-transparent">
             <div className="flex items-center justify-between gap-3">
-              <div className="pointer-events-auto flex items-center gap-2">
+              <div className={`${chromeShown ? 'pointer-events-auto' : 'pointer-events-none'} flex items-center gap-2`}>
                 <button
                   type="button"
                   className="flex h-11 w-11 items-center justify-center rounded-full border border-white/14 bg-white/10 text-white backdrop-blur-md transition hover:bg-white/18 disabled:opacity-50"
@@ -548,7 +604,7 @@ export default function ImageCropperModal(props: {
                 <div className="text-[0.7rem] text-white/58">Drag corners to crop</div>
               </div>
 
-              <div className="pointer-events-auto flex items-center gap-2">
+              <div className={`${chromeShown ? 'pointer-events-auto' : 'pointer-events-none'} flex items-center gap-2`}>
                 <button
                   type="button"
                   className="rounded-full bg-[#3b82f6] px-4 py-2 text-[0.8rem] font-semibold tracking-[0.01em] text-white shadow-[0_12px_28px_rgba(59,130,246,0.36)] transition hover:bg-[#2563eb] disabled:opacity-50"
@@ -565,11 +621,11 @@ export default function ImageCropperModal(props: {
 
       {/* Bottom overlays: Android-style tools rail */}
       <div
-        className="absolute inset-x-0 bottom-0 z-30"
+        className={`absolute inset-x-0 bottom-0 z-30 pointer-events-none transition-all duration-300 ${chromeShown ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
         {filtersOpen ? (
-          <div className="pointer-events-auto border-t border-white/12 bg-[linear-gradient(180deg,rgba(3,7,18,0.14),rgba(3,7,18,0.88)_22%,rgba(3,7,18,0.96)_100%)] px-4 pb-3 pt-4 backdrop-blur-xl sm:px-5">
+          <div className="pointer-events-auto border-t border-white/12 bg-[linear-gradient(180deg,rgba(3,7,18,0.10),rgba(3,7,18,0.62)_22%,rgba(3,7,18,0.82)_100%)] px-4 pb-3 pt-4 backdrop-blur-xl sm:px-5">
             <div className="mx-auto max-w-xl space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -599,7 +655,10 @@ export default function ImageCropperModal(props: {
                 min="-100"
                 max="100"
                 value={filters.brightness}
-                onChange={(e) => setFilters((prev) => ({ ...prev, brightness: Number(e.target.value) }))}
+                onChange={(e) => {
+                  bumpChromeVisibility()
+                  setFilters((prev) => ({ ...prev, brightness: Number(e.target.value) }))
+                }}
                 className="w-full h-1.5 bg-white/20 rounded-full appearance-none cursor-pointer"
               />
             </div>
@@ -615,7 +674,10 @@ export default function ImageCropperModal(props: {
                 min="-100"
                 max="100"
                 value={filters.contrast}
-                onChange={(e) => setFilters((prev) => ({ ...prev, contrast: Number(e.target.value) }))}
+                onChange={(e) => {
+                  bumpChromeVisibility()
+                  setFilters((prev) => ({ ...prev, contrast: Number(e.target.value) }))
+                }}
                 className="w-full h-1.5 bg-white/20 rounded-full appearance-none cursor-pointer"
               />
             </div>
@@ -631,7 +693,10 @@ export default function ImageCropperModal(props: {
                 min="-100"
                 max="100"
                 value={filters.saturation}
-                onChange={(e) => setFilters((prev) => ({ ...prev, saturation: Number(e.target.value) }))}
+                onChange={(e) => {
+                  bumpChromeVisibility()
+                  setFilters((prev) => ({ ...prev, saturation: Number(e.target.value) }))
+                }}
                 className="w-full h-1.5 bg-white/20 rounded-full appearance-none cursor-pointer"
               />
             </div>
@@ -647,7 +712,10 @@ export default function ImageCropperModal(props: {
                 min="-50"
                 max="50"
                 value={filters.temperature}
-                onChange={(e) => setFilters((prev) => ({ ...prev, temperature: Number(e.target.value) }))}
+                onChange={(e) => {
+                  bumpChromeVisibility()
+                  setFilters((prev) => ({ ...prev, temperature: Number(e.target.value) }))
+                }}
                 className="w-full h-1.5 bg-gradient-to-r from-blue-500 via-white/30 to-orange-500 rounded-full appearance-none cursor-pointer"
               />
             </div>
@@ -663,7 +731,10 @@ export default function ImageCropperModal(props: {
                 min="0"
                 max="360"
                 value={filters.hue}
-                onChange={(e) => setFilters((prev) => ({ ...prev, hue: Number(e.target.value) }))}
+                onChange={(e) => {
+                  bumpChromeVisibility()
+                  setFilters((prev) => ({ ...prev, hue: Number(e.target.value) }))
+                }}
                 className="w-full h-1.5 bg-gradient-to-r from-red-500 via-yellow-500 via-green-500 via-blue-500 to-red-500 rounded-full appearance-none cursor-pointer"
               />
             </div>
@@ -674,7 +745,10 @@ export default function ImageCropperModal(props: {
             <button
               type="button"
               className="rounded-full border border-white/12 bg-white/6 px-3 py-1.5 text-[0.72rem] font-semibold text-white/76 transition hover:bg-white/10"
-              onClick={() => setFiltersOpen(false)}
+              onClick={() => {
+                bumpChromeVisibility()
+                setFiltersOpen(false)
+              }}
             >
               Done
             </button>
@@ -683,11 +757,13 @@ export default function ImageCropperModal(props: {
           </div>
         ) : null}
 
-        <div className="pointer-events-auto border-t border-white/10 bg-[linear-gradient(180deg,rgba(5,7,12,0.18),rgba(5,7,12,0.86)_18%,rgba(5,7,12,0.96)_100%)] px-3 pb-3 pt-2 backdrop-blur-xl sm:px-5">
-          <div className="mx-auto flex max-w-xl items-start justify-between gap-1">
+        <div className="relative px-3 pb-3 pt-2 sm:px-5">
+          <div className="pointer-events-none absolute inset-x-0 inset-y-0 border-t border-white/8 bg-[linear-gradient(180deg,rgba(5,7,12,0.05),rgba(5,7,12,0.26)_18%,rgba(5,7,12,0.48)_100%)] backdrop-blur-md" />
+          <div className="pointer-events-none relative mx-auto flex max-w-[22rem] items-start justify-between gap-5">
+            <div className="flex items-start gap-1.5">
             <button
               type="button"
-              className={`${editorActionClassName} ${editorActionIdleClassName}`}
+              className={`${editorActionClassName} ${editorActionIdleClassName} ${chromeShown ? 'pointer-events-auto' : 'pointer-events-none'} bg-white/6 backdrop-blur-md`}
               onClick={resetCropStage}
               disabled={saving || rotating}
               aria-label="Reset crop"
@@ -704,8 +780,11 @@ export default function ImageCropperModal(props: {
 
             <button
               type="button"
-              className={`${editorActionClassName} ${filtersOpen ? editorActionActiveClassName : editorActionIdleClassName}`}
-              onClick={() => setFiltersOpen((prev) => !prev)}
+              className={`${editorActionClassName} ${filtersOpen ? editorActionActiveClassName : `${editorActionIdleClassName} bg-white/6 backdrop-blur-md`} ${chromeShown ? 'pointer-events-auto' : 'pointer-events-none'}`}
+              onClick={() => {
+                bumpChromeVisibility()
+                setFiltersOpen((prev) => !prev)
+              }}
               disabled={saving || rotating}
               aria-label="Adjust filters"
               title="Adjust"
@@ -723,10 +802,12 @@ export default function ImageCropperModal(props: {
               </svg>
               <span>Adjust</span>
             </button>
+            </div>
 
+            <div className="flex items-start gap-1.5">
             <button
               type="button"
-              className={`${editorActionClassName} ${editorActionIdleClassName}`}
+              className={`${editorActionClassName} ${editorActionIdleClassName} ${chromeShown ? 'pointer-events-auto' : 'pointer-events-none'} bg-white/6 backdrop-blur-md`}
               onClick={() => void rotateBy(-90)}
               disabled={saving || rotating}
               aria-label="Rotate left"
@@ -741,7 +822,7 @@ export default function ImageCropperModal(props: {
 
             <button
               type="button"
-              className={`${editorActionClassName} ${editorActionIdleClassName}`}
+              className={`${editorActionClassName} ${editorActionIdleClassName} ${chromeShown ? 'pointer-events-auto' : 'pointer-events-none'} bg-white/6 backdrop-blur-md`}
               onClick={() => void rotateBy(90)}
               disabled={saving || rotating}
               aria-label="Rotate right"
@@ -756,7 +837,7 @@ export default function ImageCropperModal(props: {
 
             <button
               type="button"
-              className={`${editorActionClassName} ${editorActionIdleClassName}`}
+              className={`${editorActionClassName} ${editorActionIdleClassName} ${chromeShown ? 'pointer-events-auto' : 'pointer-events-none'} bg-white/6 backdrop-blur-md`}
               onClick={doUseOriginal}
               disabled={saving}
               aria-label="Use original image"
@@ -769,9 +850,10 @@ export default function ImageCropperModal(props: {
               </svg>
               <span>Original</span>
             </button>
+            </div>
           </div>
 
-          <div className="mt-2 flex items-center justify-between px-1 text-[0.68rem] text-white/42">
+          <div className="pointer-events-none relative mt-2 flex items-center justify-between px-1 text-[0.68rem] text-white/38">
             <span>{rotating ? 'Applying rotation...' : 'Modern crop editor'}</span>
             <span>Release to center and zoom the selected frame</span>
           </div>

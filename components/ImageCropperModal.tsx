@@ -30,6 +30,7 @@ export default function ImageCropperModal(props: {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const settleCropOnCompleteRef = useRef(false)
   const recenterFrameRef = useRef<number | null>(null)
+  const settleApplyFrameRef = useRef<number | null>(null)
   const settleTimeoutRef = useRef<number | null>(null)
 
   const [workingFile, setWorkingFile] = useState<File | null>(null)
@@ -306,27 +307,44 @@ export default function ImageCropperModal(props: {
         }
 
     setIsSettlingCrop(true)
-    setCrop(nextCrop)
-    setCompletedCropPx({
-      unit: 'px',
-      x: Math.round(nextCropXPx),
-      y: Math.round(nextCropYPx),
-      width: Math.round(nextCropWidthPx),
-      height: Math.round(nextCropHeightPx),
-    })
-    setScale(nextScale)
-    setPanX(nextPanX)
-    setPanY(nextPanY)
+
+    const applySettledTarget = () => {
+      setCrop(nextCrop)
+      setCompletedCropPx({
+        unit: 'px',
+        x: Math.round(nextCropXPx),
+        y: Math.round(nextCropYPx),
+        width: Math.round(nextCropWidthPx),
+        height: Math.round(nextCropHeightPx),
+      })
+      setScale(nextScale)
+      setPanX(nextPanX)
+      setPanY(nextPanY)
+    }
 
     if (typeof window !== 'undefined') {
+      if (settleApplyFrameRef.current !== null) {
+        window.cancelAnimationFrame(settleApplyFrameRef.current)
+      }
       if (settleTimeoutRef.current !== null) {
         window.clearTimeout(settleTimeoutRef.current)
       }
+
+      settleApplyFrameRef.current = window.requestAnimationFrame(() => {
+        settleApplyFrameRef.current = window.requestAnimationFrame(() => {
+          settleApplyFrameRef.current = null
+          applySettledTarget()
+        })
+      })
+
       settleTimeoutRef.current = window.setTimeout(() => {
         settleTimeoutRef.current = null
         setIsSettlingCrop(false)
       }, 420)
+      return
     }
+
+    applySettledTarget()
   }, [panX, panY, scale])
 
   const scheduleCropRecentering = useCallback((targetCrop: Crop | PixelCrop) => {
@@ -384,6 +402,9 @@ export default function ImageCropperModal(props: {
     return () => {
       if (typeof window !== 'undefined' && recenterFrameRef.current !== null) {
         window.cancelAnimationFrame(recenterFrameRef.current)
+      }
+      if (typeof window !== 'undefined' && settleApplyFrameRef.current !== null) {
+        window.cancelAnimationFrame(settleApplyFrameRef.current)
       }
       if (typeof window !== 'undefined' && settleTimeoutRef.current !== null) {
         window.clearTimeout(settleTimeoutRef.current)

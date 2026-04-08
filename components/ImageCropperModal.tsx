@@ -104,6 +104,7 @@ export default function ImageCropperModal(props: {
   }, [open, file, initialCrop])
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+    if (scale <= 1.001) return
     if (!containerRef.current) return
     const target = e.target as HTMLElement | null
     if (!target) return
@@ -124,7 +125,7 @@ export default function ImageCropperModal(props: {
       x: clientX - rect.left - panX,
       y: clientY - rect.top - panY,
     })
-  }, [panX, panY])
+  }, [panX, panY, scale])
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
     if (!isDragging || !dragStart || !containerRef.current) return
@@ -301,6 +302,13 @@ export default function ImageCropperModal(props: {
     }
   }
 
+  useEffect(() => {
+    if (scale <= 1.001) {
+      setPanX(0)
+      setPanY(0)
+    }
+  }, [scale])
+
   if (!open) return null
 
   const editorActionClassName = 'inline-flex min-w-[4.35rem] flex-col items-center justify-center gap-1 rounded-[1.15rem] px-2 py-2 text-[0.72rem] font-medium text-white/72 transition active:scale-[0.98] disabled:opacity-45'
@@ -369,6 +377,7 @@ export default function ImageCropperModal(props: {
                         maxHeight: 'calc(100dvh - 11.5rem)',
                         transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
                         transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+                        cursor: scale > 1.001 ? (isDragging ? 'grabbing' : 'grab') : 'default',
                         ...getFilterStyle(),
                       }}
                       onLoad={() => {
@@ -646,7 +655,7 @@ export default function ImageCropperModal(props: {
 
           <div className="mt-2 flex items-center justify-between px-1 text-[0.68rem] text-white/42">
             <span>{rotating ? 'Applying rotation...' : 'Modern crop editor'}</span>
-            <span>Pinch and drag to refine</span>
+            <span>{scale > 1.001 ? 'Drag to pan zoomed image' : 'Crop stays locked until zoomed'}</span>
           </div>
         </div>
       </div>

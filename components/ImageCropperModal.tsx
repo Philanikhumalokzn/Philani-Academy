@@ -85,7 +85,7 @@ export default function ImageCropperModal(props: {
   useEffect(() => {
     if (!open) return
     setWorkingFile(file)
-    setCrop(initialCrop)
+    setCrop({ ...initialCrop })
     setCompletedCropPx(null)
     setRotation(0)
     setPanX(0)
@@ -163,7 +163,7 @@ export default function ImageCropperModal(props: {
       const rotated = await rotateImageFile({ file: workingFile, rotation: deltaDeg })
       setWorkingFile(rotated)
       setRotation((prev) => prev + deltaDeg)
-      setCrop(initialCrop)
+      setCrop({ ...initialCrop })
       setCompletedCropPx(null)
       setPanX(0)
       setPanY(0)
@@ -264,7 +264,7 @@ export default function ImageCropperModal(props: {
   }, [])
 
   const resetCropStage = useCallback(() => {
-    setCrop(initialCrop)
+    setCrop({ ...initialCrop })
     setCompletedCropPx(null)
     setPanX(0)
     setPanY(0)
@@ -301,6 +301,33 @@ export default function ImageCropperModal(props: {
       filter: `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) hue-rotate(${hue}deg) ${tempFilter}`,
     }
   }
+
+  useEffect(() => {
+    if (!open) return
+    const img = imgRef.current
+    if (!img) return
+
+    const displayWidth = img.clientWidth || img.width
+    const displayHeight = img.clientHeight || img.height
+    if (!displayWidth || !displayHeight) return
+
+    const cropWidthPx = crop.unit === '%' ? (displayWidth * crop.width) / 100 : crop.width
+    const cropHeightPx = crop.unit === '%' ? (displayHeight * crop.height) / 100 : crop.height
+    if (!cropWidthPx || !cropHeightPx) return
+
+    const cropXPx = crop.unit === '%' ? (displayWidth * crop.x) / 100 : crop.x
+    const cropYPx = crop.unit === '%' ? (displayHeight * crop.y) / 100 : crop.y
+
+    const nextScale = clamp(Math.min(displayWidth / cropWidthPx, displayHeight / cropHeightPx), 1, 4)
+    const cropCenterX = cropXPx + cropWidthPx / 2
+    const cropCenterY = cropYPx + cropHeightPx / 2
+    const nextPanX = displayWidth / 2 - nextScale * cropCenterX
+    const nextPanY = displayHeight / 2 - nextScale * cropCenterY
+
+    setScale((current) => Math.abs(current - nextScale) < 0.001 ? current : nextScale)
+    setPanX((current) => Math.abs(current - nextPanX) < 0.5 ? current : nextPanX)
+    setPanY((current) => Math.abs(current - nextPanY) < 0.5 ? current : nextPanY)
+  }, [crop, open])
 
   useEffect(() => {
     if (scale <= 1.001) {
@@ -375,13 +402,14 @@ export default function ImageCropperModal(props: {
                         height: 'auto',
                         maxWidth: 'min(calc(100vw - 5.75rem), 48rem)',
                         maxHeight: 'calc(100dvh - 11.5rem)',
+                        transformOrigin: 'top left',
                         transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
                         transition: isDragging ? 'none' : 'transform 0.1s ease-out',
                         cursor: scale > 1.001 ? (isDragging ? 'grabbing' : 'grab') : 'default',
                         ...getFilterStyle(),
                       }}
                       onLoad={() => {
-                        setCrop(initialCrop)
+                        setCrop({ ...initialCrop })
                         setCompletedCropPx(null)
                       }}
                       draggable="false"
@@ -655,7 +683,7 @@ export default function ImageCropperModal(props: {
 
           <div className="mt-2 flex items-center justify-between px-1 text-[0.68rem] text-white/42">
             <span>{rotating ? 'Applying rotation...' : 'Modern crop editor'}</span>
-            <span>{scale > 1.001 ? 'Drag to pan zoomed image' : 'Crop stays locked until zoomed'}</span>
+            <span>{scale > 1.001 ? 'Selected crop auto-centers as you refine' : 'Crop stays locked until zoomed'}</span>
           </div>
         </div>
       </div>

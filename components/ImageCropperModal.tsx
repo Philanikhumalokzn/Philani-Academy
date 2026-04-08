@@ -4,6 +4,7 @@ import { cropAndRotateImageToFile, rotateImageFile } from '../lib/imageEdit'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
+const CROP_SETTLE_MS = 680
 
 type Filters = {
   brightness: number // -100 to 100
@@ -387,7 +388,7 @@ export default function ImageCropperModal(props: {
       settleTimeoutRef.current = window.setTimeout(() => {
         settleTimeoutRef.current = null
         setIsSettlingCrop(false)
-      }, 420)
+      }, CROP_SETTLE_MS + 40)
       return
     }
 
@@ -546,7 +547,8 @@ export default function ImageCropperModal(props: {
                         maxHeight: 'calc(100dvh - 11.5rem)',
                         transformOrigin: 'top left',
                         transform: `translate(${panX}px, ${panY}px) scale(${scale})`,
-                        transition: isDragging ? 'none' : 'transform 0.38s cubic-bezier(0.16, 1, 0.3, 1)',
+                        transition: isDragging ? 'none' : `transform ${CROP_SETTLE_MS}ms cubic-bezier(0.22, 0.61, 0.36, 1)`,
+                        willChange: isSettlingCrop ? 'transform' : undefined,
                         cursor: 'default',
                         ...getFilterStyle(),
                       }}

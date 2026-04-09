@@ -1021,6 +1021,7 @@ export function PublicSolveComposer({
   onPreviewSubmit?: (scene: PublicSolveScene) => void | Promise<void>
   onSubmit: (scene: PublicSolveScene) => void | Promise<void>
 }) {
+  const canvasShellRef = useRef<HTMLDivElement | null>(null)
   const excalidrawApiRef = useRef<any>(null)
   const sceneRef = useRef<PublicSolveScene>(normalizePublicSolveScene(initialScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() })
   const lastAppliedInitialSceneKeyRef = useRef(buildPublicSolveSceneResetKey(sceneRef.current))
@@ -1033,8 +1034,37 @@ export function PublicSolveComposer({
     const sceneMeta = normalizePublicSolveSceneMeta(sceneRef.current.sceneMeta)
     return resolveSceneGuideSpacing(sceneRef.current.elements, sceneMeta, getAppStateZoomValue(sceneRef.current.appState))
   })
+  const [historyActionState, setHistoryActionState] = useState({ canUndo: false, canRedo: false })
   const showFullscreenClose = Boolean(fullscreenCanvas && onCancel)
   const showFooterCancel = Boolean(onCancel) && !showFullscreenClose
+
+  const getHistoryActionButtons = useCallback(() => {
+    const root = canvasShellRef.current
+    if (!root) return { undoButton: null as HTMLButtonElement | null, redoButton: null as HTMLButtonElement | null }
+
+    return {
+      undoButton: root.querySelector('[data-testid="button-undo"]') as HTMLButtonElement | null,
+      redoButton: root.querySelector('[data-testid="button-redo"]') as HTMLButtonElement | null,
+    }
+  }, [])
+
+  const syncHistoryActionState = useCallback(() => {
+    const { undoButton, redoButton } = getHistoryActionButtons()
+    setHistoryActionState((previous) => {
+      const next = {
+        canUndo: Boolean(undoButton && !undoButton.disabled),
+        canRedo: Boolean(redoButton && !redoButton.disabled),
+      }
+      return previous.canUndo === next.canUndo && previous.canRedo === next.canRedo ? previous : next
+    })
+  }, [getHistoryActionButtons])
+
+  const triggerHistoryAction = useCallback((action: 'undo' | 'redo') => {
+    const { undoButton, redoButton } = getHistoryActionButtons()
+    const targetButton = action === 'undo' ? undoButton : redoButton
+    if (!targetButton || targetButton.disabled) return
+    targetButton.click()
+  }, [getHistoryActionButtons])
 
   const applySceneSnapshot = useCallback((nextScene: PublicSolveScene, options?: { syncApi?: boolean }) => {
     const normalized = normalizePublicSolveScene(nextScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
@@ -1093,6 +1123,29 @@ export function PublicSolveComposer({
     return () => window.clearTimeout(settle)
   }, [isReady])
 
+  useEffect(() => {
+    if (!fullscreenCanvas) return
+    if (typeof MutationObserver === 'undefined') return
+
+    const root = canvasShellRef.current
+    if (!root) return
+
+    syncHistoryActionState()
+
+    const observer = new MutationObserver(() => {
+      syncHistoryActionState()
+    })
+
+    observer.observe(root, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['disabled'],
+    })
+
+    return () => observer.disconnect()
+  }, [composerInstanceKey, fullscreenCanvas, isReady, syncHistoryActionState])
+
   return (
     <div className={`relative flex h-full min-h-0 flex-col bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_32%),linear-gradient(180deg,#eef4ff_0%,#f8fbff_28%,#ffffff_100%)] text-slate-900 ${fullscreenCanvas ? 'overflow-hidden' : ''}`.trim()}>
       {showFullscreenClose ? (
@@ -1122,7 +1175,7 @@ export function PublicSolveComposer({
         canvasSurfaceClassName={fullscreenCanvas ? 'flex h-full min-h-0 flex-col bg-white' : undefined}
         referencePresentation={referencePresentation}
       >
-        <div className="relative min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>
+        <div ref={canvasShellRef} className="relative min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>
           <LessonStyledExcalidraw
             key={`public-solve-composer-${composerInstanceKey}`}
             className={`h-full ${fullscreenCanvas ? 'philani-excalidraw-safe-fullscreen' : ''}`.trim()}
@@ -1163,7 +1216,34 @@ export function PublicSolveComposer({
 
       <div className={`border-t border-slate-200 bg-white/92 px-4 py-3 backdrop-blur-xl sm:px-6 ${fullscreenCanvas ? 'pb-[calc(var(--app-safe-bottom)+0.9rem)] pt-3' : ''}`.trim()}>
         <div className="flex items-center justify-between gap-3">
-          {showFooterCancel ? (
+          {fullscreenCanvas ? (
+            <div className="inline-flex items-center overflow-hidden rounded-full border border-slate-200 bg-white shadow-sm">
+              <button
+                type="button"
+                className="inline-flex h-10 w-11 items-center justify-center border-r border-slate-200 text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => triggerHistoryAction('undo')}
+                aria-label="Undo"
+                title="Undo"
+                disabled={!historyActionState.canUndo}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M15 6 9 12l6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="inline-flex h-10 w-11 items-center justify-center text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => triggerHistoryAction('redo')}
+                aria-label="Redo"
+                title="Redo"
+                disabled={!historyActionState.canRedo}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
+          ) : showFooterCancel ? (
             <button
               type="button"
               className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"

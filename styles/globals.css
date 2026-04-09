@@ -423,6 +423,12 @@ math-field.keyboard-mathlive-field::part(virtual-keyboard-toggle) {
   display: none !important;
 }
 
+.philani-excalidraw-safe-fullscreen .excalidraw .undo-redo-buttons,
+.philani-excalidraw-safe-fullscreen .excalidraw [data-testid="button-undo"],
+.philani-excalidraw-safe-fullscreen .excalidraw [data-testid="button-redo"] {
+  display: none !important;
+}
+
 .philani-excalidraw-safe-fullscreen .excalidraw .App-bottom-bar .App-toolbar-content .dropdown-menu--mobile,
 .philani-excalidraw-safe-fullscreen .excalidraw .App-bottom-bar .dropdown-menu {
   top: calc(100% + 0.5rem) !important;

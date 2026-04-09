@@ -3,6 +3,38 @@
 @import 'mathlive/fonts.css';
 @import 'mathlive/static.css';
 
+:root {
+  --philani-ui-icon-scale: 1.18;
+  --philani-ui-icon-shadow: drop-shadow(0 6px 12px rgba(14, 165, 233, 0.18));
+}
+
+.app-shell :is(button, a, [role='button']):not(.philani-no-icon-gradient) svg[viewBox]:not([data-no-icon-gradient]),
+.philani-gradient-icon svg[viewBox]:not([data-no-icon-gradient]) {
+  transform-origin: center;
+  scale: var(--philani-ui-icon-scale);
+  filter: var(--philani-ui-icon-shadow);
+}
+
+.app-shell :is(button, a, [role='button']):not(.philani-no-icon-gradient) svg[viewBox]:not([data-no-icon-gradient])[stroke='currentColor'],
+.philani-gradient-icon svg[viewBox][stroke='currentColor'] {
+  stroke: url(#philani-ui-icon-gradient) !important;
+}
+
+.app-shell :is(button, a, [role='button']):not(.philani-no-icon-gradient) svg[viewBox]:not([data-no-icon-gradient])[fill='currentColor'],
+.philani-gradient-icon svg[viewBox][fill='currentColor'] {
+  fill: url(#philani-ui-icon-gradient) !important;
+}
+
+.app-shell :is(button, a, [role='button']):not(.philani-no-icon-gradient) svg[viewBox]:not([data-no-icon-gradient]) [stroke='currentColor'],
+.philani-gradient-icon svg[viewBox] [stroke='currentColor'] {
+  stroke: url(#philani-ui-icon-gradient) !important;
+}
+
+.app-shell :is(button, a, [role='button']):not(.philani-no-icon-gradient) svg[viewBox]:not([data-no-icon-gradient]) [fill='currentColor'],
+.philani-gradient-icon svg[viewBox] [fill='currentColor'] {
+  fill: url(#philani-ui-icon-gradient) !important;
+}
+
 math-field.keyboard-mathlive-field {
   width: max-content;
   min-width: 100%;

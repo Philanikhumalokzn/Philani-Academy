@@ -7,6 +7,7 @@ import { SessionProvider, useSession } from 'next-auth/react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect, useRef, useState } from 'react'
+import AppIconGradientDefs from '../components/AppIconGradientDefs'
 import NavBar from '../components/NavBar'
 import NotificationsPanelHost from '../components/NotificationsPanelHost'
 import AppErrorBoundary from '../components/AppErrorBoundary'
@@ -665,6 +666,7 @@ export default function App({ Component, pageProps: { session, ...pageProps } }:
       <NativePushBootstrap />
       <AppErrorBoundary key={router.asPath}>
         <div className="app-shell">
+          <AppIconGradientDefs />
           {!hideNavBar && <NavBar />}
           <NotificationsPanelHost />
           <OverlayRestoreProvider>

@@ -51,8 +51,8 @@ export default function FeedComposerPill({
     : 'min-w-0 flex-1 text-left'
   const rightButtonClassName = rightActionIcon === 'camera'
     ? isCompact
-      ? 'inline-flex h-9 w-9 shrink-0 items-center justify-center bg-transparent drop-shadow-[0_6px_10px_rgba(14,165,233,0.22)] transition hover:-translate-y-[1px] hover:brightness-110 active:translate-y-0'
-      : 'inline-flex h-11 w-11 items-center justify-center bg-transparent drop-shadow-[0_8px_14px_rgba(14,165,233,0.18)] transition hover:-translate-y-[1px] hover:brightness-110 active:translate-y-0'
+      ? 'inline-flex h-10 w-10 shrink-0 items-center justify-center bg-transparent drop-shadow-[0_6px_10px_rgba(14,165,233,0.22)] transition hover:-translate-y-[1px] hover:brightness-110 active:translate-y-0'
+      : 'inline-flex h-12 w-12 items-center justify-center bg-transparent drop-shadow-[0_8px_14px_rgba(14,165,233,0.18)] transition hover:-translate-y-[1px] hover:brightness-110 active:translate-y-0'
     : isCompact
       ? 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 bg-[#f8fafc] text-[#1c1e21]'
       : 'inline-flex h-11 w-11 items-center justify-center rounded-full text-[#2fb344] transition hover:bg-[#effaf2]'

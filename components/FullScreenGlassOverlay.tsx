@@ -159,8 +159,8 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     : 'shrink-0 flex items-center gap-2'
 
   const closeBtnClassName = overlayVariant === 'light'
-    ? 'w-9 h-9 inline-flex items-center justify-center rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-50'
-    : 'w-9 h-9 inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 hover:bg-white/15 text-white disabled:opacity-50'
+    ? 'w-10 h-10 inline-flex items-center justify-center rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-50'
+    : 'w-10 h-10 inline-flex items-center justify-center rounded-full border border-white/10 bg-white/10 hover:bg-white/15 text-white disabled:opacity-50'
 
   const defaultPanelClassName = overlayVariant === 'light'
     ? 'border border-slate-200/60 bg-white/95 shadow-2xl'
@@ -334,7 +334,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
                     aria-label="Close"
                     title="Close"
                   >
-                    <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                    <svg viewBox="0 0 20 20" fill="none" className="w-5 h-5" aria-hidden="true">
                       <path
                         d="M6 6l8 8M14 6l-8 8"
                         stroke="currentColor"

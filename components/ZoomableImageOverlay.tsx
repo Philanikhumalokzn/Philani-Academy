@@ -325,47 +325,41 @@ export default function ZoomableImageOverlay({ open, imageUrl, title, onClose }:
     syncView({ scale: 1, x: 0, y: 0 })
   }, [syncView])
 
+  const safeTitle = String(title || '').trim() || 'Image viewer'
+
   if (!open) return null
 
   return (
     <FullScreenGlassOverlay
-      title={title || 'Grade screenshot'}
-      subtitle="Pinch or scroll to zoom. Drag to pan."
+      title={safeTitle}
       onClose={onClose}
       onBackdropClick={onClose}
       zIndexClassName="z-[95]"
       panelSize="full"
       variant="light"
-      panelClassName="!rounded-none !max-w-none bg-black"
+      hideHeader
+      showCloseButton={false}
+      panelClassName="!rounded-none !max-w-none !border-0 !bg-black"
       frameClassName="absolute inset-0 flex items-stretch justify-center p-0"
-      contentClassName="p-0 overflow-hidden"
+      contentClassName="!p-0 !overflow-hidden"
       forceHeaderSafeTop
+      respectBottomSafeArea={false}
     >
-      <div className="flex h-full min-h-0 flex-col bg-black text-white">
-        <div className="flex items-center justify-center gap-2 border-b border-white/15 px-3 py-2">
+      <div className="relative flex h-full min-h-0 flex-col bg-black text-white">
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 px-4 pb-6 pt-[calc(0.9rem+var(--app-safe-top))] sm:px-5">
+          <div className="min-w-0 max-w-[65vw]">
+            <div className="truncate text-sm font-semibold text-white/88 sm:text-base">{safeTitle}</div>
+          </div>
           <button
             type="button"
-            className="inline-flex h-9 items-center justify-center rounded-full border border-white/30 bg-white/10 px-3 text-xs font-semibold hover:bg-white/15"
-            onClick={zoomOut}
-            aria-label="Zoom out"
+            className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/12 bg-black/48 text-white shadow-[0_16px_32px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-black/62"
+            onClick={onClose}
+            aria-label="Close image viewer"
+            title="Close"
           >
-            -
-          </button>
-          <button
-            type="button"
-            className="inline-flex h-9 items-center justify-center rounded-full border border-white/30 bg-white/10 px-3 text-xs font-semibold hover:bg-white/15"
-            onClick={resetView}
-            aria-label="Reset zoom"
-          >
-            {uiScaleLabel}
-          </button>
-          <button
-            type="button"
-            className="inline-flex h-9 items-center justify-center rounded-full border border-white/30 bg-white/10 px-3 text-xs font-semibold hover:bg-white/15"
-            onClick={zoomIn}
-            aria-label="Zoom in"
-          >
-            +
+            <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5" aria-hidden="true">
+              <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
           </button>
         </div>
 
@@ -383,11 +377,13 @@ export default function ZoomableImageOverlay({ open, imageUrl, title, onClose }:
           onTouchCancel={handleTouchEnd}
           style={{ touchAction: canPan ? 'none' : 'pan-y' }}
         >
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-32 bg-gradient-to-b from-black/55 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-32 bg-gradient-to-t from-black/72 to-transparent" />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             ref={imageRef}
             src={imageUrl}
-            alt={title || 'Grade screenshot'}
+            alt={safeTitle}
             onLoad={handleImageLoad}
             draggable={false}
             className="absolute left-1/2 top-1/2 max-h-full max-w-full select-none"
@@ -398,6 +394,35 @@ export default function ZoomableImageOverlay({ open, imageUrl, title, onClose }:
               cursor: canPan ? (dragRef.current.active ? 'grabbing' : 'grab') : 'zoom-in',
             }}
           />
+        </div>
+
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-[calc(1rem+var(--app-safe-bottom))] sm:px-5">
+          <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/12 bg-black/52 px-2 py-2 text-white shadow-[0_16px_32px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+            <button
+              type="button"
+              className="inline-flex h-10 min-w-10 items-center justify-center rounded-full bg-white/10 px-3 text-sm font-semibold transition hover:bg-white/16"
+              onClick={zoomOut}
+              aria-label="Zoom out"
+            >
+              -
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-10 min-w-[4.5rem] items-center justify-center rounded-full bg-white/10 px-3 text-xs font-semibold tracking-[0.03em] transition hover:bg-white/16"
+              onClick={resetView}
+              aria-label="Reset zoom"
+            >
+              {uiScaleLabel}
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-10 min-w-10 items-center justify-center rounded-full bg-white/10 px-3 text-sm font-semibold transition hover:bg-white/16"
+              onClick={zoomIn}
+              aria-label="Zoom in"
+            >
+              +
+            </button>
+          </div>
         </div>
       </div>
     </FullScreenGlassOverlay>

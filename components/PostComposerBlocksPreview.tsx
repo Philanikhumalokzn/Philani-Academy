@@ -74,8 +74,13 @@ export default function PostComposerBlocksPreview({
             key={blockKey}
             type="button"
             className={fullBleedImages ? `${imageContainerClassName} text-left` : `block w-full ${imageContainerClassName} text-left`}
-            onClick={() => {
-              if (consumeLongPressOpen?.()) return
+            onClick={(event) => {
+              if (consumeLongPressOpen?.()) {
+                event.preventDefault()
+                event.stopPropagation()
+                return
+              }
+              event.stopPropagation()
               onOpenImage(block.imageUrl, imageTitle)
             }}
           >

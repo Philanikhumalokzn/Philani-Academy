@@ -1,8 +1,10 @@
-import type { HTMLAttributes, ReactNode } from 'react'
+import { useCallback, useState, type HTMLAttributes, type ReactNode } from 'react'
 import type { PostReplyBlock } from '../lib/postReplyComposer'
 import { normalizePostReplyBlocks } from '../lib/postReplyComposer'
+import OverlayPortal from './OverlayPortal'
 import PostComposerBlocksPreview from './PostComposerBlocksPreview'
 import UserLink from './UserLink'
+import ZoomableImageOverlay from './ZoomableImageOverlay'
 
 type PublicFeedPostAction = {
   label: string
@@ -52,6 +54,7 @@ export default function PublicFeedPostCard({
   actions = [],
   children,
 }: PublicFeedPostCardProps) {
+  const [fallbackImageViewer, setFallbackImageViewer] = useState<{ url: string; title: string } | null>(null)
   const safeAuthorName = String(authorName || '').trim() || 'Learner'
   const safeTitle = String(title || '').trim() || 'Post'
   const safePrompt = String(prompt || '').trim()
@@ -82,6 +85,18 @@ export default function PublicFeedPostCard({
     </button>
   )
 
+  const openResolvedImageViewer = useCallback((url: string, titleText: string) => {
+    if (onOpenImage) {
+      onOpenImage(url, titleText)
+      return
+    }
+    setFallbackImageViewer({ url, title: titleText })
+  }, [onOpenImage])
+
+  const closeFallbackImageViewer = useCallback(() => {
+    setFallbackImageViewer(null)
+  }, [])
+
   const body = (
     <div
       className={onOpen ? 'mt-3 block w-full cursor-pointer text-left' : 'mt-3 block w-full text-left'}
@@ -108,9 +123,6 @@ export default function PublicFeedPostCard({
         const spacingClassName = index === 0 ? 'mt-1.5' : 'mt-3'
         if (block.type === 'image') {
           const imageNode = <img src={block.imageUrl} alt={`${safeTitle} image`} className="block h-auto w-full" />
-          if (!onOpenImage) {
-            return <div key={block.id} className={spacingClassName} data-testid="public-feed-post-image-row">{imageNode}</div>
-          }
           return (
             <button
               key={block.id}
@@ -124,7 +136,7 @@ export default function PublicFeedPostCard({
                   return
                 }
                 event.stopPropagation()
-                onOpenImage(block.imageUrl, `${safeTitle} image`)
+                openResolvedImageViewer(block.imageUrl, `${safeTitle} image`)
               }}
             >
               {imageNode}
@@ -139,10 +151,7 @@ export default function PublicFeedPostCard({
               compact
               fullBleedImages={false}
               imageTitle={`${safeTitle} image`}
-              onOpenImage={(url, titleText) => {
-                if (!onOpenImage) return
-                onOpenImage(url, titleText)
-              }}
+              onOpenImage={openResolvedImageViewer}
             />
           </div>
         )
@@ -205,6 +214,17 @@ export default function PublicFeedPostCard({
           {children ? children : null}
         </div>
       ) : children ? <div className="mt-2 px-4 pt-1 text-[#65676b] sm:px-6">{children}</div> : null}
+
+      {fallbackImageViewer ? (
+        <OverlayPortal>
+          <ZoomableImageOverlay
+            open={Boolean(fallbackImageViewer)}
+            imageUrl={fallbackImageViewer.url}
+            title={fallbackImageViewer.title}
+            onClose={closeFallbackImageViewer}
+          />
+        </OverlayPortal>
+      ) : null}
     </div>
   )
 }

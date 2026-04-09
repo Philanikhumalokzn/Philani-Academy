@@ -1041,6 +1041,7 @@ export function PublicSolveComposer({
   })
   const [historyActionState, setHistoryActionState] = useState({ canUndo: false, canRedo: false })
   const [canvasChromeVisible, setCanvasChromeVisible] = useState(true)
+  const [isEraserActive, setIsEraserActive] = useState(false)
   const showFullscreenClose = Boolean(fullscreenCanvas && onCancel)
   const showFooterCancel = Boolean(onCancel) && !showFullscreenClose
 
@@ -1138,6 +1139,19 @@ export function PublicSolveComposer({
     })
   }, [])
 
+  const handleToggleEraser = useCallback(() => {
+    const api = excalidrawApiRef.current
+    if (!api?.setActiveTool) return
+
+    const nextTool = isEraserActive ? { type: 'freedraw' } : { type: 'eraser' }
+    api.setActiveTool(nextTool)
+    api.updateScene?.({
+      appState: {
+        activeTool: nextTool,
+      },
+    })
+  }, [isEraserActive])
+
   const applySceneSnapshot = useCallback((nextScene: PublicSolveScene, options?: { syncApi?: boolean }) => {
     const normalized = normalizePublicSolveScene(nextScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
     sceneRef.current = normalized
@@ -1194,6 +1208,18 @@ export function PublicSolveComposer({
 
     return () => window.clearTimeout(settle)
   }, [isReady])
+
+  useEffect(() => {
+    const api = excalidrawApiRef.current
+    if (!api?.onChange) return
+
+    const unsubscribe = api.onChange((_elements: any[], appState: any) => {
+      setIsEraserActive(appState?.activeTool?.type === 'eraser')
+    })
+
+    setIsEraserActive(api.getAppState?.()?.activeTool?.type === 'eraser')
+    return unsubscribe
+  }, [composerInstanceKey, isReady])
 
   useEffect(() => {
     if (!fullscreenCanvas) {
@@ -1357,20 +1383,35 @@ export function PublicSolveComposer({
             </button>
           ) : <div />}
           {fullscreenCanvas ? (
-            <button
-              type="button"
-              className="justify-self-center inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
-              onClick={handleClearCanvas}
-              aria-label="Clear canvas"
-              title="Clear canvas"
-              disabled={!hasContent || submitting}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M3 6h18" />
-                <path d="M8 6V4h8v2" />
-                <path d="M7 6l1 14h8l1-14" />
-              </svg>
-            </button>
+            <div className="justify-self-center inline-flex items-center overflow-hidden rounded-full border border-slate-200 bg-white shadow-sm">
+              <button
+                type="button"
+                className={`inline-flex h-11 w-11 items-center justify-center border-r border-slate-200 text-slate-600 transition disabled:cursor-not-allowed disabled:opacity-40 ${isEraserActive ? 'bg-slate-900 text-white hover:bg-slate-800' : 'bg-white hover:bg-slate-50'}`.trim()}
+                onClick={handleToggleEraser}
+                aria-label={isEraserActive ? 'Switch to pen' : 'Use eraser'}
+                title={isEraserActive ? 'Switch to pen' : 'Use eraser'}
+                disabled={submitting}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="m7 16 8.5-8.5a2.12 2.12 0 1 1 3 3L10 19H7z" />
+                  <path d="M16 8 6.5 17.5" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-r-full bg-white text-slate-600 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={handleClearCanvas}
+                aria-label="Clear canvas"
+                title="Clear canvas"
+                disabled={!hasContent || submitting}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 6h18" />
+                  <path d="M8 6V4h8v2" />
+                  <path d="M7 6l1 14h8l1-14" />
+                </svg>
+              </button>
+            </div>
           ) : null}
           <button
             type="button"

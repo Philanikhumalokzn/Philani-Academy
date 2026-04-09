@@ -407,15 +407,10 @@ math-field.keyboard-mathlive-field::part(virtual-keyboard-toggle) {
 }
 
 .philani-excalidraw-safe-fullscreen .excalidraw .App-top-bar {
-  bottom: calc(2px - var(--philani-exc-toolbar-drop)) !important;
-  left: calc(max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px)) + 8px + 0.75rem) !important;
-  right: calc(max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px)) + 8px + 0.75rem) !important;
-  transform: none !important;
-  transition: opacity 220ms ease !important;
+  display: none !important;
 }
 
-.philani-excalidraw-safe-fullscreen.philani-excalidraw-chrome-hidden .excalidraw .App-bottom-bar,
-.philani-excalidraw-safe-fullscreen.philani-excalidraw-chrome-hidden .excalidraw .App-top-bar {
+.philani-excalidraw-safe-fullscreen.philani-excalidraw-chrome-hidden .excalidraw .App-bottom-bar {
   opacity: 0 !important;
   pointer-events: none !important;
 }
@@ -437,10 +432,6 @@ math-field.keyboard-mathlive-field::part(virtual-keyboard-toggle) {
 .philani-excalidraw-safe-fullscreen .excalidraw .App-bottom-bar .App-toolbar-content .dropdown-menu--mobile,
 .philani-excalidraw-safe-fullscreen .excalidraw .App-bottom-bar .dropdown-menu {
   top: calc(100% + 0.5rem) !important;
-}
-
-.philani-excalidraw-safe-fullscreen .excalidraw .App-top-bar .App-toolbar-content .dropdown-menu--mobile {
-  bottom: calc(100% + 0.5rem) !important;
 }
 
 .philani-solution-viewer .excalidraw .App-top-bar,

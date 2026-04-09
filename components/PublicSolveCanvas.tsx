@@ -1033,6 +1033,8 @@ export function PublicSolveComposer({
     const sceneMeta = normalizePublicSolveSceneMeta(sceneRef.current.sceneMeta)
     return resolveSceneGuideSpacing(sceneRef.current.elements, sceneMeta, getAppStateZoomValue(sceneRef.current.appState))
   })
+  const showFullscreenClose = Boolean(fullscreenCanvas && onCancel)
+  const showFooterCancel = Boolean(onCancel) && !showFullscreenClose
 
   const applySceneSnapshot = useCallback((nextScene: PublicSolveScene, options?: { syncApi?: boolean }) => {
     const normalized = normalizePublicSolveScene(nextScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
@@ -1092,7 +1094,20 @@ export function PublicSolveComposer({
   }, [isReady])
 
   return (
-    <div className={`flex h-full min-h-0 flex-col bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_32%),linear-gradient(180deg,#eef4ff_0%,#f8fbff_28%,#ffffff_100%)] text-slate-900 ${fullscreenCanvas ? 'overflow-hidden' : ''}`.trim()}>
+    <div className={`relative flex h-full min-h-0 flex-col bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_32%),linear-gradient(180deg,#eef4ff_0%,#f8fbff_28%,#ffffff_100%)] text-slate-900 ${fullscreenCanvas ? 'overflow-hidden' : ''}`.trim()}>
+      {showFullscreenClose ? (
+        <button
+          type="button"
+          onClick={onCancel}
+          className="absolute right-3 top-[calc(var(--app-safe-top)+0.75rem)] z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-100"
+          aria-label={cancelLabel}
+          title={cancelLabel}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
+      ) : null}
       <PublicSolveOpacityWorkspace
         title={title}
         prompt={prompt}
@@ -1148,7 +1163,7 @@ export function PublicSolveComposer({
 
       <div className={`border-t border-slate-200 bg-white/92 px-4 py-3 backdrop-blur-xl sm:px-6 ${fullscreenCanvas ? 'pb-[calc(var(--app-safe-bottom)+0.9rem)] pt-3' : ''}`.trim()}>
         <div className="flex items-center justify-between gap-3">
-          {onCancel ? (
+          {showFooterCancel ? (
             <button
               type="button"
               className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"

@@ -395,7 +395,7 @@ math-field.keyboard-mathlive-field::part(virtual-keyboard-toggle) {
 .philani-excalidraw-safe-fullscreen {
   --philani-exc-safe-top: max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px));
   --philani-exc-safe-bottom: max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px));
-  --philani-exc-toolbar-drop: 10px;
+  --philani-exc-toolbar-drop: calc(10px + 4em);
 }
 
 .philani-excalidraw-safe-fullscreen .excalidraw .App-bottom-bar {

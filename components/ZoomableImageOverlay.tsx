@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import BottomSheet from './BottomSheet'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 
 type ZoomableImageOverlayProps = {
@@ -41,12 +42,14 @@ export default function ZoomableImageOverlay({ open, imageUrl, title, onClose }:
   })
 
   const touchPanRef = useRef<{ active: boolean; lastX: number; lastY: number }>({ active: false, lastX: 0, lastY: 0 })
+  const touchStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
   const pinchRef = useRef<{ active: boolean; lastDistance: number; lastMidX: number; lastMidY: number }>({
     active: false,
     lastDistance: 0,
     lastMidX: 0,
     lastMidY: 0,
   })
+  const interactionMovedRef = useRef(false)
 
   const syncView = useCallback((next: ViewState | ((prev: ViewState) => ViewState)) => {
     setView((prev) => {
@@ -121,6 +124,7 @@ export default function ZoomableImageOverlay({ open, imageUrl, title, onClose }:
     if (!open) return
     syncView({ scale: 1, x: 0, y: 0 })
     touchPanRef.current = { active: false, lastX: 0, lastY: 0 }
+    touchStartRef.current = { x: 0, y: 0 }
     pinchRef.current = { active: false, lastDistance: 0, lastMidX: 0, lastMidY: 0 }
     measureContainer()
   }, [measureContainer, open, imageUrl, syncView])
@@ -153,8 +157,9 @@ export default function ZoomableImageOverlay({ open, imageUrl, title, onClose }:
   }, [open, containerSize, naturalSize, clampView, syncView])
 
   const canPan = view.scale > 1.01
-
-  const uiScaleLabel = useMemo(() => `${Math.round(view.scale * 100)}%`, [view.scale])
+  const [chromeVisible, setChromeVisible] = useState(true)
+  const [optionsOpen, setOptionsOpen] = useState(false)
+  const [saveBusy, setSaveBusy] = useState(false)
 
   const handleImageLoad = useCallback(() => {
     const image = imageRef.current
@@ -181,6 +186,7 @@ export default function ZoomableImageOverlay({ open, imageUrl, title, onClose }:
 
   const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === 'touch') return
+    interactionMovedRef.current = false
     if (!canPan) return
 
     event.preventDefault()
@@ -200,6 +206,7 @@ export default function ZoomableImageOverlay({ open, imageUrl, title, onClose }:
 
     const dx = event.clientX - dragRef.current.startClientX
     const dy = event.clientY - dragRef.current.startClientY
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) interactionMovedRef.current = true
 
     syncView(clampView({
       scale: viewRef.current.scale,
@@ -235,8 +242,10 @@ export default function ZoomableImageOverlay({ open, imageUrl, title, onClose }:
   }
 
   const handleTouchStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    interactionMovedRef.current = false
     if (event.touches.length === 2) {
       const midpoint = getTouchMidpoint(event.touches)
+      interactionMovedRef.current = true
       pinchRef.current = {
         active: true,
         lastDistance: getTouchDistance(event.touches),
@@ -249,6 +258,7 @@ export default function ZoomableImageOverlay({ open, imageUrl, title, onClose }:
 
     if (event.touches.length === 1 && canPan) {
       const first = event.touches[0]
+      touchStartRef.current = { x: first.clientX, y: first.clientY }
       touchPanRef.current = {
         active: true,
         lastX: first.clientX,
@@ -260,6 +270,7 @@ export default function ZoomableImageOverlay({ open, imageUrl, title, onClose }:
   const handleTouchMove = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
     if (pinchRef.current.active && event.touches.length === 2) {
       event.preventDefault()
+      interactionMovedRef.current = true
       const nextDistance = getTouchDistance(event.touches)
       if (!nextDistance || !pinchRef.current.lastDistance) return
 
@@ -289,6 +300,9 @@ export default function ZoomableImageOverlay({ open, imageUrl, title, onClose }:
       const first = event.touches[0]
       const dx = first.clientX - touchPanRef.current.lastX
       const dy = first.clientY - touchPanRef.current.lastY
+      if (Math.abs(first.clientX - touchStartRef.current.x) > 6 || Math.abs(first.clientY - touchStartRef.current.y) > 6) {
+        interactionMovedRef.current = true
+      }
 
       syncView((prev) => clampView({
         scale: prev.scale,
@@ -311,120 +325,266 @@ export default function ZoomableImageOverlay({ open, imageUrl, title, onClose }:
     }
   }, [])
 
-  const zoomIn = useCallback(() => {
-    const frame = containerSizeRef.current
-    zoomAround(viewRef.current.scale * 1.2, frame.width / 2, frame.height / 2)
-  }, [zoomAround])
-
-  const zoomOut = useCallback(() => {
-    const frame = containerSizeRef.current
-    zoomAround(viewRef.current.scale * 0.84, frame.width / 2, frame.height / 2)
-  }, [zoomAround])
-
   const resetView = useCallback(() => {
     syncView({ scale: 1, x: 0, y: 0 })
   }, [syncView])
 
   const safeTitle = String(title || '').trim() || 'Image viewer'
 
+  useEffect(() => {
+    if (!open) return
+    setChromeVisible(true)
+    setOptionsOpen(false)
+    setSaveBusy(false)
+    interactionMovedRef.current = false
+  }, [open, imageUrl])
+
+  const triggerBrowserDownload = useCallback((href: string, filename: string) => {
+    if (typeof document === 'undefined') return
+    const link = document.createElement('a')
+    link.href = href
+    link.download = filename
+    link.rel = 'noopener'
+    link.target = '_blank'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+  }, [])
+
+  const deriveDownloadName = useCallback(() => {
+    if (typeof window === 'undefined') return 'philani-image'
+    try {
+      const parsed = new URL(imageUrl, window.location.href)
+      const lastSegment = parsed.pathname.split('/').filter(Boolean).pop() || 'philani-image'
+      const decoded = decodeURIComponent(lastSegment)
+      return decoded.includes('.') ? decoded : `${decoded}.jpg`
+    } catch {
+      return 'philani-image.jpg'
+    }
+  }, [imageUrl])
+
+  const handleSaveToPhone = useCallback(async () => {
+    if (saveBusy) return
+    setSaveBusy(true)
+    setOptionsOpen(false)
+    try {
+      const filename = deriveDownloadName()
+      const response = await fetch(imageUrl)
+      if (!response.ok) throw new Error(`Unable to save image (${response.status})`)
+      const blob = await response.blob()
+      const objectUrl = window.URL.createObjectURL(blob)
+      triggerBrowserDownload(objectUrl, filename)
+      window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1200)
+    } catch {
+      try {
+        triggerBrowserDownload(imageUrl, deriveDownloadName())
+      } catch (error: any) {
+        alert(error?.message || 'Unable to save this image right now.')
+      }
+    } finally {
+      setSaveBusy(false)
+    }
+  }, [deriveDownloadName, imageUrl, saveBusy, triggerBrowserDownload])
+
+  const handleCopyImageLink = useCallback(async () => {
+    setOptionsOpen(false)
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(imageUrl)
+        alert('Image link copied')
+        return
+      }
+      if (typeof window !== 'undefined') {
+        window.prompt('Copy this image link', imageUrl)
+      }
+    } catch (error: any) {
+      alert(error?.message || 'Unable to copy image link.')
+    }
+  }, [imageUrl])
+
+  const handleShareImage = useCallback(async () => {
+    setOptionsOpen(false)
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        await navigator.share({ title: safeTitle, url: imageUrl })
+        return
+      }
+      await handleCopyImageLink()
+    } catch (error: any) {
+      if (error?.name === 'AbortError') return
+      alert(error?.message || 'Unable to share this image.')
+    }
+  }, [handleCopyImageLink, imageUrl, safeTitle])
+
+  const handleResetZoom = useCallback(() => {
+    setOptionsOpen(false)
+    resetView()
+  }, [resetView])
+
+  const handleViewportClick = useCallback(() => {
+    if (optionsOpen) return
+    if (interactionMovedRef.current) {
+      interactionMovedRef.current = false
+      return
+    }
+    setChromeVisible((prev) => !prev)
+  }, [optionsOpen])
+
   if (!open) return null
 
   return (
-    <FullScreenGlassOverlay
-      title={safeTitle}
-      onClose={onClose}
-      onBackdropClick={onClose}
-      zIndexClassName="z-[95]"
-      panelSize="full"
-      variant="light"
-      hideHeader
-      showCloseButton={false}
-      panelClassName="!rounded-none !max-w-none !border-0 !bg-black"
-      frameClassName="absolute inset-0 flex items-stretch justify-center p-0"
-      contentClassName="!p-0 !overflow-hidden"
-      forceHeaderSafeTop
-      respectBottomSafeArea={false}
-    >
-      <div className="relative flex h-full min-h-0 flex-col bg-black text-white">
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 px-4 pb-6 pt-[calc(0.9rem+var(--app-safe-top))] sm:px-5">
-          <div className="min-w-0 max-w-[65vw]">
-            <div className="truncate text-sm font-semibold text-white/88 sm:text-base">{safeTitle}</div>
+    <>
+      <FullScreenGlassOverlay
+        title={safeTitle}
+        onClose={onClose}
+        onBackdropClick={onClose}
+        zIndexClassName="z-[95]"
+        panelSize="full"
+        variant="light"
+        hideHeader
+        showCloseButton={false}
+        panelClassName="!rounded-none !max-w-none !border-0 !bg-black"
+        frameClassName="absolute inset-0 flex items-stretch justify-center p-0"
+        contentClassName="!p-0 !overflow-hidden"
+        forceHeaderSafeTop
+        respectBottomSafeArea={false}
+      >
+        <div className="relative flex h-full min-h-0 flex-col bg-black text-white">
+          <div className={`pointer-events-none absolute inset-x-0 top-0 z-10 h-32 bg-gradient-to-b from-black/55 to-transparent transition-opacity duration-200 ${chromeVisible ? 'opacity-100' : 'opacity-0'}`} />
+
+          <div className={`absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 px-4 pb-6 pt-[calc(0.9rem+var(--app-safe-top))] transition-opacity duration-200 sm:px-5 ${chromeVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
+            <button
+              type="button"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/12 bg-black/48 text-white shadow-[0_16px_32px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-black/62"
+              onClick={(event) => {
+                event.stopPropagation()
+                setChromeVisible(true)
+                setOptionsOpen(true)
+              }}
+              aria-label="Image options"
+              title="Image options"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5" aria-hidden="true">
+                <circle cx="10" cy="4.5" r="1.6" />
+                <circle cx="10" cy="10" r="1.6" />
+                <circle cx="10" cy="15.5" r="1.6" />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/12 bg-black/48 text-white shadow-[0_16px_32px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-black/62"
+              onClick={(event) => {
+                event.stopPropagation()
+                onClose()
+              }}
+              aria-label="Close image viewer"
+              title="Close"
+            >
+              <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5" aria-hidden="true">
+                <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
+
+          <div
+            ref={containerRef}
+            className="relative min-h-0 flex-1 overflow-hidden"
+            onClick={handleViewportClick}
+            onWheel={handleWheel}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={endPointerDrag}
+            onPointerCancel={endPointerDrag}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onTouchCancel={handleTouchEnd}
+            style={{ touchAction: canPan ? 'none' : 'pan-y' }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              ref={imageRef}
+              src={imageUrl}
+              alt={safeTitle}
+              onLoad={handleImageLoad}
+              draggable={false}
+              className="absolute left-1/2 top-1/2 max-h-full max-w-full select-none"
+              style={{
+                transform: `translate(calc(-50% + ${view.x}px), calc(-50% + ${view.y}px)) scale(${view.scale})`,
+                transformOrigin: 'center center',
+                transition: dragRef.current.active || pinchRef.current.active ? 'none' : 'transform 120ms ease-out',
+                cursor: canPan ? (dragRef.current.active ? 'grabbing' : 'grab') : 'zoom-in',
+              }}
+            />
+          </div>
+        </div>
+      </FullScreenGlassOverlay>
+
+      <BottomSheet
+        open={optionsOpen}
+        backdrop
+        title="Image options"
+        subtitle="Save or manage this image"
+        onClose={() => setOptionsOpen(false)}
+        zIndexClassName="z-[96]"
+        className="bottom-0"
+        sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
+        contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5"
+      >
+        <div className="space-y-2">
           <button
             type="button"
-            className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/12 bg-black/48 text-white shadow-[0_16px_32px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-black/62"
-            onClick={onClose}
-            aria-label="Close image viewer"
-            title="Close"
+            className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={() => void handleSaveToPhone()}
+            disabled={saveBusy}
           >
-            <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5" aria-hidden="true">
-              <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
+            <span>
+              <span className="block text-sm font-semibold">{saveBusy ? 'Saving…' : 'Save to phone'}</span>
+              <span className="block text-xs text-slate-500">Download this image to your device.</span>
+            </span>
+            <span className="text-slate-400">{'>'}</span>
+          </button>
+
+          {typeof navigator !== 'undefined' && typeof navigator.share === 'function' ? (
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
+              onClick={() => void handleShareImage()}
+            >
+              <span>
+                <span className="block text-sm font-semibold">Share image</span>
+                <span className="block text-xs text-slate-500">Send this image link to another app.</span>
+              </span>
+              <span className="text-slate-400">{'>'}</span>
+            </button>
+          ) : null}
+
+          <button
+            type="button"
+            className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
+            onClick={() => void handleCopyImageLink()}
+          >
+            <span>
+              <span className="block text-sm font-semibold">Copy image link</span>
+              <span className="block text-xs text-slate-500">Keep a link to this image on your clipboard.</span>
+            </span>
+            <span className="text-slate-400">{'>'}</span>
+          </button>
+
+          <button
+            type="button"
+            className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
+            onClick={handleResetZoom}
+          >
+            <span>
+              <span className="block text-sm font-semibold">Reset zoom</span>
+              <span className="block text-xs text-slate-500">Return the image to its centered default view.</span>
+            </span>
+            <span className="text-slate-400">{'>'}</span>
           </button>
         </div>
-
-        <div
-          ref={containerRef}
-          className="relative min-h-0 flex-1 overflow-hidden"
-          onWheel={handleWheel}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={endPointerDrag}
-          onPointerCancel={endPointerDrag}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          onTouchCancel={handleTouchEnd}
-          style={{ touchAction: canPan ? 'none' : 'pan-y' }}
-        >
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-32 bg-gradient-to-b from-black/55 to-transparent" />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-32 bg-gradient-to-t from-black/72 to-transparent" />
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            ref={imageRef}
-            src={imageUrl}
-            alt={safeTitle}
-            onLoad={handleImageLoad}
-            draggable={false}
-            className="absolute left-1/2 top-1/2 max-h-full max-w-full select-none"
-            style={{
-              transform: `translate(calc(-50% + ${view.x}px), calc(-50% + ${view.y}px)) scale(${view.scale})`,
-              transformOrigin: 'center center',
-              transition: dragRef.current.active || pinchRef.current.active ? 'none' : 'transform 120ms ease-out',
-              cursor: canPan ? (dragRef.current.active ? 'grabbing' : 'grab') : 'zoom-in',
-            }}
-          />
-        </div>
-
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-[calc(1rem+var(--app-safe-bottom))] sm:px-5">
-          <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/12 bg-black/52 px-2 py-2 text-white shadow-[0_16px_32px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-            <button
-              type="button"
-              className="inline-flex h-10 min-w-10 items-center justify-center rounded-full bg-white/10 px-3 text-sm font-semibold transition hover:bg-white/16"
-              onClick={zoomOut}
-              aria-label="Zoom out"
-            >
-              -
-            </button>
-            <button
-              type="button"
-              className="inline-flex h-10 min-w-[4.5rem] items-center justify-center rounded-full bg-white/10 px-3 text-xs font-semibold tracking-[0.03em] transition hover:bg-white/16"
-              onClick={resetView}
-              aria-label="Reset zoom"
-            >
-              {uiScaleLabel}
-            </button>
-            <button
-              type="button"
-              className="inline-flex h-10 min-w-10 items-center justify-center rounded-full bg-white/10 px-3 text-sm font-semibold transition hover:bg-white/16"
-              onClick={zoomIn}
-              aria-label="Zoom in"
-            >
-              +
-            </button>
-          </div>
-        </div>
-      </div>
-    </FullScreenGlassOverlay>
+      </BottomSheet>
+    </>
   )
 }

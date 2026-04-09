@@ -1070,7 +1070,7 @@ body{
 }
 
 .mobile-dashboard-edge .session-focus-visual{
-  min-height:12rem;
+  min-height:14rem;
 }
 
 .mobile-dashboard-edge .session-focus-thumbnail{
@@ -1083,6 +1083,11 @@ body{
 
 .mobile-dashboard-edge .session-focus-body{
   padding:1rem;
+}
+
+.mobile-dashboard-edge .session-focus-banner-content{
+  position:relative;
+  z-index:1;
 }
 
 .mobile-dashboard-edge .session-focus-pill-grid,
@@ -1099,12 +1104,65 @@ body{
 
 .mobile-dashboard-edge .session-focus-copy{
   color:#5a6574 !important;
+  flex:1 1 20rem;
   max-width:34rem;
 }
 
 .mobile-dashboard-edge .session-focus-heading,
 .mobile-dashboard-edge .session-focus-title{
   color:#1c1e21 !important;
+}
+
+.mobile-dashboard-edge .session-focus-banner-title{
+  color:#f8fbff !important;
+  text-shadow:0 12px 26px rgba(15,23,42,0.34);
+}
+
+.mobile-dashboard-edge .session-focus-schedule-grid{
+  max-width:26rem;
+  border-top:1px solid rgba(255,255,255,0.18);
+}
+
+.mobile-dashboard-edge .session-focus-schedule-item{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:0.18rem;
+  min-height:4.2rem;
+}
+
+.mobile-dashboard-edge .session-focus-schedule-item + .session-focus-schedule-item{
+  border-left:1px solid rgba(255,255,255,0.18);
+}
+
+.mobile-dashboard-edge .session-focus-schedule-label{
+  color:rgba(191,219,254,0.9);
+  font-size:0.67rem;
+  font-weight:700;
+  letter-spacing:0.14em;
+  text-transform:uppercase;
+}
+
+.mobile-dashboard-edge .session-focus-schedule-day{
+  color:#f8fbff;
+  font-size:0.98rem;
+  font-weight:600;
+  line-height:1.2;
+}
+
+.mobile-dashboard-edge .session-focus-schedule-time{
+  color:rgba(226,232,240,0.88);
+  font-size:0.82rem;
+  font-weight:500;
+  line-height:1.2;
+}
+
+.mobile-dashboard-edge .session-focus-body-head{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:0.85rem;
 }
 
 .mobile-dashboard-edge .session-focus-subtitle{
@@ -1147,9 +1205,15 @@ body{
 }
 
 .mobile-dashboard-edge .session-focus-edit{
-  border-color:rgba(255,255,255,0.14) !important;
-  background:rgba(15,23,42,0.28) !important;
-  color:#f8fbff !important;
+  border:1px solid rgba(15,23,42,0.08) !important;
+  background:#ffffff !important;
+  color:#1f2937 !important;
+  box-shadow:0 10px 24px rgba(15,23,42,0.08);
+}
+
+.mobile-dashboard-edge .session-focus-edit:hover:not(:disabled){
+  background:#f3f8ff !important;
+  border-color:rgba(37,87,183,0.18) !important;
 }
 
 .mobile-dashboard-edge .session-focus-primary{

@@ -10001,13 +10001,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     const resolvedCurrentLesson = resolvedCurrentLessonId ? sessionById.get(resolvedCurrentLessonId) : null
 
-    const renderSessionFocusCard = (session: any, accentLabel = 'Live now') => {
+    const renderSessionFocusCard = (session: any) => {
       const isJoinDisabled = !canLaunchCanvasOverlay || isSubscriptionBlocked
       const lessonTitle = typeof session?.title === 'string' && session.title.trim() ? session.title.trim() : 'Current lesson'
       const lessonThumb = typeof session?.thumbnailUrl === 'string' && session.thumbnailUrl.trim() ? session.thumbnailUrl.trim() : ''
-      const sessionDay = formatSessionDayCompact(session?.startsAt)
-      const sessionTime = formatSessionTimeCompact(session?.startsAt, (session as any)?.endsAt || session?.startsAt)
-      const schedulePills = [sessionDay, sessionTime].filter(Boolean)
+      const sessionEnd = (session as any)?.endsAt || session?.startsAt
+      const scheduleDetails = [
+        {
+          label: 'Starts',
+          day: formatSessionDayCompact(session?.startsAt) || 'Date TBA',
+          time: formatSessionTimeCompact(session?.startsAt) || 'Time TBA',
+        },
+        {
+          label: 'Ends',
+          day: formatSessionDayCompact(sessionEnd) || 'Date TBA',
+          time: formatSessionTimeCompact(sessionEnd) || 'Time TBA',
+        },
+      ]
       const sessionSummary = isSubscriptionBlocked
         ? 'Subscribe to join and unlock assignments.'
         : canLaunchCanvasOverlay
@@ -10029,45 +10039,38 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-sky-300/20 blur-3xl" />
             <div className="pointer-events-none absolute bottom-0 left-0 h-28 w-28 rounded-full bg-cyan-200/12 blur-3xl" />
 
-            <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4">
-              <div className="session-focus-pill-grid grid min-w-0 flex-1 max-w-[15rem] grid-cols-2 gap-2">
-                <span className="session-focus-chip inline-flex w-full items-center justify-center rounded-full border border-white/12 bg-white/82 px-3 py-1 text-[11px] font-semibold text-[#2557b7] backdrop-blur-md">
-                  {accentLabel}
-                </span>
-                <span className="session-focus-grade-chip inline-flex w-full items-center justify-center rounded-full border border-black/10 bg-white/92 px-3 py-1 text-[11px] font-semibold text-slate-900/78 backdrop-blur-md">
-                  {activeGradeLabel}
-                </span>
-              </div>
-              {isAdmin && (
-                <button
-                  type="button"
-                  className="session-focus-edit inline-flex h-9 items-center justify-center rounded-full border border-white/12 bg-black/25 px-4 text-xs font-semibold text-white/88 backdrop-blur-md transition hover:bg-black/40"
-                  onClick={() => openEditSession(String(session.id))}
-                >
-                  Edit
-                </button>
-              )}
-            </div>
-
-            <div className="absolute inset-x-0 bottom-0 p-4">
-              <div className={`session-focus-meta-grid grid max-w-[16rem] gap-2 ${schedulePills.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                {schedulePills.map((label) => (
-                  <span key={label} className="session-focus-meta inline-flex w-full items-center justify-center rounded-full border border-white/14 bg-black/20 px-3 py-1 text-[11px] font-semibold text-white/90 backdrop-blur-md">
-                    {label}
-                  </span>
-                ))}
+            <div className="session-focus-banner-content absolute inset-0 flex flex-col justify-end p-5 sm:p-6">
+              <div className="space-y-4">
+                <div className="session-focus-banner-title max-w-[22rem] text-[1.9rem] font-semibold leading-[1.02] tracking-[-0.03em] text-white sm:text-[2.35rem]">
+                  {lessonTitle}
+                </div>
+                <div className="session-focus-schedule-grid grid grid-cols-2 gap-0 pt-4">
+                  {scheduleDetails.map((item) => (
+                    <div key={item.label} className="session-focus-schedule-item px-3 text-center first:pl-0 last:pr-0">
+                      <div className="session-focus-schedule-label">{item.label}</div>
+                      <div className="session-focus-schedule-day">{item.day}</div>
+                      <div className="session-focus-schedule-time">{item.time}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
 
           <div className="session-focus-body space-y-4 p-4 sm:p-5">
-            <div className="space-y-2">
-              <div className="session-focus-title text-lg font-semibold leading-tight break-words text-white sm:text-[1.35rem]">
-                {lessonTitle}
-              </div>
+            <div className="session-focus-body-head">
               <p className="session-focus-copy text-sm leading-6 text-white/72">
                 {sessionSummary}
               </p>
+              {isAdmin && (
+                <button
+                  type="button"
+                  className="session-focus-edit inline-flex h-10 items-center justify-center rounded-2xl px-4 text-sm font-semibold transition"
+                  onClick={() => openEditSession(String(session.id))}
+                >
+                  Edit lesson
+                </button>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -10182,7 +10185,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           ) : (
             <ul className="space-y-3">
               {currentSessions.map(s => (
-                <li key={s.id}>{renderSessionFocusCard(s, 'In progress')}</li>
+                <li key={s.id}>{renderSessionFocusCard(s)}</li>
               ))}
             </ul>
           )}

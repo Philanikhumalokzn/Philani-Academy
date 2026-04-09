@@ -39,6 +39,7 @@ const PUBLIC_SOLVE_MIN_PROMPT_ZOOM = 1
 const PUBLIC_SOLVE_MAX_PROMPT_ZOOM = 2.4
 const PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT = 64
 const PUBLIC_SOLVE_VIEWER_HEIGHT_PX = 420
+const PUBLIC_SOLVE_CANVAS_CHROME_IDLE_MS = 1500
 
 type PublicSolvePromptMode = 'passive' | 'active'
 type PublicSolveReferencePresentation = 'interactive' | 'background'
@@ -338,6 +339,7 @@ export function PublicSolveOpacityWorkspace({
   frameClassName = 'relative flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.10)]',
   canvasSurfaceClassName = 'flex h-full min-h-0 flex-col bg-white/96',
   referencePresentation = 'interactive',
+  chromeVisible = true,
   resetKey,
 }: {
   title: string
@@ -353,6 +355,7 @@ export function PublicSolveOpacityWorkspace({
   frameClassName?: string
   canvasSurfaceClassName?: string
   referencePresentation?: PublicSolveReferencePresentation
+  chromeVisible?: boolean
   resetKey?: string | number | null
 }) {
   const [canvasOpacityPercent, setCanvasOpacityPercent] = useState(100)
@@ -398,7 +401,7 @@ export function PublicSolveOpacityWorkspace({
       sliderRevealTimeoutRef.current = setTimeout(() => {
         setSliderVisible(true)
         sliderRevealTimeoutRef.current = null
-      }, 2000)
+        }, PUBLIC_SOLVE_CANVAS_CHROME_IDLE_MS)
     }
 
     scopeNode.addEventListener('pointerdown', hideThenScheduleReveal, true)
@@ -416,6 +419,7 @@ export function PublicSolveOpacityWorkspace({
   }, [])
 
   const canvasOpacity = canvasOpacityPercent / 100
+  const resolvedSliderVisible = sliderVisible && chromeVisible
 
   return (
     <div className={`flex h-full flex-col ${outerClassName}`.trim()}>
@@ -428,7 +432,7 @@ export function PublicSolveOpacityWorkspace({
         >
           <div
             data-public-solve-opacity-slider="true"
-            className={`pointer-events-auto flex h-[232px] w-11 flex-col items-center justify-center gap-2 rounded-full border border-slate-200/90 bg-white/92 px-1 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-[opacity,transform] duration-200 ${sliderVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2 pointer-events-none'}`}
+            className={`pointer-events-auto flex h-[232px] w-11 flex-col items-center justify-center gap-2 rounded-full border border-slate-200/90 bg-white/92 px-1 py-3 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-[opacity,transform] duration-200 ${resolvedSliderVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-2 pointer-events-none'}`}
           >
             <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
               <div className="text-center text-[8px] font-semibold uppercase leading-[1.05] tracking-[0.08em] text-slate-500 [writing-mode:vertical-rl] rotate-180">
@@ -1023,6 +1027,7 @@ export function PublicSolveComposer({
 }) {
   const canvasShellRef = useRef<HTMLDivElement | null>(null)
   const excalidrawApiRef = useRef<any>(null)
+  const canvasChromeRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sceneRef = useRef<PublicSolveScene>(normalizePublicSolveScene(initialScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() })
   const lastAppliedInitialSceneKeyRef = useRef(buildPublicSolveSceneResetKey(sceneRef.current))
   const [composerInstanceKey, setComposerInstanceKey] = useState(0)
@@ -1035,8 +1040,47 @@ export function PublicSolveComposer({
     return resolveSceneGuideSpacing(sceneRef.current.elements, sceneMeta, getAppStateZoomValue(sceneRef.current.appState))
   })
   const [historyActionState, setHistoryActionState] = useState({ canUndo: false, canRedo: false })
+  const [canvasChromeVisible, setCanvasChromeVisible] = useState(true)
   const showFullscreenClose = Boolean(fullscreenCanvas && onCancel)
   const showFooterCancel = Boolean(onCancel) && !showFullscreenClose
+
+  const clearCanvasChromeRevealTimeout = useCallback(() => {
+    if (canvasChromeRevealTimeoutRef.current) {
+      clearTimeout(canvasChromeRevealTimeoutRef.current)
+      canvasChromeRevealTimeoutRef.current = null
+    }
+  }, [])
+
+  const scheduleCanvasChromeReveal = useCallback(() => {
+    clearCanvasChromeRevealTimeout()
+    canvasChromeRevealTimeoutRef.current = setTimeout(() => {
+      setCanvasChromeVisible(true)
+      canvasChromeRevealTimeoutRef.current = null
+    }, PUBLIC_SOLVE_CANVAS_CHROME_IDLE_MS)
+  }, [clearCanvasChromeRevealTimeout])
+
+  const eventMatchesCanvasInteraction = useCallback((event: Event) => {
+    if (!fullscreenCanvas) return false
+
+    const path = typeof event.composedPath === 'function' ? event.composedPath() : []
+    const nodes = path.length ? path : [event.target]
+
+    const isCanvasInteractionNode = (node: EventTarget | null) => {
+      if (node instanceof HTMLCanvasElement) return true
+      if (!(node instanceof Element)) return false
+      if (node.closest('[data-public-solve-opacity-slider="true"]')) return false
+      if (node.closest('[data-public-solve-canvas-close="true"]')) return false
+      if (node.closest('.App-bottom-bar')) return false
+      if (node.closest('.App-top-bar')) return false
+      if (node.closest('.mobile-misc-tools-container')) return false
+      if (node.closest('.dropdown-menu')) return false
+      if (node.closest('[data-testid="public-solve-reference-card"]')) return false
+      if (node.closest('[data-testid="public-solve-reference-dismiss"]')) return false
+      return Boolean(node.closest('.excalidraw'))
+    }
+
+    return nodes.some(isCanvasInteractionNode)
+  }, [fullscreenCanvas])
 
   const getHistoryActionButtons = useCallback(() => {
     const root = canvasShellRef.current
@@ -1152,6 +1196,36 @@ export function PublicSolveComposer({
   }, [isReady])
 
   useEffect(() => {
+    if (!fullscreenCanvas) {
+      clearCanvasChromeRevealTimeout()
+      setCanvasChromeVisible(true)
+      return
+    }
+
+    const root = canvasShellRef.current
+    if (!root) return
+
+    const hideCanvasChrome = (event: Event) => {
+      if (!eventMatchesCanvasInteraction(event)) return
+      setCanvasChromeVisible(false)
+      scheduleCanvasChromeReveal()
+    }
+
+    root.addEventListener('pointerdown', hideCanvasChrome, true)
+    root.addEventListener('pointermove', hideCanvasChrome, true)
+    root.addEventListener('wheel', hideCanvasChrome, true)
+    root.addEventListener('keydown', hideCanvasChrome, true)
+
+    return () => {
+      clearCanvasChromeRevealTimeout()
+      root.removeEventListener('pointerdown', hideCanvasChrome, true)
+      root.removeEventListener('pointermove', hideCanvasChrome, true)
+      root.removeEventListener('wheel', hideCanvasChrome, true)
+      root.removeEventListener('keydown', hideCanvasChrome, true)
+    }
+  }, [clearCanvasChromeRevealTimeout, eventMatchesCanvasInteraction, fullscreenCanvas, scheduleCanvasChromeReveal])
+
+  useEffect(() => {
     if (!fullscreenCanvas) return
     if (typeof MutationObserver === 'undefined') return
 
@@ -1180,7 +1254,8 @@ export function PublicSolveComposer({
         <button
           type="button"
           onClick={onCancel}
-          className="absolute right-3 top-[calc(var(--app-safe-top)+0.75rem)] z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-100"
+          data-public-solve-canvas-close="true"
+          className={`absolute right-3 top-[calc(var(--app-safe-top)+0.75rem)] z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 shadow-sm transition-[opacity,transform,background-color] duration-200 hover:bg-slate-100 ${canvasChromeVisible ? 'opacity-100 translate-y-0' : 'pointer-events-none opacity-0 -translate-y-1'}`.trim()}
           aria-label={cancelLabel}
           title={cancelLabel}
         >
@@ -1202,11 +1277,12 @@ export function PublicSolveComposer({
         frameClassName={fullscreenCanvas ? 'relative flex h-full min-h-0 flex-col overflow-hidden rounded-none border-0 bg-white shadow-none' : undefined}
         canvasSurfaceClassName={fullscreenCanvas ? 'flex h-full min-h-0 flex-col bg-white' : undefined}
         referencePresentation={referencePresentation}
+        chromeVisible={canvasChromeVisible}
       >
         <div ref={canvasShellRef} className="relative min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>
           <LessonStyledExcalidraw
             key={`public-solve-composer-${composerInstanceKey}`}
-            className={`h-full ${fullscreenCanvas ? 'philani-excalidraw-safe-fullscreen' : ''}`.trim()}
+            className={`h-full ${fullscreenCanvas ? 'philani-excalidraw-safe-fullscreen' : ''} ${fullscreenCanvas && !canvasChromeVisible ? 'philani-excalidraw-chrome-hidden' : ''}`.trim()}
             initialData={composerInitialData}
             UIOptions={editorUiOptions}
             hideMainMenu={hideMainMenu}

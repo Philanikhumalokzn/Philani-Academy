@@ -413,10 +413,7 @@ math-field.keyboard-mathlive-field::part(virtual-keyboard-toggle) {
 }
 
 .philani-excalidraw-safe-fullscreen .excalidraw .mobile-misc-tools-container {
-  top: auto !important;
-  bottom: calc(54px - var(--philani-exc-toolbar-drop)) !important;
-  left: calc(max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px)) + 8px) !important;
-  transform: none !important;
+  display: none !important;
 }
 
 .philani-excalidraw-safe-fullscreen .excalidraw .HintViewer {

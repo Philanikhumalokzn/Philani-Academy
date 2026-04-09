@@ -1066,6 +1066,34 @@ export function PublicSolveComposer({
     targetButton.click()
   }, [getHistoryActionButtons])
 
+  const handleClearCanvas = useCallback(() => {
+    const api = excalidrawApiRef.current
+    if (!api?.updateScene) return
+
+    const currentElements = typeof api.getSceneElementsIncludingDeleted === 'function'
+      ? api.getSceneElementsIncludingDeleted()
+      : sceneRef.current.elements
+
+    if (!Array.isArray(currentElements) || !currentElements.some((element: any) => !element?.isDeleted)) return
+
+    const clearedElements = cloneScenePart(currentElements).map((element: any) => ({
+      ...element,
+      isDeleted: true,
+    }))
+
+    api.updateScene({
+      elements: clearedElements,
+      appState: {
+        selectedElementIds: {},
+        selectedGroupIds: {},
+        activeEmbeddable: null,
+        editingLinearElement: null,
+        selectedLinearElement: null,
+      },
+      captureUpdate: 'IMMEDIATELY',
+    })
+  }, [])
+
   const applySceneSnapshot = useCallback((nextScene: PublicSolveScene, options?: { syncApi?: boolean }) => {
     const normalized = normalizePublicSolveScene(nextScene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
     sceneRef.current = normalized
@@ -1215,9 +1243,9 @@ export function PublicSolveComposer({
       </PublicSolveOpacityWorkspace>
 
       <div className={`border-t border-slate-200 bg-white/92 px-4 py-3 backdrop-blur-xl sm:px-6 ${fullscreenCanvas ? 'pb-[calc(var(--app-safe-bottom)+0.9rem)] pt-3' : ''}`.trim()}>
-        <div className="flex items-center justify-between gap-3">
+        <div className={fullscreenCanvas ? 'grid grid-cols-[1fr_auto_1fr] items-center gap-3' : 'flex items-center justify-between gap-3'}>
           {fullscreenCanvas ? (
-            <div className="inline-flex items-center overflow-hidden rounded-full border border-slate-200 bg-white shadow-sm">
+            <div className="inline-flex items-center overflow-hidden rounded-full border border-slate-200 bg-white shadow-sm justify-self-start">
               <button
                 type="button"
                 className="inline-flex h-10 w-11 items-center justify-center border-r border-slate-200 text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
@@ -1252,9 +1280,25 @@ export function PublicSolveComposer({
               {cancelLabel}
             </button>
           ) : <div />}
+          {fullscreenCanvas ? (
+            <button
+              type="button"
+              className="justify-self-center inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={handleClearCanvas}
+              aria-label="Clear canvas"
+              title="Clear canvas"
+              disabled={!hasContent || submitting}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 6h18" />
+                <path d="M8 6V4h8v2" />
+                <path d="M7 6l1 14h8l1-14" />
+              </svg>
+            </button>
+          ) : null}
           <button
             type="button"
-            className="inline-flex h-11 items-center justify-center rounded-full bg-[#1877f2] px-5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(24,119,242,0.28)] transition hover:bg-[#176ad8] disabled:cursor-not-allowed disabled:opacity-55"
+            className={`inline-flex h-11 items-center justify-center rounded-full bg-[#1877f2] px-5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(24,119,242,0.28)] transition hover:bg-[#176ad8] disabled:cursor-not-allowed disabled:opacity-55 ${fullscreenCanvas ? 'justify-self-end' : ''}`.trim()}
             onClick={() => {
               const action = onPreviewSubmit || onSubmit
               void action(sceneRef.current)

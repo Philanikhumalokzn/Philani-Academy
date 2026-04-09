@@ -24,6 +24,13 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74), 0 8px 18px rgba(14, 165, 233, 0.08);
 }
 
+.philani-gradient-text {
+  background-image: linear-gradient(135deg, rgb(34, 197, 94), rgb(6, 182, 212) 52%, rgb(37, 99, 235));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+}
+
 .philani-gradient-divider-top {
   position: relative;
   border-top: none !important;

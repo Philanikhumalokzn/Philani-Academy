@@ -42,11 +42,12 @@ export default function ComposerActionBar({
 }: Props) {
   const viewportBottomOffsetPx = useViewportBottomOffset({ requireEditableFocus: true })
   const iconButtonClassName = tone === 'outlined'
-    ? 'philani-gradient-outline [--philani-outline-fill:#ffffff] inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-700 disabled:opacity-50'
-    : 'inline-flex h-11 w-11 items-center justify-center text-slate-700 transition hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
+    ? 'philani-gradient-outline [--philani-outline-fill:#ffffff] inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-700 transition hover:-translate-y-[1px] hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50'
+    : 'philani-gradient-outline-soft [--philani-outline-fill:#ffffff] inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-700 transition hover:-translate-y-[1px] hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50'
   const shellClassName = tone === 'outlined'
     ? 'philani-gradient-divider-top mt-auto shrink-0 bg-white'
     : 'philani-gradient-divider-top mt-auto shrink-0 bg-white/95 backdrop-blur-xl'
+  const fxClassName = 'philani-gradient-text text-[1.18rem] font-semibold italic leading-none tracking-[-0.05em] drop-shadow-[0_6px_10px_rgba(14,165,233,0.16)]'
   const shellStyle: CSSProperties | undefined = viewportBottomOffsetPx > 0
     ? {
         paddingBottom: `calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + ${viewportBottomOffsetPx}px)`,
@@ -59,7 +60,7 @@ export default function ComposerActionBar({
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
           {showTypedAction ? (
             <button type="button" className={iconButtonClassName} onClick={onOpenTyped} disabled={posting} aria-label="Math input" title="Math input">
-              <span className="text-[1.18rem] font-semibold italic leading-none tracking-[-0.05em]" style={{ fontFamily: 'KaTeX_Main, Times New Roman, serif' }}>fx</span>
+              <span className={fxClassName} style={{ fontFamily: 'KaTeX_Main, Times New Roman, serif' }}>fx</span>
             </button>
           ) : null}
 

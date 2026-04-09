@@ -98,12 +98,15 @@ function AudiencePicker({
   onAudienceChange: (value: Audience) => void
 }) {
   const [open, setOpen] = useState(false)
+  const triggerClassName = 'philani-gradient-outline [--philani-outline-fill:#ffffff] inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-700 transition hover:-translate-y-[1px] hover:brightness-105'
+  const menuClassName = 'philani-gradient-outline-soft [--philani-outline-fill:#ffffff] absolute bottom-full right-0 mb-2 w-48 overflow-hidden rounded-2xl shadow-[0_20px_40px_rgba(15,23,42,0.15)]'
+  const activeOptionClassName = 'bg-[linear-gradient(135deg,rgba(34,197,94,0.10),rgba(6,182,212,0.12)_52%,rgba(37,99,235,0.10))] text-slate-900'
 
   return (
     <div className="relative">
       <button
         type="button"
-        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-white text-slate-700 hover:bg-slate-50"
+        className={triggerClassName}
         onClick={() => setOpen((current) => !current)}
         aria-label="Change audience"
         title="Change audience"
@@ -134,7 +137,7 @@ function AudiencePicker({
       </button>
 
       {open ? (
-        <div className="absolute bottom-full right-0 mb-2 w-48 overflow-hidden rounded-2xl border border-black/10 bg-white shadow-[0_20px_40px_rgba(15,23,42,0.15)]">
+        <div className={menuClassName}>
           {([
             ['public', 'Public'],
             ['grade', 'My grade'],
@@ -143,7 +146,7 @@ function AudiencePicker({
             <button
               key={value}
               type="button"
-              className={`flex w-full items-center gap-3 px-3 py-2 text-sm hover:bg-slate-50 ${audienceDraft === value ? 'bg-slate-50' : ''}`}
+              className={`flex w-full items-center gap-3 px-3 py-2 text-sm text-slate-700 transition hover:bg-[linear-gradient(135deg,rgba(34,197,94,0.07),rgba(6,182,212,0.09)_52%,rgba(37,99,235,0.07))] ${audienceDraft === value ? activeOptionClassName : ''}`}
               onClick={() => {
                 onAudienceChange(value)
                 setOpen(false)
@@ -200,7 +203,7 @@ function ComposerBlockList({
               key={block.id}
               role="button"
               tabIndex={0}
-              className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 whitespace-pre-wrap break-words text-slate-700"
+              className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] rounded-2xl px-3 py-2 text-sm leading-6 whitespace-pre-wrap break-words text-slate-700"
               onClick={() => onEditBlock?.(block, index)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
@@ -222,7 +225,7 @@ function ComposerBlockList({
               key={block.id}
               role="button"
               tabIndex={0}
-              className="overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800"
+              className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] overflow-x-auto rounded-2xl px-3 py-2 text-slate-800"
               onClick={() => onEditBlock?.(block, index)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
@@ -314,13 +317,13 @@ export default function PostComposerOverlay(props: Props) {
         {viewerAvatarUrl ? (
           <img src={viewerAvatarUrl} alt="" className="h-10 w-10 shrink-0 rounded-full border border-black/10 bg-white object-cover" />
         ) : (
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-black/10 bg-white text-sm font-semibold text-[#1c1e21]">
+          <div className="philani-gradient-outline-soft [--philani-outline-fill:#ffffff] flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-[#1c1e21]">
             {String(viewerName || 'P')[0]?.toUpperCase?.() || 'P'}
           </div>
         )}
         <div className="min-w-0 flex-1">
           <input
-            className="w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-base text-[#1c1e21] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/25"
+            className="philani-gradient-outline-soft [--philani-outline-fill:#ffffff] w-full rounded-[22px] px-4 py-3 text-base text-[#1c1e21] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/25"
             placeholder="Title (optional)"
             maxLength={30}
             value={titleDraft}
@@ -331,10 +334,12 @@ export default function PostComposerOverlay(props: Props) {
 
       <div className="mt-4 flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-2">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-slate-600">
-              <path d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364-2.121 2.121M7.757 16.243l-2.121 2.121m12.728 0-2.121-2.121M7.757 7.757 5.636 5.636" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
+          <div className="philani-gradient-outline-soft [--philani-outline-fill:#ffffff] flex items-center gap-2 rounded-full px-3 py-2">
+            <span className="philani-gradient-icon flex h-5 w-5 items-center justify-center text-slate-600">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364-2.121 2.121M7.757 16.243l-2.121 2.121m12.728 0-2.121-2.121M7.757 7.757 5.636 5.636" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </span>
             <span className="text-xs text-slate-500">Max attempts</span>
             <select className="bg-transparent text-sm text-[#1c1e21] focus:outline-none" value={maxAttempts} onChange={(event) => onMaxAttemptsChange(event.target.value)}>
               <option value="unlimited">Unlimited</option>
@@ -373,9 +378,9 @@ export default function PostComposerOverlay(props: Props) {
               {renderHeader()}
 
               <div className="flex min-h-0 flex-1 flex-col gap-0">
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-t border-black/10 bg-white px-0 py-4 sm:px-1 sm:py-5">
+                <div className="philani-gradient-divider-top flex min-h-0 flex-1 flex-col overflow-hidden rounded-none bg-white px-0 py-4 sm:px-1 sm:py-5">
                   <div
-                    className="flex min-h-0 flex-1 cursor-text flex-col gap-3 overflow-y-auto px-4 py-3"
+                    className="philani-gradient-outline-soft [--philani-outline-fill:#ffffff] flex min-h-0 flex-1 cursor-text flex-col gap-3 overflow-y-auto rounded-[28px] px-4 py-4"
                     onClick={() => props.textareaRef?.current?.focus()}
                   >
                     <ComposerBlockList
@@ -401,8 +406,8 @@ export default function PostComposerOverlay(props: Props) {
                 </div>
 
                 {parsedOpen && parsedJsonText ? (
-                  <div className="rounded-none border-t border-black/10 bg-[#eef2f7] px-0 py-3 sm:px-1 sm:py-4">
-                    <pre className="whitespace-pre-wrap text-xs text-slate-700">{parsedJsonText}</pre>
+                  <div className="philani-gradient-divider-top rounded-none bg-[#eef2f7] px-0 py-3 sm:px-1 sm:py-4">
+                    <pre className="philani-gradient-outline-soft [--philani-outline-fill:#eef2f7] whitespace-pre-wrap rounded-[24px] px-4 py-3 text-xs text-slate-700">{parsedJsonText}</pre>
                   </div>
                 ) : null}
               </div>
@@ -430,7 +435,7 @@ export default function PostComposerOverlay(props: Props) {
           <OverlayPortal>
             <BottomSheet open backdrop title="Block options" subtitle="Press and hold a composer block to edit or remove it" onClose={props.onCloseBlockCrud} zIndexClassName="z-[71]" className="bottom-0" sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]" contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5">
               <div className="space-y-2">
-                <button type="button" className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100" onClick={() => props.onEditBlock?.(props.crudTarget!.block, props.crudTarget!.index)}>
+                <button type="button" className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] flex w-full items-center justify-between rounded-2xl px-4 py-4 text-left text-slate-800 transition hover:brightness-[1.02]" onClick={() => props.onEditBlock?.(props.crudTarget!.block, props.crudTarget!.index)}>
                   <span>
                     <span className="block text-sm font-semibold">{props.crudTarget.block.type === 'image' ? 'Open image' : 'Edit block'}</span>
                     <span className="block text-xs text-slate-500">Return this composer item to its editor.</span>
@@ -453,14 +458,14 @@ export default function PostComposerOverlay(props: Props) {
           <OverlayPortal>
             <BottomSheet open backdrop title="Add photo" subtitle="Choose how to attach your working" onClose={props.onCloseImageSourceSheet} zIndexClassName="z-[71]" className="bottom-0" sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]" contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5">
               <div className="space-y-2">
-                <button type="button" className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100" onClick={props.onOpenCameraPicker} disabled={uploading}>
+                <button type="button" className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] flex w-full items-center justify-between rounded-2xl px-4 py-4 text-left text-slate-800 transition hover:brightness-[1.02]" onClick={props.onOpenCameraPicker} disabled={uploading}>
                   <span>
                     <span className="block text-sm font-semibold">Take photo</span>
                     <span className="block text-xs text-slate-500">Open the camera and shoot your paper working.</span>
                   </span>
                   <span className="text-slate-400">{`>`}</span>
                 </button>
-                <button type="button" className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100" onClick={props.onOpenGalleryPicker} disabled={uploading}>
+                <button type="button" className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] flex w-full items-center justify-between rounded-2xl px-4 py-4 text-left text-slate-800 transition hover:brightness-[1.02]" onClick={props.onOpenGalleryPicker} disabled={uploading}>
                   <span>
                     <span className="block text-sm font-semibold">Choose from gallery</span>
                     <span className="block text-xs text-slate-500">Pick an existing photo or screenshot from your device.</span>
@@ -578,21 +583,21 @@ export default function PostComposerOverlay(props: Props) {
                 <input ref={props.uploadInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(event) => void props.onFilePicked?.(event)} />
                 {renderHeader()}
                 <div className="flex min-h-0 flex-1 flex-col gap-0">
-                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-t border-black/10 bg-white px-0 py-4 sm:px-1 sm:py-5">
-                    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+                  <div className="philani-gradient-divider-top flex min-h-0 flex-1 flex-col overflow-hidden rounded-none bg-white px-0 py-4 sm:px-1 sm:py-5">
+                    <div className="philani-gradient-outline-soft [--philani-outline-fill:#ffffff] flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-[28px] px-4 py-4">
                       <textarea className="min-h-[160px] w-full resize-none bg-transparent text-[15px] leading-relaxed text-[#1c1e21] placeholder:text-slate-500 focus:outline-none" placeholder="Share what you are working on, stuck on, or proud of... or attach a screenshot below" value={props.promptDraft || ''} onChange={(event) => props.onPromptChange?.(event.target.value)} />
                       {props.imageUrl ? (
-                        <div className="w-full cursor-pointer" role="button" tabIndex={0} onClick={props.onOpenImageEdit} onKeyDown={(event) => {
+                        <div className="philani-gradient-outline-soft [--philani-outline-fill:#ffffff] w-full cursor-pointer rounded-[24px] p-1" role="button" tabIndex={0} onClick={props.onOpenImageEdit} onKeyDown={(event) => {
                           if (event.key !== 'Enter' && event.key !== ' ') return
                           event.preventDefault()
                           props.onOpenImageEdit?.()
                         }} aria-label="Edit uploaded screenshot" title={props.imageSourceFile ? 'Edit screenshot' : 'Screenshot'}>
-                          <img src={props.imageUrl} alt="Uploaded" className="max-h-[260px] w-full rounded-lg object-contain" />
+                          <img src={props.imageUrl} alt="Uploaded" className="max-h-[260px] w-full rounded-[18px] object-contain" />
                         </div>
                       ) : null}
                     </div>
                   </div>
-                  {parsedOpen && parsedJsonText ? <div className="rounded-none border-t border-black/10 bg-[#eef2f7] px-0 py-3 sm:px-1 sm:py-4"><pre className="whitespace-pre-wrap text-xs text-slate-700">{parsedJsonText}</pre></div> : null}
+                  {parsedOpen && parsedJsonText ? <div className="philani-gradient-divider-top rounded-none bg-[#eef2f7] px-0 py-3 sm:px-1 sm:py-4"><pre className="philani-gradient-outline-soft [--philani-outline-fill:#eef2f7] whitespace-pre-wrap rounded-[24px] px-4 py-3 text-xs text-slate-700">{parsedJsonText}</pre></div> : null}
                 </div>
                 <ComposerActionBar
                   tone="outlined"

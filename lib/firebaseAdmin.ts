@@ -1,4 +1,4 @@
-import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin/app'
+import * as admin from 'firebase-admin'
 
 function normalizePrivateKey(value: string) {
   return value.replace(/\\n/g, '\n')
@@ -15,7 +15,7 @@ function getServiceAccountConfig() {
     projectId,
     clientEmail,
     privateKey: normalizePrivateKey(privateKey),
-  }
+  } satisfies admin.ServiceAccount
 }
 
 export function isFirebaseAdminConfigured() {
@@ -23,18 +23,18 @@ export function isFirebaseAdminConfigured() {
 }
 
 export function getFirebaseAdminApp() {
-  const existing = getApps()[0]
+  const existing = admin.apps[0]
   if (existing) return existing
 
   const serviceAccount = getServiceAccountConfig()
   if (serviceAccount) {
-    return initializeApp({
-      credential: cert(serviceAccount),
+    return admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
       projectId: serviceAccount.projectId,
     })
   }
 
-  return initializeApp({
-    credential: applicationDefault(),
+  return admin.initializeApp({
+    credential: admin.credential.applicationDefault(),
   })
 }

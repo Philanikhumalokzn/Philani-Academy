@@ -12999,6 +12999,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             )}
           </div>
         )
+      }
       case 'discover':
         const trimmedDiscoverQuery = discoverQuery.trim()
         const showingSearchResults = trimmedDiscoverQuery.length > 0 && discoverResults.length > 0

@@ -1,4 +1,4 @@
-import { getMessaging } from 'firebase-admin/messaging'
+import * as admin from 'firebase-admin'
 import prisma from './prisma'
 import { getFirebaseAdminApp, isFirebaseAdminConfigured } from './firebaseAdmin'
 
@@ -41,7 +41,7 @@ export async function sendPushToUser(userId: string, payload: PushPayload) {
   }
 
   try {
-    const messaging = getMessaging(getFirebaseAdminApp())
+    const messaging = admin.messaging(getFirebaseAdminApp())
     const response = await messaging.sendEachForMulticast({
       tokens: devices.map((device) => device.token),
       notification: {

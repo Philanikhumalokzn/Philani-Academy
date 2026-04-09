@@ -455,7 +455,7 @@ export default function ZoomableImageOverlay({ open, imageUrl, title, onClose }:
           <div className={`absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 px-4 pb-6 pt-[calc(0.9rem+var(--app-safe-top))] transition-opacity duration-200 sm:px-5 ${chromeVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
             <button
               type="button"
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/12 bg-black/48 text-white shadow-[0_16px_32px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-black/62"
+              className="inline-flex h-11 w-11 items-center justify-center bg-transparent text-white/92 transition hover:text-white"
               onClick={(event) => {
                 event.stopPropagation()
                 setChromeVisible(true)
@@ -473,7 +473,7 @@ export default function ZoomableImageOverlay({ open, imageUrl, title, onClose }:
 
             <button
               type="button"
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/12 bg-black/48 text-white shadow-[0_16px_32px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:bg-black/62"
+              className="inline-flex h-11 w-11 items-center justify-center bg-transparent text-white/92 transition hover:text-white"
               onClick={(event) => {
                 event.stopPropagation()
                 onClose()

@@ -25,6 +25,7 @@ export type FullScreenGlassOverlayProps = {
   showCloseButton?: boolean
   hideHeader?: boolean
   forceHeaderSafeTop?: boolean
+  headerSafeTopClassName?: string
   respectBottomSafeArea?: boolean
 
   leftActions?: React.ReactNode
@@ -53,6 +54,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     showCloseButton: _showCloseButton,
     hideHeader = false,
     forceHeaderSafeTop = false,
+    headerSafeTopClassName,
     respectBottomSafeArea = true,
     leftActions,
     rightActions,
@@ -142,9 +144,9 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     ? 'p-3 sm:p-4 border-b border-slate-200/60 flex items-start justify-between gap-3 bg-white/70'
     : 'p-3 sm:p-4 border-b border-white/10 flex items-start justify-between gap-3'
 
-  const headerSafeTopClassName = (panelSizing === 'full' && rootPosition === 'fixed') || forceHeaderSafeTop
+  const resolvedHeaderSafeTopClassName = headerSafeTopClassName ?? ((panelSizing === 'full' && rootPosition === 'fixed') || forceHeaderSafeTop
     ? 'pt-[calc(0.75rem+var(--app-safe-top))] sm:pt-[calc(1rem+var(--app-safe-top))]'
-    : ''
+    : '')
 
   const titleClassName = overlayVariant === 'light'
     ? 'font-semibold text-slate-900 whitespace-normal break-words'
@@ -313,7 +315,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
           ) : null}
 
           {hideHeader ? null : (
-            <div className={`${headerClassName} ${headerSafeTopClassName}`}>
+            <div className={`${headerClassName} ${resolvedHeaderSafeTopClassName}`}>
               <div className={actionSlotClassName}>
                 {leftActions}
               </div>

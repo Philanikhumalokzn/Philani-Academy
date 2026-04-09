@@ -44,7 +44,7 @@ export default function FeedComposerPill({
     ? 'inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f0f2f5] text-sm font-semibold text-[#1c1e21]'
     : 'flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-700'
   const pillClassName = isCompact
-    ? 'flex min-w-0 flex-1 items-center rounded-full border border-black/10 bg-[#f8fafc] px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]'
+    ? 'philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] flex min-w-0 flex-1 items-center rounded-full px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]'
     : 'min-w-0 flex-1 rounded-full bg-slate-50 px-4 py-3 text-[16px] font-medium tracking-[-0.02em] text-slate-800'
   const messageClassName = isCompact
     ? 'min-w-0 flex-1 py-2 text-left text-[14px] text-[#65676b]'
@@ -54,7 +54,7 @@ export default function FeedComposerPill({
       ? 'inline-flex h-10 w-10 shrink-0 items-center justify-center bg-transparent drop-shadow-[0_6px_10px_rgba(14,165,233,0.22)] transition hover:-translate-y-[1px] hover:brightness-110 active:translate-y-0'
       : 'inline-flex h-12 w-12 items-center justify-center bg-transparent drop-shadow-[0_8px_14px_rgba(14,165,233,0.18)] transition hover:-translate-y-[1px] hover:brightness-110 active:translate-y-0'
     : isCompact
-      ? 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 bg-[#f8fafc] text-[#1c1e21]'
+      ? 'philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#1c1e21]'
       : 'inline-flex h-11 w-11 items-center justify-center rounded-full text-[#2fb344] transition hover:bg-[#effaf2]'
   const cameraIcon = (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="21" height="21" fill="none" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

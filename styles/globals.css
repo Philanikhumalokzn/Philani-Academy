@@ -8,6 +8,37 @@
   --philani-ui-icon-shadow: drop-shadow(0 6px 12px rgba(14, 165, 233, 0.18));
 }
 
+.philani-gradient-outline,
+.philani-gradient-outline-soft {
+  border: 1px solid transparent !important;
+  background:
+    linear-gradient(var(--philani-outline-fill, rgba(255, 255, 255, 0.96)), var(--philani-outline-fill, rgba(255, 255, 255, 0.96))) padding-box,
+    linear-gradient(135deg, rgba(34, 197, 94, 0.72), rgba(6, 182, 212, 0.8) 52%, rgba(37, 99, 235, 0.82)) border-box !important;
+}
+
+.philani-gradient-outline {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68), 0 10px 24px rgba(14, 165, 233, 0.1);
+}
+
+.philani-gradient-outline-soft {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74), 0 8px 18px rgba(14, 165, 233, 0.08);
+}
+
+.philani-gradient-divider-top {
+  position: relative;
+  border-top: none !important;
+}
+
+.philani-gradient-divider-top::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(34, 197, 94, 0.18), rgba(6, 182, 212, 0.58), rgba(37, 99, 235, 0.18));
+}
+
 .app-shell :is(button, a, [role='button']):not(.philani-no-icon-gradient) svg[viewBox]:not([data-no-icon-gradient]),
 .philani-gradient-icon svg[viewBox]:not([data-no-icon-gradient]) {
   transform-origin: center;

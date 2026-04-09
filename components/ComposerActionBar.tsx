@@ -42,11 +42,11 @@ export default function ComposerActionBar({
 }: Props) {
   const viewportBottomOffsetPx = useViewportBottomOffset({ requireEditableFocus: true })
   const iconButtonClassName = tone === 'outlined'
-    ? 'inline-flex h-10 w-10 items-center justify-center rounded-full border border-black/10 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50'
-    : 'inline-flex h-10 items-center justify-center text-slate-700 transition hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
+    ? 'philani-gradient-outline [--philani-outline-fill:#ffffff] inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-700 disabled:opacity-50'
+    : 'inline-flex h-11 w-11 items-center justify-center text-slate-700 transition hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
   const shellClassName = tone === 'outlined'
-    ? 'mt-auto shrink-0 border-t border-black/10 bg-white'
-    : 'mt-auto shrink-0 border-t border-black/10 bg-white/95 backdrop-blur-xl'
+    ? 'philani-gradient-divider-top mt-auto shrink-0 bg-white'
+    : 'philani-gradient-divider-top mt-auto shrink-0 bg-white/95 backdrop-blur-xl'
   const shellStyle: CSSProperties | undefined = viewportBottomOffsetPx > 0
     ? {
         paddingBottom: `calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + ${viewportBottomOffsetPx}px)`,

@@ -195,7 +195,7 @@ export default function PostReplyComposerOverlays({
             {(() => {
               const composerVisibleBlocks = blocks.filter((block) => !(editingTarget?.type === 'text' && editingTarget.blockId === block.id))
               const canSubmitReply = composePostSolveBlocksWithDraftText(blocks, draftText, editingTarget).length > 0
-              const iconButtonClassName = 'inline-flex h-10 items-center justify-center text-slate-700 transition hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
+              const iconButtonClassName = 'inline-flex h-11 w-11 items-center justify-center text-slate-700 transition hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
 
               return (
                 <div className="flex min-h-0 flex-col">

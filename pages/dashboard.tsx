@@ -10018,12 +10018,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           time: formatSessionTimeCompact(sessionEnd) || 'Time TBA',
         },
       ]
-      const sessionSummary = isSubscriptionBlocked
-        ? 'Subscribe to join and unlock assignments.'
-        : canLaunchCanvasOverlay
-        ? 'Board, quizzes and assignments in one place.'
-        : 'Lesson tools are not available yet.'
-
       return (
         <div className="session-focus-card session-focus-banner overflow-hidden rounded-[28px] border border-white/10 bg-white/5 p-0">
           <div className="session-focus-visual relative min-h-[11rem] overflow-hidden border-b border-white/10 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.28),transparent_42%),linear-gradient(135deg,rgba(15,23,42,0.96),rgba(30,41,59,0.86))]">
@@ -10041,7 +10035,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
             <div className="session-focus-banner-content absolute inset-0 flex flex-col justify-end p-5 sm:p-6">
               <div className="space-y-4">
-                <div className="session-focus-banner-title max-w-[22rem] text-[1.9rem] font-semibold leading-[1.02] tracking-[-0.03em] text-white sm:text-[2.35rem]">
+                <div className="session-focus-banner-title max-w-[22rem] text-[1.9rem] font-semibold leading-[1.02] tracking-[-0.03em] sm:text-[2.35rem]" style={{ color: '#f8fbff' }}>
                   {lessonTitle}
                 </div>
                 <div className="session-focus-schedule-grid grid grid-cols-2 gap-0 pt-4">
@@ -10058,11 +10052,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
 
           <div className="session-focus-body space-y-4 p-4 sm:p-5">
-            <div className="session-focus-body-head">
-              <p className="session-focus-copy text-sm leading-6 text-white/72">
-                {sessionSummary}
-              </p>
-              {isAdmin && (
+            {isAdmin ? (
+              <div className="session-focus-body-head justify-end">
                 <button
                   type="button"
                   className="session-focus-edit inline-flex h-10 items-center justify-center rounded-2xl px-4 text-sm font-semibold transition"
@@ -10070,8 +10061,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 >
                   Edit lesson
                 </button>
-              )}
-            </div>
+              </div>
+            ) : null}
 
             <div className="space-y-2">
             <button
@@ -13183,7 +13174,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       sessions: {
         eyebrow: '',
         title: 'Lessons',
-        subtitle: 'Now, next and past'
+        subtitle: ''
       },
       groups: {
         eyebrow: '',

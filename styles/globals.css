@@ -1108,6 +1108,11 @@ body{
   max-width:34rem;
 }
 
+.session-focus-banner-title{
+  color:#f8fbff !important;
+  text-shadow:0 12px 26px rgba(15,23,42,0.34);
+}
+
 .mobile-dashboard-edge .session-focus-heading,
 .mobile-dashboard-edge .session-focus-title{
   color:#1c1e21 !important;

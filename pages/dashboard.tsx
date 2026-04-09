@@ -18,7 +18,6 @@ import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import OwnPostsManagerOverlay from '../components/OwnPostsManagerOverlay'
 import PostComposerBlocksPreview from '../components/PostComposerBlocksPreview'
 import PostComposerOverlay from '../components/PostComposerOverlay'
-import PostToolsSheet from '../components/PostToolsSheet'
 import { PublicSolveCanvasViewer, PublicSolveComposer, PublicSolveOpacityWorkspace, normalizePublicSolveScene, type PublicSolveScene } from '../components/PublicSolveCanvas'
 import TaskManageMenu from '../components/TaskManageMenu'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
@@ -1681,7 +1680,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [assignmentSolutionWorkedSolutionGeneratingQuestionId, setAssignmentSolutionWorkedSolutionGeneratingQuestionId] = useState<string | null>(null)
 
   const [timelineOpen, setTimelineOpen] = useState(false)
-  const [postToolsSheetOpen, setPostToolsSheetOpen] = useState(false)
   const [timelineChallenges, setTimelineChallenges] = useState<any[]>([])
   const [timelineChallengesLoading, setTimelineChallengesLoading] = useState(false)
   const [timelineChallengesError, setTimelineChallengesError] = useState<string | null>(null)
@@ -5981,10 +5979,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               setCreateKind('post')
               setCreateOverlayOpen(true)
             }}
-            rightActionIcon="menu"
-            onRightActionClick={() => setPostToolsSheetOpen(true)}
-            rightActionLabel="Open posts menu"
-            rightActionTitle="Posts menu"
+            rightActionIcon="camera"
+            onRightActionClick={openCreateChallengeScreenshotPicker}
+            rightActionLabel="Add photo or screenshot"
+            rightActionTitle="Add photo or screenshot"
           />
         </section>
 
@@ -14722,29 +14720,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         confirmLabel="Upload"
       />
 
-      <PostToolsSheet
-        open={postToolsSheetOpen}
-        hasDraft={Boolean(challengeTitleDraft.trim() || composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget).length > 0)}
-        onClose={() => setPostToolsSheetOpen(false)}
-        onOpenManager={() => {
-          setPostToolsSheetOpen(false)
-          setTimelineOpen(true)
-        }}
-        onCreatePost={() => {
-          setPostToolsSheetOpen(false)
-          setCreateKind('post')
-          openCreateChallengeComposer()
-        }}
-        onPostFromScreenshot={() => {
-          setPostToolsSheetOpen(false)
-          setCreateKind('post')
-          openCreateChallengeScreenshotPicker()
-        }}
-        onContinueDraft={() => {
-          setPostToolsSheetOpen(false)
-          openCreateChallengeComposer()
-        }}
-      />
 
       {timelineOpen && (
         <OverlayPortal>

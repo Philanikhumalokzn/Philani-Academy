@@ -15,7 +15,6 @@ import PostComposerOverlay from '../../components/PostComposerOverlay'
 import PostCrudBottomSheet from '../../components/PostCrudBottomSheet'
 import PublicFeedPostCard from '../../components/PublicFeedPostCard'
 import PostReplyComposerOverlays from '../../components/PostReplyComposerOverlays'
-import PostToolsSheet from '../../components/PostToolsSheet'
 import ReplyCrudBottomSheet from '../../components/ReplyCrudBottomSheet'
 import { PublicSolveCanvasViewer, normalizePublicSolveScene, type PublicSolveScene } from '../../components/PublicSolveCanvas'
 import UserLink from '../../components/UserLink'
@@ -213,7 +212,6 @@ export function PublicUserProfileSurface({
   const [postParsedOpen, setPostParsedOpen] = useState(false)
   const [postPosting, setPostPosting] = useState(false)
   const [postDeleting, setPostDeleting] = useState(false)
-  const [postToolsSheetOpen, setPostToolsSheetOpen] = useState(false)
   const [ownPostsManagerOpen, setOwnPostsManagerOpen] = useState(false)
 
   const [viewerId, setViewerId] = useState('')
@@ -1929,10 +1927,10 @@ export function PublicUserProfileSurface({
                     // Always open modal overlay composer
                     openCreateOwnedPostComposer()
                   }}
-                  rightActionIcon="menu"
-                  onRightActionClick={() => setPostToolsSheetOpen(true)}
-                  rightActionLabel="Open posts menu"
-                  rightActionTitle="Posts menu"
+                  rightActionIcon="camera"
+                  onRightActionClick={openCreateOwnedPostScreenshotPicker}
+                  rightActionLabel="Add photo or screenshot"
+                  rightActionTitle="Add photo or screenshot"
                 />
             </div>
           ) : canFollow ? (
@@ -1944,10 +1942,10 @@ export function PublicUserProfileSurface({
                 avatarFallback={<span>{extractInitials(currentViewerName)}</span>}
                 message={`Post a challenge to ${firstName}`}
                 onMessageClick={openCreateOwnedPostComposer}
-                rightActionIcon="menu"
-                onRightActionClick={() => setPostToolsSheetOpen(true)}
-                rightActionLabel="Open posts menu"
-                rightActionTitle="Posts menu"
+                rightActionIcon="camera"
+                onRightActionClick={openCreateOwnedPostScreenshotPicker}
+                rightActionLabel="Add photo or screenshot"
+                rightActionTitle="Add photo or screenshot"
               />
             </div>
           ) : null}
@@ -2132,28 +2130,6 @@ export function PublicUserProfileSurface({
         onMoveBlockLongPress={moveComposerBlockLongPress}
         onClearBlockLongPress={clearComposerBlockLongPress}
         onOpenBlockCrudOptions={openComposerBlockCrudOptions}
-      />
-
-      <PostToolsSheet
-        open={postToolsSheetOpen}
-        hasDraft={Boolean(postTitleDraft.trim() || composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget).length > 0)}
-        onClose={() => setPostToolsSheetOpen(false)}
-        onOpenManager={() => {
-          setPostToolsSheetOpen(false)
-          setOwnPostsManagerOpen(true)
-        }}
-        onCreatePost={() => {
-          setPostToolsSheetOpen(false)
-          openCreateOwnedPostComposer()
-        }}
-        onPostFromScreenshot={() => {
-          setPostToolsSheetOpen(false)
-          openCreateOwnedPostScreenshotPicker()
-        }}
-        onContinueDraft={() => {
-          setPostToolsSheetOpen(false)
-          openCreateOwnedPostComposer()
-        }}
       />
 
       <OwnPostsManagerOverlay

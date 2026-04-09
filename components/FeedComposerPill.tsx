@@ -7,16 +7,17 @@ type FeedComposerPillProps = {
   message: string
   onMessageClick?: () => void
   messageAriaLabel?: string
-  rightActionIcon: 'menu' | 'photo'
+  rightActionIcon: 'menu' | 'camera'
   onRightActionClick?: () => void
   rightActionLabel: string
   rightActionTitle?: string
   size?: 'compact' | 'profile'
 }
 
-const photoIcon = (
-  <svg viewBox="0 0 24 24" className="h-7 w-7" fill="currentColor" aria-hidden="true">
-    <path d="M6.5 5A3.5 3.5 0 0 0 3 8.5v7A3.5 3.5 0 0 0 6.5 19h11a3.5 3.5 0 0 0 3.5-3.5v-7A3.5 3.5 0 0 0 17.5 5h-2.59l-.7-1.05A2 2 0 0 0 12.54 3h-1.08a2 2 0 0 0-1.67.95L9.09 5H6.5Zm5.5 3.25A4.25 4.25 0 1 1 7.75 12 4.25 4.25 0 0 1 12 8.25Zm0 1.5A2.75 2.75 0 1 0 14.75 12 2.75 2.75 0 0 0 12 9.75Z" />
+const cameraIcon = (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.3-1.7A2 2 0 0 1 10.9 3.5h2.2a2 2 0 0 1 1.6.8L16 6h1.5A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-8Z" />
+    <circle cx="12" cy="12.5" r="3.5" />
   </svg>
 )
 
@@ -54,9 +55,13 @@ export default function FeedComposerPill({
   const messageClassName = isCompact
     ? 'min-w-0 flex-1 py-2 text-left text-[14px] text-[#65676b]'
     : 'min-w-0 flex-1 text-left'
-  const rightButtonClassName = isCompact
-    ? 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 bg-[#f8fafc] text-[#1c1e21]'
-    : 'inline-flex h-11 w-11 items-center justify-center rounded-full text-[#2fb344] transition hover:bg-[#effaf2]'
+  const rightButtonClassName = rightActionIcon === 'camera'
+    ? isCompact
+      ? 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/70 bg-[linear-gradient(135deg,#22c55e_0%,#06b6d4_52%,#2563eb_100%)] text-white shadow-[0_10px_22px_rgba(14,165,233,0.26)] transition hover:-translate-y-[1px] hover:brightness-105 active:translate-y-0'
+      : 'inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/70 bg-[linear-gradient(135deg,#22c55e_0%,#06b6d4_52%,#2563eb_100%)] text-white shadow-[0_12px_26px_rgba(14,165,233,0.22)] transition hover:-translate-y-[1px] hover:brightness-105 active:translate-y-0'
+    : isCompact
+      ? 'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-black/10 bg-[#f8fafc] text-[#1c1e21]'
+      : 'inline-flex h-11 w-11 items-center justify-center rounded-full text-[#2fb344] transition hover:bg-[#effaf2]'
 
   return (
     <div className={rowClassName}>
@@ -88,7 +93,7 @@ export default function FeedComposerPill({
         aria-label={rightActionLabel}
         title={rightActionTitle || rightActionLabel}
       >
-        {rightActionIcon === 'menu' ? menuIcon : photoIcon}
+        {rightActionIcon === 'menu' ? menuIcon : cameraIcon}
       </button>
     </div>
   )

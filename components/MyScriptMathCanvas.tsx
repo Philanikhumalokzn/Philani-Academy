@@ -1091,12 +1091,19 @@ const removeLastKeyboardChunk = (value: string) => {
     /\\left\([^)]*\\right\)$/,
     /\\sqrt\{[^{}]*\}$/,
     /\\frac\{[^{}]*\}\{\\phantom\{a\}\}$/,
+    /\\cdot\s*$/,
+    /\\ast\s*$/,
     /\\leq\s*$/,
     /\\geq\s*$/,
+    /\\pm\s*$/,
+    /\\mp\s*$/,
+    /\\setminus\s*$/,
     /\\times\s*$/,
     /\\div\s*$/,
+    /\\sum\s*$/,
+    /\\prod\s*$/,
     /\^\{2\}$/,
-    /[+\-=()]\s*$/,
+    /[+\-=()/:]\s*$/,
     /x\s*$/,
   ]
   for (const pattern of patterns) {
@@ -1264,6 +1271,75 @@ const createWrappedLatexKeyboardAction = (
   apply: (prev, baseSymbol) => `${prev}${(insert ?? render)(resolveKeyboardBaseSymbol(baseSymbol, '#?'))}`,
 })
 
+const getKeyboardPreviousNonWhitespaceIndex = (value: string, selectionStart: number) => {
+  let index = Math.max(0, Math.min(selectionStart, value.length)) - 1
+  while (index >= 0 && /\s/.test(value[index])) index -= 1
+  return index
+}
+
+const isKeyboardUnaryMinusContext = (value: string, selection: KeyboardSelectionState) => {
+  const previousIndex = getKeyboardPreviousNonWhitespaceIndex(value, selection.start)
+  if (previousIndex < 0) return true
+
+  const prefix = value.slice(0, previousIndex + 1).trimEnd()
+  const previousChar = prefix[prefix.length - 1] || ''
+
+  if (['(', '[', '{', '=', '+', '-', '*', '/', '^', '_', ':', ',', ';', '<', '>', '|'].includes(previousChar)) {
+    return true
+  }
+  if (['×', '÷', '≤', '≥', '≠', '≈'].includes(previousChar)) {
+    return true
+  }
+  if (/\\(?:times|div|cdot|ast|pm|mp|leq|geq|neq|approx|to|setminus)$/.test(prefix)) {
+    return true
+  }
+
+  return false
+}
+
+const resolveKeyboardDirectInsertText = (
+  actionId: string,
+  value: string,
+  selection: KeyboardSelectionState,
+) => {
+  switch (actionId) {
+    case 'plus':
+      return ' + '
+    case 'minus':
+      return isKeyboardUnaryMinusContext(value, selection) ? '-' : ' - '
+    case 'equals':
+      return ' = '
+    case 'times':
+      return ' \\times '
+    case 'cdot':
+      return ' \\cdot '
+    case 'ast':
+      return ' \\ast '
+    case 'divide':
+      return ' \\div '
+    case 'slash':
+      return ' / '
+    case 'ratio':
+      return ' : '
+    case 'leq':
+      return ' \\leq '
+    case 'geq':
+      return ' \\geq '
+    case 'pm':
+      return ' \\pm '
+    case 'mp':
+      return ' \\mp '
+    case 'sum':
+      return '\\sum'
+    case 'product':
+      return '\\prod'
+    case 'setminus':
+      return ' \\setminus '
+    default:
+      return null
+  }
+}
+
 const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
   createAppendTextKeyboardAction('x', 'x', 'x', 'x'),
   createAppendTextKeyboardAction('y', 'y', 'y', 'y'),
@@ -1316,11 +1392,27 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
   createAppendTextKeyboardAction('infinity', '∞', 'infinity', 'infinity'),
   createAppendTextKeyboardAction('percent', '%', 'percent', 'percent'),
   createAppendTextKeyboardAction('to', ' → ', 'approaches', 'approaches'),
-  createAppendLatexKeyboardAction('plus', ' + ', 'plus', 'plus', ' + '),
-  createAppendLatexKeyboardAction('minus', ' - ', 'minus', 'minus', ' - '),
-  createAppendLatexKeyboardAction('equals', ' = ', 'equals', 'equals', ' = '),
-  createAppendLatexKeyboardAction('times', ' \\times ', 'times', 'times', ' × '),
-  createAppendLatexKeyboardAction('divide', ' \\div ', 'divide', 'divide', ' ÷ '),
+  createAppendLatexKeyboardAction('plus', '+', 'plus', 'plus', ' + '),
+  {
+    id: 'minus',
+    title: 'minus',
+    description: 'minus or negative sign',
+    latex: '-',
+    renderLatex: () => '-',
+    apply: (prev) => `${prev} - `,
+  },
+  createAppendLatexKeyboardAction('pm', '\\pm', 'plus or minus', 'plus or minus', ' \\pm '),
+  createAppendLatexKeyboardAction('sum', '\\sum', 'summation', 'summation', '\\sum'),
+  createAppendLatexKeyboardAction('equals', '=', 'equals', 'equals', ' = '),
+  createAppendLatexKeyboardAction('times', '\\times', 'times', 'times', ' \\times '),
+  createAppendLatexKeyboardAction('cdot', '\\cdot', 'dot operator', 'dot operator', ' \\cdot '),
+  createAppendLatexKeyboardAction('ast', '\\ast', 'asterisk multiplication', 'asterisk multiplication', ' \\ast '),
+  createAppendLatexKeyboardAction('product', '\\prod', 'product', 'product', '\\prod'),
+  createAppendLatexKeyboardAction('divide', '\\div', 'divide', 'divide', ' \\div '),
+  createAppendLatexKeyboardAction('slash', '/', 'slash division', 'slash division', ' / '),
+  createAppendLatexKeyboardAction('ratio', ':', 'ratio', 'ratio', ' : '),
+  createAppendLatexKeyboardAction('mp', '\\mp', 'minus or plus', 'minus or plus', ' \\mp '),
+  createAppendLatexKeyboardAction('setminus', '\\setminus', 'set difference', 'set difference', ' \\setminus '),
   createAppendTextKeyboardAction('lt', ' < ', 'less than', 'less than'),
   createAppendTextKeyboardAction('gt', ' > ', 'greater than', 'greater than'),
   createAppendTextKeyboardAction('neq', ' ≠ ', 'not equal to', 'not equal to'),
@@ -1937,14 +2029,44 @@ const KEYBOARD_REPRESENTATIVE_KEYS: KeyboardRepresentativeKeyDefinition[] = [
     familyTitle: 'QWERTY keyboard (no number row)',
   },
   {
-    id: 'operators',
+    id: 'plus-operators',
     title: 'plus',
-    description: 'operator family',
+    description: 'addition family',
     latex: '+',
     singleTapActionId: 'plus',
-    radialActionIds: ['plus', 'times', 'divide', 'minus'],
-    familyRows: [['plus', 'minus', 'times', 'divide']],
-    familyTitle: 'Operator family',
+    radialActionIds: [],
+    familyRows: [['plus', 'sum', 'pm']],
+    familyTitle: 'Addition family',
+  },
+  {
+    id: 'minus-operators',
+    title: 'minus',
+    description: 'subtraction family',
+    latex: '-',
+    singleTapActionId: 'minus',
+    radialActionIds: [],
+    familyRows: [['minus', 'mp', 'setminus']],
+    familyTitle: 'Subtraction family',
+  },
+  {
+    id: 'times-operators',
+    title: 'times',
+    description: 'multiplication family',
+    latex: '\\times',
+    singleTapActionId: 'times',
+    radialActionIds: [],
+    familyRows: [['times', 'cdot', 'product', 'ast']],
+    familyTitle: 'Multiplication family',
+  },
+  {
+    id: 'divide-operators',
+    title: 'divide',
+    description: 'division family',
+    latex: '\\div',
+    singleTapActionId: 'divide',
+    radialActionIds: [],
+    familyRows: [['divide', 'fraction', 'slash', 'ratio']],
+    familyTitle: 'Division family',
   },
   {
     id: 'relations',
@@ -8495,8 +8617,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       .replace(/\\text\s*\{([^}]*)\}/g, ' $1 ')
       .replace(/\\(?:dfrac|tfrac|frac)\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g, '$1 over $2')
       .replace(/\\sqrt\s*\{([^{}]+)\}/g, 'sqrt $1')
-      .replace(/\\(cdot|times)/g, ' x ')
+      .replace(/\\(cdot|times|ast)/g, ' x ')
+      .replace(/\\div/g, ' / ')
       .replace(/\\pm/g, ' plus or minus ')
+      .replace(/\\mp/g, ' minus or plus ')
+      .replace(/\\sum/g, ' sum ')
+      .replace(/\\prod/g, ' product ')
+      .replace(/\\setminus/g, ' set minus ')
       .replace(/\\geq/g, ' >= ')
       .replace(/\\leq/g, ' <= ')
       .replace(/\\neq/g, ' != ')
@@ -8551,6 +8678,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       .replace(/\\(left|right)/g, '')
       .replace(/\\times/g, '*')
       .replace(/\\cdot/g, '*')
+      .replace(/\\ast/g, '*')
       .replace(/\\div/g, '/')
       .replace(/\\frac\s*\{([^}]*)\}\s*\{([^}]*)\}/g, '($1)/($2)')
       .replace(/\\(,|;|:|!|quad|qquad)/g, '')
@@ -11418,11 +11546,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const resolvedBaseSymbol = baseSymbol || referenceTarget?.symbol
     const isLetterTokenAction = Boolean(action.token && /^[a-z]$/.test(action.token))
     const tokenOverride = isLetterTokenAction && keyboardUppercase ? action.token!.toUpperCase() : null
+    const directInsertText = tokenOverride || resolveKeyboardDirectInsertText(actionId, prev, selection)
     if (isLetterTokenAction && action.token) {
       updateRecentLetters(action.token)
     }
 
-    if (recognitionEngineRef.current === 'keyboard' && applyMathfieldKeyboardAction(actionId, resolvedBaseSymbol, tokenOverride)) {
+    if (recognitionEngineRef.current === 'keyboard' && applyMathfieldKeyboardAction(actionId, resolvedBaseSymbol, directInsertText)) {
       if (isLetterTokenAction && keyboardUppercase) {
         setKeyboardUppercase(false)
       }
@@ -11498,9 +11627,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       result = insertKeyboardStructureAtSelection(prev, insertion, selection, caretOffset)
     } else if (action.token) {
       result = insertKeyboardTextAtSelection(prev, tokenOverride || action.token, selection)
-    } else if (actionId === 'plus' || actionId === 'minus' || actionId === 'equals' || actionId === 'times' || actionId === 'divide' || actionId === 'leq' || actionId === 'geq') {
-      const inserted = action.apply('', resolvedBaseSymbol)
-      result = insertKeyboardTextAtSelection(prev, inserted, selection)
+    } else if (directInsertText) {
+      result = insertKeyboardTextAtSelection(prev, directInsertText, selection)
     } else {
       const replacement = action.apply('', resolvedBaseSymbol)
       result = replaceKeyboardReferenceTarget(prev, referenceTarget, replacement, selection)
@@ -11541,10 +11669,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       ? target.referenceTarget
       : resolveKeyboardSafeReferenceTarget(prev, selection, { allowFallbackToExpressionEnd: true })
     const contextual = buildKeyboardContextualRadialOperation(actionId, target.payloadSymbol || target.baseSymbol, safeReferenceTarget)
+    const directInsertText = contextual ? null : resolveKeyboardDirectInsertText(actionId, prev, selection)
 
     if (recognitionEngineRef.current === 'keyboard') {
       const fallbackBaseSymbol = (target.payloadSymbol || target.baseSymbol) ?? safeReferenceTarget?.symbol
-      const overrideLatex = contextual?.previewLatex || action.renderLatex?.(fallbackBaseSymbol) || action.latex || null
+      const overrideLatex = contextual?.previewLatex || directInsertText || action.renderLatex?.(fallbackBaseSymbol) || action.latex || null
       if (applyMathfieldKeyboardAction(actionId, fallbackBaseSymbol, overrideLatex)) {
         closeKeyboardTransientOverlays()
         scheduleKeyboardFadeOut()
@@ -11560,13 +11689,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     let result: KeyboardEditResult
     if (contextual) {
       result = replaceKeyboardReferenceTarget(prev, safeReferenceTarget || null, contextual.replacement, selection)
+    } else if (directInsertText) {
+      result = insertKeyboardTextAtSelection(prev, directInsertText, selection)
     } else {
       const resolvedBaseSymbol = (target.payloadSymbol || target.baseSymbol) ?? safeReferenceTarget?.symbol
       if (action.token) {
         result = insertKeyboardTextAtSelection(prev, action.token, selection)
-      } else if (actionId === 'plus' || actionId === 'minus' || actionId === 'equals' || actionId === 'times' || actionId === 'divide' || actionId === 'leq' || actionId === 'geq') {
-        const inserted = action.apply('', resolvedBaseSymbol)
-        result = insertKeyboardTextAtSelection(prev, inserted, selection)
       } else {
         const replacement = action.apply('', resolvedBaseSymbol)
         result = replaceKeyboardReferenceTarget(prev, safeReferenceTarget, replacement, selection)
@@ -12354,13 +12482,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 {renderVisibleKeyboardButton(dynamicCalculusKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-sm sm:text-base font-medium' })}
                 {renderVisibleKeyboardButton(dynamicGreekKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-base sm:text-lg font-medium' })}
                 {renderVisibleKeyboardButton(dynamicRelationsKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-lg sm:text-xl font-medium' })}
-                {renderVisibleKeyboardButton({ actionId: 'times', label: '×' }, { className: 'border-transparent bg-slate-500 text-white hover:bg-slate-400', textClassName: 'text-xl sm:text-2xl font-medium' })}
-                {renderVisibleKeyboardButton({ actionId: 'divide', label: '÷' }, { className: 'border-transparent bg-slate-500 text-white hover:bg-slate-400', textClassName: 'text-xl sm:text-2xl font-medium' })}
+                {renderVisibleKeyboardButton({ actionId: 'times', label: '×', representativeKeyId: 'times-operators' }, { className: 'border-transparent bg-slate-500 text-white hover:bg-slate-400', textClassName: 'text-xl sm:text-2xl font-medium' })}
+                {renderVisibleKeyboardButton({ actionId: 'divide', label: '÷', representativeKeyId: 'divide-operators' }, { className: 'border-transparent bg-slate-500 text-white hover:bg-slate-400', textClassName: 'text-xl sm:text-2xl font-medium' })}
                 {renderVisibleKeyboardButton(dynamicTrigKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-base sm:text-lg font-medium' })}
                 {renderVisibleKeyboardButton(dynamicLogsKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-xs sm:text-sm font-medium' })}
                 {renderVisibleKeyboardButton(dynamicEnclosuresKey, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600 rounded-2xl', textClassName: 'text-base sm:text-lg font-medium' })}
-                {renderVisibleKeyboardButton({ actionId: 'plus' }, { className: 'border-transparent bg-slate-500 text-white hover:bg-slate-400', textClassName: 'text-xl sm:text-2xl font-medium' })}
-                {renderVisibleKeyboardButton({ actionId: 'minus' }, { className: 'border-transparent bg-slate-500 text-white hover:bg-slate-400', textClassName: 'text-xl sm:text-2xl font-medium' })}
+                {renderVisibleKeyboardButton({ actionId: 'plus', representativeKeyId: 'plus-operators' }, { className: 'border-transparent bg-slate-500 text-white hover:bg-slate-400', textClassName: 'text-xl sm:text-2xl font-medium' })}
+                {renderVisibleKeyboardButton({ actionId: 'minus', representativeKeyId: 'minus-operators' }, { className: 'border-transparent bg-slate-500 text-white hover:bg-slate-400', textClassName: 'text-xl sm:text-2xl font-medium' })}
               </div>
 
               <div data-keyboard-bottom-grid="true" className="grid grid-cols-[repeat(4,minmax(0,1fr))_1.12fr] auto-rows-[2.5rem] gap-2 sm:auto-rows-[2.8rem]">

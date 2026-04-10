@@ -126,6 +126,8 @@ export default function PostReplyComposerOverlays({
   onOpenBlockCrudOptions,
 }: Props) {
   const viewportBottomOffsetPx = useViewportBottomOffset({ requireEditableFocus: true })
+  const replyActionButtonClassName = 'philani-gradient-outline [--philani-outline-fill:#ffffff] inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-700 transition hover:-translate-y-[1px] hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50'
+  const replyFxClassName = 'philani-gradient-text text-[1.18rem] font-semibold italic leading-none tracking-[-0.05em] drop-shadow-[0_6px_10px_rgba(14,165,233,0.16)]'
 
   return (
     <>
@@ -139,13 +141,13 @@ export default function PostReplyComposerOverlays({
             onClose={onCloseBlockCrud}
             zIndexClassName="z-[69]"
             className="bottom-0"
-            sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
+            sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f0f6ff_100%)] shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
             contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5"
           >
             <div className="space-y-2">
               <button
                 type="button"
-                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100"
+                className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] flex w-full items-center justify-between rounded-2xl px-4 py-4 text-left text-slate-800 transition hover:brightness-[1.02]"
                 onClick={() => onEditBlock(crudTarget.block, crudTarget.index)}
               >
                 <span>
@@ -164,14 +166,14 @@ export default function PostReplyComposerOverlays({
               </button>
               <button
                 type="button"
-                className="flex w-full items-center justify-between rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-left text-red-700 transition hover:border-red-300 hover:bg-red-100"
+                className="flex w-full items-center justify-between rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-left text-rose-700 transition hover:border-rose-300 hover:bg-rose-100"
                 onClick={() => onDeleteBlock(crudTarget.block.id)}
               >
                 <span>
                   <span className="block text-sm font-semibold">Delete block</span>
-                  <span className="block text-xs text-red-500">Remove this item from your reply draft.</span>
+                  <span className="block text-xs text-rose-500">Remove this item from your reply draft.</span>
                 </span>
-                <span className="text-red-300">{`>`}</span>
+                <span className="text-rose-300">{`>`}</span>
               </button>
             </div>
           </BottomSheet>
@@ -195,7 +197,6 @@ export default function PostReplyComposerOverlays({
             {(() => {
               const composerVisibleBlocks = blocks.filter((block) => !(editingTarget?.type === 'text' && editingTarget.blockId === block.id))
               const canSubmitReply = composePostSolveBlocksWithDraftText(blocks, draftText, editingTarget).length > 0
-              const iconButtonClassName = 'inline-flex h-11 w-11 items-center justify-center text-slate-700 transition hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
 
               return (
                 <div className="flex min-h-0 flex-col">
@@ -210,7 +211,7 @@ export default function PostReplyComposerOverlays({
                   ) : null}
 
                   <div className="min-h-0 overflow-y-auto overscroll-contain pb-4">
-                    <div className="min-w-0 rounded-[24px] bg-white px-4 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                    <div className="philani-gradient-outline-soft [--philani-outline-fill:#ffffff] min-w-0 rounded-[28px] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
                       {composerVisibleBlocks.length > 0 ? (
                         <div className="mb-2 space-y-2">
                           {composerVisibleBlocks.map((block, index) => {
@@ -233,7 +234,7 @@ export default function PostReplyComposerOverlays({
                                   key={block.id}
                                   role="button"
                                   tabIndex={0}
-                                  className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 whitespace-pre-wrap break-words text-slate-700"
+                                  className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] rounded-2xl px-3 py-2 text-sm leading-6 whitespace-pre-wrap break-words text-slate-700"
                                   onClick={() => onEditBlock(block, index)}
                                   onKeyDown={(event) => {
                                     if (event.key === 'Enter' || event.key === ' ') {
@@ -255,7 +256,7 @@ export default function PostReplyComposerOverlays({
                                   key={block.id}
                                   role="button"
                                   tabIndex={0}
-                                  className="overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800"
+                                  className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] overflow-x-auto rounded-2xl px-3 py-2 text-slate-800"
                                   onClick={() => onEditBlock(block, index)}
                                   onKeyDown={(event) => {
                                     if (event.key === 'Enter' || event.key === ' ') {
@@ -290,7 +291,7 @@ export default function PostReplyComposerOverlays({
                                   }}
                                   {...blockHandlers}
                                 >
-                                  <div className="overflow-hidden rounded-2xl border border-[#1d4f91] bg-white shadow-sm">
+                                  <div className="philani-gradient-outline-soft [--philani-outline-fill:#ffffff] overflow-hidden rounded-[24px] p-1 shadow-sm">
                                     <PublicSolveCanvasViewer scene={block.scene} className="pointer-events-none" viewerHeightPx={220} />
                                   </div>
                                 </div>
@@ -312,8 +313,8 @@ export default function PostReplyComposerOverlays({
                                 }}
                                 {...blockHandlers}
                               >
-                                <div className="relative inline-flex overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
-                                  <img src={block.imageUrl} alt="Reply attachment" className="h-24 w-24 object-cover sm:h-28 sm:w-28" />
+                                <div className="philani-gradient-outline-soft [--philani-outline-fill:#ffffff] relative inline-flex overflow-hidden rounded-[24px] p-1 shadow-sm">
+                                  <img src={block.imageUrl} alt="Reply attachment" className="h-24 w-24 rounded-[18px] object-cover sm:h-28 sm:w-28" />
                                 </div>
                               </div>
                             )
@@ -326,14 +327,14 @@ export default function PostReplyComposerOverlays({
                         onChange={(event) => onDraftTextChange(event.target.value)}
                         placeholder={`Comment as ${viewerName}`}
                         rows={1}
-                        className="max-h-28 min-h-[1.5rem] w-full resize-none bg-transparent text-sm leading-6 text-slate-700 outline-none placeholder:text-slate-400"
+                        className="max-h-28 min-h-[1.5rem] w-full resize-none bg-transparent text-[15px] leading-relaxed text-[#1c1e21] outline-none placeholder:text-slate-400"
                         style={{ overflowY: 'hidden' }}
                       />
                     </div>
                   </div>
 
                   <div
-                    className="shrink-0 -mx-4 mt-auto border-t border-slate-200/80 bg-[linear-gradient(180deg,rgba(251,252,255,0.72)_0%,#f0f6ff_24%,#f0f6ff_100%)] px-5 pb-[calc(var(--app-safe-bottom)+0.75rem)] pt-3 backdrop-blur-xl transition-[padding-bottom] duration-150 sm:-mx-5 sm:px-6 sm:pb-5"
+                    className="philani-gradient-divider-top shrink-0 -mx-4 mt-auto bg-white/95 px-5 pb-[calc(var(--app-safe-bottom)+0.75rem)] pt-3 backdrop-blur-xl transition-[padding-bottom] duration-150 sm:-mx-5 sm:px-6 sm:pb-5"
                     style={viewportBottomOffsetPx > 0
                       ? {
                           paddingBottom: `calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + ${viewportBottomOffsetPx}px + 0.75rem)`,
@@ -341,18 +342,18 @@ export default function PostReplyComposerOverlays({
                       : undefined}
                   >
                     <div className="flex items-center justify-between gap-3 px-1">
-                      <div className="flex items-center gap-4">
-                        <button type="button" className={iconButtonClassName} onClick={onOpenTyped} disabled={submitting} aria-label="Math input" title="Math input">
-                          <span className="text-[1.18rem] font-semibold italic leading-none tracking-[-0.05em]" style={{ fontFamily: 'KaTeX_Main, Times New Roman, serif' }}>fx</span>
+                      <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
+                        <button type="button" className={replyActionButtonClassName} onClick={onOpenTyped} disabled={submitting} aria-label="Math input" title="Math input">
+                          <span className={replyFxClassName} style={{ fontFamily: 'KaTeX_Main, Times New Roman, serif' }}>fx</span>
                         </button>
-                        <button type="button" className={iconButtonClassName} onClick={onOpenHandwritten} disabled={submitting} aria-label="Handwriting" title="Handwriting">
+                        <button type="button" className={replyActionButtonClassName} onClick={onOpenHandwritten} disabled={submitting} aria-label="Handwriting" title="Handwriting">
                           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                             <path d="m4.5 19.5 4.2-.8 9.9-9.9a2.1 2.1 0 0 0 0-3l-.4-.4a2.1 2.1 0 0 0-3 0l-9.9 9.9-.8 4.2Z" />
                             <path d="m13.8 6.2 4 4" />
                             <path d="M4.5 19.5 8 16" />
                           </svg>
                         </button>
-                        <button type="button" className={iconButtonClassName} onClick={onOpenImagePicker} disabled={submitting || imageUploading} aria-label="Camera" title="Camera">
+                        <button type="button" className={replyActionButtonClassName} onClick={onOpenImagePicker} disabled={submitting || imageUploading} aria-label="Camera" title="Camera">
                           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                             <path d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.3-1.7A2 2 0 0 1 10.9 3.5h2.2a2 2 0 0 1 1.6.8L16 6h1.5A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-8Z" />
                             <circle cx="12" cy="12.5" r="3.5" />
@@ -361,7 +362,7 @@ export default function PostReplyComposerOverlays({
                       </div>
                       <button
                         type="button"
-                        className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-white shadow-[0_18px_34px_rgba(24,119,242,0.28)] transition hover:bg-[#176ad8] disabled:cursor-not-allowed disabled:opacity-50"
+                        className="philani-gradient-outline [--philani-outline-fill:#ffffff] inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-slate-700 transition hover:-translate-y-[1px] hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
                         onClick={onSubmitText}
                         disabled={submitting || imageUploading || !canSubmitReply}
                         aria-label="Send reply"
@@ -393,18 +394,18 @@ export default function PostReplyComposerOverlays({
             onClose={onCloseImageSourceSheet}
             zIndexClassName="z-[69]"
             className="bottom-0"
-            sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
+            sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f0f6ff_100%)] shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
             contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5"
           >
             <div className="space-y-2">
-              <button type="button" className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100" onClick={onOpenCameraPicker} disabled={imageUploading}>
+              <button type="button" className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] flex w-full items-center justify-between rounded-2xl px-4 py-4 text-left text-slate-800 transition hover:brightness-[1.02]" onClick={onOpenCameraPicker} disabled={imageUploading}>
                 <span>
                   <span className="block text-sm font-semibold">Take photo</span>
                   <span className="block text-xs text-slate-500">Open the camera and shoot your paper working.</span>
                 </span>
                 <span className="text-slate-400">{`>`}</span>
               </button>
-              <button type="button" className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left text-slate-800 transition hover:border-slate-300 hover:bg-slate-100" onClick={onOpenGalleryPicker} disabled={imageUploading}>
+              <button type="button" className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] flex w-full items-center justify-between rounded-2xl px-4 py-4 text-left text-slate-800 transition hover:brightness-[1.02]" onClick={onOpenGalleryPicker} disabled={imageUploading}>
                 <span>
                   <span className="block text-sm font-semibold">Choose from gallery</span>
                   <span className="block text-xs text-slate-500">Pick an existing photo or screenshot from your device.</span>

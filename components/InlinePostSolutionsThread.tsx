@@ -46,18 +46,20 @@ export default function InlinePostSolutionsThread({
   onOpenImageBlock,
   onCanvasViewportChange,
 }: Props) {
+  const replyCardClassName = 'philani-gradient-outline-soft [--philani-outline-fill:#ffffff] rounded-[28px] px-4 py-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)] sm:px-5'
+
   return (
     <div className="mt-1 pt-1">
       {loading ? <div className="text-sm text-[#65676b]">Loading solutions...</div> : null}
       {!loading && error ? <div className="text-sm text-red-500">{error}</div> : null}
       {!loading && !error && !threadUnlocked ? (
-        <div className="rounded-2xl bg-[#f0f2f5] px-4 py-3 text-sm text-[#65676b]">{lockedMessage}</div>
+        <div className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] rounded-2xl px-4 py-3 text-sm text-slate-500">{lockedMessage}</div>
       ) : null}
       {!loading && !error && threadUnlocked && responses.length === 0 ? (
-        <div className="rounded-2xl bg-[#f0f2f5] px-4 py-3 text-sm text-[#65676b]">{noSolutionsMessage}</div>
+        <div className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] rounded-2xl px-4 py-3 text-sm text-slate-500">{noSolutionsMessage}</div>
       ) : null}
       {!loading && !error && threadUnlocked && responses.length > 0 ? (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {responses.map((response: any, idx: number) => {
             const responseId = String(response?.id || idx)
             const responseUserId = String(response?.userId || response?.user?.id || '')
@@ -73,22 +75,23 @@ export default function InlinePostSolutionsThread({
 
             return (
               <div key={responseId} className="py-1" {...containerProps}>
-                <div className="flex items-start gap-3">
-                  <UserLink userId={responseUserId || null} className="shrink-0" title="View profile">
-                    <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f0f2f5]">
-                      {responseAvatar ? (
-                        <img src={responseAvatar} alt={responseUserName} className="h-full w-full object-cover" />
-                      ) : (
-                        <span className="text-[11px] font-semibold text-[#1c1e21]">{responseUserName.slice(0, 1).toUpperCase()}</span>
-                      )}
-                    </div>
-                  </UserLink>
-                  <div className="min-w-0 flex-1">
-                    <UserLink userId={responseUserId || null} className="text-[13px] font-semibold text-[#1c1e21] hover:underline" title="View profile">
-                      {responseUserName}
+                <div className={replyCardClassName}>
+                  <div className="flex items-start gap-3">
+                    <UserLink userId={responseUserId || null} className="shrink-0" title="View profile">
+                      <div className="philani-gradient-outline-soft [--philani-outline-fill:#ffffff] flex h-9 w-9 items-center justify-center overflow-hidden rounded-full text-[#1c1e21]">
+                        {responseAvatar ? (
+                          <img src={responseAvatar} alt={responseUserName} className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-[11px] font-semibold">{responseUserName.slice(0, 1).toUpperCase()}</span>
+                        )}
+                      </div>
                     </UserLink>
-                    {renderResponseStatus ? renderResponseStatus(response, args) : null}
-                    <div className="mt-2 min-w-0 rounded-[20px] pr-2">
+                    <div className="min-w-0 flex-1">
+                      <UserLink userId={responseUserId || null} className="text-[13px] font-semibold text-[#1c1e21] hover:underline" title="View profile">
+                        {responseUserName}
+                      </UserLink>
+                      {renderResponseStatus ? renderResponseStatus(response, args) : null}
+                      <div className="mt-3 min-w-0 rounded-[20px]">
                       {postReplyBlocks.length > 0 ? (
                         <div className="space-y-3">
                           {postReplyBlocks.map((block, blockIndex) => {
@@ -96,27 +99,29 @@ export default function InlinePostSolutionsThread({
                             if (block.type === 'text') {
                               return renderTextBlock
                                 ? renderTextBlock(block.text, blockKey)
-                                : <div key={blockKey} className="text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{block.text}</div>
+                                : <div key={blockKey} className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] rounded-2xl px-3 py-2 text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{block.text}</div>
                             }
                             if (block.type === 'latex') {
                               const latexHtml = renderKatexDisplayHtml(block.latex)
                               if (latexHtml) {
-                                return <div key={blockKey} className="leading-relaxed text-[#1c1e21]" dangerouslySetInnerHTML={{ __html: latexHtml }} />
+                                return <div key={blockKey} className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] overflow-x-auto rounded-2xl px-3 py-2 leading-relaxed text-[#1c1e21]" dangerouslySetInnerHTML={{ __html: latexHtml }} />
                               }
-                              return <div key={blockKey} className="text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{renderTextWithKatex(block.latex)}</div>
+                              return <div key={blockKey} className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] rounded-2xl px-3 py-2 text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{renderTextWithKatex(block.latex)}</div>
                             }
                             if (block.type === 'image') {
                               return (
                                 <div key={blockKey}>
                                   <button type="button" className="block w-full text-left" onClick={() => onOpenImageBlock?.(block.imageUrl, args)}>
-                                    <img src={block.imageUrl} alt="Reply attachment" className="max-h-[320px] w-full rounded-2xl border border-black/10 bg-white object-contain" />
+                                    <div className="philani-gradient-outline-soft [--philani-outline-fill:#ffffff] overflow-hidden rounded-[24px] p-1">
+                                      <img src={block.imageUrl} alt="Reply attachment" className="max-h-[320px] w-full rounded-[18px] bg-white object-contain" />
+                                    </div>
                                   </button>
                                 </div>
                               )
                             }
                             return (
                               <div key={blockKey}>
-                                <div className="overflow-hidden rounded-2xl border border-[#1d4f91] bg-white shadow-sm">
+                                <div className="philani-gradient-outline-soft [--philani-outline-fill:#ffffff] overflow-hidden rounded-[24px] p-1">
                                   <PublicSolveCanvasViewer
                                     scene={block.scene}
                                     onViewportChange={onCanvasViewportChange
@@ -133,34 +138,37 @@ export default function InlinePostSolutionsThread({
                           {fallbackStudentText ? (
                             renderTextBlock
                               ? renderTextBlock(fallbackStudentText, `inline-post-fallback-text-${responseId}`)
-                              : <div className="text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{fallbackStudentText}</div>
+                              : <div className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] rounded-2xl px-3 py-2 text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{fallbackStudentText}</div>
                           ) : null}
                           {fallbackLatex ? (
                             fallbackLatexHtml ? (
-                              <div className="leading-relaxed text-[#1c1e21]" dangerouslySetInnerHTML={{ __html: fallbackLatexHtml }} />
+                              <div className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] overflow-x-auto rounded-2xl px-3 py-2 leading-relaxed text-[#1c1e21]" dangerouslySetInnerHTML={{ __html: fallbackLatexHtml }} />
                             ) : (
-                              <div className="text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{renderTextWithKatex(fallbackLatex)}</div>
+                              <div className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] rounded-2xl px-3 py-2 text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]">{renderTextWithKatex(fallbackLatex)}</div>
                             )
                           ) : null}
                           {response?.excalidrawScene ? (
                             <div>
-                              <PublicSolveCanvasViewer
-                                scene={response.excalidrawScene}
-                                onViewportChange={onCanvasViewportChange
-                                  ? (scene) => onCanvasViewportChange(response, responseId, scene)
-                                  : undefined}
-                              />
+                              <div className="philani-gradient-outline-soft [--philani-outline-fill:#ffffff] overflow-hidden rounded-[24px] p-1">
+                                <PublicSolveCanvasViewer
+                                  scene={response.excalidrawScene}
+                                  onViewportChange={onCanvasViewportChange
+                                    ? (scene) => onCanvasViewportChange(response, responseId, scene)
+                                    : undefined}
+                                />
+                              </div>
                             </div>
                           ) : null}
                           {!fallbackStudentText && !fallbackLatex && !response?.excalidrawScene ? (
-                            <div className="rounded-xl border border-black/5 bg-[#f0f2f5] px-3 py-2 text-sm text-[#65676b]">{noContentMessage}</div>
+                            <div className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] rounded-xl px-3 py-2 text-sm text-slate-500">{noContentMessage}</div>
                           ) : null}
                         </>
                       )}
+                      </div>
                     </div>
                   </div>
+                  {renderResponseFooter ? <div className="mt-3">{renderResponseFooter(response, args)}</div> : null}
                 </div>
-                {renderResponseFooter ? renderResponseFooter(response, args) : null}
               </div>
             )
           })}

@@ -983,6 +983,7 @@ const RAW_INK_VIEWBOX_SIZE = 1000
 const RAW_INK_ERASER_RADIUS = 0.018
 const KEYBOARD_ENGINE_TEMPLATES = ['x', 'y', '=', '+', '-', '\\times', '\\div', '\\frac{}{}', '\\sqrt{}', '()', '[]', '^{}']
 const KEYBOARD_IDLE_MS = 3000
+const KEYBOARD_TRANSIENT_RADICAL_IDLE_MS = 2000
 const KEYBOARD_REPRESENTATIVE_TAP_MS = 260
 const KEYBOARD_REPRESENTATIVE_LONG_PRESS_MS = 420
 const KEYBOARD_SWIPE_DISAMBIGUATION_DISTANCE_PX = 14
@@ -1059,6 +1060,22 @@ type KeyboardEditResult = {
   value: string
   selectionStart: number
   selectionEnd: number
+}
+
+type KeyboardRadicalRegion = {
+  start: number
+  end: number
+  hasIndex: boolean
+  indexGroupStart: number | null
+  indexGroupEnd: number | null
+  indexContentStart: number | null
+  indexContentEnd: number | null
+  indexSymbol: string
+  radicandGroupStart: number
+  radicandGroupEnd: number
+  radicandContentStart: number
+  radicandContentEnd: number
+  radicandSymbol: string
 }
 
 type KeyboardHistoryAwareMathfield = MathfieldElementType & {
@@ -1146,6 +1163,139 @@ const findKeyboardBalancedGroupEnd = (value: string, startIndex: number, openCha
 }
 
 const isKeyboardPlaceholderExpression = (symbol: string) => /^\s*(#\?|\\placeholder(?:\{[^{}]*\})?)\s*$/.test(symbol)
+
+const parseKeyboardRadicalRegionAt = (value: string, sqrtIndex: number): KeyboardRadicalRegion | null => {
+  if (sqrtIndex < 0 || !value.startsWith('\\sqrt', sqrtIndex)) return null
+
+  let cursor = sqrtIndex + '\\sqrt'.length
+  let hasIndex = false
+  let indexGroupStart: number | null = null
+  let indexGroupEnd: number | null = null
+  let indexContentStart: number | null = null
+  let indexContentEnd: number | null = null
+  let indexSymbol = ''
+
+  if (value[cursor] === '[') {
+    const resolvedIndexGroupEnd = findKeyboardBalancedGroupEnd(value, cursor, '[', ']')
+    if (resolvedIndexGroupEnd < 0) return null
+    hasIndex = true
+    indexGroupStart = cursor
+    indexGroupEnd = resolvedIndexGroupEnd
+    indexContentStart = cursor + 1
+    indexContentEnd = resolvedIndexGroupEnd
+    indexSymbol = value.slice(indexContentStart, indexContentEnd)
+    cursor = resolvedIndexGroupEnd + 1
+  }
+
+  if (value[cursor] !== '{') return null
+
+  const radicandGroupStart = cursor
+  const radicandGroupEnd = findKeyboardBalancedGroupEnd(value, radicandGroupStart, '{', '}')
+  if (radicandGroupEnd < 0) return null
+
+  return {
+    start: sqrtIndex,
+    end: radicandGroupEnd + 1,
+    hasIndex,
+    indexGroupStart,
+    indexGroupEnd,
+    indexContentStart,
+    indexContentEnd,
+    indexSymbol,
+    radicandGroupStart,
+    radicandGroupEnd,
+    radicandContentStart: radicandGroupStart + 1,
+    radicandContentEnd: radicandGroupEnd,
+    radicandSymbol: value.slice(radicandGroupStart + 1, radicandGroupEnd),
+  }
+}
+
+const findKeyboardRadicalRegionAtPosition = (value: string, position: number): KeyboardRadicalRegion | null => {
+  let bestMatch: KeyboardRadicalRegion | null = null
+  let searchIndex = 0
+  const normalizedPosition = Math.max(0, Math.min(position, value.length))
+
+  while (searchIndex < value.length) {
+    const sqrtIndex = value.indexOf('\\sqrt', searchIndex)
+    if (sqrtIndex < 0) break
+
+    const region = parseKeyboardRadicalRegionAt(value, sqrtIndex)
+    searchIndex = sqrtIndex + 1
+    if (!region) continue
+
+    if (normalizedPosition < region.start || normalizedPosition > region.end) continue
+    if (!bestMatch || (region.end - region.start) <= (bestMatch.end - bestMatch.start)) {
+      bestMatch = region
+    }
+  }
+
+  return bestMatch
+}
+
+const findKeyboardRadicalRegionNearStart = (value: string, approxStart: number): KeyboardRadicalRegion | null => {
+  let bestMatch: KeyboardRadicalRegion | null = null
+  let bestDistance = Number.POSITIVE_INFINITY
+  let searchIndex = 0
+
+  while (searchIndex < value.length) {
+    const sqrtIndex = value.indexOf('\\sqrt', searchIndex)
+    if (sqrtIndex < 0) break
+
+    const region = parseKeyboardRadicalRegionAt(value, sqrtIndex)
+    searchIndex = sqrtIndex + 1
+    if (!region) continue
+
+    const distance = Math.abs(region.start - approxStart)
+    if (distance < bestDistance) {
+      bestMatch = region
+      bestDistance = distance
+    }
+  }
+
+  return bestMatch
+}
+
+const isKeyboardRadicalIndexEmpty = (region: KeyboardRadicalRegion) => {
+  if (!region.hasIndex) return true
+  const trimmed = region.indexSymbol.trim()
+  return !trimmed || isKeyboardPlaceholderExpression(trimmed)
+}
+
+const mapKeyboardSelectionOffsetAfterRadicalExpansion = (region: KeyboardRadicalRegion, offset: number) => {
+  if (offset <= region.radicandGroupStart) return offset
+  return offset + 2
+}
+
+const mapKeyboardSelectionOffsetAfterRadicalCollapse = (region: KeyboardRadicalRegion, offset: number) => {
+  if (!region.hasIndex || region.indexGroupStart === null || region.indexGroupEnd === null) return offset
+  const removedLength = region.indexGroupEnd - region.indexGroupStart + 1
+  const collapsedRadicandContentStart = region.radicandContentStart - removedLength
+  if (offset <= region.indexGroupStart) return offset
+  if (offset <= region.radicandContentStart) return collapsedRadicandContentStart
+  return Math.max(collapsedRadicandContentStart, offset - removedLength)
+}
+
+const expandKeyboardCollapsedRadical = (value: string, selection: KeyboardSelectionState, region: KeyboardRadicalRegion) => {
+  if (region.hasIndex) return null
+  const nextValue = `${value.slice(0, region.radicandGroupStart)}[]${value.slice(region.radicandGroupStart)}`
+  return {
+    value: nextValue,
+    selectionStart: mapKeyboardSelectionOffsetAfterRadicalExpansion(region, selection.start),
+    selectionEnd: mapKeyboardSelectionOffsetAfterRadicalExpansion(region, selection.end),
+  }
+}
+
+const collapseKeyboardExpandedRadical = (value: string, selection: KeyboardSelectionState, region: KeyboardRadicalRegion) => {
+  if (!region.hasIndex || region.indexGroupStart === null || region.indexGroupEnd === null) return null
+  if (!isKeyboardRadicalIndexEmpty(region)) return null
+
+  const nextValue = `${value.slice(0, region.indexGroupStart)}${value.slice(region.radicandGroupStart)}`
+  return {
+    value: nextValue,
+    selectionStart: mapKeyboardSelectionOffsetAfterRadicalCollapse(region, selection.start),
+    selectionEnd: mapKeyboardSelectionOffsetAfterRadicalCollapse(region, selection.end),
+  }
+}
 
 const findKeyboardFractionDenominatorRegionAtPosition = (value: string, position: number): KeyboardReferenceTarget | null => {
   let bestMatch: KeyboardReferenceTarget | null = null
@@ -1988,11 +2138,6 @@ const buildKeyboardContextualRadialOperation = (
       return {
         previewLatex: `\\frac{${referenceSymbol}}{${payload}}`,
         replacement: `(${referenceSymbol})/(${payload})`,
-      }
-    case 'sqrt':
-      return {
-        previewLatex: `\\sqrt[${payload}]{${referenceSymbol}}`,
-        replacement: `root(${referenceSymbol}, ${payload})`,
       }
     case 'plus':
       return {
@@ -2880,6 +3025,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     appliedSteps: number
   } | null>(null)
   const keyboardSwipeHoldTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const keyboardTransientRadicalTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const keyboardTransientRadicalAnchorStartRef = useRef<number | null>(null)
   const keyboardSwipeHoldStateRef = useRef<{
     pointerId: number | null
     direction: KeyboardSwipeDirection | null
@@ -3203,6 +3350,100 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return bestMatch
   }, [])
 
+  const clearKeyboardTransientRadicalTimer = useCallback(() => {
+    if (keyboardTransientRadicalTimeoutRef.current) {
+      clearTimeout(keyboardTransientRadicalTimeoutRef.current)
+      keyboardTransientRadicalTimeoutRef.current = null
+    }
+  }, [])
+
+  const rewriteKeyboardMathfieldLatex = (
+    field: MathfieldElementType | null | undefined,
+    nextValue: string,
+    nextSelection: KeyboardSelectionState,
+  ) => {
+    if (!field) return false
+
+    keyboardMathfieldSyncRef.current = true
+    try {
+      field.setValue(nextValue)
+      const nextPosition = getKeyboardMathfieldModelOffsetFromLatexOffset(field, nextSelection.end)
+      field.position = nextPosition
+    } finally {
+      keyboardMathfieldSyncRef.current = false
+    }
+
+    syncKeyboardMathfieldState(field)
+    return true
+  }
+
+  const collapseKeyboardTransientRadical = useCallback(() => {
+    clearKeyboardTransientRadicalTimer()
+
+    const field = keyboardMathfieldRef.current
+    const anchorStart = keyboardTransientRadicalAnchorStartRef.current
+    keyboardTransientRadicalAnchorStartRef.current = null
+    if (!field || anchorStart === null) return
+
+    const currentValue = field.getValue('latex') || ''
+    const region = findKeyboardRadicalRegionNearStart(currentValue, anchorStart)
+    if (!region || !region.hasIndex || !isKeyboardRadicalIndexEmpty(region)) return
+
+    const selection = getKeyboardMathfieldSelectionOffsets(field)
+    const collapsed = collapseKeyboardExpandedRadical(currentValue, selection, region)
+    if (!collapsed) return
+
+    rewriteKeyboardMathfieldLatex(field, collapsed.value, {
+      start: collapsed.selectionStart,
+      end: collapsed.selectionEnd,
+    })
+  }, [clearKeyboardTransientRadicalTimer, getKeyboardMathfieldSelectionOffsets, rewriteKeyboardMathfieldLatex])
+
+  const scheduleKeyboardTransientRadicalTimer = useCallback((anchorStart: number) => {
+    keyboardTransientRadicalAnchorStartRef.current = anchorStart
+    clearKeyboardTransientRadicalTimer()
+    keyboardTransientRadicalTimeoutRef.current = setTimeout(() => {
+      collapseKeyboardTransientRadical()
+    }, KEYBOARD_TRANSIENT_RADICAL_IDLE_MS)
+  }, [clearKeyboardTransientRadicalTimer, collapseKeyboardTransientRadical])
+
+  const trackKeyboardTransientRadicalActivity = useCallback((
+    field: MathfieldElementType | null | undefined,
+    source: 'insert' | 'input' | 'selection',
+  ) => {
+    if (!field) return false
+
+    const currentValue = field.getValue('latex') || ''
+    const selection = getKeyboardMathfieldSelectionOffsets(field)
+    const probeOffset = selection.end > selection.start ? selection.end : Math.max(0, selection.end)
+    const region = findKeyboardRadicalRegionAtPosition(currentValue, probeOffset)
+      || (probeOffset > 0 ? findKeyboardRadicalRegionAtPosition(currentValue, probeOffset - 1) : null)
+
+    if (!region) {
+      return false
+    }
+
+    if (source === 'input' && !region.hasIndex) {
+      const expanded = expandKeyboardCollapsedRadical(currentValue, selection, region)
+      if (expanded && rewriteKeyboardMathfieldLatex(field, expanded.value, {
+        start: expanded.selectionStart,
+        end: expanded.selectionEnd,
+      })) {
+        const nextRegion = findKeyboardRadicalRegionNearStart(expanded.value, region.start)
+        if (nextRegion?.hasIndex) {
+          scheduleKeyboardTransientRadicalTimer(nextRegion.start)
+        }
+        return true
+      }
+    }
+
+    if (region.hasIndex) {
+      scheduleKeyboardTransientRadicalTimer(region.start)
+    }
+
+    return false
+  }, [getKeyboardMathfieldSelectionOffsets, rewriteKeyboardMathfieldLatex, scheduleKeyboardTransientRadicalTimer])
+
   const syncKeyboardMathfieldState = useCallback((mathfield?: MathfieldElementType | null) => {
     const field = mathfield ?? keyboardMathfieldRef.current
     if (!field) return
@@ -3292,10 +3533,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         const handleInput = () => {
           if (keyboardMathfieldSyncRef.current) return
           syncKeyboardMathfieldState(field)
+          trackKeyboardTransientRadicalActivity(field, 'input')
         }
 
         const handleSelectionChange = () => {
           setKeyboardSelectionState(getKeyboardMathfieldSelectionOffsets(field))
+          trackKeyboardTransientRadicalActivity(field, 'selection')
         }
 
         field.addEventListener('input', handleInput)
@@ -3329,7 +3572,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         keyboardMathfieldHostNode.replaceChildren()
       }
     }
-  }, [applyKeyboardMathfieldZoomStyle, getKeyboardMathfieldSelectionOffsets, hasMounted, keyboardMathfieldHostNode, setKeyboardSelectionState, syncKeyboardMathfieldState])
+  }, [applyKeyboardMathfieldZoomStyle, getKeyboardMathfieldSelectionOffsets, hasMounted, keyboardMathfieldHostNode, setKeyboardSelectionState, syncKeyboardMathfieldState, trackKeyboardTransientRadicalActivity])
 
   useEffect(() => {
     if (recognitionEngine !== 'keyboard') {
@@ -11395,7 +11638,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       let insertion = ''
       switch (actionId) {
         case 'sqrt':
-          insertion = '\\sqrt{}'
+          insertion = '\\sqrt[]{}'
           break
         case 'cuberoot':
           insertion = '\\sqrt[3]{}'
@@ -11410,6 +11653,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       field.executeCommand(['insert', insertion])
       field.executeCommand('moveToPreviousPlaceholder')
       syncKeyboardMathfieldState(field)
+      trackKeyboardTransientRadicalActivity(field, 'insert')
       return true
     }
 
@@ -11419,7 +11663,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       let wrapped = ''
       switch (actionId) {
         case 'sqrt':
-          wrapped = `\\sqrt{${selected}}`
+          wrapped = `\\sqrt[]{${selected}}`
           break
         case 'cuberoot':
           wrapped = `\\sqrt[3]{${selected}}`
@@ -11450,8 +11694,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           insertionMode: 'replaceSelection',
           selectionMode: 'after',
         })
+        if (actionId === 'sqrt' || actionId === 'cuberoot' || actionId === 'nth-root') {
+          field.executeCommand('moveToPreviousChar')
+        }
         updateRecentRepresentativeAction(actionId)
         syncKeyboardMathfieldState(field)
+        trackKeyboardTransientRadicalActivity(field, 'insert')
         return true
       }
     }
@@ -11496,7 +11744,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       } else if (actionId === 'fraction' || actionId === 'fraction-denominator') {
         insertion = '\\frac{#?}{#?}'
       } else if (actionId === 'sqrt') {
-        insertion = '\\sqrt{}'
+        insertion = '\\sqrt[]{}'
       } else if (actionId === 'cuberoot') {
         insertion = '\\sqrt[3]{}'
       } else if (actionId === 'nth-root') {
@@ -11522,8 +11770,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     field.executeCommand(['insert', insertion])
     updateRecentRepresentativeAction(actionId)
     syncKeyboardMathfieldState(field)
+    if (actionId === 'sqrt' || actionId === 'cuberoot' || actionId === 'nth-root') {
+      trackKeyboardTransientRadicalActivity(field, 'insert')
+    }
     return true
-  }, [syncKeyboardMathfieldState, updateRecentRepresentativeAction])
+  }, [syncKeyboardMathfieldState, trackKeyboardTransientRadicalActivity, updateRecentRepresentativeAction])
 
   const  applyKeyboardAction = useCallback((actionId: string, baseSymbol?: string, insertedTokenOverride?: string) => {
     const action = KEYBOARD_ACTION_MAP[actionId]
@@ -11612,8 +11863,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       let caretOffset = 0
       switch (actionId) {
         case 'sqrt':
-          insertion = '\\sqrt{}'
-          caretOffset = '\\sqrt{'.length
+          insertion = '\\sqrt[]{}'
+          caretOffset = '\\sqrt[]{'.length
           break
         case 'cuberoot':
           insertion = '\\sqrt[3]{}'
@@ -11628,6 +11879,26 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           caretOffset = 0
       }
       result = insertKeyboardStructureAtSelection(prev, insertion, selection, caretOffset)
+    } else if (['sqrt', 'cuberoot', 'nth-root'].includes(actionId)) {
+      let replacement = ''
+      switch (actionId) {
+        case 'sqrt':
+          replacement = `\\sqrt[]{${selection.start === selection.end ? '' : prev.slice(selection.start, selection.end)}}`
+          break
+        case 'cuberoot':
+          replacement = `\\sqrt[3]{${selection.start === selection.end ? '' : prev.slice(selection.start, selection.end)}}`
+          break
+        case 'nth-root':
+          replacement = `\\sqrt[]{${selection.start === selection.end ? '' : prev.slice(selection.start, selection.end)}}`
+          break
+        default:
+          replacement = ''
+      }
+      const rangeStart = Math.max(0, Math.min(selection.start, prev.length))
+      const rangeEnd = Math.max(rangeStart, Math.min(selection.end, prev.length))
+      const nextValue = `${prev.slice(0, rangeStart)}${replacement}${prev.slice(rangeEnd)}`
+      const caret = rangeStart + replacement.length - 1
+      result = { value: nextValue, selectionStart: caret, selectionEnd: caret }
     } else if (action.token) {
       result = insertKeyboardTextAtSelection(prev, tokenOverride || action.token, selection)
     } else if (directInsertText) {
@@ -11664,6 +11935,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const applyKeyboardRadialAction = useCallback((actionId: string, target: KeyboardStageTarget) => {
     const action = KEYBOARD_ACTION_MAP[actionId]
     if (!action) return
+
+    if (actionId === 'sqrt') {
+      closeKeyboardTransientOverlays()
+      applyKeyboardAction(actionId)
+      return
+    }
 
     setSelectedKeyboardKey(actionId)
     const prev = latexOutputRef.current || ''
@@ -11723,7 +12000,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     } else {
       setSelectedKeyboardKey(null)
     }
-  }, [applyMathfieldKeyboardAction, closeKeyboardTransientOverlays, hasControllerRights, normalizeStepLatex, scheduleKeyboardFadeOut, updateRecentRepresentativeAction])
+  }, [applyKeyboardAction, applyMathfieldKeyboardAction, closeKeyboardTransientOverlays, hasControllerRights, normalizeStepLatex, scheduleKeyboardFadeOut, updateRecentRepresentativeAction])
 
   const moveKeyboardCaretBySwipe = useCallback((direction: KeyboardSwipeDirection, sourceActionId?: string) => {
     const field = keyboardMathfieldRef.current

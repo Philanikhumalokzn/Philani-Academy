@@ -458,21 +458,26 @@ export default function PostComposerOverlay(props: Props) {
 
         {props.imageSourceSheetOpen ? (
           <OverlayPortal>
-            <BottomSheet open backdrop title="Add photo" subtitle="Choose how to attach your working" onClose={props.onCloseImageSourceSheet} zIndexClassName="z-[71]" className="bottom-0" sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]" contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5">
+            <BottomSheet open backdrop title="Add photo" onClose={props.onCloseImageSourceSheet} zIndexClassName="z-[71]" className="bottom-0" sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f0f6ff_100%)] shadow-[0_-18px_40px_rgba(15,23,42,0.14)]" contentClassName="px-4 pb-[calc(var(--app-safe-bottom)+1rem)] pt-2 sm:px-5 sm:pb-5">
               <div className="space-y-2">
                 <button type="button" className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] flex w-full items-center justify-between rounded-2xl px-4 py-4 text-left text-slate-800 transition hover:brightness-[1.02]" onClick={props.onOpenCameraPicker} disabled={uploading}>
-                  <span>
-                    <span className="block text-sm font-semibold">Take photo</span>
-                    <span className="block text-xs text-slate-500">Open the camera and shoot your paper working.</span>
+                  <span className="block text-sm font-semibold">Take photo</span>
+                  <span className="philani-gradient-icon flex h-10 w-10 items-center justify-center rounded-full text-slate-600" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.3-1.7A2 2 0 0 1 10.9 3.5h2.2a2 2 0 0 1 1.6.8L16 6h1.5A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-8Z" />
+                      <circle cx="12" cy="12.5" r="3.5" />
+                    </svg>
                   </span>
-                  <span className="text-slate-400">{`>`}</span>
                 </button>
                 <button type="button" className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] flex w-full items-center justify-between rounded-2xl px-4 py-4 text-left text-slate-800 transition hover:brightness-[1.02]" onClick={props.onOpenGalleryPicker} disabled={uploading}>
-                  <span>
-                    <span className="block text-sm font-semibold">Choose from gallery</span>
-                    <span className="block text-xs text-slate-500">Pick an existing photo or screenshot from your device.</span>
+                  <span className="block text-sm font-semibold">Choose from gallery</span>
+                  <span className="philani-gradient-icon flex h-10 w-10 items-center justify-center rounded-full text-slate-600" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="5" width="18" height="14" rx="2" />
+                      <circle cx="8.5" cy="10" r="1.5" />
+                      <path d="m21 15-4.5-4.5L11 16l-2.5-2.5L3 19" />
+                    </svg>
                   </span>
-                  <span className="text-slate-400">{`>`}</span>
                 </button>
               </div>
             </BottomSheet>

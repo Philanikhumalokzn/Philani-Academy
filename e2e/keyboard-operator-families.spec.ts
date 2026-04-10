@@ -19,6 +19,11 @@ const goToKeyboardSwipeLab = async (page: Page) => {
   await expect(page.locator('button[data-keyboard-action="plus"][data-keyboard-representative="plus-operators"]').first()).toBeVisible({ timeout: 60_000 })
 }
 
+const getMathfieldLatex = async (page: Page, format: 'latex' | 'latex-without-placeholders' = 'latex') => {
+  const field = page.locator('math-field.keyboard-mathlive-field').first()
+  return field.evaluate((node, outputFormat) => node.getValue?.(outputFormat as 'latex' | 'latex-without-placeholders') || '', format)
+}
+
 test.describe('keyboard operator families', () => {
   test.use({ viewport: { width: 390, height: 844 } })
   test.setTimeout(120_000)
@@ -64,5 +69,27 @@ test.describe('keyboard operator families', () => {
     await longPressKey(page, greekKey)
     await expect(page.locator('button[title="degree"]').last()).toBeVisible({ timeout: 10_000 })
     await expect(page.locator('button[title="degree"]').last()).toContainText('°')
+  })
+
+  test('nth root keeps a transient index box, collapses when idle, and re-expands on radicand input', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    const rootKey = page.locator('button[title="nth root"]').first()
+    const field = page.locator('math-field.keyboard-mathlive-field').first()
+
+    await rootKey.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'mouse', button: 0, bubbles: true })
+    await rootKey.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'mouse', button: 0, bubbles: true })
+
+    await expect.poll(() => getMathfieldLatex(page)).toContain('\\sqrt[\\placeholder[')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[]{}')
+
+    await page.waitForTimeout(2500)
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt{\\placeholder[kbd-rad-r-1]{}}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt{}')
+
+    await field.evaluate((node) => node.executeCommand(['insert', '7']))
+
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{\\placeholder[kbd-rad-r-1]{7}}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[]{7}')
   })
 })

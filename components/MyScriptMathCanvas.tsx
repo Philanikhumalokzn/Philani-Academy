@@ -1389,6 +1389,7 @@ const KEYBOARD_ACTIONS: KeyboardActionDefinition[] = [
   },
   createAppendTextKeyboardAction('pi', 'π', 'pi', 'pi'),
   createAppendTextKeyboardAction('theta', 'θ', 'theta', 'theta'),
+  createAppendTextKeyboardAction('degree', '°', 'degree', 'degree symbol'),
   createAppendTextKeyboardAction('infinity', '∞', 'infinity', 'infinity'),
   createAppendTextKeyboardAction('percent', '%', 'percent', 'percent'),
   createAppendTextKeyboardAction('to', ' → ', 'approaches', 'approaches'),
@@ -1572,7 +1573,7 @@ const KEYBOARD_MOUNTED_ROWS: KeyboardMountedRowDefinition[] = [
   {
     id: 'functions',
     label: 'Functions',
-    actionIds: ['sin', 'cos', 'tan', 'ln', 'log', 'pi', 'theta', 'percent'],
+    actionIds: ['sin', 'cos', 'tan', 'ln', 'log', 'pi', 'theta', 'degree', 'percent'],
   },
   {
     id: 'calculus',
@@ -2135,7 +2136,7 @@ const KEYBOARD_REPRESENTATIVE_KEYS: KeyboardRepresentativeKeyDefinition[] = [
     latex: '\\theta',
     singleTapActionId: 'theta',
     radialActionIds: [],
-    familyRows: [['theta', 'pi', 'infinity']],
+    familyRows: [['theta', 'pi', 'degree', 'infinity']],
     familyTitle: 'Greek symbols',
   },
   {
@@ -2968,7 +2969,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     relations: ['equals', 'neq', 'leq', 'geq'],
     trig: ['sin', 'cos', 'tan'],
     logs: ['log-base', 'log', 'ln'],
-    greek: ['theta', 'pi', 'infinity'],
+    greek: ['theta', 'pi', 'infinity', 'degree'],
     enclosures: ['paren', 'bracket', 'absolute', 'brace'],
   })
   const [activeKeyboardRadialTarget, setActiveKeyboardRadialTarget] = useState<KeyboardStageTarget | null>(null)

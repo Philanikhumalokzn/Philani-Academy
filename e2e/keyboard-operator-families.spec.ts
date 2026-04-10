@@ -55,4 +55,14 @@ test.describe('keyboard operator families', () => {
     await expect(page.locator('button[title="ratio"]').last()).toBeVisible({ timeout: 10_000 })
     await expect(page.locator('button[title="fraction"]').last()).toBeVisible({ timeout: 10_000 })
   })
+
+  test('greek family includes the degree symbol', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    const greekKey = page.locator('button[data-keyboard-action="theta"][data-keyboard-representative="greek"]').first()
+
+    await longPressKey(page, greekKey)
+    await expect(page.locator('button[title="degree"]').last()).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('button[title="degree"]').last()).toContainText('°')
+  })
 })

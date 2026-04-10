@@ -24,6 +24,11 @@ const getMathfieldLatex = async (page: Page, format: 'latex' | 'latex-without-pl
   return field.evaluate((node, outputFormat) => node.getValue?.(outputFormat as 'latex' | 'latex-without-placeholders') || '', format)
 }
 
+const getTopPanelRenderedLatex = async (page: Page) => {
+  const panel = page.locator('[data-top-panel-katex-display="true"]').first()
+  return panel.evaluate((node) => node.querySelector('annotation[encoding="application/x-tex"]')?.textContent || '')
+}
+
 test.describe('keyboard operator families', () => {
   test.use({ viewport: { width: 390, height: 844 } })
   test.setTimeout(120_000)
@@ -76,20 +81,28 @@ test.describe('keyboard operator families', () => {
 
     const rootKey = page.locator('button[title="nth root"]').first()
     const field = page.locator('math-field.keyboard-mathlive-field').first()
+    const topPanel = page.locator('[data-top-panel-katex-display="true"]').first()
 
     await rootKey.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'mouse', button: 0, bubbles: true })
     await rootKey.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'mouse', button: 0, bubbles: true })
 
     await expect.poll(() => getMathfieldLatex(page)).toContain('\\sqrt[\\placeholder[')
     await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[]{}')
+    await expect(topPanel).toBeVisible()
+    await expect.poll(() => getTopPanelRenderedLatex(page)).toContain('\\sqrt[\\square]{\\square}')
+    await expect.poll(() => getTopPanelRenderedLatex(page)).not.toContain('kbd-rad-')
 
     await page.waitForTimeout(2500)
     await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt{\\placeholder[kbd-rad-r-1]{}}')
     await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt{}')
+    await expect.poll(() => getTopPanelRenderedLatex(page)).toContain('\\sqrt{\\square}')
+    await expect.poll(() => getTopPanelRenderedLatex(page)).not.toContain('kbd-rad-')
 
     await field.evaluate((node) => node.executeCommand(['insert', '7']))
 
     await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{\\placeholder[kbd-rad-r-1]{7}}')
     await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[]{7}')
+    await expect.poll(() => getTopPanelRenderedLatex(page)).toContain('\\sqrt[\\square]{7}')
+    await expect.poll(() => getTopPanelRenderedLatex(page)).not.toContain('kbd-rad-')
   })
 })

@@ -1492,9 +1492,55 @@ const findKeyboardFractionDenominatorRegionAtPosition = (value: string, position
   return bestMatch
 }
 
+const replaceDisplayPromptPlaceholders = (latex: string): string => {
+  if (!latex || !latex.includes('\\placeholder')) return latex
+
+  let normalized = ''
+  let cursor = 0
+
+  while (cursor < latex.length) {
+    const placeholderStart = latex.indexOf('\\placeholder', cursor)
+    if (placeholderStart < 0) {
+      normalized += latex.slice(cursor)
+      break
+    }
+
+    normalized += latex.slice(cursor, placeholderStart)
+
+    let groupCursor = placeholderStart + '\\placeholder'.length
+    if (latex[groupCursor] === '[') {
+      const promptIdGroupEnd = findKeyboardBalancedGroupEnd(latex, groupCursor, '[', ']')
+      if (promptIdGroupEnd < 0) {
+        normalized += latex.slice(placeholderStart)
+        break
+      }
+      groupCursor = promptIdGroupEnd + 1
+    }
+
+    if (latex[groupCursor] !== '{') {
+      normalized += '\\placeholder'
+      cursor = placeholderStart + '\\placeholder'.length
+      continue
+    }
+
+    const bodyGroupEnd = findKeyboardBalancedGroupEnd(latex, groupCursor, '{', '}')
+    if (bodyGroupEnd < 0) {
+      normalized += latex.slice(placeholderStart)
+      break
+    }
+
+    const placeholderBody = latex.slice(groupCursor + 1, bodyGroupEnd)
+    const normalizedBody = replaceDisplayPromptPlaceholders(placeholderBody)
+    normalized += normalizedBody.trim() ? normalizedBody : '\\square'
+    cursor = bodyGroupEnd + 1
+  }
+
+  return normalized
+}
+
 const normalizeDisplayPlaceholdersToBoxes = (latex: string) => {
   if (!latex) return ''
-  return latex
+  return replaceDisplayPromptPlaceholders(latex)
     .replace(/#\?/g, '\\square')
     .replace(/\\placeholder(?:\{[^{}]*\})?/g, '\\square')
     .replace(/\\phantom\{a\}/g, '\\square')

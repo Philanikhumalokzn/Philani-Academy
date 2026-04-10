@@ -26,6 +26,7 @@ export type FullScreenGlassOverlayProps = {
   hideHeader?: boolean
   forceHeaderSafeTop?: boolean
   headerSafeTopClassName?: string
+  headerStyle?: React.CSSProperties
   respectBottomSafeArea?: boolean
 
   leftActions?: React.ReactNode
@@ -55,6 +56,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
     hideHeader = false,
     forceHeaderSafeTop = false,
     headerSafeTopClassName,
+    headerStyle,
     respectBottomSafeArea = true,
     leftActions,
     rightActions,
@@ -315,7 +317,7 @@ export default function FullScreenGlassOverlay(props: FullScreenGlassOverlayProp
           ) : null}
 
           {hideHeader ? null : (
-            <div className={`${headerClassName} ${resolvedHeaderSafeTopClassName}`}>
+            <div className={`${headerClassName} ${resolvedHeaderSafeTopClassName}`} style={headerStyle}>
               <div className={actionSlotClassName}>
                 {leftActions}
               </div>

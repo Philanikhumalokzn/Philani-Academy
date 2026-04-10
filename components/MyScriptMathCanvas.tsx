@@ -1017,6 +1017,7 @@ type KeyboardRepresentativeKeyDefinition = {
 type KeyboardVisibleKeyDefinition = {
   actionId: string
   label?: string
+  insertedToken?: string
   representativeKeyId?: string
 }
 
@@ -2915,7 +2916,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
   const updateRecentLetters = useCallback((letter: string) => {
     setRecentLetters((prev) => {
-      const updated = [letter, ...prev.filter((l) => l !== letter)].slice(0, 5)
+      const normalizedLetter = letter.toLowerCase()
+      const updated = [letter, ...prev.filter((candidate) => candidate.toLowerCase() !== normalizedLetter)].slice(0, 5)
       recentLettersRef.current = updated
       return updated
     })
@@ -11523,7 +11525,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return true
   }, [syncKeyboardMathfieldState, updateRecentRepresentativeAction])
 
-  const  applyKeyboardAction = useCallback((actionId: string, baseSymbol?: string) => {
+  const  applyKeyboardAction = useCallback((actionId: string, baseSymbol?: string, insertedTokenOverride?: string) => {
     const action = KEYBOARD_ACTION_MAP[actionId]
     if (!action) return
 
@@ -11546,10 +11548,10 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     })
     const resolvedBaseSymbol = baseSymbol || referenceTarget?.symbol
     const isLetterTokenAction = Boolean(action.token && /^[a-z]$/.test(action.token))
-    const tokenOverride = isLetterTokenAction && keyboardUppercase ? action.token!.toUpperCase() : null
+    const tokenOverride = insertedTokenOverride || (isLetterTokenAction && keyboardUppercase ? action.token!.toUpperCase() : null)
     const directInsertText = tokenOverride || resolveKeyboardDirectInsertText(actionId, prev, selection)
     if (isLetterTokenAction && action.token) {
-      updateRecentLetters(action.token)
+      updateRecentLetters(tokenOverride || action.token)
     }
 
     if (recognitionEngineRef.current === 'keyboard' && applyMathfieldKeyboardAction(actionId, resolvedBaseSymbol, directInsertText)) {
@@ -12200,6 +12202,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     const buildLowerVariableColumnKeys = () => {
+      const toVisibleLetterKey = (letter: string): KeyboardVisibleKeyDefinition => ({
+        actionId: letter.toLowerCase(),
+        label: letter,
+        insertedToken: letter,
+        representativeKeyId: 'letters',
+      })
+
       const defaults = ['x', 'y', 'f', 't']
       const seen = new Set<string>()
       const ordered = [...recentLetters, ...defaults].filter((letter): letter is string => {
@@ -12209,11 +12218,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         seen.add(normalized)
         return true
       })
-      return ordered.slice(0, 4).map((letter) => ({
-        actionId: letter,
-        label: letter,
-        representativeKeyId: 'letters',
-      }))
+      return ordered.slice(0, 4).map(toVisibleLetterKey)
     }
 
     const buildDynamicRepresentativeKey = (representativeKeyId: string) => {
@@ -12273,7 +12278,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           style={options?.style}
           onPointerDown={(event) => handleMountedKeyPointerDown(event, key.actionId, key.representativeKeyId)}
           onPointerMove={(event) => handleMountedKeyPointerMove(event, key.actionId)}
-          onPointerUp={(event) => handleMountedKeyPointerUp(event, key.actionId)}
+          onPointerUp={(event) => handleMountedKeyPointerUp(event, key.actionId, key.insertedToken)}
           onPointerCancel={handleMountedKeyPointerCancel}
           onContextMenu={(event) => event.preventDefault()}
           title={action.title}
@@ -12340,7 +12345,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       }
     }
 
-    const handleMountedKeyPointerUp = (event: React.PointerEvent<HTMLButtonElement>, actionId: string) => {
+    const handleMountedKeyPointerUp = (event: React.PointerEvent<HTMLButtonElement>, actionId: string, insertedTokenOverride?: string) => {
       event.stopPropagation()
       const pending = keyboardPendingKeyGestureRef.current
       keyboardPendingKeyGestureRef.current = null
@@ -12360,7 +12365,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         }
       }
 
-      applyKeyboardAction(actionId)
+      applyKeyboardAction(actionId, undefined, insertedTokenOverride)
     }
 
     const handleMountedKeyPointerCancel = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -12493,10 +12498,15 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
               </div>
 
               <div data-keyboard-bottom-grid="true" className="grid grid-cols-[repeat(4,minmax(0,1fr))_1.12fr] auto-rows-[2.5rem] gap-2 sm:auto-rows-[2.8rem]">
-                {['digit-7', 'digit-8', 'digit-9', lowerVariableColumnKeys[0]?.actionId || 'x'].map((actionId) =>
-                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : actionId, representativeKeyId: /^[a-z]$/i.test(actionId) ? 'letters' : undefined }, {
-                    className: actionId.startsWith('digit-') ? 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100' : 'border-transparent bg-slate-800 text-white hover:bg-slate-700',
-                    textClassName: actionId.startsWith('digit-') ? 'text-2xl sm:text-[2rem] font-medium' : 'text-lg sm:text-xl font-medium',
+                {[
+                  { actionId: 'digit-7', label: '7' },
+                  { actionId: 'digit-8', label: '8' },
+                  { actionId: 'digit-9', label: '9' },
+                  lowerVariableColumnKeys[0] || { actionId: 'x', label: 'x', insertedToken: 'x', representativeKeyId: 'letters' },
+                ].map((key) =>
+                  renderVisibleKeyboardButton(key, {
+                    className: key.actionId.startsWith('digit-') ? 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100' : 'border-transparent bg-slate-800 text-white hover:bg-slate-700',
+                    textClassName: key.actionId.startsWith('digit-') ? 'text-2xl sm:text-[2rem] font-medium' : 'text-lg sm:text-xl font-medium',
                   })
                 )}
                 <button
@@ -12516,23 +12526,33 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                   </span>
                 </button>
 
-                {['digit-4', 'digit-5', 'digit-6', lowerVariableColumnKeys[1]?.actionId || 'y'].map((actionId) =>
-                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : actionId, representativeKeyId: /^[a-z]$/i.test(actionId) ? 'letters' : undefined }, {
-                    className: actionId.startsWith('digit-') ? 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100' : 'border-transparent bg-slate-800 text-white hover:bg-slate-700',
-                    textClassName: actionId.startsWith('digit-') ? 'text-2xl sm:text-[2rem] font-medium' : 'text-lg sm:text-xl font-medium',
+                {[
+                  { actionId: 'digit-4', label: '4' },
+                  { actionId: 'digit-5', label: '5' },
+                  { actionId: 'digit-6', label: '6' },
+                  lowerVariableColumnKeys[1] || { actionId: 'y', label: 'y', insertedToken: 'y', representativeKeyId: 'letters' },
+                ].map((key) =>
+                  renderVisibleKeyboardButton(key, {
+                    className: key.actionId.startsWith('digit-') ? 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100' : 'border-transparent bg-slate-800 text-white hover:bg-slate-700',
+                    textClassName: key.actionId.startsWith('digit-') ? 'text-2xl sm:text-[2rem] font-medium' : 'text-lg sm:text-xl font-medium',
                   })
                 )}
 
-                {['digit-1', 'digit-2', 'digit-3', lowerVariableColumnKeys[2]?.actionId || 'f'].map((actionId) =>
-                  renderVisibleKeyboardButton({ actionId, label: actionId.startsWith('digit-') ? actionId.replace('digit-', '') : actionId, representativeKeyId: /^[a-z]$/i.test(actionId) ? 'letters' : undefined }, {
-                    className: actionId.startsWith('digit-') ? 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100' : 'border-transparent bg-slate-800 text-white hover:bg-slate-700',
-                    textClassName: actionId.startsWith('digit-') ? 'text-2xl sm:text-[2rem] font-medium' : 'text-lg sm:text-xl font-medium',
+                {[
+                  { actionId: 'digit-1', label: '1' },
+                  { actionId: 'digit-2', label: '2' },
+                  { actionId: 'digit-3', label: '3' },
+                  lowerVariableColumnKeys[2] || { actionId: 'f', label: 'f', insertedToken: 'f', representativeKeyId: 'letters' },
+                ].map((key) =>
+                  renderVisibleKeyboardButton(key, {
+                    className: key.actionId.startsWith('digit-') ? 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100' : 'border-transparent bg-slate-800 text-white hover:bg-slate-700',
+                    textClassName: key.actionId.startsWith('digit-') ? 'text-2xl sm:text-[2rem] font-medium' : 'text-lg sm:text-xl font-medium',
                   })
                 )}
 
                 {renderVisibleKeyboardButton({ actionId: 'digit-0', label: '0' }, { className: 'col-span-2 border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100', textClassName: 'text-2xl sm:text-[2rem] font-medium' })}
                 {renderVisibleKeyboardButton({ actionId: 'decimal', label: '.' }, { className: 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-100', textClassName: 'text-2xl sm:text-[2rem] font-medium' })}
-                {renderVisibleKeyboardButton(lowerVariableColumnKeys[3] || { actionId: 't', label: 't', representativeKeyId: 'letters' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600', textClassName: 'text-lg sm:text-xl font-medium' })}
+                {renderVisibleKeyboardButton(lowerVariableColumnKeys[3] || { actionId: 't', label: 't', insertedToken: 't', representativeKeyId: 'letters' }, { className: 'border-transparent bg-slate-700 text-white hover:bg-slate-600', textClassName: 'text-lg sm:text-xl font-medium' })}
               </div>
             </div>
           </div>

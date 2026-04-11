@@ -1102,6 +1102,8 @@ type KeyboardTransientRadicalProgrammaticEditContext = {
   anchorStart: number
   promptIds: KeyboardTransientRadicalPromptIds
   targetField: 'index' | 'radicand'
+  targetSelectionStart: number
+  targetSelectionEnd: number
 }
 
 type KeyboardRadicalRewriteResult = {
@@ -1339,29 +1341,43 @@ const getKeyboardTransientRadicalSerializedPrefixLength = (
   targetField: 'index' | 'radicand',
 ) => regionStart + indexLatex.length + (targetField === 'radicand' ? radicandLatex.length : 0)
 
+const getKeyboardTransientRadicalFieldSelectionRange = (
+  selection: KeyboardSelectionState,
+  indexLatex: string,
+  radicandLatex: string,
+  targetField: 'index' | 'radicand',
+): KeyboardSelectionState => {
+  const normalizedStart = Math.max(0, Math.min(selection.start, selection.end))
+  const normalizedEnd = Math.max(normalizedStart, Math.max(selection.start, selection.end))
+  const prefixLength = targetField === 'radicand' ? indexLatex.length : 0
+  const fieldLength = targetField === 'index' ? indexLatex.length : radicandLatex.length
+
+  const selectionStart = Math.max(0, Math.min(fieldLength, normalizedStart - prefixLength))
+  const selectionEnd = Math.max(selectionStart, Math.min(fieldLength, normalizedEnd - prefixLength))
+
+  return {
+    start: selectionStart,
+    end: selectionEnd,
+  }
+}
+
 const resolveKeyboardTransientRadicalFieldFromSelection = (
   region: KeyboardRadicalRegion,
   selection: KeyboardSelectionState,
   storedTargetField?: 'index' | 'radicand' | null,
+  promptIds?: KeyboardTransientRadicalPromptIds | null,
 ): 'index' | 'radicand' => {
   if (!region.hasIndex) return 'radicand'
 
   const selectionStart = Math.max(0, Math.min(selection.start, selection.end))
   const selectionEnd = Math.max(0, Math.max(selection.start, selection.end))
-  const indexBoundary = region.indexContentEnd ?? region.indexGroupEnd ?? region.radicandGroupStart
-  const radicandBoundary = region.radicandContentStart
+  const indexLatex = promptIds && region.hasIndex
+    ? normalizeKeyboardTransientRadicalFieldContent(region.indexSymbol, promptIds.indexPromptId)
+    : region.indexSymbol
+  const indexBoundary = indexLatex.length
 
-  if (selectionEnd <= indexBoundary) return 'index'
-  if (selectionStart >= radicandBoundary) return 'radicand'
-
-  const selectionPivot = selectionStart === selectionEnd
-    ? selectionEnd
-    : Math.max(selectionStart, Math.min(selectionEnd, region.radicandGroupStart))
-  const distanceToIndex = Math.abs(selectionPivot - indexBoundary)
-  const distanceToRadicand = Math.abs(selectionPivot - radicandBoundary)
-
-  if (distanceToIndex < distanceToRadicand) return 'index'
-  if (distanceToRadicand < distanceToIndex) return 'radicand'
+  if (selectionEnd < indexBoundary) return 'index'
+  if (selectionStart > indexBoundary) return 'radicand'
 
   return storedTargetField ?? 'radicand'
 }
@@ -4076,7 +4092,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       const promptIds = resolveKeyboardTransientRadicalPromptIdsForRegion(region)
       keyboardTransientRadicalActiveFieldRef.current = promptIds
         ? (resolveKeyboardTransientRadicalSelectionField(field, promptIds)
-            || resolveKeyboardTransientRadicalFieldFromSelection(region, selection, keyboardTransientRadicalActiveFieldRef.current))
+            || resolveKeyboardTransientRadicalFieldFromSelection(region, selection, keyboardTransientRadicalActiveFieldRef.current, promptIds))
         : resolveKeyboardTransientRadicalFieldFromSelection(region, selection, keyboardTransientRadicalActiveFieldRef.current)
       scheduleKeyboardTransientRadicalTimer(region.start, promptIds)
     }
@@ -4116,13 +4132,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       ? keyboardTransientRadicalActiveFieldRef.current
       : null
     const promptTargetField = resolveKeyboardTransientRadicalSelectionField(field, promptIds)
+    const indexLatex = region.hasIndex
+      ? normalizeKeyboardTransientRadicalFieldContent(region.indexSymbol, promptIds.indexPromptId)
+      : ''
+    const radicandLatex = normalizeKeyboardTransientRadicalFieldContent(region.radicandSymbol, promptIds.radicandPromptId)
+    const targetField = promptTargetField
+      || storedTargetField
+      || resolveKeyboardTransientRadicalFieldFromSelection(region, selection, storedTargetField, promptIds)
+    const targetSelection = getKeyboardTransientRadicalFieldSelectionRange(selection, indexLatex, radicandLatex, targetField)
 
     return {
       anchorStart: region.start,
       promptIds,
-      targetField: promptTargetField
-        || storedTargetField
-        || resolveKeyboardTransientRadicalFieldFromSelection(region, selection, storedTargetField),
+      targetField,
+      targetSelectionStart: targetSelection.start,
+      targetSelectionEnd: targetSelection.end,
     }
   }, [getKeyboardMathfieldSelectionOffsets, resolveKeyboardTransientRadicalPromptIdsForRegion, resolveKeyboardTransientRadicalSelectionField])
 
@@ -4201,18 +4225,21 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       ? normalizeKeyboardTransientRadicalFieldContent(region.indexSymbol, promptIds.indexPromptId)
       : ''
     const radicandLatex = normalizeKeyboardTransientRadicalFieldContent(region.radicandSymbol, promptIds.radicandPromptId)
+    const selectionStart = Math.max(0, Math.min(context.targetSelectionStart, context.targetSelectionEnd))
+    const selectionEnd = Math.max(selectionStart, Math.max(context.targetSelectionStart, context.targetSelectionEnd))
     const nextIndexLatex = context.targetField === 'index'
-      ? `${indexLatex}${insertedLatex}`
+      ? `${indexLatex.slice(0, selectionStart)}${insertedLatex}${indexLatex.slice(selectionEnd)}`
       : indexLatex
     const nextRadicandLatex = context.targetField === 'radicand'
-      ? `${radicandLatex}${insertedLatex}`
+      ? `${radicandLatex.slice(0, selectionStart)}${insertedLatex}${radicandLatex.slice(selectionEnd)}`
       : radicandLatex
     const nextValue = `${currentValue.slice(0, region.start)}${buildKeyboardTransientRadicalLatex(promptIds, nextRadicandLatex, nextIndexLatex)}${currentValue.slice(region.end)}`
+    const nextRelativeSelection = selectionStart + insertedLatex.length
     const targetSelection = getKeyboardTransientRadicalFieldSelectionOffset(
       region.start,
       promptIds,
-      nextIndexLatex,
-      nextRadicandLatex,
+      context.targetField === 'index' ? nextIndexLatex.slice(0, nextRelativeSelection) : nextIndexLatex,
+      context.targetField === 'radicand' ? nextRadicandLatex.slice(0, nextRelativeSelection) : nextRadicandLatex,
       context.targetField,
       true,
     )
@@ -4227,8 +4254,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         positionBias: 'start',
         transientRadicalSerializedPrefixLength: getKeyboardTransientRadicalSerializedPrefixLength(
           region.start,
-          nextIndexLatex,
-          nextRadicandLatex,
+          context.targetField === 'index' ? nextIndexLatex.slice(0, nextRelativeSelection) : nextIndexLatex,
+          context.targetField === 'radicand' ? nextRadicandLatex.slice(0, nextRelativeSelection) : nextRadicandLatex,
           context.targetField,
         ),
       },

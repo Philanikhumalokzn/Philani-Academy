@@ -41,6 +41,41 @@ const tapKeyboardAction = async (page: Page, actionId: string) => {
   await key.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'mouse', button: 0, bubbles: true })
 }
 
+const clickBetweenMathfieldTokens = async (page: Page, leftLatex: string, rightLatex: string) => {
+  const field = page.locator('math-field.keyboard-mathlive-field').first()
+  const point = await field.evaluate((node, tokens) => {
+    const [leftLatexInner, rightLatexInner] = tokens
+    const entries: Array<{ offset: number; info: { latex?: string; bounds?: DOMRect } | null }> = []
+    const maxOffset = Math.min(40, typeof node.lastOffset === 'number' ? node.lastOffset : 40)
+
+    for (let offset = 0; offset <= maxOffset; offset += 1) {
+      let info = null
+      try {
+        info = typeof node.getElementInfo === 'function' ? node.getElementInfo(offset) : null
+      } catch {
+        info = null
+      }
+      entries.push({ offset, info })
+    }
+
+    const leftEntry = entries.find((entry) => entry.info?.latex === leftLatexInner)
+    const rightEntry = entries.find((entry) => entry.offset > (leftEntry?.offset ?? -1) && entry.info?.latex === rightLatexInner)
+    const leftBounds = leftEntry?.info?.bounds
+    const rightBounds = rightEntry?.info?.bounds
+
+    if (!leftBounds || !rightBounds) return null
+
+    return {
+      x: (leftBounds.right + rightBounds.left) / 2,
+      y: (leftBounds.top + leftBounds.bottom) / 2,
+    }
+  }, [leftLatex, rightLatex])
+
+  expect(point).not.toBeNull()
+  if (!point) return
+  await page.mouse.click(point.x, point.y)
+}
+
 test.describe('keyboard operator families', () => {
   test.use({ viewport: { width: 390, height: 844 } })
   test.setTimeout(120_000)
@@ -171,6 +206,41 @@ test.describe('keyboard operator families', () => {
     await field.evaluate((node) => node.executeCommand(['insert', '4']))
     await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[34]{\\placeholder[kbd-rad-r-1]{}}')
     await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[34]{}')
+  })
+
+  test('nth root button input inserts at the tapped caret position inside a multi-digit radicand', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    await insertNthRoot(page)
+    await tapKeyboardAction(page, 'digit-1')
+    await tapKeyboardAction(page, 'digit-2')
+    await tapKeyboardAction(page, 'digit-3')
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{123}')
+
+    await clickBetweenMathfieldTokens(page, '1', '2')
+    await tapKeyboardAction(page, 'digit-9')
+
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{1923}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[]{1923}')
+  })
+
+  test('nth root button input inserts at the tapped caret position inside a multi-digit index', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    const field = page.locator('math-field.keyboard-mathlive-field').first()
+
+    await insertNthRoot(page)
+    await field.evaluate((node) => node.executeCommand('moveToPreviousPlaceholder'))
+    await tapKeyboardAction(page, 'digit-1')
+    await tapKeyboardAction(page, 'digit-2')
+    await tapKeyboardAction(page, 'digit-3')
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[123]{\\placeholder[kbd-rad-r-1]{}}')
+
+    await clickBetweenMathfieldTokens(page, '1', '2')
+    await tapKeyboardAction(page, 'digit-9')
+
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[1923]{\\placeholder[kbd-rad-r-1]{}}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[1923]{}')
   })
 
   test('nth root keeps the filled index targeted when the user taps its area', async ({ page }) => {

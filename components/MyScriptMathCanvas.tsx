@@ -4207,12 +4207,22 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const promptIds = resolveKeyboardTransientRadicalPromptIdsForRegion(region) || context.promptIds
     if (!promptIds) return false
 
+    const selection = getKeyboardMathfieldSelectionOffsets(field)
+    const liveTargetField = resolveKeyboardTransientRadicalFieldFromLiveSelection(
+      field,
+      region,
+      selection,
+      null,
+      promptIds,
+    )
+    if (liveTargetField !== context.targetField) return false
+
     const targetLatex = context.targetField === 'index'
       ? (region.hasIndex ? normalizeKeyboardTransientRadicalFieldContent(region.indexSymbol, promptIds.indexPromptId) : '')
       : normalizeKeyboardTransientRadicalFieldContent(region.radicandSymbol, promptIds.radicandPromptId)
 
-    return targetLatex.includes('\\placeholder')
-  }, [resolveKeyboardTransientRadicalPromptIdsForRegion])
+    return Boolean(targetLatex.trim())
+  }, [getKeyboardMathfieldSelectionOffsets, resolveKeyboardTransientRadicalFieldFromLiveSelection, resolveKeyboardTransientRadicalPromptIdsForRegion])
 
   const refreshKeyboardTransientRadicalNativeState = useCallback((
     field: MathfieldElementType | null | undefined,

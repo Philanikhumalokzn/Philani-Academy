@@ -24,6 +24,18 @@ const getMathfieldLatex = async (page: Page, format: 'latex' | 'latex-without-pl
   return field.evaluate((node, outputFormat) => node.getValue?.(outputFormat as 'latex' | 'latex-without-placeholders') || '', format)
 }
 
+const getMathfieldRawPrefixLatex = async (page: Page) => {
+  const field = page.locator('math-field.keyboard-mathlive-field').first()
+  return field.evaluate((node) => {
+    const position = typeof node.position === 'number' ? node.position : 0
+    try {
+      return node.getValue?.(0, Math.max(0, position), 'latex') || ''
+    } catch {
+      return ''
+    }
+  })
+}
+
 const getTopPanelRenderedLatex = async (page: Page) => {
   const panel = page.locator('[data-top-panel-katex-display="true"]').first()
   return panel.evaluate((node) => node.querySelector('annotation[encoding="application/x-tex"]')?.textContent || '')
@@ -156,6 +168,22 @@ const seedFilledNthRootBranches = async (page: Page) => {
   return field
 }
 
+const seedLongNthRootBranch = async (page: Page, branch: 'radicand' | 'index') => {
+  const field = page.locator('math-field.keyboard-mathlive-field').first()
+
+  await insertNthRoot(page)
+  if (branch === 'index') {
+    await field.evaluate((node) => node.executeCommand('moveToPreviousPlaceholder'))
+  }
+
+  for (const digit of ['1', '2', '3', '4', '5', '6', '7']) {
+    await tapKeyboardAction(page, `digit-${digit}`)
+  }
+  await clickBetweenMathfieldTokens(page, '4', '5')
+
+  return field
+}
+
 const plainNthRootMidInsertCases: Array<{
   actionId: 'plus' | 'minus' | 'times' | 'divide'
   branch: 'radicand' | 'index'
@@ -165,49 +193,49 @@ const plainNthRootMidInsertCases: Array<{
   {
     actionId: 'plus',
     branch: 'radicand',
-    expectedLatex: '\\sqrt[\\placeholder[kbd-rad-i-1]{}]{1 + 923}',
+    expectedLatex: '\\sqrt[\\placeholder[kbd-rad-i-1]{}]{1+923}',
     expectedPlainLatex: '\\sqrt[]{1+923}',
   },
   {
     actionId: 'minus',
     branch: 'radicand',
-    expectedLatex: '\\sqrt[\\placeholder[kbd-rad-i-1]{}]{1 - 923}',
+    expectedLatex: '\\sqrt[\\placeholder[kbd-rad-i-1]{}]{1-923}',
     expectedPlainLatex: '\\sqrt[]{1-923}',
   },
   {
     actionId: 'times',
     branch: 'radicand',
-    expectedLatex: '\\sqrt[\\placeholder[kbd-rad-i-1]{}]{1 \\times 923}',
+    expectedLatex: '\\sqrt[\\placeholder[kbd-rad-i-1]{}]{1\\times923}',
     expectedPlainLatex: '\\sqrt[]{1\\times923}',
   },
   {
     actionId: 'divide',
     branch: 'radicand',
-    expectedLatex: '\\sqrt[\\placeholder[kbd-rad-i-1]{}]{1 \\div 923}',
+    expectedLatex: '\\sqrt[\\placeholder[kbd-rad-i-1]{}]{1\\div923}',
     expectedPlainLatex: '\\sqrt[]{1\\div923}',
   },
   {
     actionId: 'plus',
     branch: 'index',
-    expectedLatex: '\\sqrt[1 + 923]{\\placeholder[kbd-rad-r-1]{}}',
+    expectedLatex: '\\sqrt[1+923]{\\placeholder[kbd-rad-r-1]{}}',
     expectedPlainLatex: '\\sqrt[1+923]{}',
   },
   {
     actionId: 'minus',
     branch: 'index',
-    expectedLatex: '\\sqrt[1 - 923]{\\placeholder[kbd-rad-r-1]{}}',
+    expectedLatex: '\\sqrt[1-923]{\\placeholder[kbd-rad-r-1]{}}',
     expectedPlainLatex: '\\sqrt[1-923]{}',
   },
   {
     actionId: 'times',
     branch: 'index',
-    expectedLatex: '\\sqrt[1 \\times 923]{\\placeholder[kbd-rad-r-1]{}}',
+    expectedLatex: '\\sqrt[1\\times923]{\\placeholder[kbd-rad-r-1]{}}',
     expectedPlainLatex: '\\sqrt[1\\times923]{}',
   },
   {
     actionId: 'divide',
     branch: 'index',
-    expectedLatex: '\\sqrt[1 \\div 923]{\\placeholder[kbd-rad-r-1]{}}',
+    expectedLatex: '\\sqrt[1\\div923]{\\placeholder[kbd-rad-r-1]{}}',
     expectedPlainLatex: '\\sqrt[1\\div923]{}',
   },
 ]
@@ -398,6 +426,32 @@ test.describe('keyboard operator families', () => {
 
     await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[1923]{\\placeholder[kbd-rad-r-1]{}}')
     await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[1923]{}')
+  })
+
+  test('nth root keeps the visual caret immediately after plus in a long radicand', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    await seedLongNthRootBranch(page, 'radicand')
+    await tapKeyboardAction(page, 'plus')
+
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{1234+567}')
+    await expect.poll(() => getMathfieldRawPrefixLatex(page)).toBe('1234+')
+
+    await tapKeyboardAction(page, 'digit-9')
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{1234+9567}')
+  })
+
+  test('nth root keeps the visual caret immediately after plus in a long index', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    await seedLongNthRootBranch(page, 'index')
+    await tapKeyboardAction(page, 'plus')
+
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[1234+567]{\\placeholder[kbd-rad-r-1]{}}')
+    await expect.poll(() => getMathfieldRawPrefixLatex(page)).toBe('1234+')
+
+    await tapKeyboardAction(page, 'digit-9')
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[1234+9567]{\\placeholder[kbd-rad-r-1]{}}')
   })
 
   test('nth root switches from the index to the radicand when the caret is tapped just before the radicand value', async ({ page }) => {

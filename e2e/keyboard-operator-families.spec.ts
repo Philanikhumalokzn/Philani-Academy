@@ -82,6 +82,49 @@ const clickBetweenMathfieldTokens = async (page: Page, leftLatex: string, rightL
   await page.mouse.click(point.x, point.y)
 }
 
+const clickMathfieldTokenEdge = async (
+  page: Page,
+  tokenLatex: string,
+  edge: 'before' | 'after' | 'inside',
+  occurrence: 'first' | 'last' = 'first',
+) => {
+  const field = page.locator('math-field.keyboard-mathlive-field').first()
+  const point = await field.evaluate((node, payload) => {
+    const { tokenLatexInner, edgeInner, occurrenceInner } = payload
+    const matches: Array<{ left: number; right: number; top: number; bottom: number }> = []
+    const maxOffset = Math.min(160, typeof node.lastOffset === 'number' ? node.lastOffset : 160)
+
+    for (let offset = 0; offset <= maxOffset; offset += 1) {
+      let info = null
+      try {
+        info = typeof node.getElementInfo === 'function' ? node.getElementInfo(offset) : null
+      } catch {
+        info = null
+      }
+      if (info?.latex === tokenLatexInner && info?.bounds) {
+        matches.push({
+          left: info.bounds.left,
+          right: info.bounds.right,
+          top: info.bounds.top,
+          bottom: info.bounds.bottom,
+        })
+      }
+    }
+
+    if (!matches.length) return null
+    const bounds = occurrenceInner === 'last' ? matches[matches.length - 1] : matches[0]
+    const y = (bounds.top + bounds.bottom) / 2
+
+    if (edgeInner === 'before') return { x: bounds.left - 2, y }
+    if (edgeInner === 'after') return { x: bounds.right + 2, y }
+    return { x: (bounds.left + bounds.right) / 2, y }
+  }, { tokenLatexInner: tokenLatex, edgeInner: edge, occurrenceInner: occurrence })
+
+  expect(point).not.toBeNull()
+  if (!point) return
+  await page.mouse.click(point.x, point.y)
+}
+
 const seedNthRootMidpointCaret = async (page: Page, branch: 'radicand' | 'index') => {
   const field = page.locator('math-field.keyboard-mathlive-field').first()
 
@@ -95,6 +138,21 @@ const seedNthRootMidpointCaret = async (page: Page, branch: 'radicand' | 'index'
   await tapKeyboardAction(page, 'digit-3')
   await clickBetweenMathfieldTokens(page, '1', '2')
 
+  return field
+}
+
+const seedFilledNthRootBranches = async (page: Page) => {
+  const field = page.locator('math-field.keyboard-mathlive-field').first()
+
+  await insertNthRoot(page)
+  await tapKeyboardAction(page, 'digit-5')
+  await tapKeyboardAction(page, 'digit-6')
+  await field.evaluate((node) => node.executeCommand('moveToPreviousPlaceholder'))
+  await tapKeyboardAction(page, 'digit-3')
+  await tapKeyboardAction(page, 'digit-4')
+  await tapKeyboardAction(page, 'digit-5')
+
+  await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[345]{56}')
   return field
 }
 
@@ -302,6 +360,27 @@ test.describe('keyboard operator families', () => {
     await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[]{1923}')
   })
 
+  test('nth root idle collapse preserves a tapped mid-radicand caret position', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    await insertNthRoot(page)
+    await tapKeyboardAction(page, 'digit-1')
+    await tapKeyboardAction(page, 'digit-2')
+    await tapKeyboardAction(page, 'digit-3')
+    await tapKeyboardAction(page, 'digit-4')
+    await tapKeyboardAction(page, 'digit-5')
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{12345}')
+
+    await clickBetweenMathfieldTokens(page, '2', '3')
+    await page.waitForTimeout(2500)
+
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt{12345}')
+    await tapKeyboardAction(page, 'digit-9')
+
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt{129345}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt{129345}')
+  })
+
   test('nth root button input inserts at the tapped caret position inside a multi-digit index', async ({ page }) => {
     await goToKeyboardSwipeLab(page)
 
@@ -319,6 +398,29 @@ test.describe('keyboard operator families', () => {
 
     await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[1923]{\\placeholder[kbd-rad-r-1]{}}')
     await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[1923]{}')
+  })
+
+  test('nth root switches from the index to the radicand when the caret is tapped just before the radicand value', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    await seedFilledNthRootBranches(page)
+    await clickMathfieldTokenEdge(page, '5', 'before', 'last')
+    await tapKeyboardAction(page, 'digit-2')
+
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[345]{256}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[345]{256}')
+  })
+
+  test('nth root switches from the radicand to the index when the caret is tapped just after the index value', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    await seedFilledNthRootBranches(page)
+    await clickMathfieldTokenEdge(page, '6', 'inside')
+    await clickMathfieldTokenEdge(page, '5', 'after', 'first')
+    await tapKeyboardAction(page, 'digit-2')
+
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[3452]{56}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[3452]{56}')
   })
 
   for (const { actionId, branch, expectedLatex, expectedPlainLatex } of plainNthRootMidInsertCases) {

@@ -137,6 +137,171 @@ const clickMathfieldTokenEdge = async (
   await page.mouse.click(point.x, point.y)
 }
 
+const getMathfieldTokenEdgePoint = async (
+  page: Page,
+  tokenLatex: string,
+  edge: 'before' | 'after' | 'inside',
+  occurrence: 'first' | 'last' = 'first',
+) => {
+  const field = page.locator('math-field.keyboard-mathlive-field').first()
+  const point = await field.evaluate((node, payload) => {
+    const { tokenLatexInner, edgeInner, occurrenceInner } = payload
+    const matches: Array<{ left: number; right: number; top: number; bottom: number }> = []
+    const maxOffset = Math.min(200, typeof node.lastOffset === 'number' ? node.lastOffset : 200)
+
+    for (let offset = 0; offset <= maxOffset; offset += 1) {
+      let info = null
+      try {
+        info = typeof node.getElementInfo === 'function' ? node.getElementInfo(offset) : null
+      } catch {
+        info = null
+      }
+      if (info?.latex === tokenLatexInner && info?.bounds) {
+        matches.push({
+          left: info.bounds.left,
+          right: info.bounds.right,
+          top: info.bounds.top,
+          bottom: info.bounds.bottom,
+        })
+      }
+    }
+
+    if (!matches.length) return null
+    const bounds = occurrenceInner === 'last' ? matches[matches.length - 1] : matches[0]
+    const y = (bounds.top + bounds.bottom) / 2
+
+    if (edgeInner === 'before') return { x: bounds.left - 2, y }
+    if (edgeInner === 'after') return { x: bounds.right + 2, y }
+    return { x: (bounds.left + bounds.right) / 2, y }
+  }, { tokenLatexInner: tokenLatex, edgeInner: edge, occurrenceInner: occurrence })
+
+  expect(point).not.toBeNull()
+  if (!point) {
+    throw new Error(`Expected to resolve a point for token ${tokenLatex}`)
+  }
+  return point
+}
+
+const resetMathfieldViewportToStart = async (page: Page) => {
+  const field = page.locator('math-field.keyboard-mathlive-field').first()
+  await field.evaluate((node) => {
+    node.executeCommand?.('moveToMathfieldStart')
+
+    let current = node.parentElement as HTMLElement | null
+    while (current) {
+      if (current.scrollWidth > current.clientWidth + 1 || current.scrollHeight > current.clientHeight + 1) {
+        current.scrollLeft = 0
+        current.scrollTop = 0
+        break
+      }
+      current = current.parentElement
+    }
+  })
+}
+
+const getMathfieldViewportBox = async (page: Page) => {
+  const field = page.locator('math-field.keyboard-mathlive-field').first()
+  const box = await field.evaluate((node) => {
+    let current = node.parentElement as HTMLElement | null
+    while (current) {
+      if (current.scrollWidth > current.clientWidth + 1 || current.scrollHeight > current.clientHeight + 1) {
+        const rect = current.getBoundingClientRect()
+        return {
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+          scrollWidth: current.scrollWidth,
+          clientWidth: current.clientWidth,
+        }
+      }
+      current = current.parentElement
+    }
+
+    const rect = node.getBoundingClientRect()
+    return {
+      x: rect.left,
+      y: rect.top,
+      width: rect.width,
+      height: rect.height,
+      scrollWidth: rect.width,
+      clientWidth: rect.width,
+    }
+  })
+
+  expect(box.width).toBeGreaterThan(0)
+  return box
+}
+
+const readMathfieldSelectionState = async (page: Page) => {
+  const field = page.locator('math-field.keyboard-mathlive-field').first()
+  await expect(field).toBeVisible({ timeout: 20_000 })
+  return field.evaluate((node) => {
+    const mathfield = node as HTMLElement & {
+      value?: string
+      selection?: { ranges?: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
+      selectionIsCollapsed?: boolean
+      getValue?: (selection?: { ranges: [number, number][]; direction?: 'forward' | 'backward' | 'none' }, format?: 'latex') => string
+    }
+    const selection = mathfield.selection?.ranges || []
+    const selectionDescriptor = {
+      ranges: selection,
+      direction: mathfield.selection?.direction || 'none',
+    }
+    return {
+      value: String(mathfield.value || ''),
+      selection,
+      selectionIsCollapsed: Boolean(mathfield.selectionIsCollapsed),
+      selectedLatex: selection.length ? (mathfield.getValue?.(selectionDescriptor, 'latex') || '') : '',
+    }
+  })
+}
+
+const touchDragAcrossMathfield = async (
+  page: Page,
+  startPoint: { x: number; y: number },
+  endPoint: { x: number; y: number },
+  options?: { holdBeforeDragMs?: number; holdAfterDragMs?: number; moveSteps?: number },
+) => {
+  const holdBeforeDragMs = options?.holdBeforeDragMs ?? 0
+  const holdAfterDragMs = options?.holdAfterDragMs ?? 100
+  const moveSteps = options?.moveSteps ?? 12
+  const client = await page.context().newCDPSession(page)
+
+  const sendTouch = async (type: 'touchStart' | 'touchMove' | 'touchEnd', point?: { x: number; y: number }) => {
+    await client.send('Input.dispatchTouchEvent', {
+      type,
+      touchPoints: point ? [{
+        x: point.x,
+        y: point.y,
+        id: 1,
+        radiusX: 4,
+        radiusY: 4,
+        force: 1,
+      }] : [],
+    })
+  }
+
+  await sendTouch('touchStart', startPoint)
+  if (holdBeforeDragMs > 0) {
+    await page.waitForTimeout(holdBeforeDragMs)
+  }
+
+  for (let index = 1; index <= moveSteps; index += 1) {
+    const progress = index / moveSteps
+    await sendTouch('touchMove', {
+      x: startPoint.x + ((endPoint.x - startPoint.x) * progress),
+      y: startPoint.y + ((endPoint.y - startPoint.y) * progress),
+    })
+    await page.waitForTimeout(28)
+  }
+
+  await sendTouch('touchEnd')
+  if (holdAfterDragMs > 0) {
+    await page.waitForTimeout(holdAfterDragMs)
+  }
+}
+
 const seedNthRootMidpointCaret = async (page: Page, branch: 'radicand' | 'index') => {
   const field = page.locator('math-field.keyboard-mathlive-field').first()
 
@@ -650,5 +815,43 @@ test.describe('keyboard operator families', () => {
     await field.evaluate((node) => node.executeCommand(['insert', 'j']))
     await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[j]{\\placeholder[kbd-rad-r-1]{}}')
     await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[j]{}')
+  })
+
+  test.describe('touch selection', () => {
+    test.use({ hasTouch: true, viewport: { width: 500, height: 900 } })
+
+    test('native swipe selection spans multiple visible tokens in an overflowed expression', async ({ page }) => {
+      await goToKeyboardSwipeLab(page)
+
+      const expression = '123456789+123456789+123456789+123456789'
+      for (const symbol of expression) {
+        if (symbol === '+') {
+          await tapKeyboardAction(page, 'plus')
+          continue
+        }
+        await tapKeyboardAction(page, `digit-${symbol}`)
+      }
+
+      await expect.poll(() => getMathfieldLatex(page)).toBe(expression)
+      await resetMathfieldViewportToStart(page)
+
+      const viewportBox = await getMathfieldViewportBox(page)
+      expect(viewportBox.scrollWidth).toBeGreaterThan(viewportBox.clientWidth + 8)
+
+      const startPoint = await getMathfieldTokenEdgePoint(page, '1', 'inside', 'first')
+      const endPoint = {
+        x: viewportBox.x + viewportBox.width - 12,
+        y: startPoint.y,
+      }
+
+      await touchDragAcrossMathfield(page, startPoint, endPoint)
+
+      const selectionState = await readMathfieldSelectionState(page)
+      expect(selectionState.selectionIsCollapsed).toBe(false)
+      expect(selectionState.selection.length).toBeGreaterThan(0)
+      const [selectionStart, selectionEnd] = selectionState.selection[0]
+      expect(selectionEnd - selectionStart).toBeGreaterThan(18)
+      expect(selectionState.selectedLatex).toContain('+')
+    })
   })
 })

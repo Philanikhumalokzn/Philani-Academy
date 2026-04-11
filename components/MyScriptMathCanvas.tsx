@@ -3425,10 +3425,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     ;(surface.style as any).zoom = String(zoom)
   }, [])
 
-  const getKeyboardMathfieldScrollTarget = useCallback(() => {
-    return keyboardMathfieldViewportRef.current
-  }, [])
-
   const updateRecentLetters = useCallback((letter: string) => {
     setRecentLetters((prev) => {
       const normalizedLetter = letter.toLowerCase()
@@ -4466,8 +4462,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (!viewport) return
 
     const gesture = keyboardMathfieldTouchGestureRef.current
-    const LONG_PRESS_MS = 320
-    const SINGLE_FINGER_SCROLL_THRESHOLD_PX = 6
     const PINCH_START_THRESHOLD = 0.025
     const PAN_START_THRESHOLD_PX = 1.5
     const ZOOM_UPDATE_THRESHOLD = 0.04
@@ -4475,13 +4469,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     const TWO_FINGER_PAN_GAIN = 0.4
     const MIN_ZOOM = 1
     const MAX_ZOOM = 4
-
-    const clearLongPress = () => {
-      if (gesture.longPressTimer) {
-        clearTimeout(gesture.longPressTimer)
-        gesture.longPressTimer = null
-      }
-    }
 
     const getPinchDistance = (touches: TouchList) => {
       const a = touches[0]
@@ -4492,7 +4479,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const onTouchStart = (event: TouchEvent) => {
       if (event.touches.length === 2) {
-        clearLongPress()
         gesture.singleTouchActive = false
         gesture.selectionMode = false
         gesture.pinchActive = true
@@ -4514,22 +4500,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         return
       }
 
-      if (event.touches.length !== 1) return
-      const touch = event.touches[0]
-      const scrollTarget = getKeyboardMathfieldScrollTarget()
-      gesture.singleTouchActive = true
-      gesture.pinchActive = false
-      gesture.selectionMode = false
-      gesture.startX = touch.clientX
-      gesture.startY = touch.clientY
-      gesture.startScrollLeft = scrollTarget?.scrollLeft ?? 0
-      gesture.startScrollTop = scrollTarget?.scrollTop ?? 0
-      clearLongPress()
-      gesture.longPressTimer = setTimeout(() => {
-        gesture.longPressTimer = null
-        gesture.selectionMode = true
-        keyboardMathfieldRef.current?.focus?.()
-      }, LONG_PRESS_MS)
+      if (event.touches.length === 1) {
+        gesture.singleTouchActive = true
+        gesture.pinchActive = false
+        gesture.selectionMode = false
+      }
     }
 
     const onTouchMove = (event: TouchEvent) => {
@@ -4576,26 +4551,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         gesture.lastMidpointY = midpointY
         return
       }
-
-      if (!gesture.singleTouchActive || event.touches.length !== 1) return
-      if (gesture.selectionMode) return
-
-      const touch = event.touches[0]
-      const dx = touch.clientX - gesture.startX
-      const dy = touch.clientY - gesture.startY
-      if (Math.hypot(dx, dy) < SINGLE_FINGER_SCROLL_THRESHOLD_PX) return
-
-      clearLongPress()
-
-      const scrollTarget = getKeyboardMathfieldScrollTarget()
-      if (!scrollTarget) return
-      const maxLeft = Math.max(0, scrollTarget.scrollWidth - scrollTarget.clientWidth)
-      const maxTop = Math.max(0, scrollTarget.scrollHeight - scrollTarget.clientHeight)
-      if (maxLeft <= 1 && maxTop <= 1) return
-
-      event.preventDefault()
-      scrollTarget.scrollLeft = Math.max(0, Math.min(gesture.startScrollLeft - dx, maxLeft))
-      scrollTarget.scrollTop = Math.max(0, Math.min(gesture.startScrollTop - dy, maxTop))
     }
 
     const onTouchEnd = (event: TouchEvent) => {
@@ -4606,25 +4561,12 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (event.touches.length === 0) {
         gesture.singleTouchActive = false
         gesture.selectionMode = false
-        clearLongPress()
         return
       }
 
       if (event.touches.length === 1) {
-        const touch = event.touches[0]
-        const scrollTarget = getKeyboardMathfieldScrollTarget()
         gesture.singleTouchActive = true
-        gesture.startX = touch.clientX
-        gesture.startY = touch.clientY
-        gesture.startScrollLeft = scrollTarget?.scrollLeft ?? 0
-        gesture.startScrollTop = scrollTarget?.scrollTop ?? 0
         gesture.selectionMode = false
-        clearLongPress()
-        gesture.longPressTimer = setTimeout(() => {
-          gesture.longPressTimer = null
-          gesture.selectionMode = true
-          keyboardMathfieldRef.current?.focus?.()
-        }, LONG_PRESS_MS)
       }
     }
 
@@ -4632,7 +4574,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       gesture.singleTouchActive = false
       gesture.pinchActive = false
       gesture.selectionMode = false
-      clearLongPress()
     }
 
     viewport.addEventListener('touchstart', onTouchStart, { passive: true })
@@ -4641,7 +4582,6 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     viewport.addEventListener('touchcancel', onTouchCancel, { passive: true })
 
     return () => {
-      clearLongPress()
       viewport.removeEventListener('touchstart', onTouchStart)
       viewport.removeEventListener('touchmove', onTouchMove)
       viewport.removeEventListener('touchend', onTouchEnd)
@@ -4650,7 +4590,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       gesture.pinchActive = false
       gesture.selectionMode = false
     }
-  }, [applyKeyboardMathfieldZoomStyle, getKeyboardMathfieldScrollTarget, recognitionEngine])
+  }, [applyKeyboardMathfieldZoomStyle, recognitionEngine])
 
   useEffect(() => {
     return () => {

@@ -302,6 +302,84 @@ const touchDragAcrossMathfield = async (
   }
 }
 
+const dispatchSyntheticPinchOnMathfield = async (
+  page: Page,
+  options?: { moveSteps?: number; stepDistancePx?: number },
+) => {
+  const field = page.locator('math-field.keyboard-mathlive-field').first()
+  return field.evaluate((node, config) => {
+    let viewport = node.parentElement as HTMLElement | null
+    while (viewport) {
+      if (String(viewport.className || '').includes('overflow-auto')) break
+      viewport = viewport.parentElement
+    }
+    if (!viewport) {
+      throw new Error('Expected to find the keyboard mathfield viewport')
+    }
+
+    const zoomSurface = viewport.firstElementChild
+    if (!(zoomSurface instanceof HTMLElement)) {
+      throw new Error('Expected to find the keyboard mathfield zoom surface')
+    }
+
+    const rect = viewport.getBoundingClientRect()
+    const centerX = rect.left + (rect.width / 2)
+    const centerY = rect.top + 24
+    const moveSteps = config?.moveSteps ?? 3
+    const stepDistancePx = config?.stepDistancePx ?? 20
+
+    const makeTouch = (identifier: number, x: number, y: number) => new Touch({
+      identifier,
+      target: viewport,
+      clientX: x,
+      clientY: y,
+      pageX: x,
+      pageY: y,
+      screenX: x,
+      screenY: y,
+      radiusX: 5,
+      radiusY: 5,
+      rotationAngle: 0,
+      force: 1,
+    })
+
+    const fire = (type: string, touches: Touch[], changedTouches: Touch[]) => {
+      const event = new TouchEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        touches,
+        targetTouches: touches,
+        changedTouches,
+      })
+      viewport.dispatchEvent(event)
+    }
+
+    const beforeZoom = Number(zoomSurface.style.zoom || '1')
+    const start1 = makeTouch(1, centerX - 50, centerY)
+    const start2 = makeTouch(2, centerX + 50, centerY)
+
+    fire('touchstart', [start1], [start1])
+    fire('touchstart', [start1, start2], [start2])
+
+    for (let step = 1; step <= moveSteps; step += 1) {
+      const touch1 = makeTouch(1, (centerX - 50) - (step * stepDistancePx), centerY)
+      const touch2 = makeTouch(2, (centerX + 50) + (step * stepDistancePx), centerY)
+      fire('touchmove', [touch1, touch2], [touch1, touch2])
+    }
+
+    const end1 = makeTouch(1, (centerX - 50) - (moveSteps * stepDistancePx), centerY)
+    const end2 = makeTouch(2, (centerX + 50) + (moveSteps * stepDistancePx), centerY)
+    fire('touchend', [], [end1, end2])
+
+    return {
+      beforeZoom,
+      afterZoom: Number(zoomSurface.style.zoom || '1'),
+      scrollLeft: viewport.scrollLeft,
+      scrollTop: viewport.scrollTop,
+    }
+  }, { moveSteps: options?.moveSteps, stepDistancePx: options?.stepDistancePx })
+}
+
 const seedNthRootMidpointCaret = async (page: Page, branch: 'radicand' | 'index') => {
   const field = page.locator('math-field.keyboard-mathlive-field').first()
 
@@ -852,6 +930,30 @@ test.describe('keyboard operator families', () => {
       const [selectionStart, selectionEnd] = selectionState.selection[0]
       expect(selectionEnd - selectionStart).toBeGreaterThan(18)
       expect(selectionState.selectedLatex).toContain('+')
+    })
+
+    test('synthetic pinch zoom updates the live overflowed viewport', async ({ page }) => {
+      await goToKeyboardSwipeLab(page)
+
+      const expression = '123456789+123456789+123456789+123456789'
+      for (const symbol of expression) {
+        if (symbol === '+') {
+          await tapKeyboardAction(page, 'plus')
+          continue
+        }
+        await tapKeyboardAction(page, `digit-${symbol}`)
+      }
+
+      await expect.poll(() => getMathfieldLatex(page)).toBe(expression)
+      await resetMathfieldViewportToStart(page)
+
+      const viewportBox = await getMathfieldViewportBox(page)
+      expect(viewportBox.scrollWidth).toBeGreaterThan(viewportBox.clientWidth + 8)
+
+      const pinchState = await dispatchSyntheticPinchOnMathfield(page)
+      expect(pinchState.beforeZoom).toBe(1)
+      expect(pinchState.afterZoom).toBeGreaterThan(1.2)
+      expect(pinchState.scrollLeft).toBeGreaterThan(0)
     })
   })
 })

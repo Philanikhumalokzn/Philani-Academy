@@ -3333,6 +3333,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const keyboardMathfieldViewportRef = useRef<HTMLDivElement | null>(null)
   const keyboardMathfieldZoomSurfaceRef = useRef<HTMLDivElement | null>(null)
   const [keyboardMathfieldHostNode, setKeyboardMathfieldHostNode] = useState<HTMLDivElement | null>(null)
+  const [keyboardMathfieldViewportNode, setKeyboardMathfieldViewportNode] = useState<HTMLDivElement | null>(null)
+  const [keyboardMathfieldZoomSurfaceNode, setKeyboardMathfieldZoomSurfaceNode] = useState<HTMLDivElement | null>(null)
   const keyboardMathfieldRef = useRef<MathfieldElementType | null>(null)
   const keyboardMathfieldCleanupRef = useRef<(() => void) | null>(null)
   const keyboardMathfieldSyncRef = useRef(false)
@@ -3416,6 +3418,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const setKeyboardMathfieldHostNodeRef = useCallback((node: HTMLDivElement | null) => {
     keyboardMathfieldHostRef.current = node
     setKeyboardMathfieldHostNode(node)
+  }, [])
+
+  const setKeyboardMathfieldViewportNodeRef = useCallback((node: HTMLDivElement | null) => {
+    keyboardMathfieldViewportRef.current = node
+    setKeyboardMathfieldViewportNode(node)
+  }, [])
+
+  const setKeyboardMathfieldZoomSurfaceNodeRef = useCallback((node: HTMLDivElement | null) => {
+    keyboardMathfieldZoomSurfaceRef.current = node
+    setKeyboardMathfieldZoomSurfaceNode(node)
   }, [])
 
   const applyKeyboardMathfieldZoomStyle = useCallback((zoom: number) => {
@@ -3846,7 +3858,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     ;(field.style as CSSStyleDeclaration).width = 'max-content'
     ;(field.style as CSSStyleDeclaration).minWidth = '100%'
     ;(field.style as CSSStyleDeclaration).minHeight = '100%'
-    ;(field.style as CSSStyleDeclaration).touchAction = 'auto'
+    ;(field.style as CSSStyleDeclaration).touchAction = 'none'
     ;(field.style as CSSStyleDeclaration).webkitUserSelect = 'text'
     ;(field.style as CSSStyleDeclaration).userSelect = 'text'
 
@@ -4447,7 +4459,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         keyboardMathfieldHostNode.replaceChildren()
       }
     }
-  }, [applyKeyboardMathfieldZoomStyle, hasMounted, keyboardMathfieldHostNode])
+  }, [applyKeyboardMathfieldZoomStyle, hasMounted, keyboardMathfieldHostNode, keyboardMathfieldZoomSurfaceNode])
 
   useEffect(() => {
     if (recognitionEngine !== 'keyboard') {
@@ -4458,7 +4470,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   useEffect(() => {
     if (recognitionEngine !== 'keyboard') return
 
-    const viewport = keyboardMathfieldViewportRef.current
+    const viewport = keyboardMathfieldViewportNode
     if (!viewport) return
 
     const gesture = keyboardMathfieldTouchGestureRef.current
@@ -4479,6 +4491,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const onTouchStart = (event: TouchEvent) => {
       if (event.touches.length === 2) {
+        if (event.cancelable) {
+          event.preventDefault()
+        }
         gesture.singleTouchActive = false
         gesture.selectionMode = false
         gesture.pinchActive = true
@@ -4576,7 +4591,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       gesture.selectionMode = false
     }
 
-    viewport.addEventListener('touchstart', onTouchStart, { passive: true })
+    viewport.addEventListener('touchstart', onTouchStart, { passive: false })
     viewport.addEventListener('touchmove', onTouchMove, { passive: false })
     viewport.addEventListener('touchend', onTouchEnd, { passive: true })
     viewport.addEventListener('touchcancel', onTouchCancel, { passive: true })
@@ -4590,7 +4605,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       gesture.pinchActive = false
       gesture.selectionMode = false
     }
-  }, [applyKeyboardMathfieldZoomStyle, recognitionEngine])
+  }, [applyKeyboardMathfieldZoomStyle, keyboardMathfieldViewportNode, recognitionEngine])
 
   useEffect(() => {
     return () => {
@@ -14960,16 +14975,16 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return (
         <div className="h-full w-full">
           <div
-            ref={keyboardMathfieldViewportRef}
+            ref={setKeyboardMathfieldViewportNodeRef}
             className={`relative h-full w-full overflow-auto bg-white ${useCompactEdgeToEdge ? 'rounded-none border-0' : 'rounded-[10px] border border-slate-200'} ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
             style={{
               WebkitOverflowScrolling: 'touch',
               overscrollBehavior: 'contain',
-              touchAction: 'pan-x pan-y',
+              touchAction: 'none',
             }}
           >
             <div
-              ref={keyboardMathfieldZoomSurfaceRef}
+              ref={setKeyboardMathfieldZoomSurfaceNodeRef}
               className={`relative inline-block min-h-full min-w-full ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
               style={{
                 zoom: 1,
@@ -14982,7 +14997,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
                 ref={setKeyboardMathfieldHostNodeRef}
                 className={`overflow-visible bg-white ${compact ? 'min-h-[2.75rem]' : 'min-h-[4.5rem]'}`}
                 style={{
-                  touchAction: 'auto',
+                  touchAction: 'none',
                   WebkitUserSelect: 'text',
                   userSelect: 'text',
                   width: 'max-content',

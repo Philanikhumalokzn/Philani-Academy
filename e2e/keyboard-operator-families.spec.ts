@@ -41,6 +41,12 @@ const tapKeyboardAction = async (page: Page, actionId: string) => {
   await key.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'mouse', button: 0, bubbles: true })
 }
 
+const tapKeyboardTitleAction = async (page: Page, title: string) => {
+  const key = page.locator(`button[title="${title}"]`).first()
+  await key.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'mouse', button: 0, bubbles: true })
+  await key.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'mouse', button: 0, bubbles: true })
+}
+
 const clickBetweenMathfieldTokens = async (page: Page, leftLatex: string, rightLatex: string) => {
   const field = page.locator('math-field.keyboard-mathlive-field').first()
   const point = await field.evaluate((node, tokens) => {
@@ -75,6 +81,78 @@ const clickBetweenMathfieldTokens = async (page: Page, leftLatex: string, rightL
   if (!point) return
   await page.mouse.click(point.x, point.y)
 }
+
+const seedNthRootMidpointCaret = async (page: Page, branch: 'radicand' | 'index') => {
+  const field = page.locator('math-field.keyboard-mathlive-field').first()
+
+  await insertNthRoot(page)
+  if (branch === 'index') {
+    await field.evaluate((node) => node.executeCommand('moveToPreviousPlaceholder'))
+  }
+
+  await tapKeyboardAction(page, 'digit-1')
+  await tapKeyboardAction(page, 'digit-2')
+  await tapKeyboardAction(page, 'digit-3')
+  await clickBetweenMathfieldTokens(page, '1', '2')
+
+  return field
+}
+
+const plainNthRootMidInsertCases: Array<{
+  actionId: 'plus' | 'minus' | 'times' | 'divide'
+  branch: 'radicand' | 'index'
+  expectedLatex: string
+  expectedPlainLatex: string
+}> = [
+  {
+    actionId: 'plus',
+    branch: 'radicand',
+    expectedLatex: '\\sqrt[\\placeholder[kbd-rad-i-1]{}]{1 + 923}',
+    expectedPlainLatex: '\\sqrt[]{1+923}',
+  },
+  {
+    actionId: 'minus',
+    branch: 'radicand',
+    expectedLatex: '\\sqrt[\\placeholder[kbd-rad-i-1]{}]{1 - 923}',
+    expectedPlainLatex: '\\sqrt[]{1-923}',
+  },
+  {
+    actionId: 'times',
+    branch: 'radicand',
+    expectedLatex: '\\sqrt[\\placeholder[kbd-rad-i-1]{}]{1 \\times 923}',
+    expectedPlainLatex: '\\sqrt[]{1\\times923}',
+  },
+  {
+    actionId: 'divide',
+    branch: 'radicand',
+    expectedLatex: '\\sqrt[\\placeholder[kbd-rad-i-1]{}]{1 \\div 923}',
+    expectedPlainLatex: '\\sqrt[]{1\\div923}',
+  },
+  {
+    actionId: 'plus',
+    branch: 'index',
+    expectedLatex: '\\sqrt[1 + 923]{\\placeholder[kbd-rad-r-1]{}}',
+    expectedPlainLatex: '\\sqrt[1+923]{}',
+  },
+  {
+    actionId: 'minus',
+    branch: 'index',
+    expectedLatex: '\\sqrt[1 - 923]{\\placeholder[kbd-rad-r-1]{}}',
+    expectedPlainLatex: '\\sqrt[1-923]{}',
+  },
+  {
+    actionId: 'times',
+    branch: 'index',
+    expectedLatex: '\\sqrt[1 \\times 923]{\\placeholder[kbd-rad-r-1]{}}',
+    expectedPlainLatex: '\\sqrt[1\\times923]{}',
+  },
+  {
+    actionId: 'divide',
+    branch: 'index',
+    expectedLatex: '\\sqrt[1 \\div 923]{\\placeholder[kbd-rad-r-1]{}}',
+    expectedPlainLatex: '\\sqrt[1\\div923]{}',
+  },
+]
 
 test.describe('keyboard operator families', () => {
   test.use({ viewport: { width: 390, height: 844 } })
@@ -241,6 +319,63 @@ test.describe('keyboard operator families', () => {
 
     await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[1923]{\\placeholder[kbd-rad-r-1]{}}')
     await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[1923]{}')
+  })
+
+  for (const { actionId, branch, expectedLatex, expectedPlainLatex } of plainNthRootMidInsertCases) {
+    test(`nth root keeps ${actionId} insertion at the tapped midpoint in the ${branch}`, async ({ page }) => {
+      await goToKeyboardSwipeLab(page)
+
+      await seedNthRootMidpointCaret(page, branch)
+      await tapKeyboardAction(page, actionId)
+      await tapKeyboardAction(page, 'digit-9')
+
+      await expect.poll(() => getMathfieldLatex(page)).toBe(expectedLatex)
+      await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe(expectedPlainLatex)
+    })
+  }
+
+  test('nth root keeps fraction insertion targeted inside the tapped radicand midpoint', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    await seedNthRootMidpointCaret(page, 'radicand')
+    await tapKeyboardTitleAction(page, 'fraction')
+    await tapKeyboardAction(page, 'digit-9')
+
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{1\\frac{9}{\\placeholder{}}23}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[]{1\\frac{9}{}23}')
+  })
+
+  test('nth root keeps fraction insertion targeted inside the tapped index midpoint', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    await seedNthRootMidpointCaret(page, 'index')
+    await tapKeyboardTitleAction(page, 'fraction')
+    await tapKeyboardAction(page, 'digit-9')
+
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[1\\frac{9}{\\placeholder{}}23]{\\placeholder[kbd-rad-r-1]{}}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[1\\frac{9}{}23]{}')
+  })
+
+  test('nth root keeps nested nth-root insertion targeted inside the tapped radicand midpoint', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    await seedNthRootMidpointCaret(page, 'radicand')
+    await tapKeyboardTitleAction(page, 'nth root')
+    await tapKeyboardAction(page, 'digit-9')
+
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{1\\sqrt[\\placeholder[kbd-rad-i-2]{}]{\\placeholder[kbd-rad-r-2]{9}}23}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[]{1\\sqrt[]{9}23}')
+  })
+
+  test('nth root keeps nested nth-root insertion targeted inside the tapped index midpoint', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    await seedNthRootMidpointCaret(page, 'index')
+    await tapKeyboardTitleAction(page, 'nth root')
+    await tapKeyboardAction(page, 'digit-9')
+
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[1\\sqrt[\\placeholder[kbd-rad-i-2]{}]{\\placeholder[kbd-rad-r-2]{9}}23]{\\placeholder[kbd-rad-r-1]{}}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[1\\sqrt[]{9}23]{}')
   })
 
   test('nth root keeps the filled index targeted when the user taps its area', async ({ page }) => {

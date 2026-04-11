@@ -1098,6 +1098,12 @@ type KeyboardTransientRadicalPromptIds = {
   radicandPromptId: string
 }
 
+type KeyboardTransientRadicalProgrammaticEditContext = {
+  anchorStart: number
+  promptIds: KeyboardTransientRadicalPromptIds
+  targetField: 'index' | 'radicand'
+}
+
 type KeyboardRadicalRewriteResult = {
   value: string
   selectionStart: number
@@ -1513,9 +1519,10 @@ const expandKeyboardCollapsedRadical = (
   value: string,
   selection: KeyboardSelectionState,
   region: KeyboardRadicalRegion,
+  promptIdsOverride?: KeyboardTransientRadicalPromptIds | null,
 ): KeyboardRadicalRewriteResult | null => {
   if (region.hasIndex) return null
-  const promptIds = resolveKeyboardTransientRadicalPromptIds(region)
+  const promptIds = resolveKeyboardTransientRadicalPromptIds(region) || promptIdsOverride
   if (!promptIds) return null
 
   const radicandLatex = normalizeKeyboardTransientRadicalFieldContent(region.radicandSymbol, promptIds.radicandPromptId)
@@ -3330,6 +3337,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
   const keyboardSwipeHoldTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const keyboardTransientRadicalTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const keyboardTransientRadicalAnchorStartRef = useRef<number | null>(null)
+  const keyboardTransientRadicalPromptIdsRef = useRef<KeyboardTransientRadicalPromptIds | null>(null)
+  const keyboardTransientRadicalActiveFieldRef = useRef<'index' | 'radicand' | null>(null)
   const keyboardTransientRadicalSequenceRef = useRef(0)
   const keyboardSwipeHoldStateRef = useRef<{
     pointerId: number | null
@@ -3661,6 +3670,44 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
   }, [])
 
+  const resolveKeyboardTransientRadicalPromptIdsForRegion = useCallback((region: KeyboardRadicalRegion) => {
+    const promptIds = resolveKeyboardTransientRadicalPromptIds(region)
+    if (promptIds) return promptIds
+
+    const storedPromptIds = keyboardTransientRadicalPromptIdsRef.current
+    const storedAnchorStart = keyboardTransientRadicalAnchorStartRef.current
+    if (!storedPromptIds || storedAnchorStart === null) return null
+    return Math.abs(storedAnchorStart - region.start) <= 1 ? storedPromptIds : null
+  }, [])
+
+  const resolveKeyboardTransientRadicalSelectionField = useCallback((
+    field: MathfieldElementType | null | undefined,
+    promptIds: KeyboardTransientRadicalPromptIds,
+  ): 'index' | 'radicand' | null => {
+    if (!field) return null
+
+    const promptField = field as MathfieldElementType & {
+      getPromptRange?: (id: string) => [number, number] | null
+      selection?: { ranges?: [number, number][]; direction?: 'forward' | 'backward' | 'none' }
+    }
+    const selectionRange = promptField.selection?.ranges?.[0]
+    if (!selectionRange) return null
+
+    const selectionStart = Math.min(selectionRange[0], selectionRange[1])
+    const selectionEnd = Math.max(selectionRange[0], selectionRange[1])
+    const isWithinPrompt = (promptId: string) => {
+      const promptRange = promptField.getPromptRange?.(promptId)
+      if (!promptRange) return false
+      const promptStart = Math.min(promptRange[0], promptRange[1])
+      const promptEnd = Math.max(promptRange[0], promptRange[1])
+      return selectionStart >= promptStart && selectionEnd <= promptEnd
+    }
+
+    if (isWithinPrompt(promptIds.radicandPromptId)) return 'radicand'
+    if (isWithinPrompt(promptIds.indexPromptId)) return 'index'
+    return null
+  }, [])
+
   const createKeyboardTransientRadicalPromptIds = useCallback(() => {
     keyboardTransientRadicalSequenceRef.current += 1
     return getKeyboardTransientRadicalPromptIds(keyboardTransientRadicalSequenceRef.current.toString(36))
@@ -3804,12 +3851,17 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
 
     const field = keyboardMathfieldRef.current
     const anchorStart = keyboardTransientRadicalAnchorStartRef.current
-    keyboardTransientRadicalAnchorStartRef.current = null
     if (!field || anchorStart === null) return
 
     const currentValue = field.getValue('latex') || ''
     const region = findKeyboardRadicalRegionNearStart(currentValue, anchorStart)
     if (!region || !region.hasIndex || !isKeyboardRadicalIndexEmpty(region)) return
+
+    const promptIds = resolveKeyboardTransientRadicalPromptIdsForRegion(region)
+    if (promptIds) {
+      keyboardTransientRadicalPromptIdsRef.current = promptIds
+      keyboardTransientRadicalAnchorStartRef.current = region.start
+    }
 
     const selection = getKeyboardMathfieldSelectionOffsets(field)
     const collapsed = collapseKeyboardExpandedRadical(currentValue, selection, region)
@@ -3822,10 +3874,13 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       moveToLastPlaceholder: true,
       targetPromptId: collapsed.radicandPromptId,
     })
-  }, [clearKeyboardTransientRadicalTimer, getKeyboardMathfieldSelectionOffsets, rewriteKeyboardMathfieldLatex])
+  }, [clearKeyboardTransientRadicalTimer, getKeyboardMathfieldSelectionOffsets, resolveKeyboardTransientRadicalPromptIdsForRegion, rewriteKeyboardMathfieldLatex])
 
-  const scheduleKeyboardTransientRadicalTimer = useCallback((anchorStart: number) => {
+  const scheduleKeyboardTransientRadicalTimer = useCallback((anchorStart: number, promptIds?: KeyboardTransientRadicalPromptIds | null) => {
     keyboardTransientRadicalAnchorStartRef.current = anchorStart
+    if (promptIds) {
+      keyboardTransientRadicalPromptIdsRef.current = promptIds
+    }
     clearKeyboardTransientRadicalTimer()
     keyboardTransientRadicalTimeoutRef.current = setTimeout(() => {
       collapseKeyboardTransientRadical()
@@ -3842,7 +3897,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       || (probeOffset > 0 ? findKeyboardRadicalRegionAtPosition(currentValue, probeOffset - 1) : null)
     if (!region) return false
 
-    const promptIds = resolveKeyboardTransientRadicalPromptIds(region)
+    const promptIds = resolveKeyboardTransientRadicalPromptIdsForRegion(region)
     if (!promptIds) return false
 
     const canonical = buildKeyboardCanonicalTransientRadicalFromRegion(region, promptIds)
@@ -3866,11 +3921,11 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     )
 
     if (rewritten && region.hasIndex && !canonical.indexLatex.trim()) {
-      scheduleKeyboardTransientRadicalTimer(region.start)
+      scheduleKeyboardTransientRadicalTimer(region.start, promptIds)
     }
 
     return rewritten
-  }, [getKeyboardMathfieldSelectionOffsets, rewriteKeyboardMathfieldLatex, scheduleKeyboardTransientRadicalTimer])
+  }, [getKeyboardMathfieldSelectionOffsets, resolveKeyboardTransientRadicalPromptIdsForRegion, rewriteKeyboardMathfieldLatex, scheduleKeyboardTransientRadicalTimer])
 
   const trackKeyboardTransientRadicalActivity = useCallback((
     field: MathfieldElementType | null | undefined,
@@ -3889,7 +3944,8 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     if (source === 'input' && !region.hasIndex) {
-      const expanded = expandKeyboardCollapsedRadical(currentValue, selection, region)
+      const promptIds = resolveKeyboardTransientRadicalPromptIdsForRegion(region)
+      const expanded = expandKeyboardCollapsedRadical(currentValue, selection, region, promptIds)
       if (expanded && rewriteKeyboardMathfieldLatex(field, expanded.value, {
         start: expanded.selectionStart,
         end: expanded.selectionEnd,
@@ -3898,18 +3954,18 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       })) {
         const nextRegion = findKeyboardRadicalRegionNearStart(expanded.value, region.start)
         if (nextRegion?.hasIndex) {
-          scheduleKeyboardTransientRadicalTimer(nextRegion.start)
+          scheduleKeyboardTransientRadicalTimer(nextRegion.start, promptIds)
         }
         return true
       }
     }
 
     if (region.hasIndex) {
-      scheduleKeyboardTransientRadicalTimer(region.start)
+      scheduleKeyboardTransientRadicalTimer(region.start, resolveKeyboardTransientRadicalPromptIdsForRegion(region))
     }
 
     return false
-  }, [getKeyboardMathfieldSelectionOffsets, rewriteKeyboardMathfieldLatex, scheduleKeyboardTransientRadicalTimer])
+  }, [getKeyboardMathfieldSelectionOffsets, resolveKeyboardTransientRadicalPromptIdsForRegion, rewriteKeyboardMathfieldLatex, scheduleKeyboardTransientRadicalTimer])
 
   const syncKeyboardMathfieldState = useCallback((mathfield?: MathfieldElementType | null) => {
     const field = mathfield ?? keyboardMathfieldRef.current
@@ -3924,6 +3980,149 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     setKeyboardSelectionState(nextSelection)
     syncKeyboardControlStripState(field, nextValue)
   }, [canOrchestrateLesson, getKeyboardMathfieldSelectionOffsets, setKeyboardSelectionState, syncKeyboardControlStripState])
+
+  const captureKeyboardTransientRadicalProgrammaticEditContext = useCallback((field: MathfieldElementType | null | undefined): KeyboardTransientRadicalProgrammaticEditContext | null => {
+    if (!field) return null
+
+    const currentValue = field.getValue('latex') || ''
+    const selection = getKeyboardMathfieldSelectionOffsets(field)
+    const probeOffset = selection.end > selection.start ? selection.end : Math.max(0, selection.end)
+    const region = findKeyboardRadicalRegionAtPosition(currentValue, probeOffset)
+      || (probeOffset > 0 ? findKeyboardRadicalRegionAtPosition(currentValue, probeOffset - 1) : null)
+    if (!region) return null
+
+    const promptIds = resolveKeyboardTransientRadicalPromptIdsForRegion(region)
+    if (!promptIds) return null
+
+    const storedTargetField = keyboardTransientRadicalAnchorStartRef.current !== null
+      && Math.abs(keyboardTransientRadicalAnchorStartRef.current - region.start) <= 1
+      ? keyboardTransientRadicalActiveFieldRef.current
+      : null
+    const promptTargetField = resolveKeyboardTransientRadicalSelectionField(field, promptIds)
+
+    return {
+      anchorStart: region.start,
+      promptIds,
+      targetField: storedTargetField || promptTargetField || (region.hasIndex && selection.end <= region.radicandGroupStart ? 'index' : 'radicand'),
+    }
+  }, [getKeyboardMathfieldSelectionOffsets, resolveKeyboardTransientRadicalPromptIdsForRegion, resolveKeyboardTransientRadicalSelectionField])
+
+  const reconcileKeyboardTransientRadicalProgrammaticEdit = useCallback((
+    field: MathfieldElementType | null | undefined,
+    context: KeyboardTransientRadicalProgrammaticEditContext | null | undefined,
+  ) => {
+    if (!field || !context) return false
+
+    const currentValue = field.getValue('latex') || ''
+    const currentSelection = getKeyboardMathfieldSelectionOffsets(field)
+    const region = findKeyboardRadicalRegionNearStart(currentValue, context.anchorStart)
+    if (!region) return false
+
+    const promptIds = resolveKeyboardTransientRadicalPromptIdsForRegion(region) || context.promptIds
+    if (!promptIds) return false
+
+    const indexLatex = region.hasIndex
+      ? normalizeKeyboardTransientRadicalFieldContent(region.indexSymbol, promptIds.indexPromptId)
+      : ''
+    const radicandLatex = normalizeKeyboardTransientRadicalFieldContent(region.radicandSymbol, promptIds.radicandPromptId)
+    const nextRadical = buildKeyboardTransientRadicalLatex(promptIds, radicandLatex, indexLatex)
+    const nextValue = `${currentValue.slice(0, region.start)}${nextRadical}${currentValue.slice(region.end)}`
+    const targetPromptId = context.targetField === 'index'
+      ? (indexLatex.trim() ? null : promptIds.indexPromptId)
+      : (radicandLatex.trim() ? null : promptIds.radicandPromptId)
+    const targetSelection = context.targetField === 'index'
+      ? (indexLatex.trim()
+          ? getKeyboardTransientRadicalFieldSelectionOffset(region.start, promptIds, indexLatex, radicandLatex, 'index', true)
+          : currentSelection.end)
+      : (radicandLatex.trim()
+          ? getKeyboardTransientRadicalFieldSelectionOffset(region.start, promptIds, indexLatex, radicandLatex, 'radicand', true)
+          : currentSelection.end)
+
+    const rewritten = rewriteKeyboardMathfieldLatex(
+      field,
+      nextValue,
+      { start: targetSelection, end: targetSelection },
+      { targetPromptId },
+    )
+    if (!rewritten) return false
+
+    keyboardTransientRadicalActiveFieldRef.current = context.targetField
+    if (!indexLatex.trim()) {
+      scheduleKeyboardTransientRadicalTimer(region.start, promptIds)
+    }
+
+    return true
+  }, [getKeyboardMathfieldSelectionOffsets, resolveKeyboardTransientRadicalPromptIdsForRegion, rewriteKeyboardMathfieldLatex, scheduleKeyboardTransientRadicalTimer])
+
+  const applyKeyboardTransientRadicalTextInsert = useCallback((
+    field: MathfieldElementType | null | undefined,
+    insertedLatex: string,
+    context: KeyboardTransientRadicalProgrammaticEditContext | null | undefined,
+  ) => {
+    if (!field || !context || !insertedLatex) return false
+
+    const currentValue = field.getValue('latex') || ''
+    const region = findKeyboardRadicalRegionNearStart(currentValue, context.anchorStart)
+    if (!region) return false
+
+    const promptIds = resolveKeyboardTransientRadicalPromptIdsForRegion(region) || context.promptIds
+    if (!promptIds) return false
+
+    const indexLatex = region.hasIndex
+      ? normalizeKeyboardTransientRadicalFieldContent(region.indexSymbol, promptIds.indexPromptId)
+      : ''
+    const radicandLatex = normalizeKeyboardTransientRadicalFieldContent(region.radicandSymbol, promptIds.radicandPromptId)
+    const nextIndexLatex = context.targetField === 'index'
+      ? `${indexLatex}${insertedLatex}`
+      : indexLatex
+    const nextRadicandLatex = context.targetField === 'radicand'
+      ? `${radicandLatex}${insertedLatex}`
+      : radicandLatex
+    const nextValue = `${currentValue.slice(0, region.start)}${buildKeyboardTransientRadicalLatex(promptIds, nextRadicandLatex, nextIndexLatex)}${currentValue.slice(region.end)}`
+    const targetSelection = getKeyboardTransientRadicalFieldSelectionOffset(
+      region.start,
+      promptIds,
+      nextIndexLatex,
+      nextRadicandLatex,
+      context.targetField,
+      true,
+    )
+
+    const rewritten = rewriteKeyboardMathfieldLatex(
+      field,
+      nextValue,
+      { start: targetSelection, end: targetSelection },
+      { targetPromptId: null },
+    )
+    if (!rewritten) return false
+
+    keyboardTransientRadicalActiveFieldRef.current = context.targetField
+    if (!nextIndexLatex.trim()) {
+      scheduleKeyboardTransientRadicalTimer(region.start, promptIds)
+    }
+
+    return true
+  }, [resolveKeyboardTransientRadicalPromptIdsForRegion, rewriteKeyboardMathfieldLatex, scheduleKeyboardTransientRadicalTimer])
+
+  const finalizeKeyboardMathfieldProgrammaticEdit = useCallback((
+    field: MathfieldElementType | null | undefined,
+    transientRadicalContext?: KeyboardTransientRadicalProgrammaticEditContext | null,
+  ) => {
+    const activeField = keyboardMathfieldRef.current ?? field
+    if (!activeField) return false
+
+    if (transientRadicalContext && reconcileKeyboardTransientRadicalProgrammaticEdit(activeField, transientRadicalContext)) {
+      return true
+    }
+
+    const rewroteTransientRadical = trackKeyboardTransientRadicalActivity(activeField, 'input')
+    const nextField = keyboardMathfieldRef.current ?? activeField
+    if (normalizeKeyboardTransientRadicalInput(nextField)) return true
+    if (rewroteTransientRadical) return true
+
+    syncKeyboardMathfieldState(nextField)
+    return true
+  }, [normalizeKeyboardTransientRadicalInput, reconcileKeyboardTransientRadicalProgrammaticEdit, syncKeyboardMathfieldState, trackKeyboardTransientRadicalActivity])
 
   useEffect(() => {
     if (recognitionEngine !== 'keyboard') return
@@ -11932,18 +12131,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     if (!field || !action) return false
 
     field.focus()
+    const transientRadicalEditContext = captureKeyboardTransientRadicalProgrammaticEditContext(field)
 
     if (actionId === 'backspace') {
       updateRecentRepresentativeAction(actionId)
       field.executeCommand('deleteBackward')
-      syncKeyboardMathfieldState(field)
+      finalizeKeyboardMathfieldProgrammaticEdit(field, transientRadicalEditContext)
       return true
     }
 
     if (actionId === 'clear') {
       updateRecentRepresentativeAction(actionId)
       field.executeCommand('deleteAll')
-      syncKeyboardMathfieldState(field)
+      finalizeKeyboardMathfieldProgrammaticEdit(field, transientRadicalEditContext)
       return true
     }
 
@@ -11990,7 +12190,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           selectionMode: 'item',
         })
         updateRecentRepresentativeAction(actionId)
-        syncKeyboardMathfieldState(field)
+        finalizeKeyboardMathfieldProgrammaticEdit(field, transientRadicalEditContext)
         return true
       }
 
@@ -11999,7 +12199,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       })
       field.executeCommand('moveToPreviousChar')
       updateRecentRepresentativeAction(actionId)
-      syncKeyboardMathfieldState(field)
+      finalizeKeyboardMathfieldProgrammaticEdit(field, transientRadicalEditContext)
       return true
     }
 
@@ -12016,7 +12216,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         })
       }
       updateRecentRepresentativeAction(actionId)
-      syncKeyboardMathfieldState(field)
+      finalizeKeyboardMathfieldProgrammaticEdit(field, transientRadicalEditContext)
       return true
     }
 
@@ -12043,8 +12243,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       if (!transientPromptIds || !selectKeyboardMathfieldPrompt(field, transientPromptIds.radicandPromptId)) {
         field.executeCommand('moveToPreviousPlaceholder')
       }
-      syncKeyboardMathfieldState(field)
-      trackKeyboardTransientRadicalActivity(field, 'insert')
+      finalizeKeyboardMathfieldProgrammaticEdit(field, transientRadicalEditContext)
       return true
     }
 
@@ -12094,8 +12293,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
           field.executeCommand('moveToPreviousChar')
         }
         updateRecentRepresentativeAction(actionId)
-        syncKeyboardMathfieldState(field)
-        trackKeyboardTransientRadicalActivity(field, 'insert')
+        finalizeKeyboardMathfieldProgrammaticEdit(field, transientRadicalEditContext)
         return true
       }
     }
@@ -12107,7 +12305,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         field.executeCommand(['insert', '2'])
       }
       updateRecentRepresentativeAction(actionId)
-      syncKeyboardMathfieldState(field)
+      finalizeKeyboardMathfieldProgrammaticEdit(field, transientRadicalEditContext)
       return true
     }
 
@@ -12118,7 +12316,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         field.executeCommand(['insert', '3'])
       }
       updateRecentRepresentativeAction(actionId)
-      syncKeyboardMathfieldState(field)
+      finalizeKeyboardMathfieldProgrammaticEdit(field, transientRadicalEditContext)
       return true
     }
 
@@ -12129,7 +12327,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         field.executeCommand(['insert', 'i'])
       }
       updateRecentRepresentativeAction(actionId)
-      syncKeyboardMathfieldState(field)
+      finalizeKeyboardMathfieldProgrammaticEdit(field, transientRadicalEditContext)
       return true
     }
 
@@ -12166,6 +12364,19 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     }
 
     if (!insertion) return false
+    const canApplyTransientRadicalTextInsert = Boolean(
+      transientRadicalEditContext
+      && ![
+        'sqrt', 'cuberoot', 'nth-root', 'fraction', 'fraction-denominator',
+        'power2', 'power3', 'subscript', 'paren', 'bracket', 'brace',
+        'absolute', 'floor', 'ceiling', 'log-base', 'reciprocal',
+      ].includes(actionId),
+    )
+    if (canApplyTransientRadicalTextInsert && applyKeyboardTransientRadicalTextInsert(field, insertion, transientRadicalEditContext)) {
+      updateRecentRepresentativeAction(actionId)
+      return true
+    }
+
     field.executeCommand(['insert', insertion])
     if (!transientPromptIds || !selectKeyboardMathfieldPrompt(field, transientPromptIds.radicandPromptId)) {
       if (actionId === 'sqrt' || actionId === 'cuberoot' || actionId === 'nth-root' || actionId === 'fraction' || actionId === 'fraction-denominator') {
@@ -12173,12 +12384,9 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       }
     }
     updateRecentRepresentativeAction(actionId)
-    syncKeyboardMathfieldState(field)
-    if (actionId === 'sqrt' || actionId === 'cuberoot' || actionId === 'nth-root') {
-      trackKeyboardTransientRadicalActivity(field, 'insert')
-    }
+    finalizeKeyboardMathfieldProgrammaticEdit(field, transientRadicalEditContext)
     return true
-  }, [createKeyboardTransientRadicalPromptIds, syncKeyboardMathfieldState, trackKeyboardTransientRadicalActivity, updateRecentRepresentativeAction])
+  }, [applyKeyboardTransientRadicalTextInsert, captureKeyboardTransientRadicalProgrammaticEditContext, createKeyboardTransientRadicalPromptIds, finalizeKeyboardMathfieldProgrammaticEdit, updateRecentRepresentativeAction])
 
   const  applyKeyboardAction = useCallback((actionId: string, baseSymbol?: string, insertedTokenOverride?: string) => {
     const action = KEYBOARD_ACTION_MAP[actionId]

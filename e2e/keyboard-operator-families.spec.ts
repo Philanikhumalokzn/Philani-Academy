@@ -35,6 +35,12 @@ const insertNthRoot = async (page: Page) => {
   await rootKey.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'mouse', button: 0, bubbles: true })
 }
 
+const tapKeyboardAction = async (page: Page, actionId: string) => {
+  const key = page.locator(`button[data-keyboard-action="${actionId}"]`).first()
+  await key.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'mouse', button: 0, bubbles: true })
+  await key.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'mouse', button: 0, bubbles: true })
+}
+
 test.describe('keyboard operator families', () => {
   test.use({ viewport: { width: 390, height: 844 } })
   test.setTimeout(120_000)
@@ -128,6 +134,28 @@ test.describe('keyboard operator families', () => {
     await field.evaluate((node) => node.executeCommand(['insert', '3']))
     await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[3]{\\placeholder[kbd-rad-r-1]{}}')
     await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[3]{}')
+  })
+
+  test('nth root button input refreshes the index timer and re-expands after collapse', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    await insertNthRoot(page)
+    await tapKeyboardAction(page, 'digit-7')
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{7}')
+
+    await page.waitForTimeout(1500)
+    await tapKeyboardAction(page, 'digit-8')
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{78}')
+
+    await page.waitForTimeout(1500)
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{78}')
+
+    await page.waitForTimeout(1200)
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt{78}')
+
+    await tapKeyboardAction(page, 'digit-9')
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{789}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[]{789}')
   })
 
   test('nth root folds stray characters around a field into that field', async ({ page }) => {

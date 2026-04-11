@@ -4003,7 +4003,7 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
     return {
       anchorStart: region.start,
       promptIds,
-      targetField: storedTargetField || promptTargetField || (region.hasIndex && selection.end <= region.radicandGroupStart ? 'index' : 'radicand'),
+      targetField: promptTargetField || storedTargetField || (region.hasIndex && selection.end <= region.radicandGroupStart ? 'index' : 'radicand'),
     }
   }, [getKeyboardMathfieldSelectionOffsets, resolveKeyboardTransientRadicalPromptIdsForRegion, resolveKeyboardTransientRadicalSelectionField])
 

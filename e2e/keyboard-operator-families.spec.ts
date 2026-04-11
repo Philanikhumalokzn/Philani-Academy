@@ -158,6 +158,21 @@ test.describe('keyboard operator families', () => {
     await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[]{789}')
   })
 
+  test('nth root button input respects an explicit move into the index box', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    const field = page.locator('math-field.keyboard-mathlive-field').first()
+
+    await insertNthRoot(page)
+    await field.evaluate((node) => node.executeCommand('moveToPreviousPlaceholder'))
+    await tapKeyboardAction(page, 'digit-3')
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[3]{\\placeholder[kbd-rad-r-1]{}}')
+
+    await tapKeyboardAction(page, 'digit-4')
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[34]{\\placeholder[kbd-rad-r-1]{}}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[34]{}')
+  })
+
   test('nth root folds stray characters around a field into that field', async ({ page }) => {
     await goToKeyboardSwipeLab(page)
 

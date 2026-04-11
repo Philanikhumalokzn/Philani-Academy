@@ -29,6 +29,12 @@ const getTopPanelRenderedLatex = async (page: Page) => {
   return panel.evaluate((node) => node.querySelector('annotation[encoding="application/x-tex"]')?.textContent || '')
 }
 
+const insertNthRoot = async (page: Page) => {
+  const rootKey = page.locator('button[title="nth root"]').first()
+  await rootKey.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'mouse', button: 0, bubbles: true })
+  await rootKey.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'mouse', button: 0, bubbles: true })
+}
+
 test.describe('keyboard operator families', () => {
   test.use({ viewport: { width: 390, height: 844 } })
   test.setTimeout(120_000)
@@ -79,12 +85,10 @@ test.describe('keyboard operator families', () => {
   test('nth root keeps a transient index box, collapses when idle, and re-expands on radicand input', async ({ page }) => {
     await goToKeyboardSwipeLab(page)
 
-    const rootKey = page.locator('button[title="nth root"]').first()
     const field = page.locator('math-field.keyboard-mathlive-field').first()
     const topPanel = page.locator('[data-top-panel-katex-display="true"]').first()
 
-    await rootKey.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'mouse', button: 0, bubbles: true })
-    await rootKey.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'mouse', button: 0, bubbles: true })
+    await insertNthRoot(page)
 
     await expect.poll(() => getMathfieldLatex(page)).toContain('\\sqrt[\\placeholder[')
     await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[]{}')
@@ -100,9 +104,70 @@ test.describe('keyboard operator families', () => {
 
     await field.evaluate((node) => node.executeCommand(['insert', '7']))
 
-    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{\\placeholder[kbd-rad-r-1]{7}}')
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{7}')
     await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[]{7}')
     await expect.poll(() => getTopPanelRenderedLatex(page)).toContain('\\sqrt[\\square]{7}')
     await expect.poll(() => getTopPanelRenderedLatex(page)).not.toContain('kbd-rad-')
+  })
+
+  test('nth root hides each field box as soon as that field has content', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    let field = page.locator('math-field.keyboard-mathlive-field').first()
+
+    await insertNthRoot(page)
+    await field.evaluate((node) => node.executeCommand(['insert', '7']))
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{7}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[]{7}')
+
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await goToKeyboardSwipeLab(page)
+    field = page.locator('math-field.keyboard-mathlive-field').first()
+    await insertNthRoot(page)
+    await field.evaluate((node) => node.executeCommand('moveToPreviousPlaceholder'))
+    await field.evaluate((node) => node.executeCommand(['insert', '3']))
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[3]{\\placeholder[kbd-rad-r-1]{}}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[3]{}')
+  })
+
+  test('nth root folds stray characters around a field into that field', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    let field = page.locator('math-field.keyboard-mathlive-field').first()
+
+    await insertNthRoot(page)
+    await field.evaluate((node) => node.executeCommand('moveToPreviousChar'))
+    await field.evaluate((node) => node.executeCommand(['insert', 'x']))
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{x}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[]{x}')
+
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await goToKeyboardSwipeLab(page)
+    field = page.locator('math-field.keyboard-mathlive-field').first()
+    await insertNthRoot(page)
+    await field.evaluate((node) => node.executeCommand('moveToNextChar'))
+    await field.evaluate((node) => node.executeCommand(['insert', 'y']))
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{y}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[]{y}')
+
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await goToKeyboardSwipeLab(page)
+    field = page.locator('math-field.keyboard-mathlive-field').first()
+    await insertNthRoot(page)
+    await field.evaluate((node) => node.executeCommand('moveToPreviousPlaceholder'))
+    await field.evaluate((node) => node.executeCommand('moveToPreviousChar'))
+    await field.evaluate((node) => node.executeCommand(['insert', 'i']))
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[i]{\\placeholder[kbd-rad-r-1]{}}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[i]{}')
+
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await goToKeyboardSwipeLab(page)
+    field = page.locator('math-field.keyboard-mathlive-field').first()
+    await insertNthRoot(page)
+    await field.evaluate((node) => node.executeCommand('moveToPreviousPlaceholder'))
+    await field.evaluate((node) => node.executeCommand('moveToNextChar'))
+    await field.evaluate((node) => node.executeCommand(['insert', 'j']))
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[j]{\\placeholder[kbd-rad-r-1]{}}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[j]{}')
   })
 })

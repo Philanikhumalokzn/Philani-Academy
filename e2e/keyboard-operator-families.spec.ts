@@ -409,6 +409,40 @@ test.describe('keyboard operator families', () => {
     await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt{129345}')
   })
 
+  test('nth root preserves the visual caret through empty-index collapse, radicand insert, and backspace', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    await insertNthRoot(page)
+    await tapKeyboardAction(page, 'digit-1')
+    await tapKeyboardAction(page, 'digit-2')
+    await tapKeyboardAction(page, 'digit-3')
+    await tapKeyboardAction(page, 'digit-4')
+    await tapKeyboardAction(page, 'digit-5')
+
+    await page.waitForTimeout(2500)
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt{12345}')
+    await expect.poll(() => getMathfieldRawPrefixLatex(page)).toBe('12345')
+
+    await clickBetweenMathfieldTokens(page, '1', '2')
+    await expect.poll(() => getMathfieldRawPrefixLatex(page)).toBe('1')
+
+    await tapKeyboardAction(page, 'digit-9')
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{192345}')
+    await expect.poll(() => getMathfieldRawPrefixLatex(page)).toBe('19')
+
+    await page.waitForTimeout(2500)
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt{192345}')
+    await expect.poll(() => getMathfieldRawPrefixLatex(page)).toBe('19')
+
+    await tapKeyboardAction(page, 'backspace')
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{12345}')
+    await expect.poll(() => getMathfieldRawPrefixLatex(page)).toBe('1')
+
+    await page.waitForTimeout(2500)
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt{12345}')
+    await expect.poll(() => getMathfieldRawPrefixLatex(page)).toBe('1')
+  })
+
   test('nth root button input inserts at the tapped caret position inside a multi-digit index', async ({ page }) => {
     await goToKeyboardSwipeLab(page)
 

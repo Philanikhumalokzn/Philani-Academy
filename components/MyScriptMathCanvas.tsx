@@ -4107,21 +4107,31 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
         ? normalizeKeyboardTransientRadicalFieldContent(expandedRegion.radicandSymbol, expandedPromptIds.radicandPromptId)
         : ''
       const expandedTargetField = shouldExpandCollapsedSelection ? 'index' : 'radicand'
+      const preserveCollapsedRadicandSelection = Boolean(
+        expanded
+        && expandedTargetField === 'radicand'
+        && expandedRegion
+        && expandedPromptIds
+        && expandedRadicandLatex.trim(),
+      )
       if (expanded && rewriteKeyboardMathfieldLatex(field, expanded.value, {
         start: expanded.selectionStart,
         end: expanded.selectionEnd,
       }, {
         targetPromptId: shouldExpandCollapsedSelection && promptIds ? promptIds.indexPromptId : expanded.radicandPromptId,
         targetField: expandedTargetField,
+        selectionAnchor: preserveCollapsedRadicandSelection ? selection : undefined,
         positionBias: 'start',
-        transientRadicalSerializedPrefixLength: expandedRegion
-          ? getKeyboardTransientRadicalSerializedPrefixLength(
-              expandedRegion.start,
-              expandedIndexLatex,
-              expandedRadicandLatex,
-              expandedTargetField,
-            )
-          : undefined,
+        transientRadicalSerializedPrefixLength: preserveCollapsedRadicandSelection
+          ? selection.end
+          : expandedRegion
+            ? getKeyboardTransientRadicalSerializedPrefixLength(
+                expandedRegion.start,
+                expandedIndexLatex,
+                expandedRadicandLatex,
+                expandedTargetField,
+              )
+            : undefined,
       })) {
         const nextRegion = expandedRegion
         if (nextRegion?.hasIndex) {

@@ -173,6 +173,28 @@ test.describe('keyboard operator families', () => {
     await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[34]{}')
   })
 
+  test('nth root lets the user re-show the hidden index by tapping its area', async ({ page }) => {
+    await goToKeyboardSwipeLab(page)
+
+    const field = page.locator('math-field.keyboard-mathlive-field').first()
+
+    await insertNthRoot(page)
+    await tapKeyboardAction(page, 'digit-7')
+    await page.waitForTimeout(2500)
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt{7}')
+
+    const box = await field.boundingBox()
+    expect(box).not.toBeNull()
+    if (!box) return
+
+    await page.mouse.click(box.x + 18, box.y + 16)
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[\\placeholder[kbd-rad-i-1]{}]{7}')
+
+    await tapKeyboardAction(page, 'digit-3')
+    await expect.poll(() => getMathfieldLatex(page)).toBe('\\sqrt[3]{7}')
+    await expect.poll(() => getMathfieldLatex(page, 'latex-without-placeholders')).toBe('\\sqrt[3]{7}')
+  })
+
   test('nth root folds stray characters around a field into that field', async ({ page }) => {
     await goToKeyboardSwipeLab(page)
 

@@ -3943,18 +3943,27 @@ const MyScriptMathCanvas = ({ gradeLabel, roomId, userId, userDisplayName, canOr
       return false
     }
 
-    if (source === 'input' && !region.hasIndex) {
+    const shouldExpandCollapsedSelection = source === 'selection'
+      && !region.hasIndex
+      && keyboardTransientRadicalAnchorStartRef.current !== null
+      && Math.abs(keyboardTransientRadicalAnchorStartRef.current - region.start) <= 1
+      && selection.end <= region.start
+
+    if ((source === 'input' || shouldExpandCollapsedSelection) && !region.hasIndex) {
       const promptIds = resolveKeyboardTransientRadicalPromptIdsForRegion(region)
       const expanded = expandKeyboardCollapsedRadical(currentValue, selection, region, promptIds)
       if (expanded && rewriteKeyboardMathfieldLatex(field, expanded.value, {
         start: expanded.selectionStart,
         end: expanded.selectionEnd,
       }, {
-        targetPromptId: expanded.radicandPromptId,
+        targetPromptId: shouldExpandCollapsedSelection && promptIds ? promptIds.indexPromptId : expanded.radicandPromptId,
       })) {
         const nextRegion = findKeyboardRadicalRegionNearStart(expanded.value, region.start)
         if (nextRegion?.hasIndex) {
           scheduleKeyboardTransientRadicalTimer(nextRegion.start, promptIds)
+        }
+        if (shouldExpandCollapsedSelection) {
+          keyboardTransientRadicalActiveFieldRef.current = 'index'
         }
         return true
       }

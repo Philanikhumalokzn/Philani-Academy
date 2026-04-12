@@ -56,6 +56,7 @@ const getResponseTimestamp = (response: any) => {
 const THREAD_PARENT_AVATAR_SIZE = 36
 const THREAD_REPLY_SCALE = 0.75
 const THREAD_MAX_VISUAL_NESTING_DEPTH = 1
+const THREAD_MAX_AVATAR_DEPTH = 2
 const THREAD_FLATTENED_BRANCH_COLORS = [
   '#1d4ed8',
   '#0f766e',
@@ -95,7 +96,8 @@ const getThreadBranchTint = (color: string, alpha: number) => {
 }
 
 const getThreadAvatarSize = (depth: number) => {
-  return Number((THREAD_PARENT_AVATAR_SIZE * Math.pow(THREAD_REPLY_SCALE, depth + 1)).toFixed(2))
+  const effectiveDepth = Math.min(depth, THREAD_MAX_AVATAR_DEPTH)
+  return Number((THREAD_PARENT_AVATAR_SIZE * Math.pow(THREAD_REPLY_SCALE, effectiveDepth + 1)).toFixed(2))
 }
 
 const buildThreadTree = (responses: any[]) => {
@@ -299,7 +301,7 @@ export default function InlinePostSolutionsThread({
     )
   }
 
-  const renderResponseNode = (node: ThreadNode, depth: number, isLastSibling: boolean, branchColor: string | null = null): React.ReactNode => {
+  const renderResponseNode = (node: ThreadNode, depth: number, branchColor: string | null = null): React.ReactNode => {
     const response = node.response
     const responseId = String(response?.id || `${depth}-${Math.random().toString(36).slice(2, 8)}`)
     const responseUserId = String(response?.userId || response?.user?.id || '')
@@ -315,16 +317,10 @@ export default function InlinePostSolutionsThread({
     const actions = getResponseActions?.(response, args) || []
     const leadingActions = actions.filter((action) => action.alignment !== 'trailing')
     const trailingActions = actions.filter((action) => action.alignment === 'trailing')
-    const trackedRailColor = depth > 0
+    const isFlattenedReply = depth > THREAD_MAX_VISUAL_NESTING_DEPTH
+    const activeBranchColor = isFlattenedReply
       ? (branchColor || getThreadBranchColor(threadMeta?.parentResponseId || responseId))
       : null
-    const showTrackedRail = depth > 0
-    const isFlattenedReply = depth > THREAD_MAX_VISUAL_NESTING_DEPTH
-    const activeBranchColor = isFlattenedReply ? trackedRailColor : null
-    const showConnectorTail = node.children.length > 0 || !isLastSibling
-    const connectorStroke = trackedRailColor ? `2px solid ${trackedRailColor}` : undefined
-    const childRailColor = node.children.length > 0 ? getThreadBranchColor(responseId) : null
-    const showRootChildOriginRail = depth === 0 && !!childRailColor
     const avatarShellStyle = {
       width: avatarSize,
       height: avatarSize,
@@ -349,41 +345,6 @@ export default function InlinePostSolutionsThread({
         <div className={visualDepth > 0 ? 'pl-2 sm:pl-4' : ''}>
           <div className="flex items-start gap-1">
             <div className="relative flex w-10 shrink-0 justify-center self-stretch">
-              {showTrackedRail && trackedRailColor ? (
-                <>
-                  <div
-                    className="absolute rounded-bl-xl"
-                    style={{
-                      left: 4,
-                      top: 0,
-                      width: 18,
-                      height: (avatarSize / 2) + 1,
-                      borderLeft: connectorStroke,
-                      borderBottom: connectorStroke,
-                    }}
-                    aria-hidden="true"
-                  />
-                  {showConnectorTail ? (
-                    <div
-                      className="absolute bottom-0"
-                      style={{ left: 4, top: avatarSize / 2, width: 0, borderLeft: connectorStroke }}
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                </>
-              ) : null}
-              {showRootChildOriginRail && childRailColor ? (
-                <div
-                  className="absolute bottom-0"
-                  style={{
-                    left: 'var(--inline-post-thread-connector-left)',
-                    top: avatarSize / 2,
-                    width: 0,
-                    borderLeft: `2px solid ${childRailColor}`,
-                  }}
-                  aria-hidden="true"
-                />
-              ) : null}
               <UserLink userId={responseUserId || null} className="shrink-0" title="View profile">
                 <div className={palette.avatarShell} style={avatarShellStyle}>
                   {responseAvatar ? (
@@ -450,26 +411,13 @@ export default function InlinePostSolutionsThread({
 
               {node.children.length > 0 ? (
                 <div className="relative mt-2 space-y-1" style={childContainerStyle}>
-                  {childRailColor ? (
-                    <div
-                      className="absolute"
-                      style={{
-                        left: 'var(--inline-post-thread-connector-left)',
-                        top: 'calc(-1 * var(--inline-post-thread-child-gap))',
-                        height: 'var(--inline-post-thread-child-gap)',
-                        width: 0,
-                        borderLeft: `2px solid ${childRailColor}`,
-                      }}
-                      aria-hidden="true"
-                    />
-                  ) : null}
                   {node.children.map((childNode, index) => {
                     const childDepth = depth + 1
                     const childBranchColor = childDepth > 0
                       ? getThreadBranchColor(responseId)
                       : null
 
-                    return renderResponseNode(childNode, childDepth, index === node.children.length - 1, childBranchColor)
+                    return renderResponseNode(childNode, childDepth, childBranchColor)
                   })}
                 </div>
               ) : null}
@@ -481,7 +429,7 @@ export default function InlinePostSolutionsThread({
   }
 
   return (
-    <div className="mt-1 pt-1 [--inline-post-thread-child-gap:1rem] [--inline-post-thread-connector-left:1.25rem] [--inline-post-thread-content-shift:3.25rem] [--inline-post-thread-nest-step:3.75rem] sm:[--inline-post-thread-nest-step:4.25rem]">
+    <div className="mt-1 pt-1 [--inline-post-thread-content-shift:3.25rem] [--inline-post-thread-nest-step:3.75rem] sm:[--inline-post-thread-nest-step:4.25rem]">
       {loading ? <div className={palette.mutedText}>Loading solutions...</div> : null}
       {!loading && error ? <div className={palette.errorText}>{error}</div> : null}
       {!loading && !error && !threadUnlocked ? (
@@ -492,7 +440,7 @@ export default function InlinePostSolutionsThread({
       ) : null}
       {!loading && !error && threadUnlocked && responseTree.length > 0 ? (
         <div className="space-y-4">
-          {responseTree.map((node, index) => renderResponseNode(node, 0, index === responseTree.length - 1))}
+          {responseTree.map((node) => renderResponseNode(node, 0))}
         </div>
       ) : null}
     </div>

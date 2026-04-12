@@ -335,11 +335,7 @@ export default function InlinePostSolutionsThread({
       borderLeft: `2px solid ${activeBranchColor}`,
       backgroundColor: getThreadBranchTint(activeBranchColor, theme === 'dark' ? 0.16 : 0.08),
     } : undefined
-    const childContainerStyle = depth === 0
-      ? { marginLeft: 'calc(-1 * var(--inline-post-thread-content-shift))' }
-      : depth >= THREAD_MAX_VISUAL_NESTING_DEPTH
-        ? { marginLeft: 'calc(-1 * var(--inline-post-thread-nest-step))' }
-        : undefined
+    const childContainerStyle = { marginLeft: 'calc(-1 * var(--inline-post-thread-content-shift))' }
 
     return (
       <div key={responseId} className={depth === 0 ? 'py-1' : 'pt-1.5'} {...containerProps}>
@@ -430,7 +426,7 @@ export default function InlinePostSolutionsThread({
   }
 
   return (
-    <div className="mt-1 pt-1 [--inline-post-thread-content-shift:3.25rem] [--inline-post-thread-nest-step:3.75rem] sm:[--inline-post-thread-nest-step:4.25rem]">
+    <div className="mt-1 pt-1 [--inline-post-thread-content-shift:3.25rem]">
       {loading ? <div className={palette.mutedText}>Loading solutions...</div> : null}
       {!loading && error ? <div className={palette.errorText}>{error}</div> : null}
       {!loading && !error && !threadUnlocked ? (

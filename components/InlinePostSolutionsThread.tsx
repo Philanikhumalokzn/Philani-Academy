@@ -52,6 +52,11 @@ const getResponseTimestamp = (response: any) => {
   return Math.max(updated, created)
 }
 
+const getThreadAvatarSize = (depth: number) => {
+  if (depth <= 0) return 36
+  return Math.max(20, 36 - (depth * 4))
+}
+
 const buildThreadTree = (responses: any[]) => {
   const orderedResponses = Array.isArray(responses)
     ? responses.slice().sort((a, b) => getResponseTimestamp(b) - getResponseTimestamp(a))
@@ -120,7 +125,7 @@ export default function InlinePostSolutionsThread({
         errorText: 'text-sm text-red-300',
         infoCard: 'rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70',
         rail: 'bg-white/14',
-        avatarShell: 'flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/10 text-white',
+      avatarShell: 'flex items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/10 text-white',
         nameClass: 'text-sm font-semibold text-white hover:underline',
         replyMetaClass: 'mt-1 text-[11px] font-medium text-white/45',
         textBlockClass: 'text-sm leading-6 whitespace-pre-wrap break-words text-white/85',
@@ -138,7 +143,7 @@ export default function InlinePostSolutionsThread({
         errorText: 'text-sm text-red-500',
         infoCard: 'philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] rounded-2xl px-4 py-3 text-sm text-slate-500',
         rail: 'bg-[#d7dde6]',
-        avatarShell: 'flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f0f2f5] text-[#1c1e21]',
+      avatarShell: 'flex items-center justify-center overflow-hidden rounded-full border border-black/10 bg-[#f0f2f5] text-[#1c1e21]',
         nameClass: 'text-[13px] font-semibold text-[#1c1e21] hover:underline',
         replyMetaClass: 'mt-1 text-[11px] font-medium text-[#65676b]',
         textBlockClass: 'text-[14px] leading-6 whitespace-pre-wrap break-words text-[#1c1e21]',
@@ -259,12 +264,14 @@ export default function InlinePostSolutionsThread({
     const responseUserId = String(response?.userId || response?.user?.id || '')
     const responseUserName = String(response?.user?.name || response?.userName || response?.user?.email || 'Learner')
     const responseAvatar = String(response?.user?.avatar || response?.userAvatar || '').trim()
+    const avatarSize = getThreadAvatarSize(depth)
+    const avatarFallbackFontSize = Math.max(9, Math.round(avatarSize / 3.2))
     const isMine = responseUserId === currentUserId
     const args: ResponseRenderArgs = { responseId, responseUserId, responseUserName, responseAvatar, isMine }
     const containerProps = getContainerProps?.(response, args) || {}
     const threadMeta = getPostReplyThreadMeta(response)
     const actions = getResponseActions?.(response, args) || []
-    const showRail = node.children.length > 0 || !isLastSibling
+    const showRail = depth > 0 && (node.children.length > 0 || !isLastSibling)
 
     return (
       <div key={responseId} className={depth === 0 ? 'py-1' : 'pt-4'} {...containerProps}>
@@ -272,15 +279,21 @@ export default function InlinePostSolutionsThread({
           <div className="flex items-start gap-3">
             <div className="relative flex w-10 shrink-0 justify-center self-stretch">
               <UserLink userId={responseUserId || null} className="shrink-0" title="View profile">
-                <div className={palette.avatarShell}>
+                <div className={palette.avatarShell} style={{ width: avatarSize, height: avatarSize }}>
                   {responseAvatar ? (
                     <img src={responseAvatar} alt={responseUserName} className="h-full w-full object-cover" />
                   ) : (
-                    <span className="text-[11px] font-semibold">{responseUserName.slice(0, 1).toUpperCase()}</span>
+                    <span className="font-semibold" style={{ fontSize: avatarFallbackFontSize }}>{responseUserName.slice(0, 1).toUpperCase()}</span>
                   )}
                 </div>
               </UserLink>
-              {showRail ? <div className={`absolute left-1/2 top-11 bottom-0 w-px -translate-x-1/2 ${palette.rail}`} aria-hidden="true" /> : null}
+              {showRail ? (
+                <div
+                  className={`absolute left-1/2 bottom-0 w-px -translate-x-1/2 ${palette.rail}`}
+                  style={{ top: avatarSize + 8 }}
+                  aria-hidden="true"
+                />
+              ) : null}
             </div>
 
             <div className="min-w-0 flex-1 pb-1">

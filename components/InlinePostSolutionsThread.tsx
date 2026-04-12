@@ -79,6 +79,21 @@ const getThreadBranchColor = (seed: string) => {
   return THREAD_FLATTENED_BRANCH_COLORS[Math.abs(hash) % THREAD_FLATTENED_BRANCH_COLORS.length]
 }
 
+const getThreadBranchTint = (color: string, alpha: number) => {
+  const rawHex = String(color || '').trim().replace('#', '')
+  const normalizedHex = rawHex.length === 3
+    ? rawHex.split('').map((character) => `${character}${character}`).join('')
+    : rawHex
+
+  if (!/^[0-9a-fA-F]{6}$/.test(normalizedHex)) return color
+
+  const red = Number.parseInt(normalizedHex.slice(0, 2), 16)
+  const green = Number.parseInt(normalizedHex.slice(2, 4), 16)
+  const blue = Number.parseInt(normalizedHex.slice(4, 6), 16)
+
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+}
+
 const getThreadAvatarSize = (depth: number) => {
   return Number((THREAD_PARENT_AVATAR_SIZE * Math.pow(THREAD_REPLY_SCALE, depth + 1)).toFixed(2))
 }
@@ -300,11 +315,27 @@ export default function InlinePostSolutionsThread({
     const actions = getResponseActions?.(response, args) || []
     const leadingActions = actions.filter((action) => action.alignment !== 'trailing')
     const trailingActions = actions.filter((action) => action.alignment === 'trailing')
-    const isFlattenedReply = depth > THREAD_MAX_VISUAL_NESTING_DEPTH
-    const activeBranchColor = isFlattenedReply
+    const trackedRailColor = depth > 0
       ? (branchColor || getThreadBranchColor(threadMeta?.parentResponseId || responseId))
       : null
+    const showTrackedRail = depth > 0
+    const isFlattenedReply = depth > THREAD_MAX_VISUAL_NESTING_DEPTH
+    const activeBranchColor = isFlattenedReply ? trackedRailColor : null
     const showConnectorTail = node.children.length > 0 || !isLastSibling
+    const connectorStroke = trackedRailColor ? `2px solid ${trackedRailColor}` : undefined
+    const avatarShellStyle = {
+      width: avatarSize,
+      height: avatarSize,
+      ...(activeBranchColor ? {
+        borderColor: activeBranchColor,
+        borderWidth: 2,
+        boxShadow: `0 0 0 2px ${getThreadBranchTint(activeBranchColor, theme === 'dark' ? 0.24 : 0.12)}`,
+      } : {}),
+    }
+    const flattenedReplyShellStyle = activeBranchColor ? {
+      borderLeft: `2px solid ${activeBranchColor}`,
+      backgroundColor: getThreadBranchTint(activeBranchColor, theme === 'dark' ? 0.16 : 0.08),
+    } : undefined
     const childContainerStyle = depth === 0
       ? { marginLeft: 'calc(-1 * var(--inline-post-thread-content-shift))' }
       : depth >= THREAD_MAX_VISUAL_NESTING_DEPTH
@@ -316,32 +347,31 @@ export default function InlinePostSolutionsThread({
         <div className={visualDepth > 0 ? 'pl-2 sm:pl-4' : ''}>
           <div className="flex items-start gap-3">
             <div className="relative flex w-10 shrink-0 justify-center self-stretch">
-              {isFlattenedReply && activeBranchColor ? (
+              {showTrackedRail && trackedRailColor ? (
                 <>
                   <div
-                    className="absolute w-px"
-                    style={{ left: 6, top: 0, height: (avatarSize / 2) + 1, backgroundColor: activeBranchColor }}
+                    className="absolute rounded-bl-xl"
+                    style={{
+                      left: 4,
+                      top: 0,
+                      width: 18,
+                      height: (avatarSize / 2) + 1,
+                      borderLeft: connectorStroke,
+                      borderBottom: connectorStroke,
+                    }}
                     aria-hidden="true"
                   />
                   {showConnectorTail ? (
                     <div
-                      className="absolute bottom-0 w-px"
-                      style={{ left: 6, top: avatarSize / 2, backgroundColor: activeBranchColor }}
+                      className="absolute bottom-0"
+                      style={{ left: 4, top: avatarSize / 2, width: 0, borderLeft: connectorStroke }}
                       aria-hidden="true"
                     />
                   ) : null}
-                  <div
-                    className="absolute h-px"
-                    style={{ left: 6, top: avatarSize / 2, width: 14, backgroundColor: activeBranchColor }}
-                    aria-hidden="true"
-                  />
                 </>
               ) : null}
               <UserLink userId={responseUserId || null} className="shrink-0" title="View profile">
-                <div
-                  className={palette.avatarShell}
-                  style={{ width: avatarSize, height: avatarSize, ...(activeBranchColor ? { borderColor: activeBranchColor } : {}) }}
-                >
+                <div className={palette.avatarShell} style={avatarShellStyle}>
                   {responseAvatar ? (
                     <img src={responseAvatar} alt={responseUserName} className="h-full w-full object-cover" />
                   ) : (
@@ -352,45 +382,64 @@ export default function InlinePostSolutionsThread({
             </div>
 
             <div className="min-w-0 flex-1 pb-1">
-              <div className="flex items-center gap-2" style={{ minHeight: avatarSize }}>
-                {activeBranchColor ? (
-                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: activeBranchColor }} aria-hidden="true" />
-                ) : null}
-                <UserLink userId={responseUserId || null} className={palette.nameClass} title="View profile">
-                  {responseUserName}
-                </UserLink>
-              </div>
-
-              {threadMeta?.parentResponseId && threadMeta.replyToUserName ? (
-                <div className={palette.replyMetaClass} style={activeBranchColor ? { color: activeBranchColor } : undefined}>
-                  Replying to {threadMeta.replyToUserName}
-                </div>
-              ) : null}
-
-              {renderResponseStatus ? renderResponseStatus(response, args) : null}
-              {renderReplyBody(response, args)}
-
-              {actions.length > 0 ? (
-                <div className="mt-2 flex w-full items-center gap-2">
-                  <div className="flex min-w-0 items-center gap-1.5 pl-2">
-                    {leadingActions.map(renderActionButton)}
-                  </div>
-                  {trailingActions.length > 0 ? (
-                    <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                      {trailingActions.map(renderActionButton)}
-                    </div>
+              <div className={activeBranchColor ? 'rounded-[20px] px-3 py-2' : ''} style={flattenedReplyShellStyle}>
+                <div className="flex items-center gap-2" style={{ minHeight: avatarSize }}>
+                  {activeBranchColor ? (
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: activeBranchColor, boxShadow: `0 0 0 3px ${getThreadBranchTint(activeBranchColor, theme === 'dark' ? 0.2 : 0.14)}` }}
+                      aria-hidden="true"
+                    />
                   ) : null}
+                  <UserLink
+                    userId={responseUserId || null}
+                    className={palette.nameClass}
+                    title="View profile"
+                  >
+                    <span style={activeBranchColor ? { color: activeBranchColor } : undefined}>{responseUserName}</span>
+                  </UserLink>
                 </div>
-              ) : null}
 
-              {renderResponseFooter ? <div className="mt-3">{renderResponseFooter(response, args)}</div> : null}
+                {threadMeta?.parentResponseId && threadMeta.replyToUserName ? (
+                  <div
+                    className={palette.replyMetaClass}
+                    style={activeBranchColor ? {
+                      color: activeBranchColor,
+                      backgroundColor: getThreadBranchTint(activeBranchColor, theme === 'dark' ? 0.18 : 0.12),
+                      borderRadius: 9999,
+                      display: 'inline-flex',
+                      padding: '3px 8px',
+                    } : undefined}
+                  >
+                    Replying to {threadMeta.replyToUserName}
+                  </div>
+                ) : null}
+
+                {renderResponseStatus ? renderResponseStatus(response, args) : null}
+                {renderReplyBody(response, args)}
+
+                {actions.length > 0 ? (
+                  <div className="mt-2 flex w-full items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-1.5 pl-2">
+                      {leadingActions.map(renderActionButton)}
+                    </div>
+                    {trailingActions.length > 0 ? (
+                      <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                        {trailingActions.map(renderActionButton)}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {renderResponseFooter ? <div className="mt-3">{renderResponseFooter(response, args)}</div> : null}
+              </div>
 
               {node.children.length > 0 ? (
                 <div className="mt-4 space-y-4" style={childContainerStyle}>
                   {node.children.map((childNode, index) => {
                     const childDepth = depth + 1
-                    const childBranchColor = childDepth > THREAD_MAX_VISUAL_NESTING_DEPTH
-                      ? (activeBranchColor || getThreadBranchColor(responseId))
+                    const childBranchColor = childDepth > 0
+                      ? getThreadBranchColor(responseId)
                       : null
 
                     return renderResponseNode(childNode, childDepth, index === node.children.length - 1, childBranchColor)

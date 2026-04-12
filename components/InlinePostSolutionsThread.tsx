@@ -304,9 +304,11 @@ export default function InlinePostSolutionsThread({
             </div>
 
             <div className="min-w-0 flex-1 pb-1">
-              <UserLink userId={responseUserId || null} className={palette.nameClass} title="View profile">
-                {responseUserName}
-              </UserLink>
+              <div className="flex items-center" style={{ minHeight: avatarSize }}>
+                <UserLink userId={responseUserId || null} className={palette.nameClass} title="View profile">
+                  {responseUserName}
+                </UserLink>
+              </div>
 
               {threadMeta?.parentResponseId && threadMeta.replyToUserName ? (
                 <div className={palette.replyMetaClass}>Replying to {threadMeta.replyToUserName}</div>

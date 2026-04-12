@@ -207,13 +207,13 @@ export default function PublicFeedPostCard({
       {body}
 
       {actions.length > 0 ? (
-        <div className="mt-2 px-4 pt-1 text-[#65676b] sm:px-6">
+        <div className="mt-1 px-4 pt-0.5 text-[#65676b] sm:px-6">
           <div className="flex items-center gap-1">
             {actions.map(renderSocialActionButton)}
           </div>
           {children ? children : null}
         </div>
-      ) : children ? <div className="mt-2 px-4 pt-1 text-[#65676b] sm:px-6">{children}</div> : null}
+      ) : children ? <div className="mt-1 px-4 pt-0.5 text-[#65676b] sm:px-6">{children}</div> : null}
 
       {fallbackImageViewer ? (
         <OverlayPortal>

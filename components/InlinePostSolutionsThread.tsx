@@ -394,7 +394,7 @@ export default function InlinePostSolutionsThread({
                 {renderReplyBody(response, args)}
 
                 {actions.length > 0 ? (
-                  <div className="mt-2 flex w-full items-center gap-2">
+                  <div className="mt-1 flex w-full items-center gap-2">
                     <div className="flex min-w-0 items-center gap-1.5 pl-2">
                       {leadingActions.map(renderActionButton)}
                     </div>

@@ -13,6 +13,9 @@ const MAX_POINT_ID_LENGTH = 80
 const MAX_EXCALIDRAW_SCENE_LENGTH = 2_000_000
 const MAX_REPLY_IMAGE_URL_LENGTH = 4000
 const MAX_REPLY_BLOCKS = 32
+const MAX_REPLY_REF_ID_LENGTH = 120
+const MAX_REPLY_USER_ID_LENGTH = 120
+const MAX_REPLY_USER_NAME_LENGTH = 160
 const POST_REPLY_BLOCKS_KIND = 'post-reply-blocks-v1'
 
 const PERSISTED_PUBLIC_SOLVE_APP_STATE_KEYS = [
@@ -117,8 +120,26 @@ const buildLegacyPostReplyBlocks = ({ studentText, latex, excalidrawScene }: { s
   return blocks
 }
 
-const buildPostReplyPayload = ({ studentText, latex, excalidrawScene, contentBlocks }: { studentText: string | null; latex: string; excalidrawScene: Record<string, any> | null; contentBlocks: any }) => {
+const sanitizePostReplyThreadMeta = (value: any) => {
+  const parentResponseId = typeof value?.parentResponseId === 'string' ? value.parentResponseId.trim().slice(0, MAX_REPLY_REF_ID_LENGTH) : ''
+  const rootResponseIdRaw = typeof value?.rootResponseId === 'string' ? value.rootResponseId.trim().slice(0, MAX_REPLY_REF_ID_LENGTH) : ''
+  const replyToUserId = typeof value?.replyToUserId === 'string' ? value.replyToUserId.trim().slice(0, MAX_REPLY_USER_ID_LENGTH) : ''
+  const replyToUserName = typeof value?.replyToUserName === 'string' ? value.replyToUserName.trim().slice(0, MAX_REPLY_USER_NAME_LENGTH) : ''
+
+  const rootResponseId = rootResponseIdRaw || parentResponseId
+  if (!parentResponseId && !rootResponseId && !replyToUserId && !replyToUserName) return null
+
+  return {
+    ...(parentResponseId ? { parentResponseId } : {}),
+    ...(rootResponseId ? { rootResponseId } : {}),
+    ...(replyToUserId ? { replyToUserId } : {}),
+    ...(replyToUserName ? { replyToUserName } : {}),
+  }
+}
+
+const buildPostReplyPayload = ({ studentText, latex, excalidrawScene, contentBlocks, threadMeta }: { studentText: string | null; latex: string; excalidrawScene: Record<string, any> | null; contentBlocks: any; threadMeta?: any }) => {
   const safeBlocks = sanitizePostReplyContentBlocks(contentBlocks)
+  const safeThreadMeta = sanitizePostReplyThreadMeta(threadMeta)
   const normalizedBlocks = safeBlocks.length > 0
     ? safeBlocks
     : buildLegacyPostReplyBlocks({ studentText, latex, excalidrawScene })
@@ -139,7 +160,13 @@ const buildPostReplyPayload = ({ studentText, latex, excalidrawScene, contentBlo
     studentText: textSummary,
     latex: latexSummary,
     excalidrawScene: canvasBlock?.scene || null,
-    gradingJson: normalizedBlocks.length > 0 ? { kind: POST_REPLY_BLOCKS_KIND, contentBlocks: normalizedBlocks } : null,
+    gradingJson: normalizedBlocks.length > 0
+      ? {
+          kind: POST_REPLY_BLOCKS_KIND,
+          contentBlocks: normalizedBlocks,
+          ...(safeThreadMeta ? { replyThread: safeThreadMeta } : {}),
+        }
+      : null,
   }
 }
 
@@ -396,7 +423,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'PATCH') {
-    const { responseId, gradingJson, feedback, excalidrawScene } = req.body || {}
+    const { responseId, gradingJson, feedback, excalidrawScene, latex, studentText, contentBlocks, parentResponseId, rootResponseId, replyToUserId, replyToUserName } = req.body || {}
     if (!responseId) return res.status(400).json({ message: 'Missing responseId' })
 
     const existing = await learnerResponse.findUnique({
@@ -405,6 +432,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         id: true,
         userId: true,
         sessionKey: true,
+        latex: true,
+        studentText: true,
         gradingJson: true,
       },
     })
@@ -412,6 +441,74 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!existing) return res.status(404).json({ message: 'Response not found' })
     if (!responseThreadKeys.includes(String(existing.sessionKey || ''))) {
       return res.status(404).json({ message: 'Response not found in this thread' })
+    }
+
+    const isPostContentUpdate = isPostSession && (
+      typeof contentBlocks !== 'undefined'
+      || typeof latex === 'string'
+      || typeof studentText === 'string'
+      || typeof parentResponseId === 'string'
+      || typeof rootResponseId === 'string'
+      || typeof replyToUserId === 'string'
+      || typeof replyToUserName === 'string'
+    )
+
+    if (isPostContentUpdate) {
+      if (String(existing.userId || '') !== String(userId)) {
+        return res.status(403).json({ message: 'Only the response owner can edit this reply' })
+      }
+
+      let safeExcalidrawScene: Record<string, any> | null = null
+      if (excalidrawScene && typeof excalidrawScene === 'object') {
+        try {
+          const sanitizedScene = sanitizeExcalidrawScene(excalidrawScene)
+          const sceneJson = JSON.stringify(sanitizedScene)
+          if (sceneJson.length > MAX_EXCALIDRAW_SCENE_LENGTH) {
+            return res.status(400).json({ message: 'Canvas response is too large' })
+          }
+          safeExcalidrawScene = JSON.parse(sceneJson)
+        } catch {
+          return res.status(400).json({ message: 'Canvas response is invalid' })
+        }
+      }
+
+      const safeLatex = typeof latex === 'string' ? latex : String(existing?.latex || '')
+      if (safeLatex.length > MAX_LATEX_LENGTH) {
+        return res.status(400).json({ message: 'Latex is too large' })
+      }
+
+      const safeStudentText = typeof studentText === 'string'
+        ? (studentText.trim().length > 0 ? studentText.trim().slice(0, MAX_STUDENT_TEXT_LENGTH) : null)
+        : (typeof existing?.studentText === 'string' ? existing.studentText : null)
+
+      const postReplyPayload = buildPostReplyPayload({
+        studentText: safeStudentText,
+        latex: safeLatex,
+        excalidrawScene: safeExcalidrawScene,
+        contentBlocks,
+        threadMeta: {
+          parentResponseId,
+          rootResponseId,
+          replyToUserId,
+          replyToUserName,
+        },
+      })
+
+      if (!postReplyPayload.contentBlocks.length) {
+        return res.status(400).json({ message: 'Write a reply, add math, or attach a canvas response' })
+      }
+
+      const updated = await learnerResponse.update({
+        where: { id: String(responseId) },
+        data: {
+          latex: postReplyPayload.latex,
+          studentText: postReplyPayload.studentText,
+          excalidrawScene: postReplyPayload.excalidrawScene,
+          gradingJson: postReplyPayload.gradingJson,
+        },
+      })
+
+      return res.status(200).json(updated)
     }
 
     if (typeof excalidrawScene !== 'undefined') {
@@ -518,7 +615,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'POST') {
-    const { latex, studentText, quizId, prompt, quizLabel, quizPhaseKey, quizPointId, quizPointIndex, excalidrawScene, contentBlocks } = req.body || {}
+    const { latex, studentText, quizId, prompt, quizLabel, quizPhaseKey, quizPointId, quizPointIndex, excalidrawScene, contentBlocks, parentResponseId, rootResponseId, replyToUserId, replyToUserName } = req.body || {}
     const safeLatex = typeof latex === 'string' ? latex : ''
     if (safeLatex.length > MAX_LATEX_LENGTH) {
       return res.status(400).json({ message: 'Latex is too large' })
@@ -548,6 +645,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           latex: safeLatex,
           excalidrawScene: safeExcalidrawScene,
           contentBlocks,
+          threadMeta: {
+            parentResponseId,
+            rootResponseId,
+            replyToUserId,
+            replyToUserName,
+          },
         })
       : null
 
@@ -686,7 +789,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
-      if (!isChallengeSession && !isAttemptScopedPostSession) {
+      if (!isChallengeSession && !isAttemptScopedPostSession && !isPostSession) {
         const updated = await updateLatestRecord()
         if (updated) {
           return res.status(200).json(updated)
@@ -696,14 +799,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Unlimited attempts: overwrite the latest response instead of appending.
       if (isChallengeSession && challengeMaxAttempts === null) {
         const updated = await updateLatestRecord({ resetChallengeFeedback: true, bumpCreatedAt: true })
-        if (updated) {
-          await notifyOwner(updated?.id || '')
-          return res.status(200).json(updated)
-        }
-      }
-
-      if (isAttemptScopedPostSession && postMaxAttempts === null) {
-        const updated = await updateLatestRecord({ bumpCreatedAt: true })
         if (updated) {
           await notifyOwner(updated?.id || '')
           return res.status(200).json(updated)

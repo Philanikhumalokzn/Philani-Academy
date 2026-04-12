@@ -8,7 +8,7 @@ import BottomSheet from '../../components/BottomSheet'
 import FeedComposerPill from '../../components/FeedComposerPill'
 import FullScreenGlassOverlay from '../../components/FullScreenGlassOverlay'
 import ImageCropperModal from '../../components/ImageCropperModal'
-import InlinePostSolutionsThread from '../../components/InlinePostSolutionsThread'
+import InlinePostSolutionsThread, { type InlinePostResponseAction, type ResponseRenderArgs } from '../../components/InlinePostSolutionsThread'
 import OverlayPortal from '../../components/OverlayPortal'
 import OwnPostsManagerOverlay from '../../components/OwnPostsManagerOverlay'
 import PostComposerOverlay from '../../components/PostComposerOverlay'
@@ -32,6 +32,7 @@ import {
   buildPostReplyPayloadFromBlocks,
   composePostSolveBlocksWithDraftText,
   createPostReplyBlockId,
+  getPostReplyThreadMeta,
   normalizePostReplyBlocks,
   upsertPostReplyBlock,
   type ComposerBlockCrudTarget,
@@ -737,7 +738,19 @@ export function PublicUserProfileSurface({
     })
   }, [isMobile, postSolveBlocks, postSolveEditingTarget, postSolveText])
 
-  const openLocalPostSolveComposer = useCallback(async (post: ProfilePost, options?: { initialScene?: any | null; initialLatex?: string | null; initialStudentText?: string | null; initialGradingJson?: any | null }) => {
+  const openLocalPostSolveComposer = useCallback(async (post: ProfilePost, options?: {
+    initialScene?: any | null
+    initialLatex?: string | null
+    initialStudentText?: string | null
+    initialGradingJson?: any | null
+    editingResponseId?: string | null
+    replyTarget?: {
+      responseId: string
+      rootResponseId?: string | null
+      userId?: string | null
+      userName?: string | null
+    } | null
+  }) => {
     const postId = String(post?.id || '')
     const threadKey = typeof post?.threadKey === 'string' ? post.threadKey : `post:${postId}`
     if (!postId || !threadKey) return
@@ -746,24 +759,23 @@ export function PublicUserProfileSurface({
     const authorAvatarUrl = resolveImageUrl(post?.createdBy?.avatar || profile?.avatar || '')
 
     setPostSolveError(null)
-    let initialResponseSource: any = {
+    const initialResponseSource: any = {
       excalidrawScene: options?.initialScene ?? null,
       latex: typeof options?.initialLatex === 'string' ? options.initialLatex : '',
       studentText: typeof options?.initialStudentText === 'string' ? options.initialStudentText : '',
       gradingJson: options?.initialGradingJson ?? null,
     }
-    if (!options?.initialGradingJson && !options?.initialScene && !options?.initialLatex && !options?.initialStudentText) {
-      try {
-        const responses = await fetchPublicThreadResponses(threadKey)
-        const mine = responses.find((response: any) => String(response?.userId || '') === currentViewerId)
-        if (mine) initialResponseSource = mine
-      } catch {
-        // ignore prefill failures and still open the composer
-      }
-    }
 
     const initialBlocks = normalizePostReplyBlocks(initialResponseSource)
     const initialPayload = buildPostReplyPayloadFromBlocks(initialBlocks)
+    const replyTarget = options?.replyTarget && String(options.replyTarget.responseId || '').trim()
+      ? {
+          responseId: String(options.replyTarget.responseId),
+          rootResponseId: String(options.replyTarget.rootResponseId || options.replyTarget.responseId || '') || null,
+          userId: options.replyTarget.userId ? String(options.replyTarget.userId) : null,
+          userName: options.replyTarget.userName ? String(options.replyTarget.userName) : null,
+        }
+      : null
 
     setPostSolveBlocks(initialBlocks)
     setPostSolveText('')
@@ -784,8 +796,25 @@ export function PublicUserProfileSurface({
       initialStudentText: initialPayload.studentText,
       initialGradingJson: initialPayload.gradingJson,
       postRecord: post,
+      editingResponseId: String(options?.editingResponseId || '').trim() || null,
+      replyTarget,
     })
-  }, [currentViewerId, fetchPublicThreadResponses, profile?.avatar, profile?.name])
+  }, [profile?.avatar, profile?.name])
+
+  const openReplyComposerForPostResponse = useCallback((post: ProfilePost, response: any) => {
+    const responseId = String(response?.id || '').trim()
+    if (!responseId) return
+
+    const threadMeta = getPostReplyThreadMeta(response)
+    void openLocalPostSolveComposer(post, {
+      replyTarget: {
+        responseId,
+        rootResponseId: String(threadMeta?.rootResponseId || responseId),
+        userId: String(response?.userId || response?.user?.id || '') || null,
+        userName: String(response?.user?.name || response?.userName || response?.user?.email || 'Learner'),
+      },
+    })
+  }, [openLocalPostSolveComposer])
 
   const applyOwnPostResponse = useCallback((draft: Pick<PostSolveOverlayState, 'postId'>, responseData: any) => {
     setPosts((prev) => Array.isArray(prev) ? prev.map((item) => applyOwnFeedPostResponse(item, draft.postId, responseData)) : prev)
@@ -854,18 +883,36 @@ export function PublicUserProfileSurface({
   const editReplyFromCrudTarget = useCallback((target: ReplyCrudTarget) => {
     setReplyCrudTarget(null)
     if (target.kind !== 'post') return
+    const threadMeta = getPostReplyThreadMeta(target.response)
+    const parentResponseId = String(threadMeta?.parentResponseId || '').trim()
     void openLocalPostSolveComposer(target.item, {
       initialScene: target?.response?.excalidrawScene || null,
       initialLatex: typeof target?.response?.latex === 'string' ? target.response.latex : '',
       initialStudentText: typeof target?.response?.studentText === 'string' ? target.response.studentText : '',
       initialGradingJson: target?.response?.gradingJson ?? null,
+      editingResponseId: String(target?.response?.id || ''),
+      replyTarget: parentResponseId ? {
+        responseId: parentResponseId,
+        rootResponseId: String(threadMeta?.rootResponseId || parentResponseId),
+        userId: threadMeta?.replyToUserId ? String(threadMeta.replyToUserId) : null,
+        userName: threadMeta?.replyToUserName ? String(threadMeta.replyToUserName) : null,
+      } : null,
     })
   }, [openLocalPostSolveComposer])
 
   const submitPostTextSolve = useCallback(async () => {
     const activeDraft = postSolveModeOverlay
     if (!activeDraft?.postId || !activeDraft?.threadKey) return
-    const payload = buildPostReplyPayloadFromBlocks(composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget))
+    const replyThreadMeta = activeDraft.replyTarget ? {
+      parentResponseId: activeDraft.replyTarget.responseId,
+      rootResponseId: activeDraft.replyTarget.rootResponseId || activeDraft.replyTarget.responseId,
+      replyToUserId: activeDraft.replyTarget.userId || null,
+      replyToUserName: activeDraft.replyTarget.userName || null,
+    } : null
+    const payload = buildPostReplyPayloadFromBlocks(
+      composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget),
+      replyThreadMeta,
+    )
     if (!payload.contentBlocks.length) {
       setPostSolveError('Write a reply before sending.')
       return
@@ -875,10 +922,11 @@ export function PublicUserProfileSurface({
     setPostSolveError(null)
     try {
       const res = await fetch(`/api/threads/${encodeURIComponent(activeDraft.threadKey)}/responses`, {
-        method: 'POST',
+        method: activeDraft.editingResponseId ? 'PATCH' : 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          responseId: activeDraft.editingResponseId || undefined,
           latex: payload.latex,
           studentText: payload.studentText,
           contentBlocks: payload.contentBlocks,
@@ -886,6 +934,10 @@ export function PublicUserProfileSurface({
           quizLabel: activeDraft.title,
           prompt: activeDraft.prompt,
           excalidrawScene: payload.excalidrawScene,
+          parentResponseId: replyThreadMeta?.parentResponseId,
+          rootResponseId: replyThreadMeta?.rootResponseId,
+          replyToUserId: replyThreadMeta?.replyToUserId,
+          replyToUserName: replyThreadMeta?.replyToUserName,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -1582,6 +1634,50 @@ export function PublicUserProfileSurface({
     }
   }, [])
 
+  const buildPostReplyActions = useCallback((post: ProfilePost, response: any, args: ResponseRenderArgs): InlinePostResponseAction[] => {
+    const itemKey = `reply:${args.responseId}`
+    const replyText = String(response?.studentText || response?.latex || '').trim()
+
+    return [
+      {
+        label: 'Like',
+        active: Boolean(likedPostKeys[itemKey]),
+        onClick: () => toggleProfileLike(itemKey),
+        icon: (
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+            <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Reply',
+        onClick: () => openReplyComposerForPostResponse(post, response),
+        icon: (
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+            <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Share',
+        statusLabel: lastSharedPostKey === itemKey ? 'Copied' : undefined,
+        onClick: () => void shareProfilePost({
+          itemKey,
+          title: `Reply from ${args.responseUserName}`,
+          text: replyText || `Reply from ${args.responseUserName}`,
+          path: `/u/${encodeURIComponent(String(userId || profile?.id || ''))}?postId=${encodeURIComponent(String(post?.id || ''))}&replyId=${encodeURIComponent(args.responseId)}`,
+        }),
+        icon: (
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+            <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M4 19V17C4 13.6863 6.68629 11 10 11H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ),
+      },
+    ]
+  }, [lastSharedPostKey, likedPostKeys, openReplyComposerForPostResponse, profile?.id, shareProfilePost, toggleProfileLike, userId])
+
   const renderPostCard = (post: ProfilePost) => {
     const postId = String(post.id || '')
     const itemKey = `post:${postId}`
@@ -1599,6 +1695,7 @@ export function PublicUserProfileSurface({
         responses={postThreadResponses}
         currentUserId={currentViewerId}
         getContainerProps={(response, args) => getPostReplyContainerProps(post, response, args.isMine)}
+        getResponseActions={(response, args) => buildPostReplyActions(post, response, args)}
         onOpenImageBlock={(imageUrl, args) => openImageViewer(imageUrl, `${args.responseUserName} attachment`)}
       />
     ) : null
@@ -2181,12 +2278,12 @@ export function PublicUserProfileSurface({
             setPostThreadError(null)
             setPostThreadResponses([])
           }}
-          rightActions={postThreadResponses.some((response: any) => String(response?.userId || '') === currentViewerId) ? null : (
+          rightActions={(
             <button type="button" className="btn btn-primary" onClick={() => {
               const targetPost = posts.find((post) => String(post?.id || '') === String(postThreadOverlay.postId || ''))
               if (targetPost) void openLocalPostSolveComposer(targetPost)
             }}>
-              Share solution
+              Reply
             </button>
           )}
         >
@@ -2203,56 +2300,22 @@ export function PublicUserProfileSurface({
                 <img src={postThreadOverlay.imageUrl} alt="Post attachment" className="max-h-[320px] w-full object-contain" />
               </button>
             ) : null}
-            {postThreadError ? (
-              <div className="rounded-2xl border border-red-300/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{postThreadError}</div>
-            ) : postThreadLoading ? (
-              <div className="text-sm text-white/70">Loading solutions...</div>
-            ) : postThreadResponses.length === 0 ? (
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/70">No solutions yet.</div>
-            ) : (
-              <div className="space-y-3">
-                {postThreadResponses.map((response: any) => {
-                  const responseUserName = String(response?.user?.name || response?.user?.email || 'Learner')
-                  const responseUserId = response?.user?.id ? String(response.user.id) : null
-                  const responseAvatar = String(response?.user?.avatar || response?.userAvatar || '').trim()
-                  const postReplyBlocks = normalizePostReplyBlocks(response)
-                  const overlayPost = posts.find((post) => String(post?.id || '') === String(postThreadOverlay.postId || '')) || null
-                  const containerProps = overlayPost
-                    ? getPostReplyContainerProps(overlayPost, response, responseUserId === currentViewerId)
-                    : undefined
-
-                  return (
-                    <div key={String(response?.id || Math.random())} className="rounded-2xl border border-white/10 bg-white/5 p-4" {...containerProps}>
-                      <div className="flex items-start gap-3">
-                        <UserLink userId={responseUserId} className="shrink-0" title="View profile">
-                          <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/10">
-                            {responseAvatar ? (
-                              <img src={responseAvatar} alt={responseUserName} className="h-full w-full object-cover" />
-                            ) : (
-                              <span className="text-[11px] font-semibold text-white">{responseUserName.slice(0, 1).toUpperCase()}</span>
-                            )}
-                          </div>
-                        </UserLink>
-                        <div className="min-w-0 flex-1">
-                          <UserLink userId={responseUserId} className="text-sm font-semibold text-white hover:underline" title="View profile">
-                            {responseUserName}
-                          </UserLink>
-                          <div className="mt-2 min-w-0 rounded-[20px] text-white/90">
-                            {postReplyBlocks.length > 0 ? (
-                              renderProfilePostReplyBlocks(postReplyBlocks, `profile-post-thread-${String(response?.id || 'draft')}`, {
-                                onOpenImageBlock: (imageUrl) => openImageViewer(imageUrl, `${responseUserName} attachment`),
-                              })
-                            ) : (
-                              <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-white/70">No canvas attached.</div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+            <InlinePostSolutionsThread
+              loading={postThreadLoading}
+              error={postThreadError}
+              responses={postThreadResponses}
+              currentUserId={currentViewerId}
+              theme="dark"
+              getContainerProps={(response, args) => {
+                const overlayPost = posts.find((post) => String(post?.id || '') === String(postThreadOverlay.postId || '')) || null
+                return overlayPost ? getPostReplyContainerProps(overlayPost, response, args.isMine) : {}
+              }}
+              getResponseActions={(response, args) => {
+                const overlayPost = posts.find((post) => String(post?.id || '') === String(postThreadOverlay.postId || '')) || null
+                return overlayPost ? buildPostReplyActions(overlayPost, response, args) : []
+              }}
+              onOpenImageBlock={(imageUrl, args) => openImageViewer(imageUrl, `${args.responseUserName} attachment`)}
+            />
           </div>
         </FullScreenGlassOverlay>
       ) : null}

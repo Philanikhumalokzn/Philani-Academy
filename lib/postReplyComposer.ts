@@ -26,6 +26,20 @@ export type PostReplyImageBlock = {
 
 export type PostReplyBlock = PostReplyTextBlock | PostReplyLatexBlock | PostReplyCanvasBlock | PostReplyImageBlock
 
+export type PostReplyThreadMeta = {
+  parentResponseId?: string | null
+  rootResponseId?: string | null
+  replyToUserId?: string | null
+  replyToUserName?: string | null
+}
+
+export type PostReplyThreadTarget = {
+  responseId: string
+  rootResponseId?: string | null
+  userId?: string | null
+  userName?: string | null
+}
+
 export type ComposerBlockEditTarget = {
   blockId: string
   type: PostReplyBlock['type']
@@ -52,11 +66,43 @@ export type PostSolveOverlayState = {
   initialGradingJson?: any | null
   preferredRecognitionEngine?: 'keyboard' | 'myscript' | 'mathpix'
   postRecord?: any | null
+  editingResponseId?: string | null
+  replyTarget?: PostReplyThreadTarget | null
 }
 
 export const POST_REPLY_BLOCKS_KIND = 'post-reply-blocks-v1'
 
 export const createPostReplyBlockId = () => `block_${Math.random().toString(36).slice(2, 10)}`
+
+const normalizePostReplyThreadMeta = (value?: PostReplyThreadMeta | null): PostReplyThreadMeta | null => {
+  const parentResponseId = typeof value?.parentResponseId === 'string' ? value.parentResponseId.trim() : ''
+  const rootResponseIdRaw = typeof value?.rootResponseId === 'string' ? value.rootResponseId.trim() : ''
+  const replyToUserId = typeof value?.replyToUserId === 'string' ? value.replyToUserId.trim() : ''
+  const replyToUserName = typeof value?.replyToUserName === 'string' ? value.replyToUserName.trim() : ''
+
+  const rootResponseId = rootResponseIdRaw || parentResponseId
+  if (!parentResponseId && !rootResponseId && !replyToUserId && !replyToUserName) return null
+
+  return {
+    ...(parentResponseId ? { parentResponseId } : {}),
+    ...(rootResponseId ? { rootResponseId } : {}),
+    ...(replyToUserId ? { replyToUserId } : {}),
+    ...(replyToUserName ? { replyToUserName } : {}),
+  }
+}
+
+export const getPostReplyThreadMeta = (source: any): PostReplyThreadMeta | null => {
+  const replyThread = source?.gradingJson?.kind === POST_REPLY_BLOCKS_KIND && source?.gradingJson?.replyThread && typeof source.gradingJson.replyThread === 'object'
+    ? source.gradingJson.replyThread
+    : null
+
+  return normalizePostReplyThreadMeta({
+    parentResponseId: source?.parentResponseId ?? replyThread?.parentResponseId,
+    rootResponseId: source?.rootResponseId ?? replyThread?.rootResponseId,
+    replyToUserId: source?.replyToUserId ?? replyThread?.replyToUserId,
+    replyToUserName: source?.replyToUserName ?? replyThread?.replyToUserName,
+  })
+}
 
 export const normalizePostReplyBlocks = (source: any): PostReplyBlock[] => {
   const rawBlocks = Array.isArray(source)
@@ -110,8 +156,9 @@ export const normalizePostReplyBlocks = (source: any): PostReplyBlock[] => {
   return fallbackBlocks
 }
 
-export const buildPostReplyPayloadFromBlocks = (blocks: PostReplyBlock[]) => {
+export const buildPostReplyPayloadFromBlocks = (blocks: PostReplyBlock[], threadMeta?: PostReplyThreadMeta | null) => {
   const normalizedBlocks = normalizePostReplyBlocks(blocks)
+  const normalizedThreadMeta = normalizePostReplyThreadMeta(threadMeta)
   const studentText = normalizedBlocks
     .filter((block): block is PostReplyTextBlock => block.type === 'text')
     .map((block) => block.text)
@@ -129,7 +176,13 @@ export const buildPostReplyPayloadFromBlocks = (blocks: PostReplyBlock[]) => {
     studentText,
     latex,
     excalidrawScene: canvasBlock?.scene || null,
-    gradingJson: normalizedBlocks.length > 0 ? { kind: POST_REPLY_BLOCKS_KIND, contentBlocks: normalizedBlocks } : null,
+    gradingJson: normalizedBlocks.length > 0
+      ? {
+          kind: POST_REPLY_BLOCKS_KIND,
+          contentBlocks: normalizedBlocks,
+          ...(normalizedThreadMeta ? { replyThread: normalizedThreadMeta } : {}),
+        }
+      : null,
   }
 }
 

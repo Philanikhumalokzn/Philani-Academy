@@ -24,7 +24,7 @@ import PdfViewerOverlay from '../components/PdfViewerOverlay'
 import ZoomableImageOverlay from '../components/ZoomableImageOverlay'
 import ScriptPhotosEditor from '../components/ScriptPhotosEditor'
 import BottomSheet from '../components/BottomSheet'
-import InlinePostSolutionsThread from '../components/InlinePostSolutionsThread'
+import InlinePostSolutionsThread, { type InlinePostResponseAction, type ResponseRenderArgs } from '../components/InlinePostSolutionsThread'
 import PostReplyComposerOverlays from '../components/PostReplyComposerOverlays'
 import PostCrudBottomSheet from '../components/PostCrudBottomSheet'
 import ReplyCrudBottomSheet from '../components/ReplyCrudBottomSheet'
@@ -260,6 +260,20 @@ type PostReplyImageBlock = {
 
 type PostReplyBlock = PostReplyTextBlock | PostReplyLatexBlock | PostReplyCanvasBlock | PostReplyImageBlock
 
+type PostReplyThreadMeta = {
+  parentResponseId?: string | null
+  rootResponseId?: string | null
+  replyToUserId?: string | null
+  replyToUserName?: string | null
+}
+
+type PostReplyThreadTarget = {
+  responseId: string
+  rootResponseId?: string | null
+  userId?: string | null
+  userName?: string | null
+}
+
 type ComposerBlockEditTarget = {
   blockId: string
   type: PostReplyBlock['type']
@@ -275,6 +289,36 @@ const POST_REPLY_BLOCKS_KIND = 'post-reply-blocks-v1'
 
 const createPostReplyBlockId = () => {
   return `block_${Math.random().toString(36).slice(2, 10)}`
+}
+
+const normalizePostReplyThreadMeta = (value?: PostReplyThreadMeta | null): PostReplyThreadMeta | null => {
+  const parentResponseId = typeof value?.parentResponseId === 'string' ? value.parentResponseId.trim() : ''
+  const rootResponseIdRaw = typeof value?.rootResponseId === 'string' ? value.rootResponseId.trim() : ''
+  const replyToUserId = typeof value?.replyToUserId === 'string' ? value.replyToUserId.trim() : ''
+  const replyToUserName = typeof value?.replyToUserName === 'string' ? value.replyToUserName.trim() : ''
+
+  const rootResponseId = rootResponseIdRaw || parentResponseId
+  if (!parentResponseId && !rootResponseId && !replyToUserId && !replyToUserName) return null
+
+  return {
+    ...(parentResponseId ? { parentResponseId } : {}),
+    ...(rootResponseId ? { rootResponseId } : {}),
+    ...(replyToUserId ? { replyToUserId } : {}),
+    ...(replyToUserName ? { replyToUserName } : {}),
+  }
+}
+
+const getPostReplyThreadMeta = (source: any): PostReplyThreadMeta | null => {
+  const replyThread = source?.gradingJson?.kind === POST_REPLY_BLOCKS_KIND && source?.gradingJson?.replyThread && typeof source.gradingJson.replyThread === 'object'
+    ? source.gradingJson.replyThread
+    : null
+
+  return normalizePostReplyThreadMeta({
+    parentResponseId: source?.parentResponseId ?? replyThread?.parentResponseId,
+    rootResponseId: source?.rootResponseId ?? replyThread?.rootResponseId,
+    replyToUserId: source?.replyToUserId ?? replyThread?.replyToUserId,
+    replyToUserName: source?.replyToUserName ?? replyThread?.replyToUserName,
+  })
 }
 
 const OverlayPortal = ({ children }: { children: React.ReactNode }) => {
@@ -567,8 +611,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return fallbackBlocks
   }, [])
 
-  const buildPostReplyPayloadFromBlocks = useCallback((blocks: PostReplyBlock[]) => {
+  const buildPostReplyPayloadFromBlocks = useCallback((blocks: PostReplyBlock[], threadMeta?: PostReplyThreadMeta | null) => {
     const normalizedBlocks = normalizePostReplyBlocks(blocks)
+    const normalizedThreadMeta = normalizePostReplyThreadMeta(threadMeta)
     const studentText = normalizedBlocks
       .filter((block): block is PostReplyTextBlock => block.type === 'text')
       .map((block) => block.text)
@@ -586,7 +631,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       studentText,
       latex,
       excalidrawScene: canvasBlock?.scene || null,
-      gradingJson: normalizedBlocks.length > 0 ? { kind: POST_REPLY_BLOCKS_KIND, contentBlocks: normalizedBlocks } : null,
+      gradingJson: normalizedBlocks.length > 0
+        ? {
+            kind: POST_REPLY_BLOCKS_KIND,
+            contentBlocks: normalizedBlocks,
+            ...(normalizedThreadMeta ? { replyThread: normalizedThreadMeta } : {}),
+          }
+        : null,
     }
   }, [normalizePostReplyBlocks])
 
@@ -862,6 +913,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     initialGradingJson?: any | null
     preferredRecognitionEngine?: 'keyboard' | 'myscript' | 'mathpix'
     postRecord?: any | null
+    editingResponseId?: string | null
+    replyTarget?: PostReplyThreadTarget | null
   }
 
   type PostSolvePreviewState = {
@@ -5177,7 +5230,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return Math.max(updated, created)
   }, [])
 
-  const orderThreadResponsesForFeed = useCallback((responses: any[]) => {
+  const orderChallengeResponsesForFeed = useCallback((responses: any[]) => {
     const latestByUser = new Map<string, any>()
     for (const response of Array.isArray(responses) ? responses : []) {
       const responseUserId = String(response?.userId || response?.user?.id || response?.userEmail || response?.id || '')
@@ -5197,13 +5250,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return mine ? [mine, ...others] : deduped
   }, [currentUserId, getThreadResponseTimestamp, viewerId])
 
+  const orderPostThreadResponses = useCallback((responses: any[]) => {
+    return (Array.isArray(responses) ? responses : []).slice().sort((a, b) => getThreadResponseTimestamp(b) - getThreadResponseTimestamp(a))
+  }, [getThreadResponseTimestamp])
+
   const displayPostThreadResponses = useMemo(() => {
-    return orderThreadResponsesForFeed(postThreadResponses)
-  }, [orderThreadResponsesForFeed, postThreadResponses])
+    return orderPostThreadResponses(postThreadResponses)
+  }, [orderPostThreadResponses, postThreadResponses])
 
   const displayChallengeThreadResponses = useMemo(() => {
-    return orderThreadResponsesForFeed(challengeThreadResponses)
-  }, [challengeThreadResponses, orderThreadResponsesForFeed])
+    return orderChallengeResponsesForFeed(challengeThreadResponses)
+  }, [challengeThreadResponses, orderChallengeResponsesForFeed])
 
   function rememberInteractiveViewportScenes(responses: any[]) {
     for (const response of Array.isArray(responses) ? responses : []) {
@@ -5376,11 +5433,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const effectiveCurrentUserId = String(currentUserId || viewerId || '')
     const responseUserName = String(session?.user?.name || session?.user?.email || 'You')
     const responseUserAvatar = String((session as any)?.user?.avatar || (session as any)?.user?.image || '').trim()
+    const replyThreadMeta = postSolvePreviewOverlay.draft.replyTarget ? {
+      parentResponseId: postSolvePreviewOverlay.draft.replyTarget.responseId,
+      rootResponseId: postSolvePreviewOverlay.draft.replyTarget.rootResponseId || postSolvePreviewOverlay.draft.replyTarget.responseId,
+      replyToUserId: postSolvePreviewOverlay.draft.replyTarget.userId || null,
+      replyToUserName: postSolvePreviewOverlay.draft.replyTarget.userName || null,
+    } : null
     const draftPayload = buildPostReplyPayloadFromBlocks([
       ...postSolveBlocks,
       ...(String(postSolveText || '').trim() ? [{ id: createPostReplyBlockId(), type: 'text', text: String(postSolveText || '') } as PostReplyTextBlock] : []),
       ...(postSolvePreviewOverlay.draftScene ? [{ id: createPostReplyBlockId(), type: 'canvas', scene: postSolvePreviewOverlay.draftScene } as PostReplyCanvasBlock] : []),
-    ])
+    ], replyThreadMeta)
 
     const draftResponse = {
       id: postSolvePreviewResponseId,
@@ -5401,8 +5464,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       __draftPreview: true,
     }
 
-    return orderThreadResponsesForFeed([draftResponse, ...(Array.isArray(postSolvePreviewOverlay.responses) ? postSolvePreviewOverlay.responses : [])])
-  }, [buildPostReplyPayloadFromBlocks, currentUserId, orderThreadResponsesForFeed, postSolveBlocks, postSolvePreviewOverlay, postSolveText, session, viewerId])
+    return orderPostThreadResponses([draftResponse, ...(Array.isArray(postSolvePreviewOverlay.responses) ? postSolvePreviewOverlay.responses : [])])
+  }, [buildPostReplyPayloadFromBlocks, currentUserId, orderPostThreadResponses, postSolveBlocks, postSolvePreviewOverlay, postSolveText, session, viewerId])
 
   useEffect(() => {
     const previewPostId = String(postSolvePreviewOverlay?.draft?.postId || '')
@@ -6639,6 +6702,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
             )
           }}
+          getResponseActions={(response, args) => buildPostReplyActions(item, response, args)}
           onOpenImageBlock={(imageUrl, args) => openPostImageViewer(imageUrl, `${args.responseUserName} attachment`)}
           onCanvasViewportChange={(response, responseId, scene) => {
             if (options.onInteractiveViewportChange && options.interactiveViewportResponseId === responseId) {
@@ -8379,7 +8443,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     })
   }, [composePostSolveBlocksWithDraftText, isMobile, postSolveBlocks, postSolveEditingTarget, postSolveText])
 
-  const openPostSolveComposer = useCallback(async (post: any, options?: { initialScene?: any | null; initialLatex?: string | null; initialStudentText?: string | null; initialGradingJson?: any | null }) => {
+  const openPostSolveComposer = useCallback(async (post: any, options?: {
+    initialScene?: any | null
+    initialLatex?: string | null
+    initialStudentText?: string | null
+    initialGradingJson?: any | null
+    editingResponseId?: string | null
+    replyTarget?: PostReplyThreadTarget | null
+  }) => {
     const postId = String(post?.id || '')
     const threadKey = typeof post?.threadKey === 'string' ? post.threadKey : `post:${postId}`
     if (!postId || !threadKey) return
@@ -8403,25 +8474,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     setPostSolveError(null)
     setPostSolvePreviewOverlay(null)
-    let initialResponseSource: any = {
+    const initialResponseSource: any = {
       excalidrawScene: options?.initialScene ?? null,
       latex: typeof options?.initialLatex === 'string' ? options.initialLatex : '',
       studentText: typeof options?.initialStudentText === 'string' ? options.initialStudentText : '',
       gradingJson: options?.initialGradingJson ?? null,
     }
-    if (!options?.initialGradingJson && !options?.initialScene && !options?.initialLatex && !options?.initialStudentText) {
-      try {
-        const responses = await fetchPublicThreadResponses(threadKey)
-        const effectiveCurrentUserId = String(currentUserId || viewerId || '')
-        const mine = responses.find((response: any) => String(response?.userId || '') === effectiveCurrentUserId)
-        if (mine) initialResponseSource = mine
-      } catch {
-        // ignore prefill failures and still open the composer
-      }
-    }
 
     const initialBlocks = normalizePostReplyBlocks(initialResponseSource)
     const initialPayload = buildPostReplyPayloadFromBlocks(initialBlocks)
+    const replyTarget = options?.replyTarget && String(options.replyTarget.responseId || '').trim()
+      ? {
+          responseId: String(options.replyTarget.responseId),
+          rootResponseId: String(options.replyTarget.rootResponseId || options.replyTarget.responseId || '') || null,
+          userId: options.replyTarget.userId ? String(options.replyTarget.userId) : null,
+          userName: options.replyTarget.userName ? String(options.replyTarget.userName) : null,
+        }
+      : null
 
     setPostSolveBlocks(initialBlocks)
     setPostSolveText('')
@@ -8442,8 +8511,69 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       initialStudentText: initialPayload.studentText,
       initialGradingJson: initialPayload.gradingJson,
       postRecord: post,
+      editingResponseId: String(options?.editingResponseId || '').trim() || null,
+      replyTarget,
     })
-  }, [buildPostReplyPayloadFromBlocks, currentUserId, fetchPublicThreadResponses, normalizePostReplyBlocks, viewerId])
+  }, [buildPostReplyPayloadFromBlocks, normalizePostReplyBlocks])
+
+  const openReplyComposerForPostResponse = useCallback((post: any, response: any) => {
+    const responseId = String(response?.id || '').trim()
+    if (!responseId) return
+
+    const threadMeta = getPostReplyThreadMeta(response)
+    void openPostSolveComposer(post, {
+      replyTarget: {
+        responseId,
+        rootResponseId: String(threadMeta?.rootResponseId || responseId),
+        userId: String(response?.userId || response?.user?.id || '') || null,
+        userName: String(response?.user?.name || response?.userName || response?.user?.email || 'Learner'),
+      },
+    })
+  }, [openPostSolveComposer])
+
+  const buildPostReplyActions = useCallback((post: any, response: any, args: ResponseRenderArgs): InlinePostResponseAction[] => {
+    const itemKey = `reply:${args.responseId}`
+    const replyText = String(response?.studentText || response?.latex || '').trim()
+
+    return [
+      {
+        label: 'Like',
+        active: Boolean(socialLikedItems[itemKey]),
+        onClick: () => toggleSocialLike(itemKey),
+        icon: (
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+            <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Reply',
+        onClick: () => openReplyComposerForPostResponse(post, response),
+        icon: (
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+            <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Share',
+        statusLabel: lastSharedSocialItemKey === itemKey ? 'Copied' : undefined,
+        onClick: () => void shareDashboardItem({
+          itemKey,
+          title: `Reply from ${args.responseUserName}`,
+          text: replyText || `Reply from ${args.responseUserName}`,
+          path: `/dashboard?openFeedThreadId=${encodeURIComponent(String(post?.id || ''))}&openFeedThreadKind=post&replyId=${encodeURIComponent(args.responseId)}`,
+        }),
+        icon: (
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+            <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M4 19V17C4 13.6863 6.68629 11 10 11H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ),
+      },
+    ]
+  }, [lastSharedSocialItemKey, openReplyComposerForPostResponse, shareDashboardItem, socialLikedItems, toggleSocialLike])
 
   useEffect(() => {
     if (!router.isReady) return
@@ -8618,11 +8748,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const editReplyFromCrudTarget = useCallback((target: ReplyCrudTarget) => {
     setReplyCrudTarget(null)
     if (target.kind === 'post') {
+      const threadMeta = getPostReplyThreadMeta(target.response)
+      const parentResponseId = String(threadMeta?.parentResponseId || '').trim()
       void openPostSolveComposer(target.item, {
         initialScene: target?.response?.excalidrawScene || null,
         initialLatex: typeof target?.response?.latex === 'string' ? target.response.latex : '',
         initialStudentText: typeof target?.response?.studentText === 'string' ? target.response.studentText : '',
         initialGradingJson: target?.response?.gradingJson ?? null,
+        editingResponseId: String(target?.response?.id || ''),
+        replyTarget: parentResponseId ? {
+          responseId: parentResponseId,
+          rootResponseId: String(threadMeta?.rootResponseId || parentResponseId),
+          userId: threadMeta?.replyToUserId ? String(threadMeta.replyToUserId) : null,
+          userName: threadMeta?.replyToUserName ? String(threadMeta.replyToUserName) : null,
+        } : null,
       })
       return
     }
@@ -8635,7 +8774,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const activeDraft = postSolveModeOverlay
     if (!activeDraft?.postId || !activeDraft?.threadKey) return
     const draftText = String(postSolveText || '')
-    const payload = buildPostReplyPayloadFromBlocks(composePostSolveBlocksWithDraftText(postSolveBlocks, draftText, postSolveEditingTarget))
+    const replyThreadMeta = activeDraft.replyTarget ? {
+      parentResponseId: activeDraft.replyTarget.responseId,
+      rootResponseId: activeDraft.replyTarget.rootResponseId || activeDraft.replyTarget.responseId,
+      replyToUserId: activeDraft.replyTarget.userId || null,
+      replyToUserName: activeDraft.replyTarget.userName || null,
+    } : null
+    const payload = buildPostReplyPayloadFromBlocks(
+      composePostSolveBlocksWithDraftText(postSolveBlocks, draftText, postSolveEditingTarget),
+      replyThreadMeta,
+    )
     if (!payload.contentBlocks.length) {
       setPostSolveError('Write a reply before sending.')
       return
@@ -8644,10 +8792,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setPostSolveError(null)
     try {
       const res = await fetch(`/api/threads/${encodeURIComponent(activeDraft.threadKey)}/responses`, {
-        method: 'POST',
+        method: activeDraft.editingResponseId ? 'PATCH' : 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          responseId: activeDraft.editingResponseId || undefined,
           latex: payload.latex,
           studentText: payload.studentText,
           contentBlocks: payload.contentBlocks,
@@ -8655,6 +8804,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           quizLabel: activeDraft.title,
           prompt: activeDraft.prompt,
           excalidrawScene: payload.excalidrawScene,
+          parentResponseId: replyThreadMeta?.parentResponseId,
+          rootResponseId: replyThreadMeta?.rootResponseId,
+          replyToUserId: replyThreadMeta?.replyToUserId,
+          replyToUserName: replyThreadMeta?.replyToUserName,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -15927,7 +16080,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               setPostThreadError(null)
               setPostThreadResponses([])
             }}
-            rightActions={postThreadResponses.some((response: any) => String(response?.userId || '') === String(currentUserId || viewerId || '')) ? null : (
+            rightActions={(
               <button
                 type="button"
                 className="btn btn-primary"
@@ -15935,7 +16088,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   void openPostSolveComposer(postThreadOverlay)
                 }}
               >
-                Share solution
+                Reply
               </button>
             )}
           >
@@ -15954,89 +16107,53 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   <img src={postThreadOverlay.imageUrl} alt="Post attachment" className="max-h-[320px] w-full object-contain" />
                 </button>
               ) : null}
-              {postThreadError ? (
-                <div className="rounded-2xl border border-red-300/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{postThreadError}</div>
-              ) : postThreadLoading ? (
-                <div className="text-sm text-white/70">Loading solutions...</div>
-              ) : postThreadResponses.length === 0 ? (
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/70">No solutions yet.</div>
-              ) : (
-                <div className="space-y-3">
-                  {postThreadResponses.map((response: any) => {
-                    const responseUserName = String(response?.user?.name || response?.user?.email || 'Learner')
-                    const responseUserId = response?.user?.id ? String(response.user.id) : null
-                    const responseAvatar = String(response?.user?.avatar || response?.userAvatar || '').trim()
-                    const isMine = String(response?.userId || '') === String(currentUserId || viewerId || '')
-                    const postReplyBlocks = normalizePostReplyBlocks(response)
-                    const hasPostReplyBlocks = postReplyBlocks.length > 0
-                    const replyCrudTarget: ReplyCrudTarget = {
+              <InlinePostSolutionsThread
+                loading={postThreadLoading}
+                error={postThreadError}
+                responses={postThreadResponses}
+                currentUserId={String(currentUserId || viewerId || '')}
+                theme="dark"
+                getContainerProps={(response, args) => ({
+                  onPointerDown: (event) => beginReplyLongPress(event as any, {
+                    kind: 'post',
+                    threadKey: String(postThreadOverlay?.threadKey || `post:${String(postThreadOverlay?.postId || '')}`),
+                    item: postThreadOverlay,
+                    response,
+                  }),
+                  onPointerMove: moveReplyLongPress as any,
+                  onPointerUp: clearReplyLongPress as any,
+                  onPointerCancel: clearReplyLongPress as any,
+                  onPointerLeave: clearReplyLongPress as any,
+                  onContextMenu: (event) => {
+                    if (!args.isMine) return
+                    event.preventDefault()
+                    openReplyCrudOptions({
                       kind: 'post',
                       threadKey: String(postThreadOverlay?.threadKey || `post:${String(postThreadOverlay?.postId || '')}`),
                       item: postThreadOverlay,
                       response,
-                    }
-                    return (
-                      <div
-                        key={String(response?.id || Math.random())}
-                        className="rounded-2xl border border-white/10 bg-white/5 p-4"
-                        onPointerDown={(event) => beginReplyLongPress(event, replyCrudTarget)}
-                        onPointerMove={moveReplyLongPress}
-                        onPointerUp={clearReplyLongPress}
-                        onPointerCancel={clearReplyLongPress}
-                        onPointerLeave={clearReplyLongPress}
-                        onContextMenu={(event) => {
-                          if (!isMine) return
-                          event.preventDefault()
-                          openReplyCrudOptions(replyCrudTarget)
-                        }}
-                      >
-                        <div className="flex items-start gap-3">
-                          <UserLink userId={responseUserId} className="shrink-0" title="View profile">
-                            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/10">
-                              {responseAvatar ? (
-                                <img src={responseAvatar} alt={responseUserName} className="h-full w-full object-cover" />
-                              ) : (
-                                <span className="text-[11px] font-semibold text-white">{responseUserName.slice(0, 1).toUpperCase()}</span>
-                              )}
-                            </div>
-                          </UserLink>
-                          <div className="min-w-0 flex-1">
-                            <UserLink userId={responseUserId} className="text-sm font-semibold text-white hover:underline" title="View profile">
-                              {responseUserName}
-                            </UserLink>
-                            {isMine && response?.excalidrawScene && (interactiveViewportErrorByResponseId[String(response?.id || '')] || interactiveViewportSavingByResponseId[String(response?.id || '')]) ? (
-                              <div className="mt-1 text-[11px] font-medium text-white/55">
-                                {interactiveViewportErrorByResponseId[String(response?.id || '')] || 'Saving view...'}
-                              </div>
-                            ) : null}
-                            <div className="mt-2 min-w-0 rounded-[20px] text-white/90">
-                              {hasPostReplyBlocks ? (
-                                renderPostReplyBlocks(postReplyBlocks, `post-thread-reply-${String(response?.id || 'draft')}`, {
-                                  wrapperClassName: 'space-y-3 text-white/90',
-                                  textClassName: 'text-sm leading-6 whitespace-pre-wrap break-words text-white/85',
-                                  mathClassName: 'leading-relaxed text-white/95',
-                                  onOpenImageBlock: (imageUrl) => openPostImageViewer(imageUrl, `${responseUserName} attachment`),
-                                  compactCanvasPreview: true,
-                                  onOpenCanvasBlock: (scene) => openPostCanvasViewer(
-                                    scene,
-                                    `${responseUserName} canvas`,
-                                    null,
-                                    isMine && response?.id
-                                      ? (nextScene) => queueInteractiveViewportSave(String(postThreadOverlay?.threadKey || ''), String(response.id), nextScene)
-                                      : undefined
-                                  ),
-                                })
-                              ) : (
-                                <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-white/70">No canvas attached.</div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+                    })
+                  },
+                })}
+                renderResponseStatus={(response, args) => {
+                  const viewportSaving = Boolean(interactiveViewportSavingByResponseId[args.responseId])
+                  const viewportError = String(interactiveViewportErrorByResponseId[args.responseId] || '').trim()
+                  if (!(args.isMine && response?.excalidrawScene && (viewportError || viewportSaving))) return null
+                  return (
+                    <div className="mt-1 text-[11px] font-medium text-white/55">
+                      {viewportError ? viewportError : 'Saving view...'}
+                    </div>
+                  )
+                }}
+                getResponseActions={(response, args) => buildPostReplyActions(postThreadOverlay, response, args)}
+                onOpenImageBlock={(imageUrl, args) => openPostImageViewer(imageUrl, `${args.responseUserName} attachment`)}
+                onCanvasViewportChange={(response, responseId, scene) => {
+                  const responseUserId = String(response?.userId || response?.user?.id || '')
+                  if (responseUserId === String(currentUserId || viewerId || '') && responseId) {
+                    queueInteractiveViewportSave(String(postThreadOverlay?.threadKey || ''), responseId, scene)
+                  }
+                }}
+              />
             </div>
           </FullScreenGlassOverlay>
         </OverlayPortal>

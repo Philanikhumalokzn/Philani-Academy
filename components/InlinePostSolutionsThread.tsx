@@ -54,10 +54,11 @@ const getResponseTimestamp = (response: any) => {
 }
 
 const THREAD_PARENT_AVATAR_SIZE = 36
-const THREAD_REPLY_SCALE = 0.6
+const THREAD_REPLY_SCALE = 0.75
+const THREAD_MAX_VISUAL_NESTING_DEPTH = 1
 
-const getThreadAvatarSize = (depth: number) => {
-  return Number((THREAD_PARENT_AVATAR_SIZE * Math.pow(THREAD_REPLY_SCALE, depth + 1)).toFixed(2))
+const getThreadAvatarSize = (visualDepth: number) => {
+  return Number((THREAD_PARENT_AVATAR_SIZE * Math.pow(THREAD_REPLY_SCALE, visualDepth + 1)).toFixed(2))
 }
 
 const buildThreadTree = (responses: any[]) => {
@@ -267,7 +268,9 @@ export default function InlinePostSolutionsThread({
     const responseUserId = String(response?.userId || response?.user?.id || '')
     const responseUserName = String(response?.user?.name || response?.userName || response?.user?.email || 'Learner')
     const responseAvatar = String(response?.user?.avatar || response?.userAvatar || '').trim()
-    const avatarSize = getThreadAvatarSize(depth)
+    const visualDepth = Math.min(depth, THREAD_MAX_VISUAL_NESTING_DEPTH)
+    const collapsedLevels = Math.max(0, depth - THREAD_MAX_VISUAL_NESTING_DEPTH)
+    const avatarSize = getThreadAvatarSize(visualDepth)
     const avatarFallbackFontSize = Number((avatarSize * 0.32).toFixed(2))
     const isMine = responseUserId === currentUserId
     const args: ResponseRenderArgs = { responseId, responseUserId, responseUserName, responseAvatar, isMine }
@@ -276,11 +279,14 @@ export default function InlinePostSolutionsThread({
     const actions = getResponseActions?.(response, args) || []
     const leadingActions = actions.filter((action) => action.alignment !== 'trailing')
     const trailingActions = actions.filter((action) => action.alignment === 'trailing')
-    const showRail = depth > 0 && (node.children.length > 0 || !isLastSibling)
+    const showRail = visualDepth > 0 && (node.children.length > 0 || !isLastSibling)
 
     return (
       <div key={responseId} className={depth === 0 ? 'py-1' : 'pt-4'} {...containerProps}>
-        <div className={depth > 0 ? 'pl-2 sm:pl-4' : ''}>
+        <div
+          className={visualDepth > 0 ? 'pl-2 sm:pl-4' : ''}
+          style={collapsedLevels > 0 ? { marginLeft: `calc(-${collapsedLevels} * var(--inline-post-thread-nest-step))` } : undefined}
+        >
           <div className="flex items-start gap-3">
             <div className="relative flex w-10 shrink-0 justify-center self-stretch">
               <UserLink userId={responseUserId || null} className="shrink-0" title="View profile">
@@ -341,7 +347,7 @@ export default function InlinePostSolutionsThread({
   }
 
   return (
-    <div className="mt-1 pt-1">
+    <div className="mt-1 pt-1 [--inline-post-thread-nest-step:3.75rem] sm:[--inline-post-thread-nest-step:4.25rem]">
       {loading ? <div className={palette.mutedText}>Loading solutions...</div> : null}
       {!loading && error ? <div className={palette.errorText}>{error}</div> : null}
       {!loading && !error && !threadUnlocked ? (

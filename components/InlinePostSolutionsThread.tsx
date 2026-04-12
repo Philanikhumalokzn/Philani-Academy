@@ -56,7 +56,8 @@ const getResponseTimestamp = (response: any) => {
 const THREAD_PARENT_AVATAR_SIZE = 36
 const THREAD_REPLY_SCALE = 0.75
 const THREAD_MAX_VISUAL_NESTING_DEPTH = 1
-const THREAD_MAX_AVATAR_DEPTH = 2
+// Reply-tree depth 1 corresponds to a reply-to-reply from the post level.
+const THREAD_MAX_AVATAR_DEPTH = 1
 const THREAD_FLATTENED_BRANCH_COLORS = [
   '#1d4ed8',
   '#0f766e',

@@ -347,7 +347,7 @@ export default function InlinePostSolutionsThread({
     return (
       <div key={responseId} className={depth === 0 ? 'py-1' : 'pt-1.5'} {...containerProps}>
         <div className={visualDepth > 0 ? 'pl-2 sm:pl-4' : ''}>
-          <div className="flex items-start gap-3">
+          <div className="flex items-start gap-1">
             <div className="relative flex w-10 shrink-0 justify-center self-stretch">
               {showTrackedRail && trackedRailColor ? (
                 <>
@@ -396,7 +396,7 @@ export default function InlinePostSolutionsThread({
             </div>
 
             <div className="min-w-0 flex-1 pb-1">
-              <div className={activeBranchColor ? 'rounded-[20px] px-3 py-2' : ''} style={flattenedReplyShellStyle}>
+              <div className={activeBranchColor ? 'rounded-[20px] px-2 py-2' : ''} style={flattenedReplyShellStyle}>
                 <div className="flex items-center gap-2" style={{ minHeight: avatarSize }}>
                   {activeBranchColor ? (
                     <span

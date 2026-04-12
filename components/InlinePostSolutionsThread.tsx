@@ -323,6 +323,7 @@ export default function InlinePostSolutionsThread({
     const activeBranchColor = isFlattenedReply ? trackedRailColor : null
     const showConnectorTail = node.children.length > 0 || !isLastSibling
     const connectorStroke = trackedRailColor ? `2px solid ${trackedRailColor}` : undefined
+    const childRailColor = node.children.length > 0 ? getThreadBranchColor(responseId) : null
     const avatarShellStyle = {
       width: avatarSize,
       height: avatarSize,
@@ -435,7 +436,20 @@ export default function InlinePostSolutionsThread({
               </div>
 
               {node.children.length > 0 ? (
-                <div className="mt-4 space-y-4" style={childContainerStyle}>
+                <div className="relative mt-4 space-y-4" style={childContainerStyle}>
+                  {childRailColor ? (
+                    <div
+                      className="absolute"
+                      style={{
+                        left: 'var(--inline-post-thread-connector-left)',
+                        top: 'calc(-1 * var(--inline-post-thread-child-gap))',
+                        height: 'var(--inline-post-thread-child-gap)',
+                        width: 0,
+                        borderLeft: `2px solid ${childRailColor}`,
+                      }}
+                      aria-hidden="true"
+                    />
+                  ) : null}
                   {node.children.map((childNode, index) => {
                     const childDepth = depth + 1
                     const childBranchColor = childDepth > 0
@@ -454,7 +468,7 @@ export default function InlinePostSolutionsThread({
   }
 
   return (
-    <div className="mt-1 pt-1 [--inline-post-thread-content-shift:3.25rem] [--inline-post-thread-nest-step:3.75rem] sm:[--inline-post-thread-nest-step:4.25rem]">
+    <div className="mt-1 pt-1 [--inline-post-thread-child-gap:1rem] [--inline-post-thread-connector-left:0.75rem] [--inline-post-thread-content-shift:3.25rem] [--inline-post-thread-nest-step:3.75rem] sm:[--inline-post-thread-connector-left:1.25rem] sm:[--inline-post-thread-nest-step:4.25rem]">
       {loading ? <div className={palette.mutedText}>Loading solutions...</div> : null}
       {!loading && error ? <div className={palette.errorText}>{error}</div> : null}
       {!loading && !error && !threadUnlocked ? (

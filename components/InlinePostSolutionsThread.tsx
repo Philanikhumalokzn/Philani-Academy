@@ -55,7 +55,7 @@ const getResponseTimestamp = (response: any) => {
 
 const THREAD_PARENT_AVATAR_SIZE = 36
 const THREAD_REPLY_SCALE = 0.75
-const THREAD_MAX_VISUAL_NESTING_DEPTH = 1
+const THREAD_MAX_VISUAL_NESTING_DEPTH = 2
 
 const getThreadAvatarSize = (visualDepth: number) => {
   return Number((THREAD_PARENT_AVATAR_SIZE * Math.pow(THREAD_REPLY_SCALE, visualDepth + 1)).toFixed(2))
@@ -269,7 +269,6 @@ export default function InlinePostSolutionsThread({
     const responseUserName = String(response?.user?.name || response?.userName || response?.user?.email || 'Learner')
     const responseAvatar = String(response?.user?.avatar || response?.userAvatar || '').trim()
     const visualDepth = Math.min(depth, THREAD_MAX_VISUAL_NESTING_DEPTH)
-    const collapsedLevels = Math.max(0, depth - THREAD_MAX_VISUAL_NESTING_DEPTH)
     const avatarSize = getThreadAvatarSize(visualDepth)
     const avatarFallbackFontSize = Number((avatarSize * 0.32).toFixed(2))
     const isMine = responseUserId === currentUserId
@@ -283,10 +282,7 @@ export default function InlinePostSolutionsThread({
 
     return (
       <div key={responseId} className={depth === 0 ? 'py-1' : 'pt-4'} {...containerProps}>
-        <div
-          className={visualDepth > 0 ? 'pl-2 sm:pl-4' : ''}
-          style={collapsedLevels > 0 ? { marginLeft: `calc(-${collapsedLevels} * var(--inline-post-thread-nest-step))` } : undefined}
-        >
+        <div className={visualDepth > 0 ? 'pl-2 sm:pl-4' : ''}>
           <div className="flex items-start gap-3">
             <div className="relative flex w-10 shrink-0 justify-center self-stretch">
               <UserLink userId={responseUserId || null} className="shrink-0" title="View profile">
@@ -335,7 +331,10 @@ export default function InlinePostSolutionsThread({
               {renderResponseFooter ? <div className="mt-3">{renderResponseFooter(response, args)}</div> : null}
 
               {node.children.length > 0 ? (
-                <div className="mt-4 space-y-4">
+                <div
+                  className="mt-4 space-y-4"
+                  style={depth >= THREAD_MAX_VISUAL_NESTING_DEPTH ? { marginLeft: 'calc(-1 * var(--inline-post-thread-nest-step))' } : undefined}
+                >
                   {node.children.map((childNode, index) => renderResponseNode(childNode, depth + 1, index === node.children.length - 1))}
                 </div>
               ) : null}

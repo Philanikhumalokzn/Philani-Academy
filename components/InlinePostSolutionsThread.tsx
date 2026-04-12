@@ -55,7 +55,29 @@ const getResponseTimestamp = (response: any) => {
 
 const THREAD_PARENT_AVATAR_SIZE = 36
 const THREAD_REPLY_SCALE = 0.75
-const THREAD_MAX_VISUAL_NESTING_DEPTH = 0
+const THREAD_MAX_VISUAL_NESTING_DEPTH = 1
+const THREAD_FLATTENED_BRANCH_COLORS = [
+  '#1d4ed8',
+  '#0f766e',
+  '#b45309',
+  '#7e22ce',
+  '#be123c',
+  '#15803d',
+  '#0369a1',
+  '#334155',
+] as const
+
+const getThreadBranchColor = (seed: string) => {
+  const safeSeed = String(seed || '').trim() || 'thread-branch'
+  let hash = 0
+
+  for (let index = 0; index < safeSeed.length; index += 1) {
+    hash = ((hash << 5) - hash) + safeSeed.charCodeAt(index)
+    hash |= 0
+  }
+
+  return THREAD_FLATTENED_BRANCH_COLORS[Math.abs(hash) % THREAD_FLATTENED_BRANCH_COLORS.length]
+}
 
 const getThreadAvatarSize = (depth: number) => {
   return Number((THREAD_PARENT_AVATAR_SIZE * Math.pow(THREAD_REPLY_SCALE, depth + 1)).toFixed(2))
@@ -262,14 +284,13 @@ export default function InlinePostSolutionsThread({
     )
   }
 
-  const renderResponseNode = (node: ThreadNode, depth: number, isLastSibling: boolean): React.ReactNode => {
+  const renderResponseNode = (node: ThreadNode, depth: number, isLastSibling: boolean, branchColor: string | null = null): React.ReactNode => {
     const response = node.response
     const responseId = String(response?.id || `${depth}-${Math.random().toString(36).slice(2, 8)}`)
     const responseUserId = String(response?.userId || response?.user?.id || '')
     const responseUserName = String(response?.user?.name || response?.userName || response?.user?.email || 'Learner')
     const responseAvatar = String(response?.user?.avatar || response?.userAvatar || '').trim()
     const visualDepth = Math.min(depth, THREAD_MAX_VISUAL_NESTING_DEPTH)
-    const childVisualDepth = Math.min(depth + 1, THREAD_MAX_VISUAL_NESTING_DEPTH)
     const avatarSize = getThreadAvatarSize(depth)
     const avatarFallbackFontSize = Number((avatarSize * 0.32).toFixed(2))
     const isMine = responseUserId === currentUserId
@@ -279,16 +300,48 @@ export default function InlinePostSolutionsThread({
     const actions = getResponseActions?.(response, args) || []
     const leadingActions = actions.filter((action) => action.alignment !== 'trailing')
     const trailingActions = actions.filter((action) => action.alignment === 'trailing')
-    const showRail = depth > THREAD_MAX_VISUAL_NESTING_DEPTH && (node.children.length > 0 || !isLastSibling)
-    const shouldCounterOffsetChildren = childVisualDepth === visualDepth
+    const isFlattenedReply = depth > THREAD_MAX_VISUAL_NESTING_DEPTH
+    const activeBranchColor = isFlattenedReply
+      ? (branchColor || getThreadBranchColor(threadMeta?.parentResponseId || responseId))
+      : null
+    const showConnectorTail = node.children.length > 0 || !isLastSibling
+    const childContainerStyle = depth === 0
+      ? { marginLeft: 'calc(-1 * var(--inline-post-thread-content-shift))' }
+      : depth >= THREAD_MAX_VISUAL_NESTING_DEPTH
+        ? { marginLeft: 'calc(-1 * var(--inline-post-thread-nest-step))' }
+        : undefined
 
     return (
       <div key={responseId} className={depth === 0 ? 'py-1' : 'pt-4'} {...containerProps}>
         <div className={visualDepth > 0 ? 'pl-2 sm:pl-4' : ''}>
           <div className="flex items-start gap-3">
             <div className="relative flex w-10 shrink-0 justify-center self-stretch">
+              {isFlattenedReply && activeBranchColor ? (
+                <>
+                  <div
+                    className="absolute w-px"
+                    style={{ left: 6, top: 0, height: (avatarSize / 2) + 1, backgroundColor: activeBranchColor }}
+                    aria-hidden="true"
+                  />
+                  {showConnectorTail ? (
+                    <div
+                      className="absolute bottom-0 w-px"
+                      style={{ left: 6, top: avatarSize / 2, backgroundColor: activeBranchColor }}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                  <div
+                    className="absolute h-px"
+                    style={{ left: 6, top: avatarSize / 2, width: 14, backgroundColor: activeBranchColor }}
+                    aria-hidden="true"
+                  />
+                </>
+              ) : null}
               <UserLink userId={responseUserId || null} className="shrink-0" title="View profile">
-                <div className={palette.avatarShell} style={{ width: avatarSize, height: avatarSize }}>
+                <div
+                  className={palette.avatarShell}
+                  style={{ width: avatarSize, height: avatarSize, ...(activeBranchColor ? { borderColor: activeBranchColor } : {}) }}
+                >
                   {responseAvatar ? (
                     <img src={responseAvatar} alt={responseUserName} className="h-full w-full object-cover" />
                   ) : (
@@ -296,24 +349,22 @@ export default function InlinePostSolutionsThread({
                   )}
                 </div>
               </UserLink>
-              {showRail ? (
-                <div
-                  className={`absolute left-1/2 bottom-0 w-px -translate-x-1/2 ${palette.rail}`}
-                  style={{ top: avatarSize + 8 }}
-                  aria-hidden="true"
-                />
-              ) : null}
             </div>
 
             <div className="min-w-0 flex-1 pb-1">
-              <div className="flex items-center" style={{ minHeight: avatarSize }}>
+              <div className="flex items-center gap-2" style={{ minHeight: avatarSize }}>
+                {activeBranchColor ? (
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: activeBranchColor }} aria-hidden="true" />
+                ) : null}
                 <UserLink userId={responseUserId || null} className={palette.nameClass} title="View profile">
                   {responseUserName}
                 </UserLink>
               </div>
 
               {threadMeta?.parentResponseId && threadMeta.replyToUserName ? (
-                <div className={palette.replyMetaClass}>Replying to {threadMeta.replyToUserName}</div>
+                <div className={palette.replyMetaClass} style={activeBranchColor ? { color: activeBranchColor } : undefined}>
+                  Replying to {threadMeta.replyToUserName}
+                </div>
               ) : null}
 
               {renderResponseStatus ? renderResponseStatus(response, args) : null}
@@ -335,11 +386,15 @@ export default function InlinePostSolutionsThread({
               {renderResponseFooter ? <div className="mt-3">{renderResponseFooter(response, args)}</div> : null}
 
               {node.children.length > 0 ? (
-                <div
-                  className="mt-4 space-y-4"
-                  style={shouldCounterOffsetChildren ? { marginLeft: 'calc(-1 * var(--inline-post-thread-nest-step))' } : undefined}
-                >
-                  {node.children.map((childNode, index) => renderResponseNode(childNode, depth + 1, index === node.children.length - 1))}
+                <div className="mt-4 space-y-4" style={childContainerStyle}>
+                  {node.children.map((childNode, index) => {
+                    const childDepth = depth + 1
+                    const childBranchColor = childDepth > THREAD_MAX_VISUAL_NESTING_DEPTH
+                      ? (activeBranchColor || getThreadBranchColor(responseId))
+                      : null
+
+                    return renderResponseNode(childNode, childDepth, index === node.children.length - 1, childBranchColor)
+                  })}
                 </div>
               ) : null}
             </div>
@@ -350,7 +405,7 @@ export default function InlinePostSolutionsThread({
   }
 
   return (
-    <div className="mt-1 pt-1 [--inline-post-thread-nest-step:3.75rem] sm:[--inline-post-thread-nest-step:4.25rem]">
+    <div className="mt-1 pt-1 [--inline-post-thread-content-shift:3.25rem] [--inline-post-thread-nest-step:3.75rem] sm:[--inline-post-thread-nest-step:4.25rem]">
       {loading ? <div className={palette.mutedText}>Loading solutions...</div> : null}
       {!loading && error ? <div className={palette.errorText}>{error}</div> : null}
       {!loading && !error && !threadUnlocked ? (

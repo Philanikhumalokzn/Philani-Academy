@@ -426,7 +426,7 @@ export default function InlinePostSolutionsThread({
   }
 
   return (
-    <div className="mt-1 pt-1 [--inline-post-thread-content-shift:3.25rem]">
+    <div className="mt-1 pt-1 [--inline-post-thread-content-shift:2.75rem]">
       {loading ? <div className={palette.mutedText}>Loading solutions...</div> : null}
       {!loading && error ? <div className={palette.errorText}>{error}</div> : null}
       {!loading && !error && !threadUnlocked ? (

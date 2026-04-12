@@ -308,7 +308,6 @@ export default function InlinePostSolutionsThread({
     const responseUserId = String(response?.userId || response?.user?.id || '')
     const responseUserName = String(response?.user?.name || response?.userName || response?.user?.email || 'Learner')
     const responseAvatar = String(response?.user?.avatar || response?.userAvatar || '').trim()
-    const visualDepth = Math.min(depth, THREAD_MAX_VISUAL_NESTING_DEPTH)
     const avatarSize = getThreadAvatarSize(depth)
     const avatarFallbackFontSize = Number((avatarSize * 0.32).toFixed(2))
     const isMine = responseUserId === currentUserId
@@ -339,7 +338,7 @@ export default function InlinePostSolutionsThread({
 
     return (
       <div key={responseId} className={depth === 0 ? 'py-1' : 'pt-1.5'} {...containerProps}>
-        <div className={visualDepth > 0 ? 'pl-2 sm:pl-4' : ''}>
+        <div className={depth > 0 && depth <= THREAD_MAX_VISUAL_NESTING_DEPTH ? 'pl-2 sm:pl-4' : ''}>
           <div className="flex items-start gap-1">
             <div className="relative flex w-10 shrink-0 justify-center self-stretch">
               <UserLink userId={responseUserId || null} className="shrink-0" title="View profile">

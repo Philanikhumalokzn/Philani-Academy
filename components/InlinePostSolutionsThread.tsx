@@ -278,7 +278,7 @@ export default function InlinePostSolutionsThread({
     const actions = getResponseActions?.(response, args) || []
     const leadingActions = actions.filter((action) => action.alignment !== 'trailing')
     const trailingActions = actions.filter((action) => action.alignment === 'trailing')
-    const showRail = visualDepth > 0 && (node.children.length > 0 || !isLastSibling)
+    const showRail = depth > THREAD_MAX_VISUAL_NESTING_DEPTH && (node.children.length > 0 || !isLastSibling)
 
     return (
       <div key={responseId} className={depth === 0 ? 'py-1' : 'pt-4'} {...containerProps}>

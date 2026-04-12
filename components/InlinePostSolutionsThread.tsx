@@ -55,10 +55,10 @@ const getResponseTimestamp = (response: any) => {
 
 const THREAD_PARENT_AVATAR_SIZE = 36
 const THREAD_REPLY_SCALE = 0.75
-const THREAD_MAX_VISUAL_NESTING_DEPTH = 2
+const THREAD_MAX_VISUAL_NESTING_DEPTH = 0
 
-const getThreadAvatarSize = (visualDepth: number) => {
-  return Number((THREAD_PARENT_AVATAR_SIZE * Math.pow(THREAD_REPLY_SCALE, visualDepth + 1)).toFixed(2))
+const getThreadAvatarSize = (depth: number) => {
+  return Number((THREAD_PARENT_AVATAR_SIZE * Math.pow(THREAD_REPLY_SCALE, depth + 1)).toFixed(2))
 }
 
 const buildThreadTree = (responses: any[]) => {
@@ -269,7 +269,8 @@ export default function InlinePostSolutionsThread({
     const responseUserName = String(response?.user?.name || response?.userName || response?.user?.email || 'Learner')
     const responseAvatar = String(response?.user?.avatar || response?.userAvatar || '').trim()
     const visualDepth = Math.min(depth, THREAD_MAX_VISUAL_NESTING_DEPTH)
-    const avatarSize = getThreadAvatarSize(visualDepth)
+    const childVisualDepth = Math.min(depth + 1, THREAD_MAX_VISUAL_NESTING_DEPTH)
+    const avatarSize = getThreadAvatarSize(depth)
     const avatarFallbackFontSize = Number((avatarSize * 0.32).toFixed(2))
     const isMine = responseUserId === currentUserId
     const args: ResponseRenderArgs = { responseId, responseUserId, responseUserName, responseAvatar, isMine }
@@ -279,6 +280,7 @@ export default function InlinePostSolutionsThread({
     const leadingActions = actions.filter((action) => action.alignment !== 'trailing')
     const trailingActions = actions.filter((action) => action.alignment === 'trailing')
     const showRail = depth > THREAD_MAX_VISUAL_NESTING_DEPTH && (node.children.length > 0 || !isLastSibling)
+    const shouldCounterOffsetChildren = childVisualDepth === visualDepth
 
     return (
       <div key={responseId} className={depth === 0 ? 'py-1' : 'pt-4'} {...containerProps}>
@@ -335,7 +337,7 @@ export default function InlinePostSolutionsThread({
               {node.children.length > 0 ? (
                 <div
                   className="mt-4 space-y-4"
-                  style={depth >= THREAD_MAX_VISUAL_NESTING_DEPTH ? { marginLeft: 'calc(-1 * var(--inline-post-thread-nest-step))' } : undefined}
+                  style={shouldCounterOffsetChildren ? { marginLeft: 'calc(-1 * var(--inline-post-thread-nest-step))' } : undefined}
                 >
                   {node.children.map((childNode, index) => renderResponseNode(childNode, depth + 1, index === node.children.length - 1))}
                 </div>

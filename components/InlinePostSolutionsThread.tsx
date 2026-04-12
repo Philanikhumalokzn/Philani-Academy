@@ -219,7 +219,7 @@ export default function InlinePostSolutionsThread({
 
     if (postReplyBlocks.length > 0) {
       return (
-        <div className="mt-2 min-w-0 space-y-3">
+        <div className="mt-1.5 min-w-0 space-y-1.5">
           {postReplyBlocks.map((block, blockIndex) => {
             const blockKey = `inline-post-reply-${args.responseId}-${block.id}-${blockIndex}`
 
@@ -266,7 +266,7 @@ export default function InlinePostSolutionsThread({
     }
 
     return (
-      <div className="mt-2 min-w-0 space-y-3">
+      <div className="mt-1.5 min-w-0 space-y-1.5">
         {fallbackStudentText ? (
           renderTextBlock
             ? renderTextBlock(fallbackStudentText, `inline-post-fallback-text-${args.responseId}`)
@@ -345,7 +345,7 @@ export default function InlinePostSolutionsThread({
         : undefined
 
     return (
-      <div key={responseId} className={depth === 0 ? 'py-1' : 'pt-4'} {...containerProps}>
+      <div key={responseId} className={depth === 0 ? 'py-1' : 'pt-2'} {...containerProps}>
         <div className={visualDepth > 0 ? 'pl-2 sm:pl-4' : ''}>
           <div className="flex items-start gap-3">
             <div className="relative flex w-10 shrink-0 justify-center self-stretch">
@@ -449,7 +449,7 @@ export default function InlinePostSolutionsThread({
               </div>
 
               {node.children.length > 0 ? (
-                <div className="relative mt-4 space-y-4" style={childContainerStyle}>
+                <div className="relative mt-3 space-y-2" style={childContainerStyle}>
                   {childRailColor ? (
                     <div
                       className="absolute"
@@ -491,7 +491,7 @@ export default function InlinePostSolutionsThread({
         <div className={palette.infoCard}>{noSolutionsMessage}</div>
       ) : null}
       {!loading && !error && threadUnlocked && responseTree.length > 0 ? (
-        <div className="space-y-4">
+        <div className="space-y-5">
           {responseTree.map((node, index) => renderResponseNode(node, 0, index === responseTree.length - 1))}
         </div>
       ) : null}

@@ -1636,11 +1636,21 @@ export function PublicUserProfileSurface({
 
   const buildPostReplyActions = useCallback((post: ProfilePost, response: any, args: ResponseRenderArgs): InlinePostResponseAction[] => {
     const itemKey = `reply:${args.responseId}`
-    const replyText = String(response?.studentText || response?.latex || '').trim()
 
     return [
       {
+        label: 'Reply',
+        alignment: 'leading',
+        onClick: () => openReplyComposerForPostResponse(post, response),
+        icon: (
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+            <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ),
+      },
+      {
         label: 'Like',
+        alignment: 'trailing',
         active: Boolean(likedPostKeys[itemKey]),
         onClick: () => toggleProfileLike(itemKey),
         icon: (
@@ -1650,33 +1660,8 @@ export function PublicUserProfileSurface({
           </svg>
         ),
       },
-      {
-        label: 'Reply',
-        onClick: () => openReplyComposerForPostResponse(post, response),
-        icon: (
-          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
-            <path d="M7 18L3.8 20.4C3.47086 20.6469 3 20.412 3 20V6C3 4.89543 3.89543 4 5 4H19C20.1046 4 21 4.89543 21 6V16C21 17.1046 20.1046 18 19 18H7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        ),
-      },
-      {
-        label: 'Share',
-        statusLabel: lastSharedPostKey === itemKey ? 'Copied' : undefined,
-        onClick: () => void shareProfilePost({
-          itemKey,
-          title: `Reply from ${args.responseUserName}`,
-          text: replyText || `Reply from ${args.responseUserName}`,
-          path: `/u/${encodeURIComponent(String(userId || profile?.id || ''))}?postId=${encodeURIComponent(String(post?.id || ''))}&replyId=${encodeURIComponent(args.responseId)}`,
-        }),
-        icon: (
-          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
-            <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M4 19V17C4 13.6863 6.68629 11 10 11H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        ),
-      },
     ]
-  }, [lastSharedPostKey, likedPostKeys, openReplyComposerForPostResponse, profile?.id, shareProfilePost, toggleProfileLike, userId])
+  }, [likedPostKeys, openReplyComposerForPostResponse, toggleProfileLike])
 
   const renderPostCard = (post: ProfilePost) => {
     const postId = String(post.id || '')

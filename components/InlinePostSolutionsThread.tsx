@@ -20,6 +20,7 @@ export type InlinePostResponseAction = {
   onClick: () => void
   icon: React.ReactNode
   disabled?: boolean
+  alignment?: 'leading' | 'trailing'
 }
 
 type ThreadNode = {
@@ -52,9 +53,11 @@ const getResponseTimestamp = (response: any) => {
   return Math.max(updated, created)
 }
 
+const THREAD_PARENT_AVATAR_SIZE = 36
+const THREAD_REPLY_SCALE = 0.6
+
 const getThreadAvatarSize = (depth: number) => {
-  if (depth <= 0) return 36
-  return Math.max(20, 36 - (depth * 4))
+  return Number((THREAD_PARENT_AVATAR_SIZE * Math.pow(THREAD_REPLY_SCALE, depth + 1)).toFixed(2))
 }
 
 const buildThreadTree = (responses: any[]) => {
@@ -265,12 +268,14 @@ export default function InlinePostSolutionsThread({
     const responseUserName = String(response?.user?.name || response?.userName || response?.user?.email || 'Learner')
     const responseAvatar = String(response?.user?.avatar || response?.userAvatar || '').trim()
     const avatarSize = getThreadAvatarSize(depth)
-    const avatarFallbackFontSize = Math.max(9, Math.round(avatarSize / 3.2))
+    const avatarFallbackFontSize = Number((avatarSize * 0.32).toFixed(2))
     const isMine = responseUserId === currentUserId
     const args: ResponseRenderArgs = { responseId, responseUserId, responseUserName, responseAvatar, isMine }
     const containerProps = getContainerProps?.(response, args) || {}
     const threadMeta = getPostReplyThreadMeta(response)
     const actions = getResponseActions?.(response, args) || []
+    const leadingActions = actions.filter((action) => action.alignment !== 'trailing')
+    const trailingActions = actions.filter((action) => action.alignment === 'trailing')
     const showRail = depth > 0 && (node.children.length > 0 || !isLastSibling)
 
     return (
@@ -309,8 +314,15 @@ export default function InlinePostSolutionsThread({
               {renderReplyBody(response, args)}
 
               {actions.length > 0 ? (
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  {actions.map(renderActionButton)}
+                <div className="mt-2 flex w-full items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-1.5 pl-2">
+                    {leadingActions.map(renderActionButton)}
+                  </div>
+                  {trailingActions.length > 0 ? (
+                    <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                      {trailingActions.map(renderActionButton)}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 

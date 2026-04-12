@@ -17,6 +17,9 @@ const MAX_REPLY_REF_ID_LENGTH = 120
 const MAX_REPLY_USER_ID_LENGTH = 120
 const MAX_REPLY_USER_NAME_LENGTH = 160
 const POST_REPLY_BLOCKS_KIND = 'post-reply-blocks-v1'
+const LEGACY_LEARNER_RESPONSE_SESSION_USER_INDEX = 'LearnerResponse_sessionKey_userId_key'
+
+let learnerResponseHistorySchemaRepairPromise: Promise<void> | null = null
 
 const PERSISTED_PUBLIC_SOLVE_APP_STATE_KEYS = [
   'scrollX',
@@ -110,6 +113,31 @@ const sanitizePostReplyContentBlocks = (value: any) => {
   }
 
   return output
+}
+
+const repairLegacyLearnerResponseHistorySchema = async () => {
+  const rows = await prisma.$queryRawUnsafe<Array<{ indexname?: string }>>(
+    "SELECT indexname FROM pg_indexes WHERE schemaname = current_schema() AND tablename = 'LearnerResponse' AND indexname = $1",
+    LEGACY_LEARNER_RESPONSE_SESSION_USER_INDEX,
+  )
+
+  if (!Array.isArray(rows) || rows.length === 0) return
+
+  await prisma.$executeRawUnsafe(
+    `ALTER TABLE "LearnerResponse" DROP CONSTRAINT IF EXISTS "${LEGACY_LEARNER_RESPONSE_SESSION_USER_INDEX}"`,
+  )
+  await prisma.$executeRawUnsafe(`DROP INDEX IF EXISTS "${LEGACY_LEARNER_RESPONSE_SESSION_USER_INDEX}"`)
+}
+
+const ensureLearnerResponseHistorySchema = async () => {
+  if (!learnerResponseHistorySchemaRepairPromise) {
+    learnerResponseHistorySchemaRepairPromise = repairLegacyLearnerResponseHistorySchema().catch((error) => {
+      learnerResponseHistorySchemaRepairPromise = null
+      throw error
+    })
+  }
+
+  await learnerResponseHistorySchemaRepairPromise
 }
 
 const buildLegacyPostReplyBlocks = ({ studentText, latex, excalidrawScene }: { studentText: string | null; latex: string; excalidrawScene: Record<string, any> | null }) => {
@@ -685,6 +713,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? Math.max(0, Math.min(9999, Math.trunc(quizPointIndex)))
       : null
 
+    if (isPostSession) {
+      try {
+        await ensureLearnerResponseHistorySchema()
+      } catch (repairErr) {
+        console.error('Failed to repair legacy learner response history schema', repairErr)
+      }
+    }
+
     let shouldNotifyOwner = false
     const responseOwnerId = isChallengeSession ? challengeOwnerId : (isAttemptScopedPostSession ? postOwnerId : null)
     if (isChallengeSession && challengeId) {
@@ -831,6 +867,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Backwards-compat: legacy UNIQUE(sessionKey,userId) means history is impossible without migration.
       // Update the existing record so learners aren't blocked.
       const isLegacyUnique = code === 'P2002' && uniqueSessionUserMentioned && !/quizid/i.test(`${targetStr} ${errMessage}`)
+      if (isLegacyUnique && isPostSession) {
+        try {
+          learnerResponseHistorySchemaRepairPromise = null
+          await ensureLearnerResponseHistorySchema()
+          const record = await createRecord(safeQuizId)
+          await notifyOwner(record?.id || '')
+          return res.status(200).json(record)
+        } catch (repairErr) {
+          console.error('Failed to recover post reply history after removing legacy unique index', repairErr)
+        }
+      }
+
       if (isLegacyUnique) {
         try {
           const updated = await updateLatestRecord({

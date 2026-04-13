@@ -277,6 +277,7 @@ export default function InlinePostSolutionsThread({
               <div key={blockKey} className={palette.canvasShellClass}>
                 <PublicSolvePlainExcalidrawViewer
                   scene={block.scene}
+                  viewerHeightPx={220}
                   onViewportChange={onCanvasViewportChange
                     ? (scene) => onCanvasViewportChange(response, args.responseId, scene)
                     : undefined}
@@ -308,6 +309,7 @@ export default function InlinePostSolutionsThread({
           <div className={palette.canvasShellClass}>
             <PublicSolvePlainExcalidrawViewer
               scene={response.excalidrawScene}
+              viewerHeightPx={220}
               onViewportChange={onCanvasViewportChange
                 ? (scene) => onCanvasViewportChange(response, args.responseId, scene)
                 : undefined}

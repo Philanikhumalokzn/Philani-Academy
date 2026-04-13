@@ -43,6 +43,7 @@ const PUBLIC_SOLVE_MIN_PROMPT_ZOOM = 1
 const PUBLIC_SOLVE_MAX_PROMPT_ZOOM = 2.4
 const PUBLIC_SOLVE_PASSIVE_PROMPT_HEADER_HEIGHT = 64
 const PUBLIC_SOLVE_VIEWER_HEIGHT_PX = 420
+const PUBLIC_SOLVE_CONTENT_VIEWER_MIN_HEIGHT_PX = 96
 const PUBLIC_SOLVE_CANVAS_CHROME_IDLE_MS = 1500
 
 type PublicSolvePromptMode = 'passive' | 'active'
@@ -1079,6 +1080,8 @@ export function PublicSolvePlainExcalidrawViewer({
   emptyLabel = 'No canvas submitted yet.',
   heightClassName,
   viewerHeightPx = PUBLIC_SOLVE_VIEWER_HEIGHT_PX,
+  minViewerHeightPx = PUBLIC_SOLVE_CONTENT_VIEWER_MIN_HEIGHT_PX,
+  viewerHeightMode = 'content',
   maxWidthPx,
   onViewportChange,
 }: {
@@ -1087,15 +1090,31 @@ export function PublicSolvePlainExcalidrawViewer({
   emptyLabel?: string
   heightClassName?: string
   viewerHeightPx?: number
+  minViewerHeightPx?: number
+  viewerHeightMode?: 'content' | 'fixed'
   maxWidthPx?: number | null
   onViewportChange?: (scene: PublicSolveScene) => void
 }) {
   const normalizedScene = useMemo(() => normalizePublicSolveScene(scene), [scene])
+  const contentBounds = useMemo(() => getElementsBoundingBox(normalizedScene?.elements || []), [normalizedScene])
+  const resolvedViewerHeightPx = useMemo(() => {
+    const maxHeight = Math.max(1, Number(viewerHeightPx) || PUBLIC_SOLVE_VIEWER_HEIGHT_PX)
+    if (viewerHeightMode === 'fixed') return maxHeight
+
+    const minHeight = clampNumber(
+      Math.max(1, Number(minViewerHeightPx) || PUBLIC_SOLVE_CONTENT_VIEWER_MIN_HEIGHT_PX),
+      1,
+      maxHeight,
+    )
+    const contentHeight = Math.ceil(Number(contentBounds?.height || 0))
+    if (!Number.isFinite(contentHeight) || contentHeight <= 0) return maxHeight
+    return clampNumber(contentHeight, minHeight, maxHeight)
+  }, [contentBounds?.height, minViewerHeightPx, viewerHeightMode, viewerHeightPx])
   const seededScene = useMemo(() => {
     if (!normalizedScene) return null
     if (getAppStateZoomValue(normalizedScene.appState)) return normalizedScene
-    return buildSceneViewportFromStrokeBounds(normalizedScene, { maxHeightPx: viewerHeightPx, maxWidthPx }).scene
-  }, [maxWidthPx, normalizedScene, viewerHeightPx])
+    return buildSceneViewportFromStrokeBounds(normalizedScene, { maxHeightPx: resolvedViewerHeightPx, maxWidthPx }).scene
+  }, [maxWidthPx, normalizedScene, resolvedViewerHeightPx])
   const [viewerScene, setViewerScene] = useState<PublicSolveScene | null>(seededScene)
   const viewerSceneRef = useRef<PublicSolveScene | null>(seededScene)
   const excalidrawApiRef = useRef<any>(null)
@@ -1157,7 +1176,7 @@ export function PublicSolvePlainExcalidrawViewer({
         className="relative overflow-hidden bg-white"
         style={{
           width: resolvedWidthStyle,
-          height: `${Math.max(1, viewerHeightPx)}px`,
+          height: `${resolvedViewerHeightPx}px`,
           touchAction: onViewportChange ? 'none' : undefined,
         }}
       >

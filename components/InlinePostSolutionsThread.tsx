@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import UserLink from './UserLink'
 import { PublicSolveCanvasViewer, type PublicSolveScene } from './PublicSolveCanvas'
 import { getPostReplyThreadMeta, normalizePostReplyBlocks } from '../lib/postReplyComposer'
@@ -21,6 +21,11 @@ export type InlinePostResponseAction = {
   icon: React.ReactNode
   disabled?: boolean
   alignment?: 'leading' | 'trailing'
+}
+
+const getReplyToggleLabel = (replyCount: number, expanded: boolean) => {
+  const noun = replyCount === 1 ? 'reply' : 'replies'
+  return expanded ? `Hide ${replyCount} ${noun}` : `View ${replyCount} ${noun}`
 }
 
 type ThreadNode = {
@@ -162,6 +167,7 @@ export default function InlinePostSolutionsThread({
   theme = 'light',
 }: Props) {
   const responseTree = useMemo(() => buildThreadTree(responses), [responses])
+  const [expandedReplyIds, setExpandedReplyIds] = useState<Set<string>>(() => new Set())
 
   const palette = theme === 'dark'
     ? {
@@ -178,6 +184,7 @@ export default function InlinePostSolutionsThread({
         mediaImageClass: 'max-h-[320px] w-full object-contain',
         canvasShellClass: 'overflow-hidden rounded-[24px] border border-white/10 bg-white shadow-sm',
         actionButtonClass: 'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold text-white/70 transition hover:bg-white/10 hover:text-white',
+        disclosureButtonClass: 'inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-semibold text-white/65 transition hover:bg-white/10 hover:text-white',
         activeActionButtonClass: 'bg-white/12 text-white',
         disabledActionButtonClass: 'cursor-not-allowed opacity-50',
         noContentClass: 'rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-sm text-white/70',
@@ -196,10 +203,23 @@ export default function InlinePostSolutionsThread({
         mediaImageClass: 'max-h-[320px] w-full object-contain',
         canvasShellClass: 'overflow-hidden rounded-[24px] border border-black/10 bg-white shadow-sm',
         actionButtonClass: 'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold text-[#65676b] transition hover:bg-[#f0f2f5] hover:text-[#1c1e21]',
+        disclosureButtonClass: 'inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-semibold text-[#65676b] transition hover:bg-[#f0f2f5] hover:text-[#1c1e21]',
         activeActionButtonClass: 'bg-[#e7f3ff] text-[#1877f2]',
         disabledActionButtonClass: 'cursor-not-allowed opacity-50',
         noContentClass: 'rounded-xl bg-[#f0f2f5] px-3 py-2 text-sm text-slate-500',
       }
+
+  const toggleReplyChildren = useCallback((responseId: string) => {
+    setExpandedReplyIds((previous) => {
+      const next = new Set(previous)
+      if (next.has(responseId)) {
+        next.delete(responseId)
+      } else {
+        next.add(responseId)
+      }
+      return next
+    })
+  }, [])
 
   const renderActionButton = (action: InlinePostResponseAction) => (
     <button
@@ -317,10 +337,14 @@ export default function InlinePostSolutionsThread({
     const actions = getResponseActions?.(response, args) || []
     const leadingActions = actions.filter((action) => action.alignment !== 'trailing')
     const trailingActions = actions.filter((action) => action.alignment === 'trailing')
+    const childDepth = depth + 1
+    const hasChildren = node.children.length > 0
+    const shouldCollapseChildren = hasChildren && childDepth >= 2
+    const areChildrenExpanded = !shouldCollapseChildren || expandedReplyIds.has(responseId)
     const incomingRailColor = depth >= 2
       ? (branchColor || getThreadBranchColor(threadMeta?.parentResponseId || responseId))
       : null
-    const outgoingRailColor = depth >= 1 && node.children.length > 0
+    const outgoingRailColor = depth >= 1 && hasChildren && areChildrenExpanded
       ? getThreadBranchColor(responseId)
       : null
     const isFlattenedReply = depth > THREAD_MAX_VISUAL_NESTING_DEPTH
@@ -435,7 +459,20 @@ export default function InlinePostSolutionsThread({
                 {renderResponseFooter ? <div className="mt-3">{renderResponseFooter(response, args)}</div> : null}
               </div>
 
-              {node.children.length > 0 ? (
+              {shouldCollapseChildren ? (
+                <div className="mt-1">
+                  <button
+                    type="button"
+                    className={palette.disclosureButtonClass}
+                    onClick={() => toggleReplyChildren(responseId)}
+                    aria-expanded={areChildrenExpanded}
+                  >
+                    {getReplyToggleLabel(node.children.length, areChildrenExpanded)}
+                  </button>
+                </div>
+              ) : null}
+
+              {hasChildren && areChildrenExpanded ? (
                 <div className="relative mt-2 space-y-1" style={childContainerStyle}>
                   {outgoingRailColor ? (
                     <div
@@ -450,7 +487,6 @@ export default function InlinePostSolutionsThread({
                     />
                   ) : null}
                   {node.children.map((childNode) => {
-                    const childDepth = depth + 1
                     const childBranchColor = childDepth > 0
                       ? getThreadBranchColor(responseId)
                       : null

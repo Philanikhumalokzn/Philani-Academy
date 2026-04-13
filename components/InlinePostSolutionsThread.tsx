@@ -317,10 +317,18 @@ export default function InlinePostSolutionsThread({
     const actions = getResponseActions?.(response, args) || []
     const leadingActions = actions.filter((action) => action.alignment !== 'trailing')
     const trailingActions = actions.filter((action) => action.alignment === 'trailing')
+    const incomingRailColor = depth >= 2
+      ? (branchColor || getThreadBranchColor(threadMeta?.parentResponseId || responseId))
+      : null
+    const outgoingRailColor = depth >= 1 && node.children.length > 0
+      ? getThreadBranchColor(responseId)
+      : null
     const isFlattenedReply = depth > THREAD_MAX_VISUAL_NESTING_DEPTH
     const activeBranchColor = isFlattenedReply
       ? (branchColor || getThreadBranchColor(threadMeta?.parentResponseId || responseId))
       : null
+    const incomingRailStroke = incomingRailColor ? `2px solid ${incomingRailColor}` : undefined
+    const outgoingRailStroke = outgoingRailColor ? `2px solid ${outgoingRailColor}` : undefined
     const avatarShellStyle = {
       width: avatarSize,
       height: avatarSize,
@@ -341,6 +349,32 @@ export default function InlinePostSolutionsThread({
         <div className={depth > 0 && depth <= THREAD_MAX_VISUAL_NESTING_DEPTH ? 'pl-2 sm:pl-4' : ''}>
           <div className="flex items-start gap-1">
             <div className="relative flex w-10 shrink-0 justify-center self-stretch">
+              {incomingRailColor ? (
+                <div
+                  className="absolute rounded-bl-xl"
+                  style={{
+                    left: 'var(--inline-post-thread-rail-left)',
+                    top: 0,
+                    width: 'var(--inline-post-thread-rail-elbow-width)',
+                    height: (avatarSize / 2) + 1,
+                    borderLeft: incomingRailStroke,
+                    borderBottom: incomingRailStroke,
+                  }}
+                  aria-hidden="true"
+                />
+              ) : null}
+              {outgoingRailColor ? (
+                <div
+                  className="absolute bottom-0"
+                  style={{
+                    left: 'var(--inline-post-thread-rail-left)',
+                    top: avatarSize / 2,
+                    width: 0,
+                    borderLeft: outgoingRailStroke,
+                  }}
+                  aria-hidden="true"
+                />
+              ) : null}
               <UserLink userId={responseUserId || null} className="shrink-0" title="View profile">
                 <div className={palette.avatarShell} style={avatarShellStyle}>
                   {responseAvatar ? (
@@ -407,7 +441,19 @@ export default function InlinePostSolutionsThread({
 
               {node.children.length > 0 ? (
                 <div className="relative mt-2 space-y-1" style={childContainerStyle}>
-                  {node.children.map((childNode, index) => {
+                  {outgoingRailColor ? (
+                    <div
+                      className="absolute bottom-0"
+                      style={{
+                        left: 'var(--inline-post-thread-rail-left)',
+                        top: 'calc(-1 * var(--inline-post-thread-child-gap))',
+                        width: 0,
+                        borderLeft: outgoingRailStroke,
+                      }}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                  {node.children.map((childNode) => {
                     const childDepth = depth + 1
                     const childBranchColor = childDepth > 0
                       ? getThreadBranchColor(responseId)
@@ -425,7 +471,7 @@ export default function InlinePostSolutionsThread({
   }
 
   return (
-    <div className="mt-1 pt-1 [--inline-post-thread-content-shift:2.75rem]">
+    <div className="mt-1 pt-1 [--inline-post-thread-child-gap:0.5rem] [--inline-post-thread-content-shift:2.75rem] [--inline-post-thread-rail-elbow-width:1rem] [--inline-post-thread-rail-left:0.25rem]">
       {loading ? <div className={palette.mutedText}>Loading solutions...</div> : null}
       {!loading && error ? <div className={palette.errorText}>{error}</div> : null}
       {!loading && !error && !threadUnlocked ? (

@@ -5341,6 +5341,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         throw new Error(data?.message || `Failed to save view (${res.status})`)
       }
 
+      applyInteractiveViewportSceneLocally(safeResponseId, pending.scene)
       interactiveViewportSavedSceneRef.current[safeResponseId] = pending.serialized
       setInteractiveViewportSavingByResponseId((prev) => {
         if (!prev[safeResponseId]) return prev
@@ -5373,7 +5374,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       }
       delete interactiveViewportSaveTimeoutsRef.current[safeResponseId]
     }
-  }, [])
+  }, [applyInteractiveViewportSceneLocally])
 
   const queueInteractiveViewportSave = useCallback((threadKey: string, responseId: string, scene: PublicSolveScene) => {
     const safeThreadKey = String(threadKey || '').trim()
@@ -5400,7 +5401,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       return
     }
 
-    applyInteractiveViewportSceneLocally(safeResponseId, normalizedScene)
     setInteractiveViewportErrorByResponseId((prev) => {
       if (!prev[safeResponseId]) return prev
       const next = { ...prev }
@@ -5423,7 +5423,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     interactiveViewportSaveTimeoutsRef.current[safeResponseId] = window.setTimeout(() => {
       void flushInteractiveViewportSave(safeResponseId)
     }, 320)
-  }, [applyInteractiveViewportSceneLocally, flushInteractiveViewportSave])
+  }, [flushInteractiveViewportSave])
 
   const postSolvePreviewResponseId = 'draft-post-solve-preview-response'
 

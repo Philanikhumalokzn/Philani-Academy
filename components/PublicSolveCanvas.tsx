@@ -19,6 +19,7 @@ export type PublicSolveSceneMeta = {
   activeSegmentId: string | null
   guideSpacing: number | null
   lastObservedZoom: number | null
+  viewerViewportPersisted: boolean
   segments: PublicSolveSegmentMeta[]
 }
 
@@ -551,6 +552,7 @@ const createEmptyPublicSolveSceneMeta = (): PublicSolveSceneMeta => ({
   activeSegmentId: null,
   guideSpacing: null,
   lastObservedZoom: null,
+  viewerViewportPersisted: false,
   segments: [],
 })
 
@@ -579,6 +581,7 @@ const cloneSceneMeta = (sceneMeta: PublicSolveSceneMeta): PublicSolveSceneMeta =
   activeSegmentId: typeof sceneMeta?.activeSegmentId === 'string' ? sceneMeta.activeSegmentId : null,
   guideSpacing: clampGuideSpacing(sceneMeta?.guideSpacing),
   lastObservedZoom: normalizeZoomValue(sceneMeta?.lastObservedZoom),
+  viewerViewportPersisted: Boolean(sceneMeta?.viewerViewportPersisted),
   segments: Array.isArray(sceneMeta?.segments)
     ? sceneMeta.segments.map((segment) => ({
         id: String(segment?.id || makePublicSolveSegmentId()),
@@ -850,6 +853,18 @@ const buildSceneViewportFromStrokeBounds = (
   const nextWidthPx = Math.max(1, Math.ceil(rawWidth * scale))
   const nextHeightPx = Math.max(1, Math.ceil(rawHeight * scale))
 
+  const sceneMeta = normalizePublicSolveSceneMeta(normalized.sceneMeta)
+  if (sceneMeta.viewerViewportPersisted && getAppStateZoomValue(normalized.appState)) {
+    return {
+      scene: {
+        ...normalized,
+        sceneMeta,
+      },
+      widthPx: nextWidthPx,
+      heightPx: nextHeightPx,
+    }
+  }
+
   const currentAppState = normalized.appState || {}
   const nextZoom = scale
   const nextScrollX = -bounds.minX * nextZoom
@@ -878,6 +893,8 @@ const mergeViewportAppStateIntoScene = (
 ): PublicSolveScene => {
   const normalized = normalizePublicSolveScene(scene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
   const nextViewport = getPublicSolveViewportSnapshot(appState)
+  const nextSceneMeta = cloneSceneMeta(normalizePublicSolveSceneMeta(normalized.sceneMeta))
+  nextSceneMeta.viewerViewportPersisted = true
   const nextAppState = {
     ...(normalized.appState || {}),
     scrollX: nextViewport.scrollX,
@@ -887,6 +904,7 @@ const mergeViewportAppStateIntoScene = (
   return {
     ...normalized,
     appState: nextAppState,
+    sceneMeta: nextSceneMeta,
   }
 }
 

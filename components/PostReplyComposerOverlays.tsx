@@ -281,6 +281,7 @@ export default function PostReplyComposerOverlays({
                                   key={block.id}
                                   role="button"
                                   tabIndex={0}
+                                  aria-label="Adjust canvas snapshot"
                                   className="pt-1"
                                   onClick={() => onEditBlock(block, index)}
                                   onKeyDown={(event) => {
@@ -292,7 +293,16 @@ export default function PostReplyComposerOverlays({
                                   {...blockHandlers}
                                 >
                                   <div className="philani-gradient-outline-soft [--philani-outline-fill:#ffffff] overflow-hidden rounded-[24px] p-1 shadow-sm">
-                                    <PublicSolveCanvasViewer scene={block.scene} className="pointer-events-none" viewerHeightPx={220} />
+                                    <div className="relative">
+                                      <PublicSolveCanvasViewer scene={block.scene} className="pointer-events-none" viewerHeightPx={220} />
+                                      <div className="pointer-events-none absolute right-3 top-3 rounded-full border border-[#1d4f91]/10 bg-white/95 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#1d4f91] shadow-sm">
+                                        Snapshot
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="mt-2 flex items-center justify-between gap-3 rounded-2xl border border-[#1d4f91]/10 bg-[#f8fbff] px-3 py-2 text-left">
+                                    <span className="text-[12px] leading-5 text-slate-600">Tap to adjust what viewers see first.</span>
+                                    <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#1d4f91]">Adjust</span>
                                   </div>
                                 </div>
                               )
@@ -444,6 +454,7 @@ export default function PostReplyComposerOverlays({
                 submitting={submitting}
                 fullscreenCanvas
                 hideMainMenu
+                persistViewerViewportOnSubmit
                 referencePresentation="background"
                 onCancel={onCanvasCancel}
                 onSubmit={onCanvasSubmit}

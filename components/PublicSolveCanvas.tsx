@@ -908,6 +908,15 @@ const mergeViewportAppStateIntoScene = (
   }
 }
 
+const finalizeViewerSnapshotScene = (scene: PublicSolveScene | null | undefined): PublicSolveScene => {
+  const normalized = normalizePublicSolveScene(scene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
+  const nextScene = mergeViewportAppStateIntoScene(normalized, normalized.appState || {})
+  return {
+    ...nextScene,
+    updatedAt: new Date().toISOString(),
+  }
+}
+
 const editorUiOptions = {
   canvasActions: {
     loadScene: false,
@@ -1021,6 +1030,7 @@ export function PublicSolveComposer({
   submitting = false,
   fullscreenCanvas = false,
   hideMainMenu = false,
+  persistViewerViewportOnSubmit = false,
   referencePresentation = 'interactive',
   onCancel,
   onPreviewSubmit,
@@ -1038,6 +1048,7 @@ export function PublicSolveComposer({
   submitting?: boolean
   fullscreenCanvas?: boolean
   hideMainMenu?: boolean
+  persistViewerViewportOnSubmit?: boolean
   referencePresentation?: PublicSolveReferencePresentation
   onCancel?: () => void
   onPreviewSubmit?: (scene: PublicSolveScene) => void | Promise<void>
@@ -1436,7 +1447,13 @@ export function PublicSolveComposer({
             className={`inline-flex h-11 items-center justify-center rounded-full bg-[#1877f2] px-5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(24,119,242,0.28)] transition hover:bg-[#176ad8] disabled:cursor-not-allowed disabled:opacity-55 ${fullscreenCanvas ? 'justify-self-end' : ''}`.trim()}
             onClick={() => {
               const action = onPreviewSubmit || onSubmit
-              void action(sceneRef.current)
+              const nextScene = persistViewerViewportOnSubmit
+                ? finalizeViewerSnapshotScene(sceneRef.current)
+                : sceneRef.current
+              if (persistViewerViewportOnSubmit) {
+                applySceneSnapshot(nextScene)
+              }
+              void action(nextScene)
             }}
             disabled={!isReady || !hasContent || submitting}
           >

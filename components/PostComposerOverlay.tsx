@@ -244,6 +244,37 @@ function ComposerBlockList({
           )
         }
 
+        if (block.type === 'canvas') {
+          return (
+            <div
+              key={block.id}
+              role="button"
+              tabIndex={0}
+              aria-label="Adjust canvas snapshot"
+              className="pt-1"
+              onClick={() => onEditBlock?.(block, index)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onEditBlock?.(block, index)
+                }
+              }}
+              {...blockHandlers}
+            >
+              <div className="relative">
+                <PostComposerBlocksPreview blocks={[block]} compact />
+                <div className="pointer-events-none absolute right-3 top-3 rounded-full border border-[#1d4f91]/10 bg-white/95 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#1d4f91] shadow-sm">
+                  Snapshot
+                </div>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3 rounded-2xl border border-[#1d4f91]/10 bg-[#f8fbff] px-3 py-2 text-left">
+                <span className="text-[12px] leading-5 text-slate-600">Tap to adjust what viewers see first.</span>
+                <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#1d4f91]">Adjust</span>
+              </div>
+            </div>
+          )
+        }
+
         return (
           <div
             key={block.id}
@@ -508,6 +539,7 @@ export default function PostComposerOverlay(props: Props) {
                   submitting={posting}
                   fullscreenCanvas
                   hideMainMenu
+                  persistViewerViewportOnSubmit
                   referencePresentation="background"
                   onCancel={props.onCanvasCancel}
                   onSubmit={(scene) => props.onCanvasSubmit?.(scene)}

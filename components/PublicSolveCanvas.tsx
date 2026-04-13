@@ -813,6 +813,13 @@ const buildPublicSolveSceneResetKey = (scene: PublicSolveScene | null | undefine
   return [updatedAt, elements.length, elementIds, baselineSegmentId, activeSegmentId, segmentsCount].join('|')
 }
 
+const buildPublicSolveViewerKey = (scene: PublicSolveScene | null | undefined) => {
+  if (!scene) return 'empty'
+  const elements = Array.isArray(scene.elements) ? scene.elements : []
+  const elementIds = elements.map((element: any) => String(element?.id || '')).join(',')
+  return [elements.length, elementIds].join('|')
+}
+
 const getGuideViewportState = (appState: Record<string, any> | undefined) => ({
   zoom: getAppStateZoomValue(appState) || 1,
   scrollY: Number(appState?.scrollY || 0),
@@ -1054,6 +1061,7 @@ export function PublicSolveCanvasViewer({
     [activeScene, maxWidthPx, viewerHeightPx]
   )
   const viewerScene = viewerLayout.scene
+  const viewerInstanceKey = useMemo(() => buildPublicSolveViewerKey(viewerScene), [viewerScene])
   const viewerViewportSize = useMemo(() => ({ widthPx: viewerLayout.widthPx, heightPx: viewerLayout.heightPx }), [viewerLayout.heightPx, viewerLayout.widthPx])
   const viewerSurfaceRef = useRef<HTMLDivElement | null>(null)
   const excalidrawApiRef = useRef<any>(null)
@@ -1084,11 +1092,7 @@ export function PublicSolveCanvasViewer({
   const commitInteractiveViewport = useCallback((nextAppState: Record<string, any>) => {
     if (!onViewportChange) return
     const baseScene = viewerSceneRef.current
-    const mergedScene = mergeViewportAppStateIntoScene(baseScene, nextAppState, viewerViewportSize)
-    const nextScene: PublicSolveScene = {
-      ...mergedScene,
-      updatedAt: new Date().toISOString(),
-    }
+    const nextScene = mergeViewportAppStateIntoScene(baseScene, nextAppState, viewerViewportSize)
     const nextSignature = serializePublicSolveViewportSnapshot(nextScene.appState)
     if (lastViewportSignatureRef.current === nextSignature) return
     lastViewportSignatureRef.current = nextSignature
@@ -1261,7 +1265,7 @@ export function PublicSolveCanvasViewer({
       >
         <div ref={viewerSurfaceRef} className={`absolute inset-0 ${heightClassName || ''}`.trim()}>
           <LessonStyledExcalidraw
-            key={viewerScene?.updatedAt || 'viewer'}
+            key={viewerInstanceKey}
             className="h-full"
             initialData={buildInitialData(viewerScene)}
             onChange={onViewportChange ? handleViewerChange : undefined}

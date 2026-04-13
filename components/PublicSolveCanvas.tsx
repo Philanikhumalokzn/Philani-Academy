@@ -20,6 +20,9 @@ export type PublicSolveSceneMeta = {
   guideSpacing: number | null
   lastObservedZoom: number | null
   viewerViewportPersisted: boolean
+  viewerViewportCenterX: number | null
+  viewerViewportCenterY: number | null
+  viewerViewportZoom: number | null
   segments: PublicSolveSegmentMeta[]
 }
 
@@ -516,6 +519,12 @@ const normalizeZoomValue = (value: unknown) => {
   return num
 }
 
+const normalizeSceneCoordinateValue = (value: unknown) => {
+  const num = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(num)) return null
+  return num
+}
+
 const clampNumber = (value: number, min: number, max: number) => {
   if (!Number.isFinite(value)) return min
   if (value < min) return min
@@ -553,6 +562,9 @@ const createEmptyPublicSolveSceneMeta = (): PublicSolveSceneMeta => ({
   guideSpacing: null,
   lastObservedZoom: null,
   viewerViewportPersisted: false,
+  viewerViewportCenterX: null,
+  viewerViewportCenterY: null,
+  viewerViewportZoom: null,
   segments: [],
 })
 
@@ -582,6 +594,9 @@ const cloneSceneMeta = (sceneMeta: PublicSolveSceneMeta): PublicSolveSceneMeta =
   guideSpacing: clampGuideSpacing(sceneMeta?.guideSpacing),
   lastObservedZoom: normalizeZoomValue(sceneMeta?.lastObservedZoom),
   viewerViewportPersisted: Boolean(sceneMeta?.viewerViewportPersisted),
+  viewerViewportCenterX: normalizeSceneCoordinateValue(sceneMeta?.viewerViewportCenterX),
+  viewerViewportCenterY: normalizeSceneCoordinateValue(sceneMeta?.viewerViewportCenterY),
+  viewerViewportZoom: normalizeZoomValue(sceneMeta?.viewerViewportZoom),
   segments: Array.isArray(sceneMeta?.segments)
     ? sceneMeta.segments.map((segment) => ({
         id: String(segment?.id || makePublicSolveSegmentId()),
@@ -803,6 +818,53 @@ const getGuideViewportState = (appState: Record<string, any> | undefined) => ({
   scrollY: Number(appState?.scrollY || 0),
 })
 
+const resolveViewportPixelSize = (
+  appState: any,
+  fallback?: { widthPx?: number | null; heightPx?: number | null },
+) => {
+  const widthPx = normalizeZoomValue(appState?.width) || normalizeZoomValue(fallback?.widthPx)
+  const heightPx = normalizeZoomValue(appState?.height) || normalizeZoomValue(fallback?.heightPx)
+  if (widthPx == null || heightPx == null) return null
+  return { widthPx, heightPx }
+}
+
+const buildPortableViewerSnapshot = (
+  appState: any,
+  fallback?: { widthPx?: number | null; heightPx?: number | null },
+) => {
+  const zoom = getAppStateZoomValue(appState) || 1
+  const viewportSize = resolveViewportPixelSize(appState, fallback)
+  if (!viewportSize) return null
+  const scrollX = Number(appState?.scrollX || 0)
+  const scrollY = Number(appState?.scrollY || 0)
+  const centerX = (viewportSize.widthPx / 2 - scrollX) / zoom
+  const centerY = (viewportSize.heightPx / 2 - scrollY) / zoom
+  return {
+    centerX: Number(centerX.toFixed(3)),
+    centerY: Number(centerY.toFixed(3)),
+    zoom: Number(zoom.toFixed(4)),
+  }
+}
+
+const buildViewportAppStateFromPortableSnapshot = (
+  snapshot: { centerX: number; centerY: number; zoom: number },
+  viewportSize: { widthPx: number; heightPx: number },
+  currentAppState?: Record<string, any>,
+) => ({
+  ...(currentAppState || {}),
+  scrollX: (viewportSize.widthPx / 2) - (snapshot.centerX * snapshot.zoom),
+  scrollY: (viewportSize.heightPx / 2) - (snapshot.centerY * snapshot.zoom),
+  zoom: snapshot.zoom,
+})
+
+const getPortableViewerSnapshotFromSceneMeta = (sceneMeta: PublicSolveSceneMeta) => {
+  const centerX = normalizeSceneCoordinateValue(sceneMeta.viewerViewportCenterX)
+  const centerY = normalizeSceneCoordinateValue(sceneMeta.viewerViewportCenterY)
+  const zoom = normalizeZoomValue(sceneMeta.viewerViewportZoom)
+  if (centerX == null || centerY == null || zoom == null) return null
+  return { centerX, centerY, zoom }
+}
+
 const buildInitialData = (scene: PublicSolveScene | null | undefined) => {
   const normalized = normalizePublicSolveScene(scene) || { elements: [] }
   return {
@@ -854,6 +916,20 @@ const buildSceneViewportFromStrokeBounds = (
   const nextHeightPx = Math.max(1, Math.ceil(rawHeight * scale))
 
   const sceneMeta = normalizePublicSolveSceneMeta(normalized.sceneMeta)
+  const currentAppState = normalized.appState || {}
+  const portableSnapshot = getPortableViewerSnapshotFromSceneMeta(sceneMeta)
+  if (sceneMeta.viewerViewportPersisted && portableSnapshot) {
+    return {
+      scene: {
+        ...normalized,
+        appState: buildViewportAppStateFromPortableSnapshot(portableSnapshot, { widthPx: nextWidthPx, heightPx: nextHeightPx }, currentAppState),
+        sceneMeta,
+      },
+      widthPx: nextWidthPx,
+      heightPx: nextHeightPx,
+    }
+  }
+
   if (sceneMeta.viewerViewportPersisted && getAppStateZoomValue(normalized.appState)) {
     return {
       scene: {
@@ -865,7 +941,6 @@ const buildSceneViewportFromStrokeBounds = (
     }
   }
 
-  const currentAppState = normalized.appState || {}
   const nextZoom = scale
   const nextScrollX = -bounds.minX * nextZoom
   const nextScrollY = -bounds.minY * nextZoom
@@ -890,11 +965,18 @@ const buildSceneViewportFromStrokeBounds = (
 const mergeViewportAppStateIntoScene = (
   scene: PublicSolveScene | null | undefined,
   appState: any,
+  fallbackViewportSize?: { widthPx?: number | null; heightPx?: number | null },
 ): PublicSolveScene => {
   const normalized = normalizePublicSolveScene(scene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
   const nextViewport = getPublicSolveViewportSnapshot(appState)
   const nextSceneMeta = cloneSceneMeta(normalizePublicSolveSceneMeta(normalized.sceneMeta))
+  const portableSnapshot = buildPortableViewerSnapshot(appState, fallbackViewportSize)
   nextSceneMeta.viewerViewportPersisted = true
+  if (portableSnapshot) {
+    nextSceneMeta.viewerViewportCenterX = portableSnapshot.centerX
+    nextSceneMeta.viewerViewportCenterY = portableSnapshot.centerY
+    nextSceneMeta.viewerViewportZoom = portableSnapshot.zoom
+  }
   const nextAppState = {
     ...(normalized.appState || {}),
     scrollX: nextViewport.scrollX,
@@ -908,9 +990,12 @@ const mergeViewportAppStateIntoScene = (
   }
 }
 
-const finalizeViewerSnapshotScene = (scene: PublicSolveScene | null | undefined): PublicSolveScene => {
+const finalizeViewerSnapshotScene = (
+  scene: PublicSolveScene | null | undefined,
+  fallbackViewportSize?: { widthPx?: number | null; heightPx?: number | null },
+): PublicSolveScene => {
   const normalized = normalizePublicSolveScene(scene) || { elements: [], sceneMeta: createEmptyPublicSolveSceneMeta() }
-  const nextScene = mergeViewportAppStateIntoScene(normalized, normalized.appState || {})
+  const nextScene = mergeViewportAppStateIntoScene(normalized, normalized.appState || {}, fallbackViewportSize)
   return {
     ...nextScene,
     updatedAt: new Date().toISOString(),
@@ -957,26 +1042,192 @@ export function PublicSolveCanvasViewer({
   onViewportChange?: (scene: PublicSolveScene) => void
 }) {
   const normalizedScene = useMemo(() => normalizePublicSolveScene(scene), [scene])
+  const [interactiveScene, setInteractiveScene] = useState<PublicSolveScene | null>(normalizedScene)
+
+  useEffect(() => {
+    setInteractiveScene(normalizedScene)
+  }, [normalizedScene])
+
+  const activeScene = interactiveScene || normalizedScene
   const viewerLayout = useMemo(
-    () => buildSceneViewportFromStrokeBounds(normalizedScene, { maxHeightPx: viewerHeightPx, maxWidthPx }),
-    [maxWidthPx, normalizedScene, viewerHeightPx]
+    () => buildSceneViewportFromStrokeBounds(activeScene, { maxHeightPx: viewerHeightPx, maxWidthPx }),
+    [activeScene, maxWidthPx, viewerHeightPx]
   )
   const viewerScene = viewerLayout.scene
+  const viewerViewportSize = useMemo(() => ({ widthPx: viewerLayout.widthPx, heightPx: viewerLayout.heightPx }), [viewerLayout.heightPx, viewerLayout.widthPx])
+  const viewerSurfaceRef = useRef<HTMLDivElement | null>(null)
   const excalidrawApiRef = useRef<any>(null)
+  const viewerSceneRef = useRef<PublicSolveScene | null>(viewerScene)
+  const interactiveAppStateRef = useRef<Record<string, any> | undefined>(viewerScene?.appState)
+  const panGestureRef = useRef<{ pointerId: number | 'mouse'; lastX: number; lastY: number } | null>(null)
   const lastViewportSignatureRef = useRef<string | null>(null)
+  const [isViewportDragging, setIsViewportDragging] = useState(false)
 
   useEffect(() => {
     lastViewportSignatureRef.current = serializePublicSolveViewportSnapshot(viewerScene?.appState)
   }, [viewerScene])
 
-  const handleViewerChange = useCallback((_elements: any[], appState: any) => {
+  useEffect(() => {
+    viewerSceneRef.current = viewerScene
+    interactiveAppStateRef.current = viewerScene?.appState
+    if (viewerScene && excalidrawApiRef.current?.updateScene) {
+      const nextInitialData = buildInitialData(viewerScene)
+      excalidrawApiRef.current.updateScene({
+        elements: nextInitialData.elements,
+        appState: nextInitialData.appState || {},
+        files: nextInitialData.files || {},
+        captureUpdate: 'IMMEDIATELY',
+      })
+    }
+  }, [viewerScene])
+
+  const commitInteractiveViewport = useCallback((nextAppState: Record<string, any>) => {
     if (!onViewportChange) return
-    const nextScene = mergeViewportAppStateIntoScene(viewerScene, appState)
+    const baseScene = viewerSceneRef.current
+    const mergedScene = mergeViewportAppStateIntoScene(baseScene, nextAppState, viewerViewportSize)
+    const nextScene: PublicSolveScene = {
+      ...mergedScene,
+      updatedAt: new Date().toISOString(),
+    }
     const nextSignature = serializePublicSolveViewportSnapshot(nextScene.appState)
     if (lastViewportSignatureRef.current === nextSignature) return
     lastViewportSignatureRef.current = nextSignature
+    viewerSceneRef.current = nextScene
+    interactiveAppStateRef.current = nextScene.appState
+    setInteractiveScene(nextScene)
+    const nextInitialData = buildInitialData(nextScene)
+    excalidrawApiRef.current?.updateScene?.({
+      elements: nextInitialData.elements,
+      appState: nextInitialData.appState || {},
+      files: nextInitialData.files || {},
+      captureUpdate: 'IMMEDIATELY',
+    })
     onViewportChange(nextScene)
-  }, [onViewportChange, viewerScene])
+  }, [onViewportChange, viewerViewportSize])
+
+  const handleViewerChange = useCallback((_elements: any[], appState: any) => {
+    if (!onViewportChange) return
+    commitInteractiveViewport({ ...(appState || {}) })
+  }, [commitInteractiveViewport, onViewportChange])
+
+  const handleViewportPointerDown = useCallback((event: any) => {
+    if (!onViewportChange) return
+    if (typeof event.button === 'number' && event.button !== 0) return
+    panGestureRef.current = {
+      pointerId: event.pointerId,
+      lastX: event.clientX,
+      lastY: event.clientY,
+    }
+    setIsViewportDragging(true)
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    event.preventDefault()
+    event.stopPropagation()
+  }, [onViewportChange])
+
+  const handleViewportPointerMove = useCallback((event: any) => {
+    const gesture = panGestureRef.current
+    if (!gesture || gesture.pointerId !== event.pointerId) return
+    const dx = Number(event.clientX || 0) - gesture.lastX
+    const dy = Number(event.clientY || 0) - gesture.lastY
+    if (!dx && !dy) return
+    gesture.lastX = Number(event.clientX || 0)
+    gesture.lastY = Number(event.clientY || 0)
+
+    const currentAppState = interactiveAppStateRef.current || viewerSceneRef.current?.appState || {}
+    commitInteractiveViewport({
+      ...(currentAppState || {}),
+      scrollX: Number(currentAppState?.scrollX || 0) + dx,
+      scrollY: Number(currentAppState?.scrollY || 0) + dy,
+      zoom: getAppStateZoomValue(currentAppState) || 1,
+    })
+    event.preventDefault()
+    event.stopPropagation()
+  }, [commitInteractiveViewport])
+
+  const handleViewportPointerEnd = useCallback((event: any) => {
+    const gesture = panGestureRef.current
+    if (!gesture || gesture.pointerId !== event.pointerId) return
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    panGestureRef.current = null
+    setIsViewportDragging(false)
+    event.preventDefault()
+    event.stopPropagation()
+  }, [])
+
+  const handleViewportMouseDown = useCallback((event: any) => {
+    if (!onViewportChange) return
+    if (typeof event.button === 'number' && event.button !== 0) return
+    panGestureRef.current = {
+      pointerId: 'mouse',
+      lastX: event.clientX,
+      lastY: event.clientY,
+    }
+    setIsViewportDragging(true)
+    event.preventDefault()
+    event.stopPropagation()
+  }, [onViewportChange])
+
+  const handleViewportMouseMove = useCallback((event: any) => {
+    const gesture = panGestureRef.current
+    if (!gesture || gesture.pointerId !== 'mouse') return
+    const dx = Number(event.clientX || 0) - gesture.lastX
+    const dy = Number(event.clientY || 0) - gesture.lastY
+    if (!dx && !dy) return
+    gesture.lastX = Number(event.clientX || 0)
+    gesture.lastY = Number(event.clientY || 0)
+
+    const currentAppState = interactiveAppStateRef.current || viewerSceneRef.current?.appState || {}
+    commitInteractiveViewport({
+      ...(currentAppState || {}),
+      scrollX: Number(currentAppState?.scrollX || 0) + dx,
+      scrollY: Number(currentAppState?.scrollY || 0) + dy,
+      zoom: getAppStateZoomValue(currentAppState) || 1,
+    })
+    event.preventDefault()
+    event.stopPropagation()
+  }, [commitInteractiveViewport])
+
+  const handleViewportMouseEnd = useCallback((event: any) => {
+    const gesture = panGestureRef.current
+    if (!gesture || gesture.pointerId !== 'mouse') return
+    panGestureRef.current = null
+    setIsViewportDragging(false)
+    event.preventDefault()
+    event.stopPropagation()
+  }, [])
+
+  const handleViewportWheel = useCallback((event: any) => {
+    if (!onViewportChange) return
+    const surface = viewerSurfaceRef.current
+    if (!surface) return
+    const currentAppState = interactiveAppStateRef.current || viewerSceneRef.current?.appState || {}
+    const currentZoom = getAppStateZoomValue(currentAppState) || 1
+    const rect = surface.getBoundingClientRect()
+    const localX = Number(event.clientX || 0) - rect.left
+    const localY = Number(event.clientY || 0) - rect.top
+    const nextZoom = clampNumber(
+      Number((currentZoom * (Number(event.deltaY || 0) < 0 ? 1.08 : (1 / 1.08))).toFixed(4)),
+      0.2,
+      6,
+    )
+    if (Math.abs(nextZoom - currentZoom) < 0.0005) return
+
+    const scrollX = Number(currentAppState?.scrollX || 0)
+    const scrollY = Number(currentAppState?.scrollY || 0)
+    const sceneX = (localX - scrollX) / currentZoom
+    const sceneY = (localY - scrollY) / currentZoom
+
+    commitInteractiveViewport({
+      ...(currentAppState || {}),
+      zoom: nextZoom,
+      scrollX: localX - (sceneX * nextZoom),
+      scrollY: localY - (sceneY * nextZoom),
+    })
+    event.preventDefault()
+    event.stopPropagation()
+  }, [commitInteractiveViewport, onViewportChange])
 
   if (!publicSolveSceneHasContent(viewerScene)) {
     return (
@@ -987,7 +1238,19 @@ export function PublicSolveCanvasViewer({
   }
 
   return (
-    <div className={`philani-solution-viewer ${className}`.trim()}>
+    <div
+      className={`philani-solution-viewer ${className}`.trim()}
+      onPointerDown={onViewportChange ? handleViewportPointerDown : undefined}
+      onPointerMove={onViewportChange ? handleViewportPointerMove : undefined}
+      onPointerUp={onViewportChange ? handleViewportPointerEnd : undefined}
+      onPointerCancel={onViewportChange ? handleViewportPointerEnd : undefined}
+      onMouseDown={onViewportChange ? handleViewportMouseDown : undefined}
+      onMouseMove={onViewportChange ? handleViewportMouseMove : undefined}
+      onMouseUp={onViewportChange ? handleViewportMouseEnd : undefined}
+      onMouseLeave={onViewportChange ? handleViewportMouseEnd : undefined}
+      onWheel={onViewportChange ? handleViewportWheel : undefined}
+      style={onViewportChange ? { touchAction: 'none' } : undefined}
+    >
       <div
         className="relative overflow-hidden bg-white"
         style={{
@@ -996,7 +1259,7 @@ export function PublicSolveCanvasViewer({
           maxHeight: `${viewerHeightPx}px`,
         }}
       >
-        <div className={`absolute inset-0 ${heightClassName || ''}`.trim()}>
+        <div ref={viewerSurfaceRef} className={`absolute inset-0 ${heightClassName || ''}`.trim()}>
           <LessonStyledExcalidraw
             key={viewerScene?.updatedAt || 'viewer'}
             className="h-full"
@@ -1447,8 +1710,12 @@ export function PublicSolveComposer({
             className={`inline-flex h-11 items-center justify-center rounded-full bg-[#1877f2] px-5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(24,119,242,0.28)] transition hover:bg-[#176ad8] disabled:cursor-not-allowed disabled:opacity-55 ${fullscreenCanvas ? 'justify-self-end' : ''}`.trim()}
             onClick={() => {
               const action = onPreviewSubmit || onSubmit
+              const shellBounds = canvasShellRef.current?.getBoundingClientRect()
               const nextScene = persistViewerViewportOnSubmit
-                ? finalizeViewerSnapshotScene(sceneRef.current)
+                ? finalizeViewerSnapshotScene(sceneRef.current, {
+                  widthPx: shellBounds?.width ?? null,
+                  heightPx: shellBounds?.height ?? null,
+                })
                 : sceneRef.current
               if (persistViewerViewportOnSubmit) {
                 applySceneSnapshot(nextScene)

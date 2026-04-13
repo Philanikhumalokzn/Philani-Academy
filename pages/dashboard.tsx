@@ -8899,6 +8899,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setComposerBlockCrudTarget((current) => current?.block.id === blockId ? null : current)
   }, [])
 
+  const updateComposerCanvasViewport = useCallback((blockId: string, scene: PublicSolveScene) => {
+    const safeBlockId = String(blockId || '').trim()
+    const normalizedScene = normalizePublicSolveScene(scene)
+    if (!safeBlockId || !normalizedScene) return
+    setPostSolveBlocks((prev) => prev.map((block) => (
+      block.type === 'canvas' && block.id === safeBlockId
+        ? { ...block, scene: normalizedScene }
+        : block
+    )))
+  }, [])
+
   const clearComposerBlockLongPress = useCallback(() => {
     if (composerBlockLongPressTimeoutRef.current !== null && typeof window !== 'undefined') {
       window.clearTimeout(composerBlockLongPressTimeoutRef.current)
@@ -14539,6 +14550,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           onTypedChromeVisibilityChange={setPostTypedOverlayChromeVisible}
           onEditBlock={editComposerBlock}
           onDeleteBlock={deleteComposerBlock}
+          onCanvasViewportChange={updateComposerCanvasViewport}
           onBeginBlockLongPress={beginComposerBlockLongPress}
           onMoveBlockLongPress={moveComposerBlockLongPress}
           onClearBlockLongPress={clearComposerBlockLongPress}
@@ -16043,6 +16055,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         onTypedChromeVisibilityChange={setPostTypedOverlayChromeVisible}
         onEditBlock={editComposerBlock}
         onDeleteBlock={deleteComposerBlock}
+        onCanvasViewportChange={updateComposerCanvasViewport}
         onBeginBlockLongPress={beginComposerBlockLongPress}
         onMoveBlockLongPress={moveComposerBlockLongPress}
         onClearBlockLongPress={clearComposerBlockLongPress}

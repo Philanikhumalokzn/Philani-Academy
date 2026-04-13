@@ -6,7 +6,7 @@ import ComposerActionBar from './ComposerActionBar'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import OverlayPortal from './OverlayPortal'
 import PostComposerBlocksPreview from './PostComposerBlocksPreview'
-import { PublicSolveComposer, PublicSolveOpacityWorkspace, type PublicSolveScene } from './PublicSolveCanvas'
+import { PublicSolveCanvasViewer, PublicSolveComposer, PublicSolveOpacityWorkspace, type PublicSolveScene } from './PublicSolveCanvas'
 import type { ComposerBlockCrudTarget, ComposerBlockEditTarget, PostReplyBlock, PostSolveOverlayState } from '../lib/postReplyComposer'
 import { composePostSolveBlocksWithDraftText } from '../lib/postReplyComposer'
 import { renderKatexDisplayHtml } from '../lib/latexRender'
@@ -84,6 +84,7 @@ type Props = {
   onTypedChromeVisibilityChange?: (visible: boolean) => void
   onEditBlock?: (block: PostReplyBlock, index: number) => void
   onDeleteBlock?: (blockId: string) => void
+  onCanvasViewportChange?: (blockId: string, scene: PublicSolveScene) => void
   onBeginBlockLongPress?: (event: React.PointerEvent, target: ComposerBlockCrudTarget) => void
   onMoveBlockLongPress?: (event: React.PointerEvent) => void
   onClearBlockLongPress?: () => void
@@ -169,6 +170,7 @@ function ComposerBlockList({
   onMoveBlockLongPress,
   onClearBlockLongPress,
   onOpenBlockCrudOptions,
+  onCanvasViewportChange,
 }: {
   blocks: PostReplyBlock[]
   editingTarget: ComposerBlockEditTarget | null | undefined
@@ -177,6 +179,7 @@ function ComposerBlockList({
   onMoveBlockLongPress?: (event: React.PointerEvent) => void
   onClearBlockLongPress?: () => void
   onOpenBlockCrudOptions?: (target: ComposerBlockCrudTarget) => void
+  onCanvasViewportChange?: (blockId: string, scene: PublicSolveScene) => void
 }) {
   const visibleBlocks = blocks.filter((block) => !(editingTarget?.type === 'text' && editingTarget.blockId === block.id))
   if (visibleBlocks.length === 0) return null
@@ -246,30 +249,54 @@ function ComposerBlockList({
 
         if (block.type === 'canvas') {
           return (
-            <div
-              key={block.id}
-              role="button"
-              tabIndex={0}
-              aria-label="Adjust canvas snapshot"
-              className="pt-1"
-              onClick={() => onEditBlock?.(block, index)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
+            <div key={block.id} className="pt-1">
+              <div
+                className="overflow-hidden rounded-[24px]"
+                onClick={(event) => event.stopPropagation()}
+                onContextMenu={(event) => {
                   event.preventDefault()
-                  onEditBlock?.(block, index)
-                }
-              }}
-              {...blockHandlers}
-            >
-              <div className="relative">
-                <PostComposerBlocksPreview blocks={[block]} compact />
-                <div className="pointer-events-none absolute right-3 top-3 rounded-full border border-[#1d4f91]/10 bg-white/95 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#1d4f91] shadow-sm">
-                  Snapshot
+                  onOpenBlockCrudOptions?.(blockTarget)
+                }}
+              >
+                <div className="relative">
+                  <PublicSolveCanvasViewer
+                    scene={block.scene}
+                    viewerHeightPx={220}
+                    onViewportChange={onCanvasViewportChange
+                      ? (scene) => onCanvasViewportChange(block.id, scene)
+                      : undefined}
+                  />
+                  <div className="pointer-events-none absolute right-3 top-3 rounded-full border border-[#1d4f91]/10 bg-white/95 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#1d4f91] shadow-sm">
+                    Snapshot
+                  </div>
                 </div>
               </div>
               <div className="mt-2 flex items-center justify-between gap-3 rounded-2xl border border-[#1d4f91]/10 bg-[#f8fbff] px-3 py-2 text-left">
-                <span className="text-[12px] leading-5 text-slate-600">Tap to adjust what viewers see first.</span>
-                <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#1d4f91]">Adjust</span>
+                <span className="text-[12px] leading-5 text-slate-600">Pan or zoom to frame what viewers see first.</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600"
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      onOpenBlockCrudOptions?.(blockTarget)
+                    }}
+                  >
+                    Options
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-full border border-[#1d4f91]/14 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#1d4f91]"
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      onEditBlock?.(block, index)
+                    }}
+                  >
+                    Edit ink
+                  </button>
+                </div>
               </div>
             </div>
           )
@@ -424,6 +451,7 @@ export default function PostComposerOverlay(props: Props) {
                       onMoveBlockLongPress={props.onMoveBlockLongPress}
                       onClearBlockLongPress={props.onClearBlockLongPress}
                       onOpenBlockCrudOptions={props.onOpenBlockCrudOptions}
+                      onCanvasViewportChange={props.onCanvasViewportChange}
                     />
 
                     <textarea
@@ -539,7 +567,6 @@ export default function PostComposerOverlay(props: Props) {
                   submitting={posting}
                   fullscreenCanvas
                   hideMainMenu
-                  persistViewerViewportOnSubmit
                   referencePresentation="background"
                   onCancel={props.onCanvasCancel}
                   onSubmit={(scene) => props.onCanvasSubmit?.(scene)}

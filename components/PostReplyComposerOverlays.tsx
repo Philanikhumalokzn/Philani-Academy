@@ -69,6 +69,7 @@ type Props = {
   onTypedChromeVisibilityChange: (visible: boolean) => void
   onEditBlock: (block: PostReplyBlock, index: number) => void
   onDeleteBlock: (blockId: string) => void
+  onCanvasViewportChange: (blockId: string, scene: PublicSolveScene) => void
   onBeginBlockLongPress: (event: React.PointerEvent, target: ComposerBlockCrudTarget) => void
   onMoveBlockLongPress: (event: React.PointerEvent) => void
   onClearBlockLongPress: () => void
@@ -120,6 +121,7 @@ export default function PostReplyComposerOverlays({
   onTypedChromeVisibilityChange,
   onEditBlock,
   onDeleteBlock,
+  onCanvasViewportChange,
   onBeginBlockLongPress,
   onMoveBlockLongPress,
   onClearBlockLongPress,
@@ -277,32 +279,45 @@ export default function PostReplyComposerOverlays({
 
                             if (block.type === 'canvas') {
                               return (
-                                <div
-                                  key={block.id}
-                                  role="button"
-                                  tabIndex={0}
-                                  aria-label="Adjust canvas snapshot"
-                                  className="pt-1"
-                                  onClick={() => onEditBlock(block, index)}
-                                  onKeyDown={(event) => {
-                                    if (event.key === 'Enter' || event.key === ' ') {
-                                      event.preventDefault()
-                                      onEditBlock(block, index)
-                                    }
-                                  }}
-                                  {...blockHandlers}
-                                >
+                                <div key={block.id} className="pt-1">
                                   <div className="philani-gradient-outline-soft [--philani-outline-fill:#ffffff] overflow-hidden rounded-[24px] p-1 shadow-sm">
                                     <div className="relative">
-                                      <PublicSolveCanvasViewer scene={block.scene} className="pointer-events-none" viewerHeightPx={220} />
+                                      <PublicSolveCanvasViewer
+                                        scene={block.scene}
+                                        viewerHeightPx={220}
+                                        onViewportChange={(scene) => onCanvasViewportChange(block.id, scene)}
+                                      />
                                       <div className="pointer-events-none absolute right-3 top-3 rounded-full border border-[#1d4f91]/10 bg-white/95 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#1d4f91] shadow-sm">
                                         Snapshot
                                       </div>
                                     </div>
                                   </div>
                                   <div className="mt-2 flex items-center justify-between gap-3 rounded-2xl border border-[#1d4f91]/10 bg-[#f8fbff] px-3 py-2 text-left">
-                                    <span className="text-[12px] leading-5 text-slate-600">Tap to adjust what viewers see first.</span>
-                                    <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#1d4f91]">Adjust</span>
+                                    <span className="text-[12px] leading-5 text-slate-600">Pan or zoom to frame what viewers see first.</span>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600"
+                                        onClick={(event) => {
+                                          event.preventDefault()
+                                          event.stopPropagation()
+                                          onOpenBlockCrudOptions(blockTarget)
+                                        }}
+                                      >
+                                        Options
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="rounded-full border border-[#1d4f91]/14 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#1d4f91]"
+                                        onClick={(event) => {
+                                          event.preventDefault()
+                                          event.stopPropagation()
+                                          onEditBlock(block, index)
+                                        }}
+                                      >
+                                        Edit ink
+                                      </button>
+                                    </div>
                                   </div>
                                 </div>
                               )
@@ -454,7 +469,6 @@ export default function PostReplyComposerOverlays({
                 submitting={submitting}
                 fullscreenCanvas
                 hideMainMenu
-                persistViewerViewportOnSubmit
                 referencePresentation="background"
                 onCancel={onCanvasCancel}
                 onSubmit={onCanvasSubmit}

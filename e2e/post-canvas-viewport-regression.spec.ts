@@ -60,6 +60,17 @@ const ensureOnDashboard = async (page: Page) => {
   await expect(page).toHaveURL(/\/dashboard|\/board/i, { timeout: 30_000 })
 }
 
+const fetchActiveProfileId = async (page: Page) => {
+  return page.evaluate(async () => {
+    const res = await fetch('/api/profile', { credentials: 'same-origin', cache: 'no-store' })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || typeof data?.id !== 'string' || !data.id) {
+      throw new Error(data?.message || `Failed to load active profile (${res.status})`)
+    }
+    return String(data.id)
+  })
+}
+
 const getSceneZoom = (scene: any) => {
   const raw = scene?.appState?.zoom
   if (typeof raw === 'number') return raw
@@ -264,8 +275,106 @@ const assertViewerVisible = (bounds: any) => {
   expect(Number(bounds?.centerY || 0)).toBeLessThan(Number(bounds?.canvasHeight || 0) - 24)
 }
 
+const drawDiagonalStroke = async (page: Page, viewer: Locator) => {
+  const box = await viewer.boundingBox()
+  if (!box) throw new Error('Missing viewer bounding box')
+
+  const startX = box.x + Math.max(24, box.width * 0.28)
+  const startY = box.y + Math.max(24, box.height * 0.3)
+  const endX = box.x + Math.min(box.width - 24, box.width * 0.72)
+  const endY = box.y + Math.min(box.height - 24, box.height * 0.68)
+
+  await page.mouse.move(startX, startY)
+  await page.mouse.down()
+  await page.mouse.move(endX, endY, { steps: 18 })
+  await page.mouse.up()
+}
+
 test.describe('post canvas viewport regression', () => {
   test.setTimeout(300_000)
+
+  test('post composer canvas preview keeps a visible adjustable snapshot after finish', async ({ browser }) => {
+    const storageState = await createSignedInStorageState(browser)
+    const context = await browser.newContext({
+      viewport: { width: 1365, height: 900 },
+      storageState,
+    })
+    const page = await context.newPage()
+
+    const uniqueToken = `${Date.now()}`
+    const uniqueTitle = `Composer snapshot ${uniqueToken}`
+
+    let createdPostId = ''
+    let activeProfileId = ''
+
+    try {
+      await page.goto(toAbsoluteUrl('/dashboard'), { waitUntil: 'domcontentloaded' })
+      await ensureOnDashboard(page)
+      activeProfileId = await fetchActiveProfileId(page)
+
+      await page.getByRole('button', { name: /what's on your mind/i }).first().click()
+      const composerDialog = page.getByRole('dialog').filter({ has: page.getByPlaceholder('Title (optional)') }).first()
+      await expect(composerDialog).toBeVisible({ timeout: 20_000 })
+      await composerDialog.getByPlaceholder('Title (optional)').fill(uniqueTitle)
+      await composerDialog.getByRole('button', { name: 'Handwriting' }).click()
+
+      const canvasDialog = page.getByRole('dialog', { name: 'Post composer canvas' })
+      await expect(canvasDialog).toBeVisible({ timeout: 20_000 })
+
+      const canvasViewer = canvasDialog.locator('.excalidraw').first()
+      await expect(canvasViewer).toBeVisible({ timeout: 20_000 })
+      await drawDiagonalStroke(page, canvasViewer)
+
+      await canvasDialog.getByRole('button', { name: 'Finish' }).click()
+
+      const previewViewer = composerDialog.locator('.philani-solution-viewer').first()
+      await expect(previewViewer).toBeVisible({ timeout: 20_000 })
+      const previewBounds = await waitForViewerInkBounds(previewViewer)
+      assertViewerVisible(previewBounds)
+
+      const previewBox = await previewViewer.boundingBox()
+      if (!previewBox) throw new Error('Missing preview viewer bounding box')
+      await page.mouse.move(previewBox.x + previewBox.width * 0.35, previewBox.y + previewBox.height * 0.48)
+      await page.mouse.down()
+      await page.mouse.move(previewBox.x + previewBox.width * 0.58, previewBox.y + previewBox.height * 0.48, { steps: 10 })
+      await page.mouse.up()
+
+      const adjustedPreviewBounds = await waitForViewerInkBounds(previewViewer)
+      assertViewerVisible(adjustedPreviewBounds)
+      expect(Math.abs(Number(adjustedPreviewBounds?.centroidX || 0) - Number(previewBounds?.centroidX || 0))).toBeGreaterThan(Number(previewBounds?.canvasWidth || 0) * 0.04)
+
+      const createPostResponse = page.waitForResponse((response) => (
+        response.url().includes('/api/posts')
+        && response.request().method() === 'POST'
+      ))
+      await composerDialog.getByRole('button', { name: 'Post' }).click()
+      const createPostData = await (await createPostResponse).json().catch(() => ({}))
+      createdPostId = String(createPostData?.id || '')
+      expect(createdPostId).toBeTruthy()
+
+      await page.goto(toAbsoluteUrl(`/u/${encodeURIComponent(activeProfileId)}`), { waitUntil: 'domcontentloaded' })
+
+      const publishedPost = page.locator(`[data-post-id="${createdPostId}"]`).first()
+      await expect(publishedPost).toBeVisible({ timeout: 30_000 })
+
+      const publishedViewer = publishedPost.locator('.philani-solution-viewer').first()
+      await expect(publishedViewer).toBeVisible({ timeout: 20_000 })
+      const publishedBounds = await waitForViewerInkBounds(publishedViewer)
+      assertViewerVisible(publishedBounds)
+      expect(Math.abs(Number(publishedBounds?.centroidX || 0) - Number(adjustedPreviewBounds?.centroidX || 0))).toBeLessThan(Number(publishedBounds?.canvasWidth || 0) * 0.16)
+      expect(Math.abs(Number(publishedBounds?.centroidY || 0) - Number(adjustedPreviewBounds?.centroidY || 0))).toBeLessThan(Number(publishedBounds?.canvasHeight || 0) * 0.16)
+    } finally {
+      if (createdPostId) {
+        await page.evaluate(async ({ postId }) => {
+          await fetch(`/api/posts/${encodeURIComponent(postId)}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+          }).catch(() => null)
+        }, { postId: createdPostId }).catch(() => null)
+      }
+      await context.close().catch(() => null)
+    }
+  })
 
   test('owned post reply canvases keep a stable saved viewport after zooming', async ({ browser }) => {
     const storageState = await createSignedInStorageState(browser)
@@ -283,6 +392,7 @@ test.describe('post canvas viewport regression', () => {
     const childBaseScene = buildCanvasScene(seedBase + 10)
 
     let createdPostId = ''
+    let activeProfileId = ''
     let threadKey = ''
     let rootResponseId = ''
     let childResponseId = ''
@@ -366,6 +476,7 @@ test.describe('post canvas viewport regression', () => {
 
         return {
           createdId,
+          userId,
           threadKey: nextThreadKey,
           rootResponseId: rootId,
           childResponseId: String(child?.id || ''),
@@ -373,22 +484,19 @@ test.describe('post canvas viewport regression', () => {
       }, { title: uniqueTitle, prompt: uniquePrompt, rootScene: rootBaseScene, childScene: childBaseScene })
 
       createdPostId = created.createdId
+      activeProfileId = created.userId
       threadKey = created.threadKey
       rootResponseId = created.rootResponseId
       childResponseId = created.childResponseId
 
       expect(createdPostId).toBeTruthy()
+      expect(activeProfileId).toBeTruthy()
       expect(rootResponseId).toBeTruthy()
       expect(childResponseId).toBeTruthy()
 
-      await page.reload({ waitUntil: 'domcontentloaded' })
-      await ensureOnDashboard(page)
+      await page.goto(toAbsoluteUrl(`/u/${encodeURIComponent(activeProfileId)}`), { waitUntil: 'domcontentloaded' })
 
-      const openProfileButton = page.getByRole('button', { name: /open your profile/i }).first()
-      await expect(openProfileButton).toBeVisible({ timeout: 20_000 })
-      await openProfileButton.click()
-
-      const targetPost = page.locator(`article[data-post-id="${createdPostId}"]`).first()
+      const targetPost = page.locator(`[data-post-id="${createdPostId}"]`).first()
       await expect(targetPost).toBeVisible({ timeout: 30_000 })
 
       const profileBody = targetPost.getByTestId('public-feed-post-body')
@@ -445,10 +553,7 @@ test.describe('post canvas viewport regression', () => {
       expect(Number(getSceneZoom(savedRootScene).toFixed(2))).toBe(1.25)
       expect(Number(getSceneZoom(savedChildScene).toFixed(2))).toBe(1.25)
 
-      await page.reload({ waitUntil: 'domcontentloaded' })
-      await ensureOnDashboard(page)
-      await expect(openProfileButton).toBeVisible({ timeout: 20_000 })
-      await openProfileButton.click()
+      await page.goto(toAbsoluteUrl(`/u/${encodeURIComponent(activeProfileId)}`), { waitUntil: 'domcontentloaded' })
       await expect(targetPost).toBeVisible({ timeout: 30_000 })
 
       const reloadedBody = targetPost.getByTestId('public-feed-post-body')
@@ -468,10 +573,7 @@ test.describe('post canvas viewport regression', () => {
       expect(Number(rootReloaded?.count || 0)).toBeLessThan(Number(rootBefore?.count || 0) * 0.95)
       expect(Number(childReloaded?.count || 0)).toBeLessThan(Number(childBefore?.count || 0) * 0.95)
 
-      await page.reload({ waitUntil: 'domcontentloaded' })
-      await ensureOnDashboard(page)
-      await expect(openProfileButton).toBeVisible({ timeout: 20_000 })
-      await openProfileButton.click()
+      await page.goto(toAbsoluteUrl(`/u/${encodeURIComponent(activeProfileId)}`), { waitUntil: 'domcontentloaded' })
       await expect(targetPost).toBeVisible({ timeout: 30_000 })
 
       const secondReloadBody = targetPost.getByTestId('public-feed-post-body')

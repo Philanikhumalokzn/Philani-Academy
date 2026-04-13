@@ -769,7 +769,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           ) : (
             <div key={`${keyPrefix}-${block.id}-${index}`} className={canvasClassName}>
               <div className="overflow-hidden rounded-2xl border border-[#1d4f91] bg-white shadow-sm">
-                <PublicSolveCanvasViewer
+                <PublicSolvePlainExcalidrawViewer
                   scene={block.scene}
                   onViewportChange={options?.onCanvasViewportChange
                     ? (scene) => options.onCanvasViewportChange?.(block.id, scene)
@@ -6827,14 +6827,25 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                       {response?.excalidrawScene ? (
                         <div>
-                          <PublicSolveCanvasViewer
-                            scene={response.excalidrawScene}
-                            onViewportChange={options.onInteractiveViewportChange && options.interactiveViewportResponseId === responseId
-                              ? options.onInteractiveViewportChange
-                              : (options.onLiveResponseViewportChange && isMine && responseId
-                                ? (scene) => options.onLiveResponseViewportChange?.(responseId, scene)
-                                : undefined)}
-                          />
+                          {options.kind === 'post' ? (
+                            <PublicSolvePlainExcalidrawViewer
+                              scene={response.excalidrawScene}
+                              onViewportChange={options.onInteractiveViewportChange && options.interactiveViewportResponseId === responseId
+                                ? options.onInteractiveViewportChange
+                                : (options.onLiveResponseViewportChange && isMine && responseId
+                                  ? (scene) => options.onLiveResponseViewportChange?.(responseId, scene)
+                                  : undefined)}
+                            />
+                          ) : (
+                            <PublicSolveCanvasViewer
+                              scene={response.excalidrawScene}
+                              onViewportChange={options.onInteractiveViewportChange && options.interactiveViewportResponseId === responseId
+                                ? options.onInteractiveViewportChange
+                                : (options.onLiveResponseViewportChange && isMine && responseId
+                                  ? (scene) => options.onLiveResponseViewportChange?.(responseId, scene)
+                                  : undefined)}
+                            />
+                          )}
                         </div>
                       ) : null}
                     </>
@@ -11512,7 +11523,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               panelClassName="bg-[#f8fafc]"
             >
               <div className="rounded-2xl border border-black/10 bg-white p-2 shadow-sm">
-                <PublicSolveCanvasViewer
+                <PublicSolvePlainExcalidrawViewer
                   scene={postCanvasViewer.scene}
                   viewerHeightPx={700}
                   onViewportChange={postCanvasViewer.onViewportChange}

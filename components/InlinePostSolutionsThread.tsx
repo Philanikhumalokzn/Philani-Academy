@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react'
 import UserLink from './UserLink'
-import { PublicSolveCanvasViewer, type PublicSolveScene } from './PublicSolveCanvas'
+import { PublicSolvePlainExcalidrawViewer, type PublicSolveScene } from './PublicSolveCanvas'
 import { getPostReplyThreadMeta, normalizePostReplyBlocks } from '../lib/postReplyComposer'
 import { renderKatexDisplayHtml } from '../lib/latexRender'
 import { renderTextWithKatex } from '../lib/renderTextWithKatex'
@@ -275,7 +275,7 @@ export default function InlinePostSolutionsThread({
 
             return (
               <div key={blockKey} className={palette.canvasShellClass}>
-                <PublicSolveCanvasViewer
+                <PublicSolvePlainExcalidrawViewer
                   scene={block.scene}
                   onViewportChange={onCanvasViewportChange
                     ? (scene) => onCanvasViewportChange(response, args.responseId, scene)
@@ -306,7 +306,7 @@ export default function InlinePostSolutionsThread({
 
         {response?.excalidrawScene ? (
           <div className={palette.canvasShellClass}>
-            <PublicSolveCanvasViewer
+            <PublicSolvePlainExcalidrawViewer
               scene={response.excalidrawScene}
               onViewportChange={onCanvasViewportChange
                 ? (scene) => onCanvasViewportChange(response, args.responseId, scene)

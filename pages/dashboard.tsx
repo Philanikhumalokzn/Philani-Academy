@@ -1781,6 +1781,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const interactiveViewportSaveTimeoutsRef = useRef<Record<string, number>>({})
   const interactiveViewportQueuedSceneRef = useRef<Record<string, { threadKey: string; scene: PublicSolveScene; serialized: string }>>({})
   const interactiveViewportSavedSceneRef = useRef<Record<string, string>>({})
+  const livePostCanvasSaveTimeoutsRef = useRef<Record<string, number>>({})
+  const livePostCanvasQueuedSaveRef = useRef<Record<string, { contentBlocks: PostReplyBlock[]; prompt: string; imageUrl: string | null; serialized: string }>>({})
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -1819,6 +1821,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         window.clearTimeout(socialShareResetTimeoutRef.current)
       }
       Object.values(interactiveViewportSaveTimeoutsRef.current).forEach((timeoutId) => {
+        window.clearTimeout(timeoutId)
+      })
+      Object.values(livePostCanvasSaveTimeoutsRef.current).forEach((timeoutId) => {
         window.clearTimeout(timeoutId)
       })
     }
@@ -5425,6 +5430,121 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }, 320)
   }, [flushInteractiveViewportSave])
 
+  const applyLivePostCanvasViewportLocally = useCallback((postId: string, contentBlocks: PostReplyBlock[]) => {
+    const safePostId = String(postId || '').trim()
+    if (!safePostId) return
+
+    const structuredFields = buildSocialPostComposerFields(contentBlocks)
+    const patch = {
+      prompt: structuredFields.storedPrompt,
+      imageUrl: structuredFields.primaryImageUrl,
+      contentBlocks: structuredFields.contentBlocks,
+      updatedAt: new Date().toISOString(),
+    }
+
+    const updatePostList = (items: any[]) => (
+      Array.isArray(items)
+        ? items.map((item: any) => getDashboardItemKey(item) === `post:${safePostId}` ? patchFeedPost(item, safePostId, patch as any) : item)
+        : items
+    )
+
+    setStudentFeedPosts((prev: any[]) => updatePostList(prev))
+    setTimelineChallenges((prev: any[]) => updatePostList(prev))
+  }, [])
+
+  const buildLivePostCanvasViewportPatch = useCallback((blocks: PostReplyBlock[], blockId: string, scene: PublicSolveScene) => {
+    const safeBlockId = String(blockId || '').trim()
+    const normalizedScene = normalizePublicSolveScene(scene)
+    if (!safeBlockId || !normalizedScene) return null
+
+    let replaced = false
+    const nextBlocks = blocks.map((block) => {
+      if (block.type !== 'canvas' || String(block.id || '').trim() !== safeBlockId) return block
+      replaced = true
+      return { ...block, scene: normalizedScene } as PostReplyBlock
+    })
+
+    if (!replaced) return null
+
+    const structuredFields = buildSocialPostComposerFields(nextBlocks)
+    let serialized = ''
+    try {
+      serialized = JSON.stringify(structuredFields.contentBlocks)
+    } catch {
+      return null
+    }
+
+    return {
+      contentBlocks: structuredFields.contentBlocks,
+      prompt: structuredFields.storedPrompt,
+      imageUrl: structuredFields.primaryImageUrl,
+      serialized,
+    }
+  }, [])
+
+  const flushLivePostCanvasViewportSave = useCallback(async (postId: string) => {
+    const safePostId = String(postId || '').trim()
+    if (!safePostId) return
+    const pending = livePostCanvasQueuedSaveRef.current[safePostId]
+    if (!pending?.contentBlocks?.length) return
+
+    try {
+      const res = await fetch(`/api/posts/${encodeURIComponent(safePostId)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contentBlocks: pending.contentBlocks,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to save post view (${res.status})`)
+      }
+
+      applyLivePostCanvasViewportLocally(safePostId, pending.contentBlocks)
+    } catch (err) {
+      console.error('Failed to save live post canvas viewport', err)
+    } finally {
+      delete livePostCanvasQueuedSaveRef.current[safePostId]
+      const timeoutId = livePostCanvasSaveTimeoutsRef.current[safePostId]
+      if (typeof timeoutId === 'number' && typeof window !== 'undefined') {
+        window.clearTimeout(timeoutId)
+      }
+      delete livePostCanvasSaveTimeoutsRef.current[safePostId]
+    }
+  }, [applyLivePostCanvasViewportLocally])
+
+  const queueLivePostCanvasViewportSave = useCallback((post: any, blockId: string, scene: PublicSolveScene) => {
+    const safePostId = String(post?.id || '').trim()
+    if (!safePostId) return
+
+    const pending = livePostCanvasQueuedSaveRef.current[safePostId]
+    const currentBlocks = pending?.contentBlocks || normalizePostReplyBlocks(Array.isArray(post?.contentBlocks) ? post.contentBlocks : { studentText: post?.prompt, imageUrl: post?.imageUrl })
+    const nextPatch = buildLivePostCanvasViewportPatch(currentBlocks, blockId, scene)
+    if (!nextPatch) return
+
+    let currentSerialized = ''
+    try {
+      currentSerialized = JSON.stringify(normalizePostReplyBlocks(Array.isArray(post?.contentBlocks) ? post.contentBlocks : { studentText: post?.prompt, imageUrl: post?.imageUrl }))
+    } catch {
+      currentSerialized = ''
+    }
+
+    if (nextPatch.serialized === currentSerialized || pending?.serialized === nextPatch.serialized) return
+
+    livePostCanvasQueuedSaveRef.current[safePostId] = nextPatch
+
+    if (typeof window === 'undefined') return
+    const existingTimeoutId = livePostCanvasSaveTimeoutsRef.current[safePostId]
+    if (typeof existingTimeoutId === 'number') {
+      window.clearTimeout(existingTimeoutId)
+    }
+    livePostCanvasSaveTimeoutsRef.current[safePostId] = window.setTimeout(() => {
+      void flushLivePostCanvasViewportSave(safePostId)
+    }, 320)
+  }, [buildLivePostCanvasViewportPatch, flushLivePostCanvasViewportSave, normalizePostReplyBlocks])
+
   const postSolvePreviewResponseId = 'draft-post-solve-preview-response'
 
   const postSolvePreviewResponses = useMemo(() => {
@@ -6271,6 +6391,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           void openPostThread(p, { forceOpen: true })
                         }}
                         onOpenImage={openPostImageViewer}
+                        onCanvasViewportChange={isOwner
+                          ? (blockId, scene) => queueLivePostCanvasViewportSave(p, blockId, scene)
+                          : undefined}
                         consumeLongPressOpen={() => consumePostLongPressForPost(p)}
                         bodyPointerProps={getPostCrudBodyProps(p)}
                         sideActions={postSideActions}

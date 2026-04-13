@@ -114,6 +114,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const hasTitle = Object.prototype.hasOwnProperty.call(body, 'title')
     const hasPrompt = Object.prototype.hasOwnProperty.call(body, 'prompt')
     const hasImageUrl = Object.prototype.hasOwnProperty.call(body, 'imageUrl')
+    const hasContentBlocks = Object.prototype.hasOwnProperty.call(body, 'contentBlocks')
     const hasAudience = Object.prototype.hasOwnProperty.call(body, 'audience')
     const hasAttemptsOpen = Object.prototype.hasOwnProperty.call(body, 'attemptsOpen')
     const hasSolutionsVisible = Object.prototype.hasOwnProperty.call(body, 'solutionsVisible')
@@ -122,8 +123,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (hasTitle) updateData.title = (typeof body.title === 'string' ? body.title.trim() : '').slice(0, MAX_TITLE_LENGTH)
 
     let nextPrompt = post.prompt
-    const nextBlocks = normalizePostReplyBlocks(Array.isArray(body.contentBlocks) ? body.contentBlocks : { studentText: hasPrompt ? body.prompt : post.prompt, imageUrl: hasImageUrl ? body.imageUrl : post.imageUrl })
-    const hasStructuredComposer = Array.isArray(body.contentBlocks)
+    const nextBlocks = normalizePostReplyBlocks(hasContentBlocks && Array.isArray(body.contentBlocks) ? body.contentBlocks : { studentText: hasPrompt ? body.prompt : post.prompt, imageUrl: hasImageUrl ? body.imageUrl : post.imageUrl })
+    const hasStructuredComposer = hasContentBlocks && Array.isArray(body.contentBlocks)
     const structuredFields = hasStructuredComposer ? buildSocialPostComposerFields(nextBlocks) : null
     if (hasPrompt) nextPrompt = (typeof body.prompt === 'string' ? body.prompt.trim() : '').slice(0, MAX_PROMPT_LENGTH)
 
@@ -141,8 +142,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ message: 'Either text or an image is required' })
     }
 
-    if (hasPrompt) updateData.prompt = nextPrompt
-    if (hasImageUrl) updateData.imageUrl = nextImageUrl
+    if (hasPrompt || hasStructuredComposer) updateData.prompt = nextPrompt
+    if (hasImageUrl || hasStructuredComposer) updateData.imageUrl = nextImageUrl
 
     if (hasAudience) {
       updateData.audience = clampAudience(body.audience)

@@ -248,6 +248,24 @@ const patchResponseScene = async (page: Page, threadKey: string, responseId: str
   }, { activeThreadKey: threadKey, activeResponseId: responseId, nextScene: scene })
 }
 
+const patchPostContentBlocks = async (page: Page, postId: string, contentBlocks: any[]) => {
+  return page.evaluate(async ({ activePostId, nextContentBlocks }) => {
+    const res = await fetch(`/api/posts/${encodeURIComponent(activePostId)}`, {
+      method: 'PATCH',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contentBlocks: nextContentBlocks,
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(data?.message || `Failed to patch post canvas viewport (${res.status})`)
+    }
+    return data
+  }, { activePostId: postId, nextContentBlocks: contentBlocks })
+}
+
 const waitForViewerInkBounds = async (viewer: Locator) => {
   let latestBounds: any = null
   await expect.poll(async () => {
@@ -265,7 +283,129 @@ const assertViewerVisible = (bounds: any) => {
 }
 
 test.describe('post canvas viewport regression', () => {
-  test.setTimeout(180_000)
+  test.setTimeout(300_000)
+
+  test('owned live post canvases preserve saved in-view viewport after reload', async ({ browser }) => {
+    const storageState = await createSignedInStorageState(browser)
+    const context = await browser.newContext({
+      viewport: { width: 1365, height: 900 },
+      storageState,
+    })
+    const page = await context.newPage()
+
+    const uniqueToken = `${Date.now()}`
+    const uniqueTitle = `Live post canvas viewport ${uniqueToken}`
+    const seedBase = Date.now()
+    const baseScene = buildCanvasScene(seedBase)
+
+    let createdPostId = ''
+    let viewerUserId = ''
+
+    try {
+      await page.goto(toAbsoluteUrl('/dashboard'), { waitUntil: 'domcontentloaded' })
+      await ensureOnDashboard(page)
+
+      const created = await page.evaluate(async ({ title, scene }) => {
+        const profileRes = await fetch('/api/profile', { credentials: 'same-origin', cache: 'no-store' })
+        const profileData = await profileRes.json().catch(() => ({}))
+        const userId = typeof profileData?.id === 'string' ? profileData.id : ''
+        if (!profileRes.ok || !userId) {
+          throw new Error(profileData?.message || `Failed to load active profile (${profileRes.status})`)
+        }
+
+        const createRes = await fetch('/api/posts', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            contentBlocks: [
+              {
+                id: 'canvas-block',
+                type: 'canvas',
+                scene,
+              },
+            ],
+            audience: 'public',
+          }),
+        })
+        const createData = await createRes.json().catch(() => ({}))
+        if (!createRes.ok) {
+          throw new Error(createData?.message || `Failed to create post (${createRes.status})`)
+        }
+        return {
+          createdPostId: String(createData?.id || ''),
+          viewerUserId: userId,
+        }
+      }, { title: uniqueTitle, scene: baseScene })
+
+      createdPostId = created.createdPostId
+      viewerUserId = created.viewerUserId
+
+      expect(createdPostId).toBeTruthy()
+      expect(viewerUserId).toBeTruthy()
+
+      await page.goto(toAbsoluteUrl(`/u/${encodeURIComponent(viewerUserId)}`), { waitUntil: 'domcontentloaded' })
+
+      const livePost = page.locator(`article[data-post-id="${createdPostId}"]`).first()
+      await expect(livePost).toBeVisible({ timeout: 30_000 })
+      await expect(livePost).toContainText(uniqueTitle)
+
+      const liveViewer = livePost.locator('.philani-solution-viewer').first()
+      const beforeBounds = await waitForViewerInkBounds(liveViewer)
+      assertViewerVisible(beforeBounds)
+
+      const savedScene = cloneScene(baseScene)
+      savedScene.appState = {
+        ...(savedScene.appState || {}),
+        zoom: 1.25,
+        scrollX: -100,
+        scrollY: -75,
+      }
+      savedScene.updatedAt = new Date(seedBase + 100).toISOString()
+      savedScene.sceneMeta = {
+        ...(savedScene.sceneMeta || {}),
+        lastObservedZoom: 1.25,
+        viewerViewportPersisted: true,
+      }
+
+      await patchPostContentBlocks(page, createdPostId, [
+        {
+          id: 'canvas-block',
+          type: 'canvas',
+          scene: savedScene,
+        },
+      ])
+
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await expect(livePost).toBeVisible({ timeout: 30_000 })
+
+      const reloadedViewer = livePost.locator('.philani-solution-viewer').first()
+      const afterBounds = await waitForViewerInkBounds(reloadedViewer)
+      assertViewerVisible(afterBounds)
+      expect(Number(afterBounds?.count || 0)).toBeLessThan(Number(beforeBounds?.count || 0) * 0.95)
+
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await expect(livePost).toBeVisible({ timeout: 30_000 })
+
+      const secondReloadViewer = livePost.locator('.philani-solution-viewer').first()
+      const secondReloadBounds = await waitForViewerInkBounds(secondReloadViewer)
+      assertViewerVisible(secondReloadBounds)
+      expect(Math.abs(Number(secondReloadBounds?.centroidX || 0) - Number(afterBounds?.centroidX || 0))).toBeLessThan(Number(secondReloadBounds?.canvasWidth || 0) * 0.04)
+      expect(Math.abs(Number(secondReloadBounds?.centroidY || 0) - Number(afterBounds?.centroidY || 0))).toBeLessThan(Number(secondReloadBounds?.canvasHeight || 0) * 0.04)
+      expect(Math.abs(Number(secondReloadBounds?.count || 0) - Number(afterBounds?.count || 0))).toBeLessThan(Number(afterBounds?.count || 0) * 0.08)
+    } finally {
+      if (createdPostId) {
+        await page.evaluate(async ({ postId }) => {
+          await fetch(`/api/posts/${encodeURIComponent(postId)}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+          }).catch(() => null)
+        }, { postId: createdPostId }).catch(() => null)
+      }
+      await context.close().catch(() => null)
+    }
+  })
 
   test('owned post reply canvases keep a stable saved viewport after zooming', async ({ browser }) => {
     const storageState = await createSignedInStorageState(browser)

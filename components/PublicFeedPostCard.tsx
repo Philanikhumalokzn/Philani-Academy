@@ -3,6 +3,7 @@ import type { PostReplyBlock } from '../lib/postReplyComposer'
 import { normalizePostReplyBlocks } from '../lib/postReplyComposer'
 import OverlayPortal from './OverlayPortal'
 import PostComposerBlocksPreview from './PostComposerBlocksPreview'
+import type { PublicSolveScene } from './PublicSolveCanvas'
 import UserLink from './UserLink'
 import ZoomableImageOverlay from './ZoomableImageOverlay'
 
@@ -28,6 +29,7 @@ export type PublicFeedPostCardProps = {
   expanded?: boolean
   onOpen?: () => void
   onOpenImage?: (url: string, title: string) => void
+  onCanvasViewportChange?: (blockId: string, scene: PublicSolveScene) => void
   consumeLongPressOpen?: () => boolean
   bodyPointerProps?: Pick<HTMLAttributes<HTMLDivElement>, 'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onPointerCancel' | 'onPointerLeave' | 'onContextMenu'>
   sideActions?: ReactNode
@@ -48,6 +50,7 @@ export default function PublicFeedPostCard({
   expanded = false,
   onOpen,
   onOpenImage,
+  onCanvasViewportChange,
   consumeLongPressOpen,
   bodyPointerProps,
   sideActions,
@@ -97,15 +100,52 @@ export default function PublicFeedPostCard({
     setFallbackImageViewer(null)
   }, [])
 
+  const isEventInsideInteractiveCanvas = useCallback((target: EventTarget | null) => {
+    return target instanceof Element && Boolean(target.closest('[data-post-canvas-interactive="true"]'))
+  }, [])
+
+  const handleBodyClick = onOpen ? (event: any) => {
+    if (isEventInsideInteractiveCanvas(event.target)) return
+    if (consumeLongPressOpen?.()) return
+    onOpen()
+  } : undefined
+
+  const handleBodyPointerDown = bodyPointerProps?.onPointerDown ? (event: any) => {
+    if (isEventInsideInteractiveCanvas(event.target)) return
+    bodyPointerProps.onPointerDown?.(event)
+  } : undefined
+
+  const handleBodyPointerMove = bodyPointerProps?.onPointerMove ? (event: any) => {
+    if (isEventInsideInteractiveCanvas(event.target)) return
+    bodyPointerProps.onPointerMove?.(event)
+  } : undefined
+
+  const handleBodyPointerUp = bodyPointerProps?.onPointerUp ? (event: any) => {
+    if (isEventInsideInteractiveCanvas(event.target)) return
+    bodyPointerProps.onPointerUp?.(event)
+  } : undefined
+
+  const handleBodyPointerCancel = bodyPointerProps?.onPointerCancel ? (event: any) => {
+    if (isEventInsideInteractiveCanvas(event.target)) return
+    bodyPointerProps.onPointerCancel?.(event)
+  } : undefined
+
+  const handleBodyPointerLeave = bodyPointerProps?.onPointerLeave ? (event: any) => {
+    if (isEventInsideInteractiveCanvas(event.target)) return
+    bodyPointerProps.onPointerLeave?.(event)
+  } : undefined
+
+  const handleBodyContextMenu = bodyPointerProps?.onContextMenu ? (event: any) => {
+    if (isEventInsideInteractiveCanvas(event.target)) return
+    bodyPointerProps.onContextMenu?.(event)
+  } : undefined
+
   const body = (
     <div
       className={onOpen ? 'mt-3 block w-full cursor-pointer text-left' : 'mt-3 block w-full text-left'}
       role={onOpen ? 'button' : undefined}
       tabIndex={onOpen ? 0 : undefined}
-      onClick={onOpen ? () => {
-        if (consumeLongPressOpen?.()) return
-        onOpen()
-      } : undefined}
+      onClick={handleBodyClick}
       onKeyDown={onOpen ? (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
@@ -114,7 +154,12 @@ export default function PublicFeedPostCard({
       } : undefined}
       aria-expanded={onOpen ? expanded : undefined}
       data-testid="public-feed-post-body"
-      {...bodyPointerProps}
+      onPointerDown={handleBodyPointerDown}
+      onPointerMove={handleBodyPointerMove}
+      onPointerUp={handleBodyPointerUp}
+      onPointerCancel={handleBodyPointerCancel}
+      onPointerLeave={handleBodyPointerLeave}
+      onContextMenu={handleBodyContextMenu}
     >
       <div className="px-4">
         <div className="text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{safeTitle}</div>
@@ -152,6 +197,7 @@ export default function PublicFeedPostCard({
               fullBleedImages={false}
               imageTitle={`${safeTitle} image`}
               onOpenImage={openResolvedImageViewer}
+              onCanvasViewportChange={onCanvasViewportChange}
             />
           </div>
         )

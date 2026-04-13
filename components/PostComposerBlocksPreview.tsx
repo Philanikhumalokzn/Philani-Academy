@@ -1,4 +1,4 @@
-import { PublicSolveCanvasViewer } from './PublicSolveCanvas'
+import { PublicSolvePlainExcalidrawViewer } from './PublicSolveCanvas'
 import { renderKatexDisplayHtml } from '../lib/latexRender'
 import type { PostReplyBlock } from '../lib/postReplyComposer'
 import { normalizePostReplyBlocks } from '../lib/postReplyComposer'
@@ -57,10 +57,10 @@ export default function PostComposerBlocksPreview({
         if (block.type === 'canvas') {
           return (
             <div key={blockKey} className="overflow-hidden rounded-2xl border border-[#1d4f91]/25 bg-white shadow-sm">
-              <PublicSolveCanvasViewer
+              <PublicSolvePlainExcalidrawViewer
                 scene={block.scene}
                 className="pointer-events-none"
-                viewerHeightPx={compact ? 180 : 240}
+                viewerHeightPx={compact ? 220 : 240}
               />
             </div>
           )

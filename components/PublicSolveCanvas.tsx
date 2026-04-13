@@ -1009,6 +1009,48 @@ const finalizeViewerSnapshotScene = (
   }
 }
 
+export const preparePublicSolveSceneForPlainPreview = (
+  scene: PublicSolveScene | null | undefined,
+  existingPreviewScene?: PublicSolveScene | null | undefined,
+): PublicSolveScene | null => {
+  const normalized = normalizePublicSolveScene(scene)
+  if (!normalized) return null
+
+  const previousPreview = normalizePublicSolveScene(existingPreviewScene)
+  const previousPreviewMeta = normalizePublicSolveSceneMeta(previousPreview?.sceneMeta)
+
+  if (previousPreview && getAppStateZoomValue(previousPreview.appState)) {
+    return {
+      ...normalized,
+      appState: pickPersistedPublicSolveAppState(previousPreview.appState),
+      sceneMeta: {
+        ...normalizePublicSolveSceneMeta(normalized.sceneMeta),
+        viewerViewportPersisted: previousPreviewMeta.viewerViewportPersisted,
+        viewerViewportCenterX: previousPreviewMeta.viewerViewportCenterX,
+        viewerViewportCenterY: previousPreviewMeta.viewerViewportCenterY,
+        viewerViewportZoom: previousPreviewMeta.viewerViewportZoom,
+      },
+    }
+  }
+
+  const nextAppState = { ...(normalized.appState || {}) }
+  delete nextAppState.scrollX
+  delete nextAppState.scrollY
+  delete nextAppState.zoom
+
+  return {
+    ...normalized,
+    appState: Object.keys(nextAppState).length ? nextAppState : undefined,
+    sceneMeta: {
+      ...normalizePublicSolveSceneMeta(normalized.sceneMeta),
+      viewerViewportPersisted: false,
+      viewerViewportCenterX: null,
+      viewerViewportCenterY: null,
+      viewerViewportZoom: null,
+    },
+  }
+}
+
 const editorUiOptions = {
   canvasActions: {
     loadScene: false,
@@ -1030,6 +1072,115 @@ const viewerUiOptions = {
     toggleTheme: false,
   },
 } as const
+
+export function PublicSolvePlainExcalidrawViewer({
+  scene,
+  className = '',
+  emptyLabel = 'No canvas submitted yet.',
+  heightClassName,
+  viewerHeightPx = PUBLIC_SOLVE_VIEWER_HEIGHT_PX,
+  maxWidthPx,
+  onViewportChange,
+}: {
+  scene: PublicSolveScene | null | undefined
+  className?: string
+  emptyLabel?: string
+  heightClassName?: string
+  viewerHeightPx?: number
+  maxWidthPx?: number | null
+  onViewportChange?: (scene: PublicSolveScene) => void
+}) {
+  const normalizedScene = useMemo(() => normalizePublicSolveScene(scene), [scene])
+  const seededScene = useMemo(() => {
+    if (!normalizedScene) return null
+    if (getAppStateZoomValue(normalizedScene.appState)) return normalizedScene
+    return buildSceneViewportFromStrokeBounds(normalizedScene, { maxHeightPx: viewerHeightPx, maxWidthPx }).scene
+  }, [maxWidthPx, normalizedScene, viewerHeightPx])
+  const [viewerScene, setViewerScene] = useState<PublicSolveScene | null>(seededScene)
+  const viewerSceneRef = useRef<PublicSolveScene | null>(seededScene)
+  const excalidrawApiRef = useRef<any>(null)
+  const lastViewportSignatureRef = useRef<string | null>(serializePublicSolveViewportSnapshot(seededScene?.appState))
+  const viewerInstanceKey = useMemo(() => buildPublicSolveViewerKey(viewerScene), [viewerScene])
+
+  useEffect(() => {
+    viewerSceneRef.current = seededScene
+    setViewerScene(seededScene)
+    lastViewportSignatureRef.current = serializePublicSolveViewportSnapshot(seededScene?.appState)
+  }, [seededScene])
+
+  useEffect(() => {
+    viewerSceneRef.current = viewerScene
+    if (viewerScene && excalidrawApiRef.current?.updateScene) {
+      const nextInitialData = buildInitialData(viewerScene)
+      excalidrawApiRef.current.updateScene({
+        elements: nextInitialData.elements,
+        appState: nextInitialData.appState || {},
+        files: nextInitialData.files || {},
+        captureUpdate: 'IMMEDIATELY',
+      })
+    }
+  }, [viewerScene])
+
+  const handleViewerChange = useCallback((elements: any[], appState: any, files: any) => {
+    if (!onViewportChange) return
+    const baseScene = viewerSceneRef.current
+    if (!baseScene) return
+    const nextScene: PublicSolveScene = {
+      ...baseScene,
+      elements: cloneScenePart(Array.isArray(elements) ? elements : baseScene.elements || []),
+      appState: pickPersistedPublicSolveAppState(appState),
+      files: files && typeof files === 'object' ? cloneScenePart(files) : baseScene.files,
+    }
+    const nextSignature = serializePublicSolveViewportSnapshot(nextScene.appState)
+    if (lastViewportSignatureRef.current === nextSignature) return
+    lastViewportSignatureRef.current = nextSignature
+    viewerSceneRef.current = nextScene
+    setViewerScene(nextScene)
+    onViewportChange(nextScene)
+  }, [onViewportChange])
+
+  if (!publicSolveSceneHasContent(viewerScene)) {
+    return (
+      <div className={`rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500 ${className}`.trim()}>
+        {emptyLabel}
+      </div>
+    )
+  }
+
+  const resolvedWidthStyle = Number.isFinite(maxWidthPx) && Number(maxWidthPx) > 0
+    ? `min(100%, ${Number(maxWidthPx)}px)`
+    : '100%'
+
+  return (
+    <div className={`philani-solution-viewer ${className}`.trim()}>
+      <div
+        className="relative overflow-hidden bg-white"
+        style={{
+          width: resolvedWidthStyle,
+          height: `${Math.max(1, viewerHeightPx)}px`,
+          touchAction: onViewportChange ? 'none' : undefined,
+        }}
+      >
+        <div className={`absolute inset-0 ${heightClassName || ''}`.trim()}>
+          <LessonStyledExcalidraw
+            key={viewerInstanceKey}
+            className="h-full"
+            initialData={buildInitialData(viewerScene)}
+            onChange={onViewportChange ? handleViewerChange : undefined}
+            excalidrawAPI={(api: any) => {
+              excalidrawApiRef.current = api
+            }}
+            viewModeEnabled
+            zenModeEnabled
+            gridModeEnabled={false}
+            UIOptions={viewerUiOptions}
+            renderTopRightUI={() => null}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export function PublicSolveCanvasViewer({
   scene,

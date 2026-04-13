@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
 import BottomSheet from './BottomSheet'
 import PostComposerBlocksPreview from './PostComposerBlocksPreview'
-import { PublicSolveCanvasViewer, PublicSolveComposer, PublicSolveOpacityWorkspace, type PublicSolveScene } from './PublicSolveCanvas'
+import { PublicSolvePlainExcalidrawViewer, PublicSolveComposer, PublicSolveOpacityWorkspace, type PublicSolveScene } from './PublicSolveCanvas'
 import type { ComposerBlockCrudTarget, ComposerBlockEditTarget, PostReplyBlock, PostSolveOverlayState } from '../lib/postReplyComposer'
 import { composePostSolveBlocksWithDraftText } from '../lib/postReplyComposer'
 import { renderKatexDisplayHtml } from '../lib/latexRender'
@@ -282,7 +282,7 @@ export default function PostReplyComposerOverlays({
                                 <div key={block.id} className="pt-1">
                                   <div className="philani-gradient-outline-soft [--philani-outline-fill:#ffffff] overflow-hidden rounded-[24px] p-1 shadow-sm">
                                     <div className="relative">
-                                      <PublicSolveCanvasViewer
+                                      <PublicSolvePlainExcalidrawViewer
                                         scene={block.scene}
                                         viewerHeightPx={220}
                                         onViewportChange={(scene) => onCanvasViewportChange(block.id, scene)}

@@ -18,7 +18,7 @@ import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import OwnPostsManagerOverlay from '../components/OwnPostsManagerOverlay'
 import PostComposerBlocksPreview from '../components/PostComposerBlocksPreview'
 import PostComposerOverlay from '../components/PostComposerOverlay'
-import { PublicSolveCanvasViewer, PublicSolveComposer, PublicSolveOpacityWorkspace, normalizePublicSolveScene, type PublicSolveScene } from '../components/PublicSolveCanvas'
+import { PublicSolveCanvasViewer, PublicSolvePlainExcalidrawViewer, PublicSolveComposer, PublicSolveOpacityWorkspace, normalizePublicSolveScene, preparePublicSolveSceneForPlainPreview, type PublicSolveScene } from '../components/PublicSolveCanvas'
 import TaskManageMenu from '../components/TaskManageMenu'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
 import ZoomableImageOverlay from '../components/ZoomableImageOverlay'
@@ -759,7 +759,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               onClick={() => options.onOpenCanvasBlock?.(block.scene)}
             >
               <div className="overflow-hidden rounded-2xl border border-[#1d4f91] bg-white shadow-sm">
-                <PublicSolveCanvasViewer
+                <PublicSolvePlainExcalidrawViewer
                   scene={block.scene}
                   className="pointer-events-none"
                   viewerHeightPx={220}
@@ -8825,16 +8825,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const submitPostSolve = useCallback(async (scene: any) => {
     const activeDraft = postSolveOverlay || postSolvePreviewOverlay?.draft || null
-    const normalizedScene = normalizePublicSolveScene(scene)
-    if (!activeDraft?.postId || !normalizedScene) return
+    const editingCanvasBlock = postSolveEditingTarget?.type === 'canvas'
+      ? postSolveBlocks.find((block): block is PostReplyCanvasBlock => block.id === postSolveEditingTarget.blockId && block.type === 'canvas')
+      : null
+    const preparedPreviewScene = preparePublicSolveSceneForPlainPreview(scene, editingCanvasBlock?.scene || null)
+    if (!activeDraft?.postId || !preparedPreviewScene) return
 
     if (createOverlayOpen && createKind === 'post') {
       setPostSolveBlocks((prev) => {
         if (postSolveEditingTarget?.type === 'canvas') {
-          return upsertPostSolveBlock(prev, { id: postSolveEditingTarget.blockId, type: 'canvas', scene: normalizedScene }, 'canvas')
+          return upsertPostSolveBlock(prev, { id: postSolveEditingTarget.blockId, type: 'canvas', scene: preparedPreviewScene }, 'canvas')
         }
         const nextBlocks: PostReplyBlock[] = prev.filter((block) => block.type !== 'canvas')
-        nextBlocks.push({ id: createPostReplyBlockId(), type: 'canvas', scene: normalizedScene })
+        nextBlocks.push({ id: createPostReplyBlockId(), type: 'canvas', scene: preparedPreviewScene })
         return nextBlocks
       })
       setPostSolveOverlay(null)
@@ -8847,10 +8850,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     setPostSolveBlocks((prev) => {
       if (postSolveEditingTarget?.type === 'canvas') {
-        return upsertPostSolveBlock(prev, { id: postSolveEditingTarget.blockId, type: 'canvas', scene: normalizedScene }, 'canvas')
+        return upsertPostSolveBlock(prev, { id: postSolveEditingTarget.blockId, type: 'canvas', scene: preparedPreviewScene }, 'canvas')
       }
       const nextBlocks: PostReplyBlock[] = prev.filter((block) => block.type !== 'canvas')
-      nextBlocks.push({ id: createPostReplyBlockId(), type: 'canvas', scene: normalizedScene })
+      nextBlocks.push({ id: createPostReplyBlockId(), type: 'canvas', scene: preparedPreviewScene })
       return nextBlocks
     })
 
@@ -8859,11 +8862,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setPostSolveEditingTarget(null)
     setPostSolveModeOverlay({
       ...activeDraft,
-      initialScene: normalizedScene,
+      initialScene: preparedPreviewScene,
       initialStudentText: '',
     })
     setPostSolveError(null)
-  }, [createKind, createOverlayOpen, postSolveEditingTarget, postSolveOverlay, postSolvePreviewOverlay, upsertPostSolveBlock])
+  }, [createKind, createOverlayOpen, postSolveBlocks, postSolveEditingTarget, postSolveOverlay, postSolvePreviewOverlay, upsertPostSolveBlock])
 
   const submitTypedPostSolve = useCallback(async () => {
     const activeDraft = postTypedSolveOverlay

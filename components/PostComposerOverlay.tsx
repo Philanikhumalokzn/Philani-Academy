@@ -6,7 +6,7 @@ import ComposerActionBar from './ComposerActionBar'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
 import OverlayPortal from './OverlayPortal'
 import PostComposerBlocksPreview from './PostComposerBlocksPreview'
-import { PublicSolveCanvasViewer, PublicSolveComposer, PublicSolveOpacityWorkspace, type PublicSolveScene } from './PublicSolveCanvas'
+import { PublicSolvePlainExcalidrawViewer, PublicSolveComposer, PublicSolveOpacityWorkspace, type PublicSolveScene } from './PublicSolveCanvas'
 import type { ComposerBlockCrudTarget, ComposerBlockEditTarget, PostReplyBlock, PostSolveOverlayState } from '../lib/postReplyComposer'
 import { composePostSolveBlocksWithDraftText } from '../lib/postReplyComposer'
 import { renderKatexDisplayHtml } from '../lib/latexRender'
@@ -259,7 +259,7 @@ function ComposerBlockList({
                 }}
               >
                 <div className="relative">
-                  <PublicSolveCanvasViewer
+                  <PublicSolvePlainExcalidrawViewer
                     scene={block.scene}
                     viewerHeightPx={220}
                     onViewportChange={onCanvasViewportChange

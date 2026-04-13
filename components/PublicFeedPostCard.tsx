@@ -3,7 +3,6 @@ import type { PostReplyBlock } from '../lib/postReplyComposer'
 import { normalizePostReplyBlocks } from '../lib/postReplyComposer'
 import OverlayPortal from './OverlayPortal'
 import PostComposerBlocksPreview from './PostComposerBlocksPreview'
-import type { PublicSolveScene } from './PublicSolveCanvas'
 import UserLink from './UserLink'
 import ZoomableImageOverlay from './ZoomableImageOverlay'
 
@@ -29,7 +28,6 @@ export type PublicFeedPostCardProps = {
   expanded?: boolean
   onOpen?: () => void
   onOpenImage?: (url: string, title: string) => void
-  onCanvasViewportChange?: (blockId: string, scene: PublicSolveScene) => void
   consumeLongPressOpen?: () => boolean
   bodyPointerProps?: Pick<HTMLAttributes<HTMLDivElement>, 'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onPointerCancel' | 'onPointerLeave' | 'onContextMenu'>
   sideActions?: ReactNode
@@ -50,7 +48,6 @@ export default function PublicFeedPostCard({
   expanded = false,
   onOpen,
   onOpenImage,
-  onCanvasViewportChange,
   consumeLongPressOpen,
   bodyPointerProps,
   sideActions,
@@ -100,45 +97,22 @@ export default function PublicFeedPostCard({
     setFallbackImageViewer(null)
   }, [])
 
-  const isEventInsideInteractiveCanvas = useCallback((target: EventTarget | null) => {
-    return target instanceof Element && Boolean(target.closest('[data-post-canvas-interactive="true"]'))
-  }, [])
-
   const handleBodyClick = onOpen ? (event: any) => {
-    if (isEventInsideInteractiveCanvas(event.target)) return
     if (consumeLongPressOpen?.()) return
     onOpen()
   } : undefined
 
-  const handleBodyPointerDown = bodyPointerProps?.onPointerDown ? (event: any) => {
-    if (isEventInsideInteractiveCanvas(event.target)) return
-    bodyPointerProps.onPointerDown?.(event)
-  } : undefined
+  const handleBodyPointerDown = bodyPointerProps?.onPointerDown
 
-  const handleBodyPointerMove = bodyPointerProps?.onPointerMove ? (event: any) => {
-    if (isEventInsideInteractiveCanvas(event.target)) return
-    bodyPointerProps.onPointerMove?.(event)
-  } : undefined
+  const handleBodyPointerMove = bodyPointerProps?.onPointerMove
 
-  const handleBodyPointerUp = bodyPointerProps?.onPointerUp ? (event: any) => {
-    if (isEventInsideInteractiveCanvas(event.target)) return
-    bodyPointerProps.onPointerUp?.(event)
-  } : undefined
+  const handleBodyPointerUp = bodyPointerProps?.onPointerUp
 
-  const handleBodyPointerCancel = bodyPointerProps?.onPointerCancel ? (event: any) => {
-    if (isEventInsideInteractiveCanvas(event.target)) return
-    bodyPointerProps.onPointerCancel?.(event)
-  } : undefined
+  const handleBodyPointerCancel = bodyPointerProps?.onPointerCancel
 
-  const handleBodyPointerLeave = bodyPointerProps?.onPointerLeave ? (event: any) => {
-    if (isEventInsideInteractiveCanvas(event.target)) return
-    bodyPointerProps.onPointerLeave?.(event)
-  } : undefined
+  const handleBodyPointerLeave = bodyPointerProps?.onPointerLeave
 
-  const handleBodyContextMenu = bodyPointerProps?.onContextMenu ? (event: any) => {
-    if (isEventInsideInteractiveCanvas(event.target)) return
-    bodyPointerProps.onContextMenu?.(event)
-  } : undefined
+  const handleBodyContextMenu = bodyPointerProps?.onContextMenu
 
   const body = (
     <div
@@ -197,7 +171,6 @@ export default function PublicFeedPostCard({
               fullBleedImages={false}
               imageTitle={`${safeTitle} image`}
               onOpenImage={openResolvedImageViewer}
-              onCanvasViewportChange={onCanvasViewportChange}
             />
           </div>
         )

@@ -1,4 +1,4 @@
-import { PublicSolveCanvasViewer, type PublicSolveScene } from './PublicSolveCanvas'
+import { PublicSolveCanvasViewer } from './PublicSolveCanvas'
 import { renderKatexDisplayHtml } from '../lib/latexRender'
 import type { PostReplyBlock } from '../lib/postReplyComposer'
 import { normalizePostReplyBlocks } from '../lib/postReplyComposer'
@@ -15,7 +15,6 @@ type Props = {
   textClassName?: string
   wrapperClassName?: string
   fullBleedImages?: boolean
-  onCanvasViewportChange?: (blockId: string, scene: PublicSolveScene) => void
 }
 
 export default function PostComposerBlocksPreview({
@@ -29,7 +28,6 @@ export default function PostComposerBlocksPreview({
   textClassName,
   wrapperClassName,
   fullBleedImages = false,
-  onCanvasViewportChange,
 }: Props) {
   const normalizedBlocks = normalizePostReplyBlocks(Array.isArray(blocks) && blocks.length > 0 ? blocks : { studentText: prompt, imageUrl })
   if (normalizedBlocks.length === 0) return null
@@ -57,21 +55,12 @@ export default function PostComposerBlocksPreview({
         }
 
         if (block.type === 'canvas') {
-          const isInteractiveCanvas = Boolean(onCanvasViewportChange)
           return (
-            <div
-              key={blockKey}
-              data-post-canvas-interactive={isInteractiveCanvas ? 'true' : undefined}
-              className="overflow-hidden rounded-2xl border border-[#1d4f91]/25 bg-white shadow-sm"
-              onClick={isInteractiveCanvas ? (event) => event.stopPropagation() : undefined}
-            >
+            <div key={blockKey} className="overflow-hidden rounded-2xl border border-[#1d4f91]/25 bg-white shadow-sm">
               <PublicSolveCanvasViewer
                 scene={block.scene}
-                className={isInteractiveCanvas ? '' : 'pointer-events-none'}
+                className="pointer-events-none"
                 viewerHeightPx={compact ? 180 : 240}
-                onViewportChange={onCanvasViewportChange
-                  ? (scene) => onCanvasViewportChange(block.id, scene)
-                  : undefined}
               />
             </div>
           )

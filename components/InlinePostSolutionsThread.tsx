@@ -338,10 +338,6 @@ export default function InlinePostSolutionsThread({
         boxShadow: `0 0 0 2px ${getThreadBranchTint(activeBranchColor, theme === 'dark' ? 0.24 : 0.12)}`,
       } : {}),
     }
-    const flattenedReplyShellStyle = activeBranchColor ? {
-      borderLeft: `2px solid ${activeBranchColor}`,
-      backgroundColor: getThreadBranchTint(activeBranchColor, theme === 'dark' ? 0.16 : 0.08),
-    } : undefined
     const childContainerStyle = { marginLeft: 'calc(-1 * var(--inline-post-thread-content-shift))' }
 
     return (
@@ -387,7 +383,7 @@ export default function InlinePostSolutionsThread({
             </div>
 
             <div className="min-w-0 flex-1 pb-1">
-              <div className={activeBranchColor ? 'rounded-[20px] px-2 py-2' : ''} style={flattenedReplyShellStyle}>
+              <div>
                 <div className="flex items-center gap-2" style={{ minHeight: avatarSize }}>
                   {activeBranchColor ? (
                     <span

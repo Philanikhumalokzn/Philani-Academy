@@ -18,6 +18,7 @@ import PostReplyComposerOverlays from '../../components/PostReplyComposerOverlay
 import ReplyCrudBottomSheet from '../../components/ReplyCrudBottomSheet'
 import { PublicSolveCanvasViewer, PublicSolvePlainExcalidrawViewer, normalizePublicSolveScene, preparePublicSolveSceneForPlainPreview, type PublicSolveScene } from '../../components/PublicSolveCanvas'
 import UserLink from '../../components/UserLink'
+import ZoomableCanvasOverlay from '../../components/ZoomableCanvasOverlay'
 import ZoomableImageOverlay from '../../components/ZoomableImageOverlay'
 import { applyOwnFeedPostResponse, buildFeedPostActionState, syncFeedPostThreadState, type FeedPost } from '../../lib/feedContract'
 import { gradeToLabel } from '../../lib/grades'
@@ -2360,24 +2361,13 @@ export function PublicUserProfileSurface({
 
       {canvasViewer ? (
         <OverlayPortal>
-          <FullScreenGlassOverlay
+          <ZoomableCanvasOverlay
+            open={Boolean(canvasViewer)}
+            scene={canvasViewer.scene}
             title={canvasViewer.title}
-            subtitle={canvasViewer.subtitle || 'Canvas viewer'}
             onClose={closeCanvasViewer}
-            onBackdropClick={closeCanvasViewer}
-            zIndexClassName="z-[69]"
-            variant="light"
-            panelClassName="bg-[#f8fafc]"
-          >
-            <div className="rounded-2xl border border-black/10 bg-white p-2 shadow-sm">
-              <PublicSolvePlainExcalidrawViewer
-                scene={canvasViewer.scene}
-                viewerHeightPx={700}
-                viewerHeightMode="fixed"
-                onViewportChange={canvasViewer.onViewportChange}
-              />
-            </div>
-          </FullScreenGlassOverlay>
+            onViewportChange={canvasViewer.onViewportChange}
+          />
         </OverlayPortal>
       ) : null}
 

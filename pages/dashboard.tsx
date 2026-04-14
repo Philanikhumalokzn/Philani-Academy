@@ -21,6 +21,7 @@ import PostComposerOverlay from '../components/PostComposerOverlay'
 import { PublicSolveCanvasViewer, PublicSolvePlainExcalidrawViewer, PublicSolveComposer, PublicSolveOpacityWorkspace, normalizePublicSolveScene, preparePublicSolveSceneForPlainPreview, type PublicSolveScene } from '../components/PublicSolveCanvas'
 import TaskManageMenu from '../components/TaskManageMenu'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
+import ZoomableCanvasOverlay from '../components/ZoomableCanvasOverlay'
 import ZoomableImageOverlay from '../components/ZoomableImageOverlay'
 import ScriptPhotosEditor from '../components/ScriptPhotosEditor'
 import BottomSheet from '../components/BottomSheet'
@@ -11530,24 +11531,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
         {postCanvasViewer ? (
           <OverlayPortal>
-            <FullScreenGlassOverlay
+            <ZoomableCanvasOverlay
+              open={Boolean(postCanvasViewer)}
+              scene={postCanvasViewer.scene}
               title={postCanvasViewer.title}
-              subtitle={postCanvasViewer.subtitle || 'Canvas viewer'}
               onClose={closePostCanvasViewer}
-              onBackdropClick={closePostCanvasViewer}
-              zIndexClassName="z-[61]"
-              variant="light"
-              panelClassName="bg-[#f8fafc]"
-            >
-              <div className="rounded-2xl border border-black/10 bg-white p-2 shadow-sm">
-                <PublicSolvePlainExcalidrawViewer
-                  scene={postCanvasViewer.scene}
-                  viewerHeightPx={700}
-                  viewerHeightMode="fixed"
-                  onViewportChange={postCanvasViewer.onViewportChange}
-                />
-              </div>
-            </FullScreenGlassOverlay>
+              onViewportChange={postCanvasViewer.onViewportChange}
+            />
           </OverlayPortal>
         ) : null}
 

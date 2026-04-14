@@ -80,18 +80,18 @@ export default function PublicFeedPostCard({
 
   const renderSocialActionButton = (opts: PublicFeedPostAction) => (
     <div key={opts.label} className="flex min-w-0 flex-1 flex-col items-center justify-center">
-      {opts.countLabel && (
-        <button
-          type="button"
-          className="mb-1 text-[11px] font-semibold text-[#65676b] hover:text-[#1877f2]"
-          onClick={(e) => {
-            e.stopPropagation()
-            opts.onCountClick?.()
-          }}
-        >
-          {opts.countLabel}
-        </button>
-      )}
+      <button
+        type="button"
+        className={`mb-1 text-[11px] font-semibold ${
+          opts.countLabel ? 'text-[#65676b] hover:text-[#1877f2]' : 'invisible'
+        }`}
+        onClick={(e) => {
+          e.stopPropagation()
+          opts.onCountClick?.()
+        }}
+      >
+        {opts.countLabel || ' '}
+      </button>
       <button
         type="button"
         className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em] transition ${opts.active ? 'bg-[#e7f3ff] text-[#1877f2]' : 'text-[#65676b] hover:bg-[#f0f2f5]'} ${opts.disabled ? 'cursor-not-allowed opacity-50' : ''}`}

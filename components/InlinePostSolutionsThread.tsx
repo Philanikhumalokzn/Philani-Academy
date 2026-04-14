@@ -230,18 +230,18 @@ export default function InlinePostSolutionsThread({
 
   const renderActionButton = (action: InlinePostResponseAction) => (
     <div key={`${action.label}-${action.statusLabel || 'default'}`} className="flex flex-col items-center justify-center">
-      {action.countLabel && (
-        <button
-          type="button"
-          className="mb-1 text-[11px] font-semibold text-[#65676b] hover:text-[#1877f2]"
-          onClick={(e) => {
-            e.stopPropagation()
-            action.onCountClick?.()
-          }}
-        >
-          {action.countLabel}
-        </button>
-      )}
+      <button
+        type="button"
+        className={`mb-1 text-[11px] font-semibold ${
+          action.countLabel ? 'text-[#65676b] hover:text-[#1877f2]' : 'invisible'
+        }`}
+        onClick={(e) => {
+          e.stopPropagation()
+          action.onCountClick?.()
+        }}
+      >
+        {action.countLabel || ' '}
+      </button>
       <button
         type="button"
         className={`${palette.actionButtonClass} ${action.active ? palette.activeActionButtonClass : ''} ${action.disabled ? palette.disabledActionButtonClass : ''}`.trim()}

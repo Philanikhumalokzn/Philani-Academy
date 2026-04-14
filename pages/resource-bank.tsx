@@ -723,9 +723,9 @@ export default function ResourceBankPage() {
                 {items.length > 0 ? (
                   <ul className="space-y-2">
                     {items.map((item) => (
-                      <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 p-3">
-                        <div className="min-w-0">
-                          <div className="font-medium text-white truncate">{toDisplayFileName(item.title) || item.title}</div>
+                      <li key={item.id} className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium text-white whitespace-normal break-all">{toDisplayFileName(item.title) || item.title}</div>
                           <div className="text-xs muted">
                             {item.tag ? `${item.tag} • ` : ''}
                             {gradeToLabel(item.grade)}
@@ -740,7 +740,7 @@ export default function ResourceBankPage() {
                             </button>
                           ) : null}
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                           {isPdfResource(item) ? (
                             <button type="button" className="btn btn-ghost" onClick={() => openPdfViewer(item)}>
                               View

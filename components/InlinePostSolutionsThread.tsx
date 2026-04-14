@@ -49,6 +49,8 @@ type Props = {
   getResponseActions?: (response: any, args: ResponseRenderArgs) => InlinePostResponseAction[]
   onOpenImageBlock?: (imageUrl: string, args: ResponseRenderArgs) => void
   onCanvasViewportChange?: (response: any, responseId: string, scene: PublicSolveScene) => void
+  onOpenCanvasBlock?: (response: any, args: ResponseRenderArgs, scene: PublicSolveScene) => void
+  inlineCanvasMode?: 'static' | 'interactive'
   theme?: 'light' | 'dark'
 }
 
@@ -164,6 +166,8 @@ export default function InlinePostSolutionsThread({
   getResponseActions,
   onOpenImageBlock,
   onCanvasViewportChange,
+  onOpenCanvasBlock,
+  inlineCanvasMode = 'static',
   theme = 'light',
 }: Props) {
   const responseTree = useMemo(() => buildThreadTree(responses), [responses])
@@ -273,15 +277,31 @@ export default function InlinePostSolutionsThread({
               )
             }
 
+            const canvasContent = (
+              <PublicSolvePlainExcalidrawViewer
+                scene={block.scene}
+                className={inlineCanvasMode === 'static' ? 'pointer-events-none' : ''}
+                viewerHeightPx={220}
+                onViewportChange={inlineCanvasMode === 'interactive' && onCanvasViewportChange
+                  ? (scene) => onCanvasViewportChange(response, args.responseId, scene)
+                  : undefined}
+              />
+            )
+
             return (
               <div key={blockKey} className={palette.canvasShellClass}>
-                <PublicSolvePlainExcalidrawViewer
-                  scene={block.scene}
-                  viewerHeightPx={220}
-                  onViewportChange={onCanvasViewportChange
-                    ? (scene) => onCanvasViewportChange(response, args.responseId, scene)
-                    : undefined}
-                />
+                {inlineCanvasMode === 'static' && onOpenCanvasBlock ? (
+                  <button
+                    type="button"
+                    className="block w-full text-left"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onOpenCanvasBlock(response, args, block.scene)
+                    }}
+                  >
+                    {canvasContent}
+                  </button>
+                ) : canvasContent}
               </div>
             )
           })}
@@ -305,17 +325,35 @@ export default function InlinePostSolutionsThread({
           )
         ) : null}
 
-        {response?.excalidrawScene ? (
-          <div className={palette.canvasShellClass}>
+        {response?.excalidrawScene ? (() => {
+          const canvasContent = (
             <PublicSolvePlainExcalidrawViewer
               scene={response.excalidrawScene}
+              className={inlineCanvasMode === 'static' ? 'pointer-events-none' : ''}
               viewerHeightPx={220}
-              onViewportChange={onCanvasViewportChange
+              onViewportChange={inlineCanvasMode === 'interactive' && onCanvasViewportChange
                 ? (scene) => onCanvasViewportChange(response, args.responseId, scene)
                 : undefined}
             />
-          </div>
-        ) : null}
+          )
+
+          return (
+            <div className={palette.canvasShellClass}>
+              {inlineCanvasMode === 'static' && onOpenCanvasBlock ? (
+                <button
+                  type="button"
+                  className="block w-full text-left"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onOpenCanvasBlock(response, args, response.excalidrawScene)
+                  }}
+                >
+                  {canvasContent}
+                </button>
+              ) : canvasContent}
+            </div>
+          )
+        })() : null}
 
         {!fallbackStudentText && !fallbackLatex && !response?.excalidrawScene ? (
           <div className={palette.noContentClass}>{noContentMessage}</div>

@@ -1,4 +1,5 @@
 import { useCallback, useState, type HTMLAttributes, type ReactNode } from 'react'
+import type { PublicSolveScene } from './PublicSolveCanvas'
 import type { PostReplyBlock } from '../lib/postReplyComposer'
 import { normalizePostReplyBlocks } from '../lib/postReplyComposer'
 import OverlayPortal from './OverlayPortal'
@@ -28,6 +29,7 @@ export type PublicFeedPostCardProps = {
   expanded?: boolean
   onOpen?: () => void
   onOpenImage?: (url: string, title: string) => void
+  onOpenCanvas?: (scene: PublicSolveScene, title: string) => void
   consumeLongPressOpen?: () => boolean
   bodyPointerProps?: Pick<HTMLAttributes<HTMLDivElement>, 'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onPointerCancel' | 'onPointerLeave' | 'onContextMenu'>
   sideActions?: ReactNode
@@ -48,6 +50,7 @@ export default function PublicFeedPostCard({
   expanded = false,
   onOpen,
   onOpenImage,
+  onOpenCanvas,
   consumeLongPressOpen,
   bodyPointerProps,
   sideActions,
@@ -171,6 +174,8 @@ export default function PublicFeedPostCard({
               fullBleedImages={false}
               imageTitle={`${safeTitle} image`}
               onOpenImage={openResolvedImageViewer}
+              onOpenCanvas={onOpenCanvas ? (scene) => onOpenCanvas(scene, safeTitle) : undefined}
+              consumeLongPressOpen={consumeLongPressOpen}
             />
           </div>
         )

@@ -219,6 +219,12 @@ export function PublicUserProfileSurface({
   const [followBusy, setFollowBusy] = useState(false)
   const [activeTab, setActiveTab] = useState<ProfileTab>('all')
   const [imageViewer, setImageViewer] = useState<{ url: string; title: string } | null>(null)
+  const [canvasViewer, setCanvasViewer] = useState<null | {
+    scene: PublicSolveScene
+    title: string
+    subtitle?: string | null
+    onViewportChange?: (scene: PublicSolveScene) => void
+  }>(null)
   const [likedPostKeys, setLikedPostKeys] = useState<Record<string, boolean>>({})
   const [lastSharedPostKey, setLastSharedPostKey] = useState<string | null>(null)
   const [expandedProfilePostId, setExpandedProfilePostId] = useState<string | null>(null)
@@ -1580,6 +1586,14 @@ export function PublicUserProfileSurface({
     setImageViewer(null)
   }, [])
 
+  const openCanvasViewer = useCallback((scene: PublicSolveScene, title: string, subtitle?: string | null, onViewportChange?: (scene: PublicSolveScene) => void) => {
+    setCanvasViewer({ scene, title, subtitle, onViewportChange })
+  }, [])
+
+  const closeCanvasViewer = useCallback(() => {
+    setCanvasViewer(null)
+  }, [])
+
   const openDashboardPostThread = useCallback(async (postId: string) => {
     const safePostId = String(postId || '').trim()
     if (!safePostId) return
@@ -1693,9 +1707,13 @@ export function PublicUserProfileSurface({
         error={postThreadError}
         responses={postThreadResponses}
         currentUserId={currentViewerId}
+        inlineCanvasMode="static"
         getContainerProps={(response, args) => getPostReplyContainerProps(post, response, args.isMine)}
         getResponseActions={(response, args) => buildPostReplyActions(post, response, args)}
         onOpenImageBlock={(imageUrl, args) => openImageViewer(imageUrl, `${args.responseUserName} attachment`)}
+        onOpenCanvasBlock={(_response, args, scene) => {
+          openCanvasViewer(scene, `${args.responseUserName} canvas`, String(post.title || '').trim() || 'Canvas viewer')
+        }}
       />
     ) : null
 
@@ -1726,6 +1744,10 @@ export function PublicUserProfileSurface({
             void openLocalPostThread(post, { forceOpen: true })
           }}
           onOpenImage={openImageViewer}
+          onOpenCanvas={(scene, canvasTitle) => {
+            if (consumePostLongPressForPost(post)) return
+            openCanvasViewer(scene, canvasTitle, authorName)
+          }}
           consumeLongPressOpen={() => consumePostLongPressForPost(post)}
           bodyPointerProps={getPostCrudBodyProps(post)}
           actions={[
@@ -2307,6 +2329,7 @@ export function PublicUserProfileSurface({
               responses={postThreadResponses}
               currentUserId={currentViewerId}
               theme="dark"
+              inlineCanvasMode="static"
               getContainerProps={(response, args) => {
                 const overlayPost = posts.find((post) => String(post?.id || '') === String(postThreadOverlay.postId || '')) || null
                 return overlayPost ? getPostReplyContainerProps(overlayPost, response, args.isMine) : {}
@@ -2316,6 +2339,9 @@ export function PublicUserProfileSurface({
                 return overlayPost ? buildPostReplyActions(overlayPost, response, args) : []
               }}
               onOpenImageBlock={(imageUrl, args) => openImageViewer(imageUrl, `${args.responseUserName} attachment`)}
+              onOpenCanvasBlock={(_response, args, scene) => {
+                openCanvasViewer(scene, `${args.responseUserName} canvas`, postThreadOverlay?.title || 'Canvas viewer')
+              }}
             />
           </div>
         </FullScreenGlassOverlay>
@@ -2329,6 +2355,29 @@ export function PublicUserProfileSurface({
             title={imageViewer.title}
             onClose={closeImageViewer}
           />
+        </OverlayPortal>
+      ) : null}
+
+      {canvasViewer ? (
+        <OverlayPortal>
+          <FullScreenGlassOverlay
+            title={canvasViewer.title}
+            subtitle={canvasViewer.subtitle || 'Canvas viewer'}
+            onClose={closeCanvasViewer}
+            onBackdropClick={closeCanvasViewer}
+            zIndexClassName="z-[69]"
+            variant="light"
+            panelClassName="bg-[#f8fafc]"
+          >
+            <div className="rounded-2xl border border-black/10 bg-white p-2 shadow-sm">
+              <PublicSolvePlainExcalidrawViewer
+                scene={canvasViewer.scene}
+                viewerHeightPx={700}
+                viewerHeightMode="fixed"
+                onViewportChange={canvasViewer.onViewportChange}
+              />
+            </div>
+          </FullScreenGlassOverlay>
         </OverlayPortal>
       ) : null}
 

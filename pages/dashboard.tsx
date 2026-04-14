@@ -6271,6 +6271,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           void openPostThread(p, { forceOpen: true })
                         }}
                         onOpenImage={openPostImageViewer}
+                        onOpenCanvas={(scene, canvasTitle) => {
+                          if (consumePostLongPressForPost(p)) return
+                          openPostCanvasViewer(scene, canvasTitle, authorName)
+                        }}
                         consumeLongPressOpen={() => consumePostLongPressForPost(p)}
                         bodyPointerProps={getPostCrudBodyProps(p)}
                         sideActions={postSideActions}
@@ -6648,6 +6652,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           responses={responses}
           currentUserId={String(currentUserId || viewerId || '')}
           threadUnlocked={threadUnlocked}
+          inlineCanvasMode={options.onInteractiveViewportChange ? 'interactive' : 'static'}
           renderTextBlock={(text, blockKey) => (
             <CollapsibleReplyText
               key={blockKey}
@@ -6704,14 +6709,25 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           }}
           getResponseActions={(response, args) => buildPostReplyActions(item, response, args)}
           onOpenImageBlock={(imageUrl, args) => openPostImageViewer(imageUrl, `${args.responseUserName} attachment`)}
-          onCanvasViewportChange={(response, responseId, scene) => {
-            if (options.onInteractiveViewportChange && options.interactiveViewportResponseId === responseId) {
-              options.onInteractiveViewportChange(scene)
-              return
-            }
-            if (options.onLiveResponseViewportChange && String(response?.userId || response?.user?.id || '') === String(currentUserId || viewerId || '') && responseId) {
-              options.onLiveResponseViewportChange(responseId, scene)
-            }
+          onCanvasViewportChange={options.onInteractiveViewportChange
+            ? (_response, responseId, scene) => {
+                if (options.interactiveViewportResponseId === responseId) {
+                  options.onInteractiveViewportChange?.(scene)
+                }
+              }
+            : undefined}
+          onOpenCanvasBlock={(response, args, scene) => {
+            const responseId = String(args.responseId || '')
+            const responseUserId = String(response?.userId || response?.user?.id || '')
+            const isOwner = Boolean(responseId) && responseUserId === String(currentUserId || viewerId || '')
+            openPostCanvasViewer(
+              scene,
+              `${args.responseUserName} canvas`,
+              item?.title ? String(item.title) : 'Canvas viewer',
+              isOwner && options.onLiveResponseViewportChange
+                ? (nextScene) => options.onLiveResponseViewportChange?.(responseId, nextScene)
+                : undefined,
+            )
           }}
         />
       )
@@ -16161,6 +16177,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 responses={postThreadResponses}
                 currentUserId={String(currentUserId || viewerId || '')}
                 theme="dark"
+                inlineCanvasMode="static"
                 getContainerProps={(response, args) => ({
                   onPointerDown: (event) => beginReplyLongPress(event as any, {
                     kind: 'post',
@@ -16195,11 +16212,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 }}
                 getResponseActions={(response, args) => buildPostReplyActions(postThreadOverlay, response, args)}
                 onOpenImageBlock={(imageUrl, args) => openPostImageViewer(imageUrl, `${args.responseUserName} attachment`)}
-                onCanvasViewportChange={(response, responseId, scene) => {
+                onOpenCanvasBlock={(response, args, scene) => {
+                  const responseId = String(args.responseId || '')
                   const responseUserId = String(response?.userId || response?.user?.id || '')
-                  if (responseUserId === String(currentUserId || viewerId || '') && responseId) {
-                    queueInteractiveViewportSave(String(postThreadOverlay?.threadKey || ''), responseId, scene)
-                  }
+                  const isOwner = responseUserId === String(currentUserId || viewerId || '') && Boolean(responseId)
+                  openPostCanvasViewer(
+                    scene,
+                    `${args.responseUserName} canvas`,
+                    postThreadOverlay?.title || 'Canvas viewer',
+                    isOwner
+                      ? (nextScene) => queueInteractiveViewportSave(String(postThreadOverlay?.threadKey || ''), responseId, nextScene)
+                      : undefined,
+                  )
                 }}
               />
             </div>

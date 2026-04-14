@@ -1,4 +1,4 @@
-import { PublicSolvePlainExcalidrawViewer } from './PublicSolveCanvas'
+import { PublicSolvePlainExcalidrawViewer, type PublicSolveScene } from './PublicSolveCanvas'
 import { renderKatexDisplayHtml } from '../lib/latexRender'
 import type { PostReplyBlock } from '../lib/postReplyComposer'
 import { normalizePostReplyBlocks } from '../lib/postReplyComposer'
@@ -9,6 +9,7 @@ type Props = {
   prompt?: string | null
   imageUrl?: string | null
   onOpenImage?: (url: string, title: string) => void
+  onOpenCanvas?: (scene: PublicSolveScene) => void
   consumeLongPressOpen?: () => boolean
   imageTitle?: string
   compact?: boolean
@@ -22,6 +23,7 @@ export default function PostComposerBlocksPreview({
   prompt,
   imageUrl,
   onOpenImage,
+  onOpenCanvas,
   consumeLongPressOpen,
   imageTitle = 'Post image',
   compact = false,
@@ -55,14 +57,37 @@ export default function PostComposerBlocksPreview({
         }
 
         if (block.type === 'canvas') {
-          return (
-            <div key={blockKey} className="overflow-hidden rounded-2xl border border-[#1d4f91]/25 bg-white shadow-sm">
+          const canvasContent = (
+            <div className="overflow-hidden rounded-2xl border border-[#1d4f91]/25 bg-white shadow-sm">
               <PublicSolvePlainExcalidrawViewer
                 scene={block.scene}
                 className="pointer-events-none"
                 viewerHeightPx={compact ? 220 : 240}
               />
             </div>
+          )
+
+          if (!onOpenCanvas) {
+            return <div key={blockKey}>{canvasContent}</div>
+          }
+
+          return (
+            <button
+              key={blockKey}
+              type="button"
+              className="block w-full text-left"
+              onClick={(event) => {
+                if (consumeLongPressOpen?.()) {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  return
+                }
+                event.stopPropagation()
+                onOpenCanvas(block.scene)
+              }}
+            >
+              {canvasContent}
+            </button>
           )
         }
 

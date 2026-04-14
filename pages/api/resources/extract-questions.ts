@@ -106,7 +106,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             temperature: 0,
             topP: 0.1,
             maxOutputTokens: 8000,
-            responseMimeType: 'application/json',
           },
         }),
       },

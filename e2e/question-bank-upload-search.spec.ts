@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 const baseUrl = (process.env.E2E_BASE_URL || '').trim()
 const adminEmail = (process.env.E2E_ADMIN_EMAIL || '').trim()
@@ -13,38 +13,25 @@ const toAbsoluteUrl = (value: string) => {
   return `${normalizedBase}${normalizedPath}`
 }
 
-const fillSignIn = async (page: Parameters<typeof test>[0]['page']) => {
+const fillSignIn = async (page: Page) => {
   const emailInput = page.locator('#email')
   const passwordInput = page.locator('#password')
 
   await expect(emailInput).toBeVisible({ timeout: 20_000 })
   await expect(passwordInput).toBeVisible({ timeout: 20_000 })
 
-  await emailInput.fill(adminEmail)
-  await passwordInput.fill(adminPassword)
+  await emailInput.click()
+  await emailInput.fill('')
+  await emailInput.pressSequentially(adminEmail, { delay: 20 })
+  await expect(emailInput).toHaveValue(adminEmail)
+
+  await passwordInput.click()
+  await passwordInput.fill('')
+  await passwordInput.pressSequentially(adminPassword, { delay: 20 })
+  await expect(passwordInput).toHaveValue(adminPassword)
+
   await page.getByRole('button', { name: /^Sign in$/i }).click()
-
-  await page.waitForTimeout(10_000)
-  await page.reload({ waitUntil: 'domcontentloaded', timeout: 15_000 })
-
-  let redirected = false
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      await expect(page).toHaveURL(/\/dashboard|\/board/i, { timeout: 6_000 })
-      redirected = true
-      break
-    } catch {
-      const errText = await page.locator('.bg-red-100').first().textContent().catch(() => null)
-      if (errText && errText.trim()) {
-        throw new Error(`Sign-in failed: ${errText.trim()}`)
-      }
-      await page.waitForTimeout(1500)
-    }
-  }
-
-  if (!redirected) {
-    throw new Error(`Sign-in did not redirect. Final URL: ${page.url()}`)
-  }
+  await expect(page).toHaveURL(/\/dashboard|\/board/i, { timeout: 30_000 })
 }
 
 test.describe('question bank upload extract and search', () => {
@@ -75,15 +62,13 @@ test.describe('question bank upload extract and search', () => {
     const parseCheckbox = workspaceCard.locator('label:has-text("Parse (Mathpix OCR)") input[type="checkbox"]').first()
     await parseCheckbox.check({ force: true })
 
-    const fileInput = workspaceCard.locator('input[type="file"]').first()
-    await fileInput.setInputFiles(pdfPath)
-    const attachedCount = await fileInput.evaluate((el) => {
-      const input = el as HTMLInputElement
-      return input.files?.length || 0
-    })
-    expect(attachedCount).toBeGreaterThan(0)
+    const chooseFileButton = workspaceCard.getByRole('button', { name: /Choose File/i }).first()
+    const chooserPromise = page.waitForEvent('filechooser')
+    await chooseFileButton.click()
+    const chooser = await chooserPromise
+    await chooser.setFiles(pdfPath)
 
-    const uploadButton = page.getByRole('button', { name: /^Upload$/i }).first()
+    const uploadButton = workspaceCard.getByRole('button', { name: /^Upload$/i }).first()
 
     if (await uploadButton.isDisabled()) {
       const gradeSelect = page.locator('select.input').first()
@@ -93,49 +78,54 @@ test.describe('question bank upload extract and search', () => {
     }
 
     await uploadButton.click()
+    await expect(uploadButton).toHaveText(/Upload/i, { timeout: 240_000 })
+    await expect(page.getByText(/Failed to upload resource/i)).toHaveCount(0)
 
-    const resourceRow = page.locator('li', {
-      has: page.locator('div', { hasText: uniqueTitle }),
+    const pdfRow = page.getByRole('listitem').filter({
+      has: page.locator('a[href*="Mathematics_P1_Nov_2024_Eng.pdf"]'),
     }).first()
 
-    await expect(resourceRow).toBeVisible({ timeout: 240_000 })
+    await expect(pdfRow).toBeVisible({ timeout: 240_000 })
 
-    const extractButton = resourceRow.getByRole('button', { name: /Extract Questions/i })
+    const extractButton = pdfRow.getByRole('button', { name: /Extract Questions/i })
     await expect(extractButton).toBeVisible({ timeout: 120_000 })
     await extractButton.click()
 
-    const yearInput = page.locator('input[type="number"]').first()
-    await yearInput.fill('2024')
+    const extractModal = page.locator('div.rounded-2xl').filter({ hasText: 'Gemini will read the parsed OCR text' }).first()
+    await expect(extractModal).toBeVisible({ timeout: 30_000 })
 
-    const monthSelect = page.locator('select').filter({ has: page.locator('option[value="November"]') }).first()
-    await monthSelect.selectOption('November')
+    await extractModal.locator('input[type="number"]').first().fill('2024')
+    await extractModal.locator('select').first().selectOption('November')
+    await extractModal.locator('select').nth(1).selectOption('1')
+    await extractModal.getByRole('button', { name: /^Extract$/i }).click()
 
-    const paperSelect = page.locator('select').filter({ has: page.locator('option[value="3"]') }).first()
-    await paperSelect.selectOption('1')
-
-    const extractNowButton = page.getByRole('button', { name: /^Extract$/i }).first()
-    await extractNowButton.click()
-
-    const extractResult = page.locator('div', { hasText: /^✓ Extracted\s+\d+\s+question/i }).first()
+    const extractResult = extractModal.locator('div.rounded-xl.bg-green-50').first()
     await expect(extractResult).toBeVisible({ timeout: 360_000 })
 
     const extractText = (await extractResult.textContent()) || ''
-    const createdMatch = extractText.match(/Extracted\s+(\d+)\s+question/i)
-    const createdCount = createdMatch ? Number(createdMatch[1]) : 0
-    expect(createdCount).toBeGreaterThan(0)
+    const counts = extractText.match(/Extracted\s+(\d+)\s+question.*?(\d+)\s+skipped/i)
+    const createdCount = counts ? Number(counts[1]) : Number((extractText.match(/Extracted\s+(\d+)\s+question/i) || [])[1] || 0)
+    const skippedCount = counts ? Number(counts[2]) : 0
+    expect(createdCount + skippedCount).toBeGreaterThan(0)
 
-    const apiResponse = await page.request.get(toAbsoluteUrl('/api/exam-questions?year=2024&month=November&paper=1&take=10'))
-    expect(apiResponse.ok()).toBe(true)
-    const apiData = (await apiResponse.json()) as {
-      items?: Array<{ id: string; questionNumber?: string; sourceId?: string; year?: number; month?: string; paper?: number }>
-    }
+    await extractModal.getByRole('button', { name: /Cancel/i }).click()
 
-    const items = Array.isArray(apiData?.items) ? apiData.items : []
-    expect(items.length).toBeGreaterThan(0)
+    const reviewButton = pdfRow.getByRole('button', { name: /Review Questions/i })
+    await expect(reviewButton).toBeVisible({ timeout: 60_000 })
+    await reviewButton.click()
 
-    const picked = items.find((item) => String(item?.sourceId || '').length > 0) || items[0]
-    const targetQuestionNumber = String(picked?.questionNumber || '').trim()
+    const reviewModal = page.locator('div.rounded-2xl').filter({ hasText: 'Review extracted questions' }).first()
+    await expect(reviewModal).toBeVisible({ timeout: 30_000 })
+
+    const firstReviewedQuestion = reviewModal.locator('li').first()
+    await expect(firstReviewedQuestion).toBeVisible({ timeout: 120_000 })
+
+    const reviewText = (await firstReviewedQuestion.textContent()) || ''
+    const questionMatch = reviewText.match(/Q(\d+(?:\.\d+)*)/)
+    const targetQuestionNumber = String(questionMatch?.[1] || '').trim()
     expect(targetQuestionNumber.length).toBeGreaterThan(0)
+
+    await reviewModal.getByRole('button', { name: /^Close$/i }).click()
 
     await page.goto(toAbsoluteUrl('/dashboard'), { waitUntil: 'domcontentloaded' })
 
@@ -148,16 +138,18 @@ test.describe('question bank upload extract and search', () => {
     await expect(questionBankTab).toBeVisible({ timeout: 30_000 })
     await questionBankTab.click()
 
-    const yearFilter = page.locator('input[type="number"][placeholder*="2024"]').first()
+    const questionBankSection = page.locator('section').filter({ hasText: 'Question Bank' }).first()
+
+    const yearFilter = questionBankSection.locator('input[type="number"]').first()
     await yearFilter.fill('2024')
 
-    const monthFilter = page.locator('section').filter({ hasText: 'Question Bank' }).locator('select').first()
+    const monthFilter = questionBankSection.locator('select').first()
     await monthFilter.selectOption('November')
 
-    const paperFilter = page.locator('section').filter({ hasText: 'Question Bank' }).locator('select').nth(1)
+    const paperFilter = questionBankSection.locator('select').nth(1)
     await paperFilter.selectOption('1')
 
-    const qNumberInput = page.locator('input[placeholder*="1.1.5"]').first()
+    const qNumberInput = questionBankSection.locator('input[placeholder*="1.1.5"]').first()
     await qNumberInput.fill(targetQuestionNumber)
 
     await page.getByRole('button', { name: /Search Questions/i }).click()

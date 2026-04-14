@@ -24,6 +24,19 @@ function questionDepthFromNumber(qNum: string): number {
   return Math.max(0, parts.length - 1)
 }
 
+function coerceGeminiQuestionsArray(value: unknown): any[] | null {
+  if (Array.isArray(value)) return value
+  if (!value || typeof value !== 'object') return null
+
+  const record = value as Record<string, unknown>
+  const candidates = [record.questions, record.items, record.results, record.data]
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate
+  }
+
+  return null
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST'])
@@ -119,12 +132,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const geminiData: any = await geminiRes.json().catch(() => null)
     const rawOutput = geminiData?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join('') ?? ''
     const parsed = tryParseJsonLoose(typeof rawOutput === 'string' ? rawOutput : '')
+    const extractedQuestions = coerceGeminiQuestionsArray(parsed)
 
-    if (!Array.isArray(parsed)) {
+    if (!extractedQuestions) {
       return res.status(502).json({ message: 'Gemini returned non-array output — could not extract questions', raw: rawOutput?.slice(0, 1000) })
     }
 
-    geminiResult = parsed
+    geminiResult = extractedQuestions
   } catch (err: any) {
     return res.status(500).json({ message: err?.message || 'Gemini extraction failed' })
   }

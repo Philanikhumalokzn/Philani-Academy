@@ -6182,32 +6182,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       ),
                     },
                     {
-                      label: usesAttemptRules
-                        ? (hasAttempted ? formatSolutionsLabel((p as any)?.solutionCount) : (canAttempt ? 'Solve' : 'Closed'))
-                        : (p?.hasOwnResponse ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve'),
+                      label: 'Reply',
                       count: (p as any)?.solutionCount ?? 0,
                       countLabel: formatSocialCountLabel((p as any)?.solutionCount, 'Reply', 'Replies'),
                       onClick: () => {
-                        if (usesAttemptRules) {
-                          if (hasAttempted) {
-                            void openPostThread(p)
-                            return
-                          }
-                          if (canAttempt) {
-                            void openPostSolveComposer(p)
-                          }
-                          return
-                        }
-                        if (p?.hasOwnResponse) {
-                          void openPostThread(p)
-                          return
-                        }
                         void openPostSolveComposer(p)
                       },
                       onCountClick: () => {
                         void openPostThread(p)
                       },
-                      disabled: !itemId || (usesAttemptRules && !hasAttempted && !canAttempt),
+                      disabled: !itemId,
                       icon: (
                         <span className="flex items-center gap-1" aria-hidden="true">
                           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">

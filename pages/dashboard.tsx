@@ -93,6 +93,7 @@ type SectionId = typeof DASHBOARD_SECTIONS[number]['id']
 type SectionRole = typeof DASHBOARD_SECTIONS[number]['roles'][number]
 type OverlaySectionId = Exclude<SectionId, 'overview'>
 type DashboardCreateKind = 'quiz' | 'post'
+type StudentMobileTabId = 'timeline' | 'sessions' | 'groups' | 'books' | 'profile'
 
 type Announcement = {
   id: string
@@ -1825,7 +1826,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [])
 
-  const [studentMobileTab, setStudentMobileTab] = useState<'timeline' | 'sessions' | 'groups' | 'profile'>('timeline')
+  const [studentMobileTab, setStudentMobileTab] = useState<StudentMobileTabId>('timeline')
   const [studentDashboardProfileOpen, setStudentDashboardProfileOpen] = useState(false)
   const [, setStudentDashboardProfileHeight] = useState(960)
   const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'profile' | 'admin' | null>(null)
@@ -1975,8 +1976,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     timeline: HTMLDivElement | null
     sessions: HTMLDivElement | null
     groups: HTMLDivElement | null
+    books: HTMLDivElement | null
     profile: HTMLDivElement | null
-  }>({ timeline: null, sessions: null, groups: null, profile: null })
+  }>({ timeline: null, sessions: null, groups: null, books: null, profile: null })
   const [studentMobileActivePanelHeight, setStudentMobileActivePanelHeight] = useState<number | null>(null)
   const [studentMobileCarouselWidth, setStudentMobileCarouselWidth] = useState(0)
   const [studentMobileDragOffsetPx, setStudentMobileDragOffsetPx] = useState(0)
@@ -3688,26 +3690,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const sessionCanOrchestrateLessons = hasLessonCapabilityForRole(sessionRole, 'canOrchestrateLesson')
   const canManageSessionThumbnails = sessionCanOrchestrateLessons
 
-  const studentMobileTabIndex = (tab: 'timeline' | 'sessions' | 'groups' | 'profile') => {
+  const studentMobileTabIndex = (tab: StudentMobileTabId) => {
     if (tab === 'timeline') return 0
     if (tab === 'sessions') return 1
     if (tab === 'groups') return 2
-    return 3
+    if (tab === 'books') return 3
+    return 4
   }
 
   const studentMobileTabForIndex = (idx: number) =>
-    (idx <= 0 ? 'timeline' : idx === 1 ? 'sessions' : idx === 2 ? 'groups' : 'profile') as
-      | 'timeline'
-      | 'sessions'
-      | 'groups'
-      | 'profile'
+    (idx <= 0 ? 'timeline' : idx === 1 ? 'sessions' : idx === 2 ? 'groups' : idx === 3 ? 'books' : 'profile') as StudentMobileTabId
 
   const studentMobileActiveIndex = studentMobileTabIndex(studentMobileTab)
   const studentMobileVisualIndex = studentMobileCarouselWidth > 0
-    ? Math.max(0, Math.min(3, studentMobileActiveIndex - (studentMobileDragOffsetPx / studentMobileCarouselWidth)))
+    ? Math.max(0, Math.min(4, studentMobileActiveIndex - (studentMobileDragOffsetPx / studentMobileCarouselWidth)))
     : studentMobileActiveIndex
 
-  const measureStudentMobilePanelHeight = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'profile') => {
+  const measureStudentMobilePanelHeight = useCallback((tab: StudentMobileTabId) => {
     const panel = studentMobilePanelRefs.current[tab]
     if (!panel) return
     const content = panel.firstElementChild instanceof HTMLElement ? panel.firstElementChild : panel
@@ -3729,7 +3728,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (wasHorizontalSwipe) {
       nextIndex = Math.round(projectedIndex)
       nextIndex = Math.max(state.startIndex - 1, Math.min(state.startIndex + 1, nextIndex))
-      nextIndex = Math.max(0, Math.min(3, nextIndex))
+      nextIndex = Math.max(0, Math.min(4, nextIndex))
     }
 
     state.pointerId = null
@@ -13379,7 +13378,83 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     )
   }
 
-  const renderStudentSurfaceSection = (id: 'sessions' | 'groups' | 'discover') => {
+  const renderBooksSurfaceContent = () => (
+    <div>
+      {booksError ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-red-600">{booksError}</section> : null}
+      {booksLoading ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">Loading...</section> : null}
+      {!booksLoading && !booksError && booksItems.length === 0 ? (
+        <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">No materials available yet.</section>
+      ) : null}
+
+      {booksItems.length > 0 ? (
+        <ul>
+          {booksItems.map((item) => {
+            const savedOffline = item.url ? isDocSavedOffline(item.url) : false
+            const savingOffline = item.url ? offlineDocSavingUrls.includes(item.url) : false
+            const offlineError = item.url ? offlineDocErrorByUrl[item.url] : ''
+            return (
+              <li
+                key={item.id}
+                className="border-b border-black/10 bg-white px-4 py-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    {isPdfResource(item) ? (
+                      <button
+                        type="button"
+                        className="block text-left text-[15px] font-semibold text-[#111827] hover:underline whitespace-normal break-words"
+                        onClick={() => openPdfViewer(item)}
+                      >
+                        {item.title}
+                      </button>
+                    ) : (
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block text-[15px] font-semibold text-[#111827] hover:underline whitespace-normal break-words"
+                      >
+                        {item.title}
+                      </a>
+                    )}
+                    <div className="mt-1 text-xs text-[#65676b]">
+                      {item.tag ? `${item.tag} - ` : ''}
+                      {gradeToLabel(item.grade)}
+                    </div>
+                    {offlineError ? <div className="mt-2 text-xs text-amber-700">{offlineError}</div> : null}
+                  </div>
+                  {item.url ? (
+                    <div className="flex items-center gap-2">
+                      {savedOffline ? (
+                        <button
+                          type="button"
+                          className="inline-flex h-9 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 text-xs font-medium text-[#1c1e21]"
+                          onClick={() => void removeDocOffline(item)}
+                        >
+                          Remove offline
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="inline-flex h-9 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 text-xs font-medium text-[#1c1e21]"
+                          onClick={() => void saveDocOffline(item)}
+                          disabled={savingOffline}
+                        >
+                          {savingOffline ? 'Saving...' : 'Save offline'}
+                        </button>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      ) : null}
+    </div>
+  )
+
+  const renderStudentSurfaceSection = (id: 'sessions' | 'groups' | 'discover' | 'books') => {
     const action =
       id === 'groups' ? (
         <button
@@ -13389,9 +13464,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         >
           Refresh
         </button>
+      ) : id === 'books' ? (
+        <button
+          type="button"
+          className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] transition hover:bg-[#eef2f7]"
+          onClick={() => {
+            void fetchBooksForGrade()
+          }}
+          disabled={booksLoading}
+        >
+          {booksLoading ? 'Loading...' : 'Refresh'}
+        </button>
       ) : null
 
-    return renderStudentSurfaceFrame(id, renderSection(id), action)
+    return renderStudentSurfaceFrame(id, id === 'books' ? renderBooksSurfaceContent() : renderSection(id), action)
   }
 
   const renderEmbeddedOwnProfilePanel = (tone: 'mobile' | 'desktop') => {
@@ -13809,6 +13895,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
         <div
           ref={el => {
+            studentMobilePanelRefs.current.books = el
+          }}
+          className="w-full flex-none self-start"
+        >
+          <div className="pb-8">{renderStudentSurfaceSection('books')}</div>
+        </div>
+
+        <div
+          ref={el => {
             studentMobilePanelRefs.current.profile = el
           }}
           className="w-full flex-none self-start"
@@ -13842,7 +13937,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       }
     }
 
-    const switchMobileTab = (tab: 'timeline' | 'sessions' | 'groups' | 'profile') => {
+    const switchMobileTab = (tab: StudentMobileTabId) => {
       setStudentDashboardProfileOpen(false)
       setStudentMobileIsDragging(false)
       setStudentMobileDragOffsetPx(0)
@@ -13925,10 +14020,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </div>
 
             <div>
-              <div className="relative grid grid-cols-4 border-b border-black/10 bg-white">
+              <div className="relative grid grid-cols-5 border-b border-black/10 bg-white">
                 <span
                   aria-hidden="true"
-                  className={`pointer-events-none absolute bottom-0 left-0 z-0 h-[3px] w-1/4 rounded-full bg-[#1877f2] ${studentMobileIsDragging ? '' : 'transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]'}`}
+                  className={`pointer-events-none absolute bottom-0 left-0 z-0 h-[3px] w-1/5 rounded-full bg-[#1877f2] ${studentMobileIsDragging ? '' : 'transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]'}`}
                   style={{ transform: `translateX(${studentMobileVisualIndex * 100}%)` }}
                 />
                 <button
@@ -13966,6 +14061,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <path d="M15.5 10C16.8807 10 18 8.88071 18 7.5C18 6.11929 16.8807 5 15.5 5C14.1193 5 13 6.11929 13 7.5C13 8.88071 14.1193 10 15.5 10Z" stroke="currentColor" strokeWidth="1.9" />
                     <path d="M4.5 18C4.5 15.7909 6.29086 14 8.5 14H9.5C11.7091 14 13.5 15.7909 13.5 18" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
                     <path d="M13 18C13 16.3431 14.3431 15 16 15H16.5C18.1569 15 19.5 16.3431 19.5 18" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={`relative z-10 flex min-w-0 items-center justify-center px-1 py-3 transition ${studentMobileTab === 'books' ? 'text-[#1c1e21]' : 'text-[#65676b]'}`}
+                  onClick={() => switchMobileTab('books')}
+                  aria-label="Learning Hub"
+                  title="Learning Hub"
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M6 5.5C6 4.67157 6.67157 4 7.5 4H18V19H7.5C6.67157 19 6 19.6716 6 20.5V5.5Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
+                    <path d="M6 20H17.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                    <path d="M9 8H14" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
                   </svg>
                 </button>
                 <button
@@ -14289,82 +14397,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           }
         >
           {isMobile ? (
-            renderStudentSurfaceFrame(
-              'books',
-              <div>
-                {booksError ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-red-600">{booksError}</section> : null}
-                {booksLoading ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">Loading...</section> : null}
-                {!booksLoading && !booksError && booksItems.length === 0 ? (
-                  <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">No materials available yet.</section>
-                ) : null}
-
-                {booksItems.length > 0 ? (
-                  <ul>
-                    {booksItems.map((item) => {
-                      const savedOffline = item.url ? isDocSavedOffline(item.url) : false
-                      const savingOffline = item.url ? offlineDocSavingUrls.includes(item.url) : false
-                      const offlineError = item.url ? offlineDocErrorByUrl[item.url] : ''
-                      return (
-                        <li
-                          key={item.id}
-                          className="border-b border-black/10 bg-white px-4 py-4"
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              {isPdfResource(item) ? (
-                                <button
-                                  type="button"
-                                  className="block text-left text-[15px] font-semibold text-[#111827] hover:underline whitespace-normal break-words"
-                                  onClick={() => openPdfViewer(item)}
-                                >
-                                  {item.title}
-                                </button>
-                              ) : (
-                                <a
-                                  href={item.url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="block text-[15px] font-semibold text-[#111827] hover:underline whitespace-normal break-words"
-                                >
-                                  {item.title}
-                                </a>
-                              )}
-                              <div className="mt-1 text-xs text-[#65676b]">
-                                {item.tag ? `${item.tag} - ` : ''}
-                                {gradeToLabel(item.grade)}
-                              </div>
-                              {offlineError ? <div className="mt-2 text-xs text-amber-700">{offlineError}</div> : null}
-                            </div>
-                            {item.url ? (
-                              <div className="flex items-center gap-2">
-                                {savedOffline ? (
-                                  <button
-                                    type="button"
-                                    className="inline-flex h-9 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 text-xs font-medium text-[#1c1e21]"
-                                    onClick={() => void removeDocOffline(item)}
-                                  >
-                                    Remove offline
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="inline-flex h-9 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 text-xs font-medium text-[#1c1e21]"
-                                    onClick={() => void saveDocOffline(item)}
-                                    disabled={savingOffline}
-                                  >
-                                    {savingOffline ? 'Saving...' : 'Save offline'}
-                                  </button>
-                                )}
-                              </div>
-                            ) : null}
-                          </div>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                ) : null}
-              </div>
-            )
+            renderStudentSurfaceSection('books')
           ) : (
             <div className="space-y-3">
               {booksError ? <div className="text-sm text-red-200">{booksError}</div> : null}

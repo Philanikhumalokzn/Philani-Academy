@@ -1837,6 +1837,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'profile' | 'admin' | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [booksOverlayOpen, setBooksOverlayOpen] = useState(false)
+  const [booksHubTab, setBooksHubTab] = useState<'library' | 'resources'>('library')
   const [booksLoading, setBooksLoading] = useState(false)
   const [booksError, setBooksError] = useState<string | null>(null)
   const [booksItems, setBooksItems] = useState<ResourceBankItem[]>([])
@@ -13423,8 +13424,93 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     )
   }
 
+  const renderAdminBooksResourcesContent = () => (
+    <div>
+      <section className="border-b border-black/10 bg-white px-4 py-4">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Admin Resources Pipeline</div>
+        <div className="mt-1 text-sm text-[#1f2937]">Upload files, parse with Mathpix, run AI normalization, and manage grade resources.</div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] transition hover:bg-[#eef2f7]"
+            onClick={() => {
+              void router.push('/resource-bank')
+            }}
+          >
+            Open Resources Workspace
+          </button>
+          <button
+            type="button"
+            className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] transition hover:bg-[#eef2f7]"
+            onClick={() => {
+              setChallengeParseOnUpload(true)
+              openCreateChallengeComposer()
+            }}
+          >
+            New Post With Parse
+          </button>
+          <button
+            type="button"
+            className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] transition hover:bg-[#eef2f7]"
+            onClick={() => {
+              void fetchBooksForGrade()
+            }}
+            disabled={booksLoading}
+          >
+            {booksLoading ? 'Refreshing...' : 'Refresh Learning Library'}
+          </button>
+          <button
+            type="button"
+            className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] transition hover:bg-[#eef2f7]"
+            onClick={() => {
+              setBooksHubTab('library')
+            }}
+          >
+            View Current Resources
+          </button>
+        </div>
+      </section>
+
+      <section className="border-b border-black/10 bg-white px-4 py-4">
+        <div className="text-[13px] font-semibold text-[#1f2937]">Available Actions</div>
+        <div className="mt-2 space-y-1 text-xs text-[#4b5563]">
+          <div>Upload image, PDF, or document resources per grade.</div>
+          <div>Parse uploaded files with Mathpix OCR.</div>
+          <div>Apply AI post-normalization with Gemini.</div>
+          <div>Convert parsed outputs to DOCX and download LaTeX where available.</div>
+          <div>Edit metadata, re-parse, review parse errors, and delete resources.</div>
+        </div>
+      </section>
+    </div>
+  )
+
   const renderBooksSurfaceContent = () => (
     <div>
+      {isAdmin ? (
+        <section className="border-b border-black/10 bg-white px-4 py-3">
+          <div className="inline-flex rounded-full border border-[#d5def0] bg-[#f7f8fa] p-1">
+            <button
+              type="button"
+              className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'library' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
+              onClick={() => setBooksHubTab('library')}
+            >
+              Library
+            </button>
+            <button
+              type="button"
+              className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'resources' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
+              onClick={() => setBooksHubTab('resources')}
+            >
+              Resources
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {isAdmin && booksHubTab === 'resources' ? renderAdminBooksResourcesContent() : null}
+
+      {!isAdmin || booksHubTab === 'library' ? (
+        <>
       {booksError ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-red-600">{booksError}</section> : null}
       {booksLoading ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">Loading...</section> : null}
       {!booksLoading && !booksError && booksItems.length === 0 ? (
@@ -13495,6 +13581,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             )
           })}
         </ul>
+      ) : null}
+        </>
       ) : null}
     </div>
   )

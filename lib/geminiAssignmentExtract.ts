@@ -10,6 +10,17 @@ export function tryParseJsonLoose(text: string): any | null {
   try {
     return JSON.parse(trimmed)
   } catch {
+    const arrayStart = trimmed.indexOf('[')
+    const arrayEnd = trimmed.lastIndexOf(']')
+    if (arrayStart >= 0 && arrayEnd > arrayStart) {
+      const slicedArray = trimmed.slice(arrayStart, arrayEnd + 1)
+      try {
+        return JSON.parse(slicedArray)
+      } catch {
+        // Fall through to object parsing.
+      }
+    }
+
     const start = trimmed.indexOf('{')
     const end = trimmed.lastIndexOf('}')
     if (start >= 0 && end > start) {

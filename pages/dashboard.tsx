@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
+import { formatSocialCountLabel } from '../lib/socialCounterFormat'
 import JitsiRoom, { JitsiControls, JitsiMuteState } from '../components/JitsiRoom'
 import LiveOverlayWindow from '../components/LiveOverlayWindow'
 import BrandLogo from '../components/BrandLogo'
@@ -1774,6 +1775,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [studentFeedLoading, setStudentFeedLoading] = useState(false)
   const [studentFeedError, setStudentFeedError] = useState<string | null>(null)
   const [socialLikedItems, setSocialLikedItems] = useState<Record<string, boolean>>({})
+  const [socialLikeCountByItemKey, setSocialLikeCountByItemKey] = useState<Record<string, number>>({})
+  const [socialReplyCountByItemKey, setSocialReplyCountByItemKey] = useState<Record<string, number>>({})
+  const [socialShareCountByItemKey, setSocialShareCountByItemKey] = useState<Record<string, number>>({})
   const [lastSharedSocialItemKey, setLastSharedSocialItemKey] = useState<string | null>(null)
   const [interactiveViewportSavingByResponseId, setInteractiveViewportSavingByResponseId] = useState<Record<string, boolean>>({})
   const [interactiveViewportErrorByResponseId, setInteractiveViewportErrorByResponseId] = useState<Record<string, string>>({})
@@ -6162,8 +6166,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     {
                       label: 'Like',
                       active: Boolean(socialLikedItems[socialItemKey]),
+                      count: socialLikeCountByItemKey[socialItemKey] ?? 0,
+                      countLabel: formatSocialCountLabel(socialLikeCountByItemKey[socialItemKey], 'Like', 'Likes'),
                       onClick: () => toggleSocialLike(socialItemKey),
-                      icon: (
+                      icon: socialLikedItems[socialItemKey] ? (
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                          <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" />
+                          <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" />
+                        </svg>
+                      ) : (
                         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
                           <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                           <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -6174,6 +6185,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       label: usesAttemptRules
                         ? (hasAttempted ? formatSolutionsLabel((p as any)?.solutionCount) : (canAttempt ? 'Solve' : 'Closed'))
                         : (p?.hasOwnResponse ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve'),
+                      count: (p as any)?.solutionCount ?? 0,
+                      countLabel: formatSocialCountLabel((p as any)?.solutionCount, 'Reply', 'Replies'),
                       onClick: () => {
                         if (usesAttemptRules) {
                           if (hasAttempted) {
@@ -6191,6 +6204,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         }
                         void openPostSolveComposer(p)
                       },
+                      onCountClick: () => {
+                        void openPostThread(p)
+                      },
                       disabled: !itemId || (usesAttemptRules && !hasAttempted && !canAttempt),
                       icon: (
                         <span className="flex items-center gap-1" aria-hidden="true">
@@ -6206,13 +6222,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     },
                     {
                       label: 'Share',
+                      count: socialShareCountByItemKey[socialItemKey] ?? 0,
+                      countLabel: formatSocialCountLabel(socialShareCountByItemKey[socialItemKey], 'Share', 'Shares'),
                       statusLabel: lastSharedSocialItemKey === socialItemKey ? 'Copied' : undefined,
-                      onClick: () => shareDashboardItem({
-                        itemKey: socialItemKey,
-                        title,
-                        text: prompt || title,
-                        path: `/dashboard?postId=${encodeURIComponent(itemId)}`,
-                      }),
+                      onClick: () => {
+                        shareDashboardItem({
+                          itemKey: socialItemKey,
+                          title,
+                          text: prompt || title,
+                          path: `/dashboard?postId=${encodeURIComponent(itemId)}`,
+                        })
+                        // Increment share count
+                        setSocialShareCountByItemKey(prev => ({
+                          ...prev,
+                          [socialItemKey]: (prev[socialItemKey] ?? 0) + 1,
+                        }))
+                      },
                       disabled: !itemId,
                       icon: (
                         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
@@ -8234,7 +8259,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       ...prev,
       [itemKey]: !prev[itemKey],
     }))
-  }, [])
+    // Also update like count
+    setSocialLikeCountByItemKey(prev => {
+      const isNowLiked = !prev[itemKey]
+      const current = prev[itemKey] ?? 0
+      const isCurrentlyLiked = socialLikedItems[itemKey] ?? false
+      return {
+        ...prev,
+        [itemKey]: isCurrentlyLiked ? Math.max(0, current - 1) : current + 1,
+      }
+    })
+  }, [socialLikedItems])
 
   const markSocialShareHandled = useCallback((itemKey: string) => {
     if (!itemKey) return
@@ -8562,11 +8597,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const buildPostReplyActions = useCallback((post: any, response: any, args: ResponseRenderArgs): InlinePostResponseAction[] => {
     const itemKey = `reply:${args.responseId}`
+    const replyCount = response?.children?.length ?? 0
 
     return [
       {
         label: 'Reply',
         alignment: 'leading',
+        count: replyCount,
+        countLabel: formatSocialCountLabel(replyCount, 'Reply', 'Replies'),
         onClick: () => openReplyComposerForPostResponse(post, response),
         icon: (
           <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
@@ -8578,8 +8616,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         label: 'Like',
         alignment: 'trailing',
         active: Boolean(socialLikedItems[itemKey]),
+        count: socialLikeCountByItemKey[itemKey] ?? 0,
+        countLabel: formatSocialCountLabel(socialLikeCountByItemKey[itemKey], 'Like', 'Likes'),
         onClick: () => toggleSocialLike(itemKey),
-        icon: (
+        icon: socialLikedItems[itemKey] ? (
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true">
+            <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" />
+            <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" />
+          </svg>
+        ) : (
           <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
             <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -8587,7 +8632,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         ),
       },
     ]
-  }, [openReplyComposerForPostResponse, socialLikedItems, toggleSocialLike])
+  }, [openReplyComposerForPostResponse, socialLikedItems, socialLikeCountByItemKey, toggleSocialLike])
 
   useEffect(() => {
     if (!router.isReady) return

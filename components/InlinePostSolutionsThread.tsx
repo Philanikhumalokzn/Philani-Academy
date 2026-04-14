@@ -21,6 +21,9 @@ export type InlinePostResponseAction = {
   icon: React.ReactNode
   disabled?: boolean
   alignment?: 'leading' | 'trailing'
+  count?: number | null
+  countLabel?: string
+  onCountClick?: () => void
 }
 
 const getReplyToggleLabel = (replyCount: number, expanded: boolean) => {
@@ -226,16 +229,29 @@ export default function InlinePostSolutionsThread({
   }, [])
 
   const renderActionButton = (action: InlinePostResponseAction) => (
-    <button
-      key={`${action.label}-${action.statusLabel || 'default'}`}
-      type="button"
-      className={`${palette.actionButtonClass} ${action.active ? palette.activeActionButtonClass : ''} ${action.disabled ? palette.disabledActionButtonClass : ''}`.trim()}
-      onClick={action.onClick}
-      disabled={action.disabled}
-    >
-      <span className="shrink-0">{action.icon}</span>
-      <span>{action.statusLabel || action.label}</span>
-    </button>
+    <div key={`${action.label}-${action.statusLabel || 'default'}`} className="flex flex-col items-center justify-center">
+      {action.countLabel && (
+        <button
+          type="button"
+          className="mb-1 text-[11px] font-semibold text-[#65676b] hover:text-[#1877f2]"
+          onClick={(e) => {
+            e.stopPropagation()
+            action.onCountClick?.()
+          }}
+        >
+          {action.countLabel}
+        </button>
+      )}
+      <button
+        type="button"
+        className={`${palette.actionButtonClass} ${action.active ? palette.activeActionButtonClass : ''} ${action.disabled ? palette.disabledActionButtonClass : ''}`.trim()}
+        onClick={action.onClick}
+        disabled={action.disabled}
+      >
+        <span className="shrink-0">{action.icon}</span>
+        <span>{action.statusLabel || action.label}</span>
+      </button>
+    </div>
   )
 
   const renderReplyBody = (response: any, args: ResponseRenderArgs) => {

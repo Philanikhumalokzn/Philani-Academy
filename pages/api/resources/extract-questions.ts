@@ -37,6 +37,10 @@ function coerceGeminiQuestionsArray(value: unknown): any[] | null {
   return null
 }
 
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST'])
@@ -108,28 +112,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   let geminiResult: any[]
   try {
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(geminiModel)}:generateContent?key=${encodeURIComponent(geminiApiKey)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0,
-            topP: 0.1,
-            maxOutputTokens: 8000,
-          },
-        }),
-      },
-    )
+    let geminiData: any = null
+    let geminiErr = ''
 
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text().catch(() => '')
-      return res.status(502).json({ message: `Gemini error (${geminiRes.status}): ${errText.slice(0, 500)}` })
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const geminiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(geminiModel)}:generateContent?key=${encodeURIComponent(geminiApiKey)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0,
+              topP: 0.1,
+              maxOutputTokens: 8000,
+            },
+          }),
+        },
+      )
+
+      if (geminiRes.ok) {
+        geminiData = await geminiRes.json().catch(() => null)
+        geminiErr = ''
+        break
+      }
+
+      geminiErr = await geminiRes.text().catch(() => '')
+      if (geminiRes.status !== 429 && geminiRes.status !== 503) {
+        return res.status(502).json({ message: `Gemini error (${geminiRes.status}): ${geminiErr.slice(0, 500)}` })
+      }
+
+      if (attempt < 3) {
+        await sleep(1500 * (attempt + 1))
+      }
     }
 
-    const geminiData: any = await geminiRes.json().catch(() => null)
+    if (!geminiData) {
+      return res.status(502).json({ message: `Gemini error: ${geminiErr.slice(0, 500) || 'No response after retries'}` })
+    }
+
     const rawOutput = geminiData?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join('') ?? ''
     const parsed = tryParseJsonLoose(typeof rawOutput === 'string' ? rawOutput : '')
     const extractedQuestions = coerceGeminiQuestionsArray(parsed)

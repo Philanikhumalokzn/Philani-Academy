@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import FullScreenGlassOverlay from './FullScreenGlassOverlay'
-import { PublicSolveCanvasViewer, type PublicSolveScene } from './PublicSolveCanvas'
+import { PublicSolvePlainExcalidrawViewer, resolvePublicSolveViewerLayout, type PublicSolveScene } from './PublicSolveCanvas'
 
 type ZoomableCanvasOverlayProps = {
   open: boolean
@@ -59,6 +59,44 @@ export default function ZoomableCanvasOverlay({
     }
   }, [measureContainer, open])
 
+  useEffect(() => {
+    if (!open) return
+    const element = containerRef.current
+    if (!element) return
+
+    const preventDefault = (event: Event) => {
+      event.preventDefault()
+    }
+
+    element.addEventListener('wheel', preventDefault, { passive: false })
+    element.addEventListener('touchmove', preventDefault, { passive: false })
+
+    return () => {
+      element.removeEventListener('wheel', preventDefault)
+      element.removeEventListener('touchmove', preventDefault)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open || typeof document === 'undefined') return
+
+    const html = document.documentElement
+    const body = document.body
+    const previousHtmlOverflow = html.style.overflow
+    const previousHtmlOverscrollBehavior = html.style.overscrollBehavior
+    const previousBodyOverscrollBehavior = body.style.overscrollBehavior
+
+    html.style.overflow = 'hidden'
+    html.style.overscrollBehavior = 'none'
+    body.style.overscrollBehavior = 'none'
+
+    return () => {
+      html.style.overflow = previousHtmlOverflow
+      html.style.overscrollBehavior = previousHtmlOverscrollBehavior
+      body.style.overscrollBehavior = previousBodyOverscrollBehavior
+    }
+  }, [open])
+
   const handleViewportChange = useCallback((nextScene: PublicSolveScene) => {
     setViewerScene(nextScene)
     onViewportChange?.(nextScene)
@@ -67,8 +105,14 @@ export default function ZoomableCanvasOverlay({
   if (!open || !viewerScene) return null
 
   const safeTitle = String(title || '').trim() || 'Canvas viewer'
-  const viewerHeightPx = Math.max(240, containerSize.height - 32)
-  const maxWidthPx = Math.max(240, containerSize.width - 32)
+  const maxViewerHeightPx = Math.max(240, containerSize.height - 32)
+  const maxViewerWidthPx = Math.max(240, containerSize.width - 32)
+  const viewerLayout = resolvePublicSolveViewerLayout(viewerScene, {
+    maxHeightPx: maxViewerHeightPx,
+    maxWidthPx: maxViewerWidthPx,
+  })
+  const resolvedViewerHeightPx = Math.max(1, viewerLayout.heightPx || maxViewerHeightPx)
+  const resolvedViewerWidthPx = Math.max(1, viewerLayout.widthPx || maxViewerWidthPx)
 
   return (
     <FullScreenGlassOverlay
@@ -86,7 +130,7 @@ export default function ZoomableCanvasOverlay({
       forceHeaderSafeTop
       respectBottomSafeArea={false}
     >
-      <div className="relative flex h-full min-h-0 flex-col bg-black text-white">
+      <div data-testid="zoomable-canvas-overlay" className="relative flex h-full min-h-0 flex-col bg-black text-white">
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-32 bg-gradient-to-b from-black/55 to-transparent" />
 
         <div className="absolute inset-x-0 top-0 z-20 flex items-start justify-end px-4 pb-6 pt-[calc(0.9rem+var(--app-safe-top))] sm:px-5">
@@ -108,17 +152,25 @@ export default function ZoomableCanvasOverlay({
 
         <div
           ref={containerRef}
+          data-testid="zoomable-canvas-surface"
           className="relative min-h-0 flex-1 overflow-hidden"
           style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
-          onWheel={(event) => event.preventDefault()}
+          onWheelCapture={(event) => event.preventDefault()}
+          onTouchMoveCapture={(event) => event.preventDefault()}
         >
-          <div className="absolute inset-0 flex items-center justify-center p-4 sm:p-6">
-            <PublicSolveCanvasViewer
-              scene={viewerScene}
-              viewerHeightPx={viewerHeightPx}
-              maxWidthPx={maxWidthPx}
-              onViewportChange={handleViewportChange}
-            />
+          <div data-testid="zoomable-canvas-viewer" className="absolute inset-0 flex items-center justify-center p-4 sm:p-6">
+            <div
+              className="max-h-full max-w-full overflow-hidden rounded-2xl border border-white/10 bg-white shadow-[0_16px_60px_rgba(0,0,0,0.4)]"
+              style={{ width: `${resolvedViewerWidthPx}px` }}
+            >
+              <PublicSolvePlainExcalidrawViewer
+                scene={viewerLayout.scene}
+                viewerHeightPx={resolvedViewerHeightPx}
+                viewerHeightMode="fixed"
+                maxWidthPx={resolvedViewerWidthPx}
+                onViewportChange={handleViewportChange}
+              />
+            </div>
           </div>
         </div>
       </div>

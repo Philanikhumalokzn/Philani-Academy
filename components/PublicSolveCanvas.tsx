@@ -802,6 +802,16 @@ export const publicSolveSceneHasContent = (scene: PublicSolveScene | null | unde
   return Boolean(scene && Array.isArray(scene.elements) && scene.elements.some((element: any) => !element?.isDeleted))
 }
 
+export const resolvePublicSolveSceneForViewer = (
+  scene: PublicSolveScene | null | undefined,
+  options?: { maxHeightPx?: number; maxWidthPx?: number | null },
+) => buildSceneViewportFromStrokeBounds(scene, options).scene
+
+export const resolvePublicSolveViewerLayout = (
+  scene: PublicSolveScene | null | undefined,
+  options?: { maxHeightPx?: number; maxWidthPx?: number | null },
+) => buildSceneViewportFromStrokeBounds(scene, options)
+
 const buildPublicSolveSceneResetKey = (scene: PublicSolveScene | null | undefined) => {
   if (!scene) return 'empty'
   const updatedAt = typeof scene.updatedAt === 'string' ? scene.updatedAt : ''
@@ -1140,15 +1150,15 @@ export function PublicSolvePlainExcalidrawViewer({
     }
   }, [viewerScene])
 
-  const handleViewerChange = useCallback((elements: any[], appState: any, files: any) => {
+  const handleViewerChange = useCallback((_elements: any[], appState: any) => {
     if (!onViewportChange) return
     const baseScene = viewerSceneRef.current
     if (!baseScene) return
     const nextScene: PublicSolveScene = {
       ...baseScene,
-      elements: cloneScenePart(Array.isArray(elements) ? elements : baseScene.elements || []),
+      elements: cloneScenePart(baseScene.elements || []),
       appState: pickPersistedPublicSolveAppState(appState),
-      files: files && typeof files === 'object' ? cloneScenePart(files) : baseScene.files,
+      files: baseScene.files,
     }
     const nextSignature = serializePublicSolveViewportSnapshot(nextScene.appState)
     if (lastViewportSignatureRef.current === nextSignature) return

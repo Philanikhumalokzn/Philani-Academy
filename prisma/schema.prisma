@@ -677,6 +677,7 @@ model SubscriptionPlan {
 enum VerificationKind {
   EMAIL
   PHONE
+  PASSWORD_RESET
 }
 
 model ContactVerification {

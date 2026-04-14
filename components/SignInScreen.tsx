@@ -187,6 +187,14 @@ export default function SignInScreen({ title = 'Sign in | Philani Academy' }: Si
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
+                <div className="mt-2 flex justify-end">
+                  <Link
+                    href={{ pathname: '/auth/forgot-password', query: email ? { email } : undefined }}
+                    className="text-sm font-medium text-primary hover:underline"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
               </div>
 
               <button
@@ -213,11 +221,11 @@ export default function SignInScreen({ title = 'Sign in | Philani Academy' }: Si
                 </p>
                 <button
                   type="button"
-                  className="btn btn-ghost w-full border-slate-300 text-slate-900 font-medium hover:bg-slate-100 disabled:opacity-50"
+                  className="inline-flex w-full items-center justify-center rounded-full border border-slate-300 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={handleResend}
                   disabled={resendStatus === 'loading'}
                 >
-                  {resendStatus === 'loading' ? 'Sending…' : 'Resend verification code'}
+                  {resendStatus === 'loading' ? 'Sending…' : 'Resend confirmation code'}
                 </button>
                 {resendStatus === 'sent' && (
                   <p className="mt-2 text-sm text-green-700">Check your inbox for the latest verification code.</p>

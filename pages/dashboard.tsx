@@ -1837,10 +1837,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'profile' | 'admin' | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [booksOverlayOpen, setBooksOverlayOpen] = useState(false)
-  const [booksHubTab, setBooksHubTab] = useState<'library' | 'resources'>('library')
+  const [booksHubTab, setBooksHubTab] = useState<'library' | 'resources' | 'questions'>('library')
   const [booksLoading, setBooksLoading] = useState(false)
   const [booksError, setBooksError] = useState<string | null>(null)
   const [booksItems, setBooksItems] = useState<ResourceBankItem[]>([])
+
+  // Question Bank state
+  const [qbYear, setQbYear] = useState<string>('')
+  const [qbMonth, setQbMonth] = useState<string>('')
+  const [qbPaper, setQbPaper] = useState<string>('')
+  const [qbTopic, setQbTopic] = useState<string>('')
+  const [qbLevel, setQbLevel] = useState<string>('')
+  const [qbNumber, setQbNumber] = useState<string>('')
+  const [qbItems, setQbItems] = useState<any[]>([])
+  const [qbTotal, setQbTotal] = useState(0)
+  const [qbLoading, setQbLoading] = useState(false)
+  const [qbError, setQbError] = useState<string | null>(null)
+  const [qbSearched, setQbSearched] = useState(false)
   const [libraryGrades, setLibraryGrades] = useState<LibraryGradeItem[]>([])
   const [libraryGradesLoading, setLibraryGradesLoading] = useState(false)
   const [libraryGradesError, setLibraryGradesError] = useState<string | null>(null)
@@ -13424,6 +13437,167 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     )
   }
 
+  const QB_TOPICS = [
+    'Algebra', 'Functions', 'Number Patterns', 'Finance', 'Trigonometry',
+    'Euclidean Geometry', 'Analytical Geometry', 'Statistics', 'Probability',
+    'Calculus', 'Sequences and Series', 'Polynomials', 'Other',
+  ] as const
+
+  const QB_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'] as const
+
+  const searchQuestionBank = async () => {
+    setQbLoading(true)
+    setQbError(null)
+    setQbSearched(true)
+    try {
+      const params = new URLSearchParams()
+      if (qbYear) params.set('year', qbYear)
+      if (qbMonth) params.set('month', qbMonth)
+      if (qbPaper) params.set('paper', qbPaper)
+      if (qbTopic) params.set('topic', qbTopic)
+      if (qbLevel) params.set('cognitiveLevel', qbLevel)
+      if (qbNumber) params.set('questionNumber', qbNumber)
+      params.set('take', '50')
+      const res = await fetch(`/api/exam-questions?${params.toString()}`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Search failed (${res.status})`)
+      setQbItems(Array.isArray(data?.items) ? data.items : [])
+      setQbTotal(typeof data?.total === 'number' ? data.total : 0)
+    } catch (err: any) {
+      setQbError(err?.message || 'Search failed')
+      setQbItems([])
+    } finally {
+      setQbLoading(false)
+    }
+  }
+
+  const renderQuestionBankContent = () => (
+    <div>
+      <section className="border-b border-black/10 bg-white px-4 py-4 space-y-3">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Question Bank</div>
+        <div className="text-sm text-[#1f2937]">Search past exam questions by year, paper, topic, and difficulty.</div>
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="space-y-1">
+            <div className="text-xs text-[#65676b]">Year</div>
+            <input
+              type="number"
+              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+              placeholder="e.g. 2024"
+              min={2000}
+              max={2100}
+              value={qbYear}
+              onChange={(e) => setQbYear(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs text-[#65676b]">Exam month</div>
+            <select
+              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+              value={qbMonth}
+              onChange={(e) => setQbMonth(e.target.value)}
+            >
+              <option value="">Any month</option>
+              {QB_MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs text-[#65676b]">Paper</div>
+            <select
+              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+              value={qbPaper}
+              onChange={(e) => setQbPaper(e.target.value)}
+            >
+              <option value="">Any paper</option>
+              <option value="1">Paper 1</option>
+              <option value="2">Paper 2</option>
+              <option value="3">Paper 3</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs text-[#65676b]">Topic</div>
+            <select
+              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+              value={qbTopic}
+              onChange={(e) => setQbTopic(e.target.value)}
+            >
+              <option value="">Any topic</option>
+              {QB_TOPICS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs text-[#65676b]">Difficulty (cognitive level)</div>
+            <select
+              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+              value={qbLevel}
+              onChange={(e) => setQbLevel(e.target.value)}
+            >
+              <option value="">Any level</option>
+              <option value="1">1 — Knowledge</option>
+              <option value="2">2 — Routine procedures</option>
+              <option value="3">3 — Complex procedures</option>
+              <option value="4">4 — Problem-solving</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs text-[#65676b]">Question number prefix</div>
+            <input
+              type="text"
+              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+              placeholder="e.g. 1, 1.1, 1.1.5"
+              value={qbNumber}
+              onChange={(e) => setQbNumber(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className="inline-flex h-10 items-center justify-center rounded-full bg-[#1c1e21] px-5 text-sm font-semibold text-white transition hover:bg-[#2d3036]"
+          onClick={() => void searchQuestionBank()}
+          disabled={qbLoading}
+        >
+          {qbLoading ? 'Searching…' : 'Search Questions'}
+        </button>
+      </section>
+
+      {qbError ? (
+        <section className="border-b border-black/10 bg-white px-4 py-3 text-sm text-red-600">{qbError}</section>
+      ) : null}
+
+      {qbSearched && !qbLoading && qbItems.length === 0 ? (
+        <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">
+          No questions found for these filters. Try broadening your search.
+        </section>
+      ) : null}
+
+      {qbItems.length > 0 ? (
+        <>
+          <section className="border-b border-black/10 bg-white px-4 py-2">
+            <div className="text-xs text-[#65676b]">{qbTotal} result{qbTotal !== 1 ? 's' : ''} (showing {qbItems.length})</div>
+          </section>
+          <ul>
+            {qbItems.map((q) => (
+              <li key={q.id} className="border-b border-black/10 bg-white px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <span className="text-xs font-bold text-[#65676b]">Q{q.questionNumber}</span>
+                  <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.year} {q.month} · Paper {q.paper}</span>
+                  {q.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{q.topic}</span> : null}
+                  {q.cognitiveLevel ? <span className="text-xs rounded-full bg-[#fff3cd] px-2 py-0.5 text-[#856404]">Level {q.cognitiveLevel}</span> : null}
+                  {q.marks ? <span className="text-xs text-[#65676b]">{q.marks} marks</span> : null}
+                </div>
+                <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">{q.questionText}</div>
+                {q.latex ? (
+                  <div className="mt-1 text-xs font-mono text-[#65676b] whitespace-pre-wrap break-all">{q.latex}</div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </div>
+  )
+
   const renderAdminBooksResourcesContent = () => (
     <div>
       <section className="border-b border-black/10 bg-white px-4 py-4">
@@ -13486,16 +13660,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const renderBooksSurfaceContent = () => (
     <div>
-      {isAdmin ? (
-        <section className="border-b border-black/10 bg-white px-4 py-3">
-          <div className="inline-flex rounded-full border border-[#d5def0] bg-[#f7f8fa] p-1">
-            <button
-              type="button"
-              className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'library' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
-              onClick={() => setBooksHubTab('library')}
-            >
-              Library
-            </button>
+      {/* Tab switcher — admin gets Library + Resources + Question Bank; students get Library + Question Bank */}
+      <section className="border-b border-black/10 bg-white px-4 py-3">
+        <div className="inline-flex rounded-full border border-[#d5def0] bg-[#f7f8fa] p-1">
+          <button
+            type="button"
+            className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'library' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
+            onClick={() => setBooksHubTab('library')}
+          >
+            Library
+          </button>
+          {isAdmin ? (
             <button
               type="button"
               className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'resources' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
@@ -13503,13 +13678,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             >
               Resources
             </button>
-          </div>
-        </section>
-      ) : null}
+          ) : null}
+          <button
+            type="button"
+            className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'questions' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
+            onClick={() => setBooksHubTab('questions')}
+          >
+            Question Bank
+          </button>
+        </div>
+      </section>
 
       {isAdmin && booksHubTab === 'resources' ? renderAdminBooksResourcesContent() : null}
+      {booksHubTab === 'questions' ? renderQuestionBankContent() : null}
 
-      {!isAdmin || booksHubTab === 'library' ? (
+      {booksHubTab === 'library' ? (
         <>
       {booksError ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-red-600">{booksError}</section> : null}
       {booksLoading ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">Loading...</section> : null}

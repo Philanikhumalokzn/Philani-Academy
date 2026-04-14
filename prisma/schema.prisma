@@ -123,11 +123,52 @@ model ResourceBankItem {
   createdById String?
   createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
+  examQuestions ExamQuestion[]
+
   createdAt   DateTime @default(now())
 
   @@index([grade, createdAt])
   @@index([createdById, createdAt])
   @@unique([grade, checksum])
+}
+
+model ExamQuestion {
+  id             String   @id @default(cuid())
+  sourceId       String?
+
+  // Paper identity
+  grade          Grade
+  year           Int
+  month          String   // "March" | "June" | "September" | "November"
+  paper          Int      // 1 or 2
+
+  // Question identity
+  questionNumber String   // "1", "1.1", "1.1.5"
+  questionDepth  Int      @default(0)  // 0=top-level, 1=sub, 2=sub-sub
+
+  // Semantic tags
+  topic          String?
+  cognitiveLevel Int?     // 1=Knowledge 2=Routine 3=Complex 4=Problem-solving
+  marks          Int?
+
+  // Content
+  questionText   String   @db.Text
+  latex          String?  @db.Text
+  imageUrl       String?
+
+  // Admin review
+  approved       Boolean  @default(false)
+
+  source         ResourceBankItem? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([grade, year, month, paper])
+  @@index([topic, cognitiveLevel])
+  @@index([questionNumber])
+  @@index([sourceId])
+  @@index([grade, approved])
 }
 
 model LearningGroup {

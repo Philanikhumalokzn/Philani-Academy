@@ -65,6 +65,25 @@ export default function ResourceBankPage() {
   const [editAiNormalize, setEditAiNormalize] = useState(false)
   const [editing, setEditing] = useState(false)
 
+  // Extract questions overlay
+  const [extractOpen, setExtractOpen] = useState(false)
+  const [extractItem, setExtractItem] = useState<ResourceBankItem | null>(null)
+  const [extractYear, setExtractYear] = useState(new Date().getFullYear())
+  const [extractMonth, setExtractMonth] = useState('November')
+  const [extractPaper, setExtractPaper] = useState(1)
+  const [extracting, setExtracting] = useState(false)
+  const [extractError, setExtractError] = useState<string | null>(null)
+  const [extractResult, setExtractResult] = useState<{ created: number; skipped: number } | null>(null)
+
+  // Review questions overlay
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const [reviewItem, setReviewItem] = useState<ResourceBankItem | null>(null)
+  const [reviewQuestions, setReviewQuestions] = useState<any[]>([])
+  const [reviewLoading, setReviewLoading] = useState(false)
+  const [reviewError, setReviewError] = useState<string | null>(null)
+  const [savingQId, setSavingQId] = useState<string | null>(null)
+  const [deletingQId, setDeletingQId] = useState<string | null>(null)
+
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false)
   const [pdfViewerUrl, setPdfViewerUrl] = useState('')
   const [pdfViewerCacheKey, setPdfViewerCacheKey] = useState('')
@@ -383,6 +402,98 @@ export default function ResourceBankPage() {
     setParseDebugOpen(true)
   }
 
+  const openExtract = (item: ResourceBankItem) => {
+    setExtractItem(item)
+    setExtractResult(null)
+    setExtractError(null)
+    setExtractOpen(true)
+  }
+
+  const handleExtract = async () => {
+    if (!extractItem?.id) return
+    setExtracting(true)
+    setExtractError(null)
+    setExtractResult(null)
+    try {
+      const res = await fetch('/api/resources/extract-questions', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resourceId: extractItem.id,
+          year: extractYear,
+          month: extractMonth,
+          paper: extractPaper,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Extraction failed (${res.status})`)
+      setExtractResult({ created: data.created ?? 0, skipped: data.skipped ?? 0 })
+    } catch (err: any) {
+      setExtractError(err?.message || 'Extraction failed')
+    } finally {
+      setExtracting(false)
+    }
+  }
+
+  const openReview = async (item: ResourceBankItem) => {
+    setReviewItem(item)
+    setReviewQuestions([])
+    setReviewError(null)
+    setReviewOpen(true)
+    setReviewLoading(true)
+    try {
+      const res = await fetch(
+        `/api/exam-questions?sourceId=${encodeURIComponent(item.id)}&take=200`,
+        { credentials: 'same-origin' },
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to load questions (${res.status})`)
+      setReviewQuestions(Array.isArray(data?.items) ? data.items : [])
+    } catch (err: any) {
+      setReviewError(err?.message || 'Failed to load questions')
+    } finally {
+      setReviewLoading(false)
+    }
+  }
+
+  const toggleApprove = async (qId: string, current: boolean) => {
+    setSavingQId(qId)
+    try {
+      const res = await fetch(`/api/exam-questions/${encodeURIComponent(qId)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved: !current }),
+      })
+      if (!res.ok) throw new Error('Failed to update')
+      const updated = await res.json()
+      setReviewQuestions((prev) =>
+        prev.map((q) => (q.id === qId ? { ...q, approved: updated.approved } : q))
+      )
+    } catch {
+      // silent — state stays unchanged
+    } finally {
+      setSavingQId(null)
+    }
+  }
+
+  const deleteQuestion = async (qId: string) => {
+    setDeletingQId(qId)
+    try {
+      const res = await fetch(`/api/exam-questions/${encodeURIComponent(qId)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      })
+      if (!res.ok) throw new Error('Failed to delete')
+      setReviewQuestions((prev) => prev.filter((q) => q.id !== qId))
+    } catch {
+      // silent
+    } finally {
+      setDeletingQId(null)
+    }
+  }
+
   const openEdit = (item: ResourceBankItem) => {
     setEditItem(item)
     setEditTitle(item?.title || '')
@@ -577,6 +688,129 @@ export default function ResourceBankPage() {
                   <pre className="whitespace-pre-wrap break-words rounded-xl bg-slate-100 p-3 text-xs text-slate-900">
                     {parseDebugItem?.parseError || 'No error details available.'}
                   </pre>
+                </div>
+              </FullScreenGlassOverlay>
+            ) : null}
+
+            {extractOpen ? (
+              <FullScreenGlassOverlay
+                title="Extract questions"
+                subtitle={toDisplayFileName(extractItem?.title) || extractItem?.title || 'Resource'}
+                zIndexClassName="z-50"
+                onClose={() => { if (!extracting) setExtractOpen(false) }}
+              >
+                <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-4">
+                  <p className="text-sm text-slate-600">
+                    Gemini will read the parsed OCR text and extract every question and sub-question into the question bank.
+                    Set the paper metadata before extracting.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="space-y-1">
+                      <div className="text-xs uppercase tracking-wide text-slate-600">Year</div>
+                      <input
+                        type="number"
+                        className="input"
+                        min={2000}
+                        max={2100}
+                        value={extractYear}
+                        onChange={(e) => setExtractYear(parseInt(e.target.value, 10) || new Date().getFullYear())}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs uppercase tracking-wide text-slate-600">Exam month</div>
+                      <select className="input" value={extractMonth} onChange={(e) => setExtractMonth(e.target.value)}>
+                        {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs uppercase tracking-wide text-slate-600">Paper</div>
+                      <select className="input" value={extractPaper} onChange={(e) => setExtractPaper(parseInt(e.target.value, 10))}>
+                        <option value={1}>Paper 1</option>
+                        <option value={2}>Paper 2</option>
+                        <option value={3}>Paper 3</option>
+                      </select>
+                    </div>
+                  </div>
+                  {extractError ? <div className="text-sm text-red-600">{extractError}</div> : null}
+                  {extractResult ? (
+                    <div className="rounded-xl bg-green-50 p-3 text-sm text-green-800">
+                      ✓ Extracted {extractResult.created} question{extractResult.created !== 1 ? 's' : ''}.
+                      {extractResult.skipped > 0 ? ` ${extractResult.skipped} skipped (incomplete data).` : ''}{' '}
+                      Use <strong>Review Questions</strong> on this resource to approve them for students.
+                    </div>
+                  ) : null}
+                  <div className="flex items-center justify-end gap-2">
+                    <button type="button" className="btn btn-ghost" onClick={() => setExtractOpen(false)} disabled={extracting}>Cancel</button>
+                    <button type="button" className="btn btn-primary" onClick={() => void handleExtract()} disabled={extracting}>
+                      {extracting ? 'Extracting…' : 'Extract'}
+                    </button>
+                  </div>
+                </div>
+              </FullScreenGlassOverlay>
+            ) : null}
+
+            {reviewOpen ? (
+              <FullScreenGlassOverlay
+                title="Review extracted questions"
+                subtitle={toDisplayFileName(reviewItem?.title) || reviewItem?.title || 'Resource'}
+                zIndexClassName="z-50"
+                onClose={() => setReviewOpen(false)}
+              >
+                <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-3">
+                  {reviewLoading ? <div className="text-sm text-slate-500">Loading questions…</div> : null}
+                  {reviewError ? <div className="text-sm text-red-600">{reviewError}</div> : null}
+                  {!reviewLoading && !reviewError && reviewQuestions.length === 0 ? (
+                    <div className="text-sm text-slate-500">
+                      No questions extracted yet. Use <strong>Extract Questions</strong> first.
+                    </div>
+                  ) : null}
+                  {!reviewLoading && reviewQuestions.length > 0 ? (
+                    <ul className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                      {reviewQuestions.map((q) => (
+                        <li key={q.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-xs font-bold text-slate-400 shrink-0">Q{q.questionNumber}</span>
+                              <span className={`text-xs rounded-full px-2 py-0.5 font-semibold shrink-0 ${q.approved ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                {q.approved ? 'Approved' : 'Pending'}
+                              </span>
+                              {q.topic ? <span className="text-xs text-slate-500 truncate">{q.topic}</span> : null}
+                              {q.cognitiveLevel ? <span className="text-xs text-slate-400">L{q.cognitiveLevel}</span> : null}
+                              {q.marks ? <span className="text-xs text-slate-400">({q.marks} marks)</span> : null}
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                className={`text-xs rounded-full px-2 py-1 font-semibold transition ${q.approved ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
+                                onClick={() => void toggleApprove(q.id, q.approved)}
+                                disabled={savingQId === q.id}
+                              >
+                                {savingQId === q.id ? '…' : q.approved ? 'Revoke' : 'Approve'}
+                              </button>
+                              <button
+                                type="button"
+                                className="text-xs rounded-full px-2 py-1 font-semibold bg-red-100 text-red-700 hover:bg-red-200 transition"
+                                onClick={() => void deleteQuestion(q.id)}
+                                disabled={deletingQId === q.id}
+                              >
+                                {deletingQId === q.id ? '…' : 'Delete'}
+                              </button>
+                            </div>
+                          </div>
+                          <div className="text-sm text-slate-800 whitespace-pre-wrap break-words">{q.questionText}</div>
+                          {q.latex ? (
+                            <div className="text-xs font-mono text-slate-500 whitespace-pre-wrap break-all">{q.latex}</div>
+                          ) : null}
+                          <div className="text-xs text-slate-400">{q.year} {q.month} · Paper {q.paper} · {String(q.grade).replace('_', ' ')}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <div className="flex justify-end">
+                    <button type="button" className="btn btn-ghost" onClick={() => setReviewOpen(false)}>Close</button>
+                  </div>
                 </div>
               </FullScreenGlassOverlay>
             ) : null}
@@ -800,6 +1034,16 @@ export default function ResourceBankPage() {
                           {role === 'admin' ? (
                             <button type="button" className="btn btn-ghost" onClick={() => openEdit(item)}>
                               Edit
+                            </button>
+                          ) : null}
+                          {role === 'admin' && item.parsedAt ? (
+                            <button type="button" className="btn btn-ghost" onClick={() => openExtract(item)}>
+                              Extract Questions
+                            </button>
+                          ) : null}
+                          {role === 'admin' && item.parsedAt ? (
+                            <button type="button" className="btn btn-ghost" onClick={() => void openReview(item)}>
+                              Review Questions
                             </button>
                           ) : null}
                         </div>

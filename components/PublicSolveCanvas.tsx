@@ -802,15 +802,32 @@ export const publicSolveSceneHasContent = (scene: PublicSolveScene | null | unde
   return Boolean(scene && Array.isArray(scene.elements) && scene.elements.some((element: any) => !element?.isDeleted))
 }
 
-export const resolvePublicSolveSceneForViewer = (
+export const resolvePublicSolveSceneForViewport = (
   scene: PublicSolveScene | null | undefined,
-  options?: { maxHeightPx?: number; maxWidthPx?: number | null },
-) => buildSceneViewportFromStrokeBounds(scene, options).scene
+  viewportSize?: { widthPx?: number | null; heightPx?: number | null },
+) => {
+  const normalized = normalizePublicSolveScene(scene)
+  if (!normalized) return null
 
-export const resolvePublicSolveViewerLayout = (
-  scene: PublicSolveScene | null | undefined,
-  options?: { maxHeightPx?: number; maxWidthPx?: number | null },
-) => buildSceneViewportFromStrokeBounds(scene, options)
+  const widthPx = normalizeZoomValue(viewportSize?.widthPx)
+  const heightPx = normalizeZoomValue(viewportSize?.heightPx)
+  if (widthPx == null || heightPx == null) return normalized
+
+  const sceneMeta = normalizePublicSolveSceneMeta(normalized.sceneMeta)
+  const portableSnapshot = getPortableViewerSnapshotFromSceneMeta(sceneMeta)
+  if (!sceneMeta.viewerViewportPersisted || !portableSnapshot) {
+    return {
+      ...normalized,
+      sceneMeta,
+    }
+  }
+
+  return {
+    ...normalized,
+    appState: buildViewportAppStateFromPortableSnapshot(portableSnapshot, { widthPx, heightPx }, normalized.appState || {}),
+    sceneMeta,
+  }
+}
 
 const buildPublicSolveSceneResetKey = (scene: PublicSolveScene | null | undefined) => {
   if (!scene) return 'empty'

@@ -29,6 +29,7 @@ import { buildSocialPostComposerFields } from '../../lib/postComposerContent'
 import { usePostLongPressCrud, type PostCrudTarget } from '../../lib/postCrud'
 import { renderTextWithKatex } from '../../lib/renderTextWithKatex'
 import { useReplyLongPressCrud, type ReplyCrudTarget } from '../../lib/replyCrud'
+import { formatSocialCountLabel } from '../../lib/socialCounterFormat'
 import {
   buildPostReplyPayloadFromBlocks,
   composePostSolveBlocksWithDraftText,
@@ -227,6 +228,8 @@ export function PublicUserProfileSurface({
     onViewportChange?: (scene: PublicSolveScene) => void
   }>(null)
   const [likedPostKeys, setLikedPostKeys] = useState<Record<string, boolean>>({})
+  const [profileLikeCountByItemKey, setProfileLikeCountByItemKey] = useState<Record<string, number>>({})
+  const [profileShareCountByItemKey, setProfileShareCountByItemKey] = useState<Record<string, number>>({})
   const [lastSharedPostKey, setLastSharedPostKey] = useState<string | null>(null)
   const [expandedProfilePostId, setExpandedProfilePostId] = useState<string | null>(null)
   const socialShareResetTimeoutRef = useRef<number | null>(null)
@@ -1609,7 +1612,17 @@ export function PublicUserProfileSurface({
 
   const toggleProfileLike = useCallback((itemKey: string) => {
     if (!itemKey) return
-    setLikedPostKeys((current) => ({ ...current, [itemKey]: !current[itemKey] }))
+    setLikedPostKeys((current) => {
+      const nextLiked = !current[itemKey]
+      setProfileLikeCountByItemKey((counts) => {
+        const currentCount = counts[itemKey] ?? 0
+        return {
+          ...counts,
+          [itemKey]: nextLiked ? currentCount + 1 : Math.max(0, currentCount - 1),
+        }
+      })
+      return { ...current, [itemKey]: nextLiked }
+    })
   }, [])
 
   const markProfileShareHandled = useCallback((itemKey: string) => {
@@ -1700,7 +1713,6 @@ export function PublicUserProfileSurface({
     const authorAvatar = resolveImageUrl(post?.createdBy?.avatar || avatarUrl)
     const authorRole = String(post?.createdBy?.role || profile?.role || '').toLowerCase()
     const authorVerified = authorRole === 'admin' || authorRole === 'teacher' || Boolean(profile?.verified)
-    const actionState = buildFeedPostActionState(post)
     const isExpanded = expandedProfilePostId === postId
     const inlineThreadContent = isExpanded ? (
       <InlinePostSolutionsThread
@@ -1717,15 +1729,6 @@ export function PublicUserProfileSurface({
         }}
       />
     ) : null
-
-    const handleSolveAction = () => {
-      if (actionState.solveAction === 'closed') return
-      if (actionState.solveAction === 'solutions') {
-        void openLocalPostThread(post, { forceOpen: true })
-        return
-      }
-      void openLocalPostSolveComposer(post)
-    }
 
     return (
       <article key={post.id} data-post-id={postId || undefined} className="public-profile-feed-post bg-white py-3">
@@ -1755,8 +1758,14 @@ export function PublicUserProfileSurface({
             {
               label: 'Like',
               active: Boolean(likedPostKeys[itemKey]),
+              countLabel: formatSocialCountLabel(profileLikeCountByItemKey[itemKey], 'Like', 'Likes'),
               onClick: () => toggleProfileLike(itemKey),
-              icon: (
+              icon: likedPostKeys[itemKey] ? (
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                  <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" />
+                  <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" />
+                </svg>
+              ) : (
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
                   <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                   <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -1764,9 +1773,14 @@ export function PublicUserProfileSurface({
               ),
             },
             {
-              label: actionState.solveLabel,
-              onClick: handleSolveAction,
-              disabled: actionState.solveAction === 'closed',
+              label: 'Reply',
+              countLabel: formatSocialCountLabel((post as any)?.solutionCount, 'Reply', 'Replies'),
+              onClick: () => {
+                void openLocalPostSolveComposer(post)
+              },
+              onCountClick: () => {
+                void openLocalPostThread(post, { forceOpen: true })
+              },
               icon: (
                 <span className="flex items-center gap-1" aria-hidden="true">
                   <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
@@ -1781,13 +1795,20 @@ export function PublicUserProfileSurface({
             },
             {
               label: 'Share',
+              countLabel: formatSocialCountLabel(profileShareCountByItemKey[itemKey], 'Share', 'Shares'),
               statusLabel: lastSharedPostKey === itemKey ? 'Copied' : undefined,
-              onClick: () => void shareProfilePost({
-                itemKey,
-                title: String(post.title || '').trim() || 'Post',
-                text: String(post.prompt || '').trim() || String(post.title || '').trim() || 'Post',
-                path: `/u/${encodeURIComponent(String(userId || profile?.id || ''))}?postId=${encodeURIComponent(postId)}`,
-              }),
+              onClick: () => {
+                setProfileShareCountByItemKey((current) => ({
+                  ...current,
+                  [itemKey]: (current[itemKey] ?? 0) + 1,
+                }))
+                void shareProfilePost({
+                  itemKey,
+                  title: String(post.title || '').trim() || 'Post',
+                  text: String(post.prompt || '').trim() || String(post.title || '').trim() || 'Post',
+                  path: `/u/${encodeURIComponent(String(userId || profile?.id || ''))}?postId=${encodeURIComponent(postId)}`,
+                })
+              },
               icon: (
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
                   <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />

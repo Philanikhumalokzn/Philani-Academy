@@ -6016,16 +6016,32 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       onClick: () => void
       icon: React.ReactNode
       disabled?: boolean
+      countLabel?: string
+      onCountClick?: () => void
     }) => (
-      <button
-        type="button"
-        className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em] transition ${opts.active ? 'bg-[#e7f3ff] text-[#1877f2]' : 'text-[#65676b] hover:bg-[#f0f2f5]'} ${opts.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
-        onClick={opts.onClick}
-        disabled={opts.disabled}
-      >
-        <span className="shrink-0">{opts.icon}</span>
-        <span className="truncate whitespace-nowrap">{opts.statusLabel || opts.label}</span>
-      </button>
+      <div className="flex min-w-0 flex-1 flex-col items-center justify-center">
+        {opts.countLabel ? (
+          <button
+            type="button"
+            className="mb-1 text-[11px] font-semibold text-[#65676b] hover:text-[#1877f2]"
+            onClick={(event) => {
+              event.stopPropagation()
+              opts.onCountClick?.()
+            }}
+          >
+            {opts.countLabel}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em] transition ${opts.active ? 'bg-[#e7f3ff] text-[#1877f2]' : 'text-[#65676b] hover:bg-[#f0f2f5]'} ${opts.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+          onClick={opts.onClick}
+          disabled={opts.disabled}
+        >
+          <span className="shrink-0">{opts.icon}</span>
+          <span className="truncate whitespace-nowrap">{opts.statusLabel || opts.label}</span>
+        </button>
+      </div>
     )
 
     const getStartMs = (s: any) => (s?.startsAt ? new Date(s.startsAt).getTime() : 0)
@@ -6511,8 +6527,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         {renderSocialActionButton({
                           label: 'Like',
                           active: Boolean(socialLikedItems[socialItemKey]),
+                          countLabel: formatSocialCountLabel(socialLikeCountByItemKey[socialItemKey], 'Like', 'Likes'),
                           onClick: () => toggleSocialLike(socialItemKey),
-                          icon: (
+                          icon: socialLikedItems[socialItemKey] ? (
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                              <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" />
+                              <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" />
+                            </svg>
+                          ) : (
                             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
                               <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                               <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -6520,27 +6542,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           ),
                         })}
                         {renderSocialActionButton({
-                          label: isPost
-                            ? (usesAttemptRules
-                              ? (hasAttempted ? formatSolutionsLabel((p as any)?.solutionCount) : (canAttempt ? 'Solve' : 'Closed'))
-                              : (p?.hasOwnResponse ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve'))
-                            : (hasAttempted ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve'),
+                          label: isPost ? 'Reply' : (hasAttempted ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve'),
+                          countLabel: isPost
+                            ? formatSocialCountLabel((p as any)?.solutionCount, 'Reply', 'Replies')
+                            : undefined,
                           onClick: () => {
                             if (isPost) {
-                              if (usesAttemptRules) {
-                                if (hasAttempted) {
-                                  void openPostThread(p)
-                                  return
-                                }
-                                if (canAttempt) {
-                                  void openPostSolveComposer(p)
-                                }
-                                return
-                              }
-                              if (p?.hasOwnResponse) {
-                                void openPostThread(p)
-                                return
-                              }
                               void openPostSolveComposer(p)
                               return
                             }
@@ -6552,7 +6559,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               void router.push(href)
                             }
                           },
-                          disabled: !itemId || (isPost && usesAttemptRules && !hasAttempted && !canAttempt),
+                          onCountClick: isPost ? (() => {
+                            void openPostThread(p)
+                          }) : undefined,
+                          disabled: !itemId,
                           icon: (
                             <span className="flex items-center gap-1" aria-hidden="true">
                               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
@@ -6567,13 +6577,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         })}
                         {renderSocialActionButton({
                           label: 'Share',
+                          countLabel: formatSocialCountLabel(socialShareCountByItemKey[socialItemKey], 'Share', 'Shares'),
                           statusLabel: lastSharedSocialItemKey === socialItemKey ? 'Copied' : undefined,
-                          onClick: () => shareDashboardItem({
-                            itemKey: socialItemKey,
-                            title,
-                            text: prompt || title,
-                            path: isPost ? `/dashboard?postId=${encodeURIComponent(itemId)}` : href,
-                          }),
+                          onClick: () => {
+                            shareDashboardItem({
+                              itemKey: socialItemKey,
+                              title,
+                              text: prompt || title,
+                              path: isPost ? `/dashboard?postId=${encodeURIComponent(itemId)}` : href,
+                            })
+                            setSocialShareCountByItemKey((prev) => ({
+                              ...prev,
+                              [socialItemKey]: (prev[socialItemKey] ?? 0) + 1,
+                            }))
+                          },
                           disabled: !itemId,
                           icon: (
                             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">

@@ -6020,18 +6020,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       onCountClick?: () => void
     }) => (
       <div className="flex min-w-0 flex-1 flex-col items-center justify-center">
-        <button
-          type="button"
-          className={`mb-1 text-[11px] font-semibold ${
-            opts.countLabel ? 'text-[#65676b] hover:text-[#1877f2]' : 'invisible'
-          }`}
-          onClick={(event) => {
-            event.stopPropagation()
-            opts.onCountClick?.()
-          }}
-        >
-          {opts.countLabel || ' '}
-        </button>
+        <div className="mb-1 flex h-[14px] items-center">
+          <button
+            type="button"
+            className={`text-[11px] font-semibold leading-none whitespace-nowrap ${
+              opts.countLabel ? 'text-[#65676b] hover:text-[#1877f2]' : 'invisible pointer-events-none'
+            }`}
+            onClick={(event) => {
+              event.stopPropagation()
+              opts.onCountClick?.()
+            }}
+          >
+            {opts.countLabel || '0'}
+          </button>
+        </div>
         <button
           type="button"
           className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em] transition ${opts.active ? 'bg-[#e7f3ff] text-[#1877f2]' : 'text-[#65676b] hover:bg-[#f0f2f5]'} ${opts.disabled ? 'cursor-not-allowed opacity-50' : ''}`}

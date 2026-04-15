@@ -51,6 +51,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           // Tighten later if you want stricter upload validation.
           allowedContentTypes: [
             'application/pdf',
+            'application/json',
+            'text/json',
             'image/png',
             'image/jpeg',
             'image/webp',

@@ -157,7 +157,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const extractedQuestions = coerceGeminiQuestionsArray(parsed)
 
     if (!extractedQuestions) {
-      return res.status(502).json({ message: 'Gemini returned non-array output — could not extract questions', raw: rawOutput?.slice(0, 1000) })
+      const parsedType = Array.isArray(parsed) ? 'array' : typeof parsed
+      const parsedKeys = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? Object.keys(parsed as Record<string, unknown>).slice(0, 20)
+        : []
+      const rawPreview = String(rawOutput || '').replace(/\s+/g, ' ').trim().slice(0, 1200)
+
+      return res.status(502).json({
+        message: 'Gemini returned non-array output — could not extract questions',
+        rawPreview,
+        parsedType,
+        parsedKeys,
+      })
     }
 
     geminiResult = extractedQuestions

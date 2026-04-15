@@ -427,7 +427,17 @@ export default function ResourceBankPage() {
         }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.message || `Extraction failed (${res.status})`)
+      if (!res.ok) {
+        const baseMessage = data?.message || `Extraction failed (${res.status})`
+        const shape = data?.parsedType ? `\nparsedType: ${String(data.parsedType)}` : ''
+        const keys = Array.isArray(data?.parsedKeys) && data.parsedKeys.length
+          ? `\nparsedKeys: ${data.parsedKeys.join(', ')}`
+          : ''
+        const raw = typeof data?.rawPreview === 'string' && data.rawPreview.trim()
+          ? `\nrawPreview: ${data.rawPreview}`
+          : ''
+        throw new Error(`${baseMessage}${shape}${keys}${raw}`)
+      }
       setExtractResult({ created: data.created ?? 0, skipped: data.skipped ?? 0 })
     } catch (err: any) {
       setExtractError(err?.message || 'Extraction failed')

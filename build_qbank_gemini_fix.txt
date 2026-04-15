@@ -1,0 +1,188 @@
+﻿
+> philani-academy@0.1.0 build
+> cross-env BROWSERSLIST_IGNORE_OLD_DATA=true BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true npm run prisma:generate && npm run silence:baseline-warning && cross-env BROWSERSLIST_IGNORE_OLD_DATA=true BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true next build
+
+
+> philani-academy@0.1.0 prisma:generate
+> npx prisma generate && node scripts/fix_prisma_client.js
+
+node.exe : Loaded Prisma config from prisma.config.ts.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Loaded Prisma c...isma.config.ts. 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+Prisma schema loaded from prisma\schema.prisma.
+
+Ô£ö Generated Prisma Client (v7.3.0) to .\node_modules\@prisma\client in 846ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+
+[fix_prisma_client] OK: synced generated client into @prisma/client/.prisma
+
+> philani-academy@0.1.0 silence:baseline-warning
+> node scripts/silence_baseline_warning.js
+
+[silence-baseline-warning] already clean (warning call not found)
+   Ôû▓ Next.js 16.0.7 (Turbopack)
+
+   Running TypeScript ...
+   Creating an optimized production build ...
+ Ô£ô Compiled successfully in 73s
+   Collecting page data using 7 workers ...
+   Generating static pages using 7 workers (0/20) ...
+   Generating static pages using 7 workers (5/20) 
+   Generating static pages using 7 workers (10/20) 
+   Generating static pages using 7 workers (15/20) 
+ Ô£ô Generating static pages using 7 workers (20/20) in 3.3s
+   Finalizing page optimization ...
+
+Route (pages)
+Ôöî ãÆ /
+Ôö£   /_app
+Ôö£ Ôùï /404
+Ôö£ ãÆ /api/ai/quiz-feedback
+Ôö£ ãÆ /api/ai/quiz-prompt
+Ôö£ ãÆ /api/ai/quiz-timer
+Ôö£ ãÆ /api/announcements
+Ôö£ ãÆ /api/announcements/[id]
+Ôö£ ãÆ /api/auth/[...nextauth]
+Ôö£ ãÆ /api/auth/forgot-password
+Ôö£ ãÆ /api/auth/resend-verification
+Ôö£ ãÆ /api/auth/reset-password
+Ôö£ ãÆ /api/auth/verify-email
+Ôö£ ãÆ /api/challenges
+Ôö£ ãÆ /api/challenges/[id]
+Ôö£ ãÆ /api/challenges/feed
+Ôö£ ãÆ /api/challenges/upload
+Ôö£ ãÆ /api/create-session
+Ôö£ ãÆ /api/debug/blob-status
+Ôö£ ãÆ /api/debug/db-health
+Ôö£ ãÆ /api/debug/health
+Ôö£ ãÆ /api/debug/jaas-token
+Ôö£ ãÆ /api/debug/send-test-email
+Ôö£ ãÆ /api/debug/token
+Ôö£ ãÆ /api/diagrams
+Ôö£ ãÆ /api/diagrams/[id]
+Ôö£ ãÆ /api/diagrams/[id]/scenes
+Ôö£ ãÆ /api/diagrams/scenes/[sceneId]
+Ôö£ ãÆ /api/diagrams/state
+Ôö£ ãÆ /api/diagrams/upload
+Ôö£ ãÆ /api/discover/user/[id]
+Ôö£ ãÆ /api/discover/users
+Ôö£ ãÆ /api/exam-questions
+Ôö£ ãÆ /api/exam-questions/[id]
+Ôö£ ãÆ /api/follow/[id]
+Ôö£ ãÆ /api/groups
+Ôö£ ãÆ /api/groups/[id]
+Ôö£ ãÆ /api/groups/[id]/invite
+Ôö£ ãÆ /api/groups/[id]/regenerate-join-code
+Ôö£ ãÆ /api/groups/[id]/request-join
+Ôö£ ãÆ /api/groups/invites/[id]/respond
+Ôö£ ãÆ /api/groups/join
+Ôö£ ãÆ /api/groups/mine
+Ôö£ ãÆ /api/groups/requests/[id]/respond
+Ôö£ ãÆ /api/jaas/health
+Ôö£ ãÆ /api/lesson-scripts/templates
+Ôö£ ãÆ /api/lesson-scripts/templates/[id]/versions
+Ôö£ ãÆ /api/library/grades
+Ôö£ ãÆ /api/library/manual-assessments
+Ôö£ ãÆ /api/materials/[id]
+Ôö£ ãÆ /api/mathpix/strokes
+Ôö£ ãÆ /api/notifications
+Ôö£ ãÆ /api/payfast/checkout
+Ôö£ ãÆ /api/payfast/create-plan
+Ôö£ ãÆ /api/payfast/notify
+Ôö£ ãÆ /api/payfast/onsite-token
+Ôö£ ãÆ /api/pdf-worker
+Ôö£ ãÆ /api/plans
+Ôö£ ãÆ /api/plans/[id]
+Ôö£ ãÆ /api/posts
+Ôö£ ãÆ /api/posts/[id]
+Ôö£ ãÆ /api/posts/feed
+Ôö£ ãÆ /api/profile
+Ôö£ ãÆ /api/profile/avatar
+Ôö£ ãÆ /api/profile/change-password
+Ôö£ ãÆ /api/profile/cover
+Ôö£ ãÆ /api/profile/theme-bg
+Ôö£ ãÆ /api/profile/view/[id]
+Ôö£ ãÆ /api/profile/view/[id]/challenges
+Ôö£ ãÆ /api/profile/view/[id]/posts
+Ôö£ ãÆ /api/push/register
+Ôö£ ãÆ /api/push/unregister
+Ôö£ ãÆ /api/realtime/ably-token
+Ôö£ ãÆ /api/resources
+Ôö£ ãÆ /api/resources/[id]
+Ôö£ ãÆ /api/resources/[id]/parsed
+Ôö£ ãÆ /api/resources/blob-upload
+Ôö£ ãÆ /api/resources/convert-docx
+Ôö£ ãÆ /api/resources/extract-questions
+Ôö£ ãÆ /api/resources/register
+Ôö£ ãÆ /api/schools
+Ôö£ ãÆ /api/sessions
+Ôö£ ãÆ /api/sessions/[id]
+Ôö£ ãÆ /api/sessions/[id]/assignments
+Ôö£ ãÆ /api/sessions/[id]/assignments/[assignmentId]
+Ôö£ ãÆ /api/sessions/[id]/assignments/[assignmentId]/grade
+Ôö£ ãÆ /api/sessions/[id]/assignments/[assignmentId]/grading-prompts
+Ôö£ ãÆ /api/sessions/[id]/assignments/[assignmentId]/responses
+Ôö£ ãÆ /api/sessions/[id]/assignments/[assignmentId]/solutions
+Ôö£ ãÆ /api/sessions/[id]/assignments/[assignmentId]/solutions/marking-plan
+Ôö£ ãÆ /api/sessions/[id]/assignments/[assignmentId]/solutions/upload
+Ôö£ ãÆ /api/sessions/[id]/assignments/[assignmentId]/solutions/worked-solution
+Ôö£ ãÆ /api/sessions/[id]/assignments/[assignmentId]/submissions
+Ôö£ ãÆ /api/sessions/[id]/assignments/[assignmentId]/submissions/[userId]
+Ôö£ ãÆ /api/sessions/[id]/assignments/[assignmentId]/submit
+Ôö£ ãÆ /api/sessions/[id]/assignments/import
+Ôö£ ãÆ /api/sessions/[id]/latex-saves
+Ôö£ ãÆ /api/sessions/[id]/latex-saves/[saveId]
+Ôö£ ãÆ /api/sessions/[id]/lesson-script
+Ôö£ ãÆ /api/sessions/[id]/materials
+Ôö£ ãÆ /api/sessions/[id]/password
+Ôö£ ãÆ /api/sessions/[id]/present
+Ôö£ ãÆ /api/sessions/[id]/responses
+Ôö£ ãÆ /api/sessions/[id]/room
+Ôö£ ãÆ /api/sessions/[id]/status
+Ôö£ ãÆ /api/sessions/[id]/thumbnail
+Ôö£ ãÆ /api/sessions/[id]/token
+Ôö£ ãÆ /api/sessions/admin/token
+Ôö£ ãÆ /api/sessions/grade/[grade]/token
+Ôö£ ãÆ /api/sessions/live
+Ôö£ ãÆ /api/sessions/upload-thumbnail
+Ôö£ ãÆ /api/signup
+Ôö£ ãÆ /api/stripe/create-checkout-session
+Ôö£ ãÆ /api/stripe/webhook
+Ôö£ ãÆ /api/subscription/gating
+Ôö£ ãÆ /api/subscription/status
+Ôö£ ãÆ /api/threads/[id]/responses
+Ôö£ ãÆ /api/users
+Ôö£ ãÆ /api/users/[id]
+Ôö£ Ôùï /auth/forgot-password (485 ms)
+Ôö£ Ôùï /auth/reset-password (485 ms)
+Ôö£ Ôùï /auth/signin (491 ms)
+Ôö£ ãÆ /board
+Ôö£ Ôùï /challenges/[id] (622 ms)
+Ôö£ ãÆ /dashboard
+Ôö£ Ôùï /diagram (486 ms)
+Ôö£ Ôùï /help (486 ms)
+Ôö£ Ôùï /jaas-demo (484 ms)
+Ôö£ Ôùï /keyboard-assignment-solution-lab (622 ms)
+Ôö£ Ôùï /keyboard-swipe-lab (548 ms)
+Ôö£ Ôùï /privacy (485 ms)
+Ôö£ Ôùï /profile (621 ms)
+Ôö£ Ôùï /resource-bank (550 ms)
+Ôö£ Ôùï /sessions/[sessionId]/assignments/[assignmentId]/q/[questionId] (669 ms)
+Ôö£ Ôùï /sessions/[sessionId]/assignments/[assignmentId]/solution/[questionId] (670 ms)
+Ôö£ Ôùï /signup (623 ms)
+Ôö£ Ôùï /subscribe (621 ms)
+Ôö£ Ôùï /terms (484 ms)
+Ôö£ ãÆ /u/[id]
+Ôöö Ôùï /verify-email (621 ms)
+
+Ôùï  (Static)   prerendered as static content
+ãÆ  (Dynamic)  server-rendered on demand
+

@@ -13507,119 +13507,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return latex
   }
 
-  const countUnescapedDollarSigns = (input: string) => {
-    let count = 0
-    for (let index = 0; index < input.length; index += 1) {
-      if (input[index] === '$' && input[index - 1] !== '\\') count += 1
-    }
-    return count
-  }
-
-  const stripUnbalancedDollarDelimiters = (input: string) => {
-    if (!input.includes('$')) return input
-    if (countUnescapedDollarSigns(input) % 2 === 0) return input
-
-    let output = ''
-    for (let index = 0; index < input.length; index += 1) {
-      const char = input[index]
-      if (char === '$' && input[index - 1] !== '\\') continue
-      output += char
-    }
-    return output
-  }
-
-  const isQuestionMathBoundary = (char: string | undefined) => {
-    if (!char) return true
-    return /[\n\r:;?!]/.test(char)
-  }
-
-  const isQuestionMathChar = (char: string | undefined, prev?: string, next?: string) => {
-    if (!char) return false
-    if (/[A-Za-z0-9α-ωΑ-Ω]/.test(char)) return true
-    if (/['"()\[\]{}+\-*/=<>≤≥_ ^,%°.:]/.test(char)) {
-      if ((char === '.' || char === ',') && !(prev && /\d/.test(prev) && next && /\d/.test(next))) {
-        return false
-      }
-      return true
-    }
-    return false
-  }
-
-  const hasBareMathShape = (input: string) => {
-    const compact = input.trim()
-    if (!compact) return false
-    if (!(/[\^_=<>≤≥]/.test(compact) || /\b(?:sin|cos|tan|sec|cosec|cot|log|ln|lim)\b/i.test(compact))) return false
-
-    const words = compact.match(/[A-Za-z]{3,}/g) || []
-    const proseWords = words.filter((word) => !/^(sin|cos|tan|sec|cosec|cot|log|ln|lim|and|or)$/i.test(word))
-    return proseWords.length <= 3
-  }
-
-  const wrapBareQuestionMath = (input: string) => {
-    const ranges: Array<{ start: number; end: number }> = []
-    const markerRegex = /\^\{|_\{|(?<=[A-Za-z0-9)\]])\^[A-Za-z0-9(]|(?<=[A-Za-z0-9)\]])_[A-Za-z0-9(]/g
-
-    for (const match of input.matchAll(markerRegex)) {
-      const markerIndex = match.index ?? -1
-      if (markerIndex < 0) continue
-
-      let start = markerIndex
-      while (start > 0) {
-        const prev = input[start - 1]
-        const prevPrev = input[start - 2]
-        const next = input[start]
-        if (isQuestionMathBoundary(prev)) break
-        if (!isQuestionMathChar(prev, prevPrev, next)) break
-        start -= 1
-      }
-
-      let end = markerIndex + match[0].length
-      while (end < input.length) {
-        const char = input[end]
-        const prev = input[end - 1]
-        const next = input[end + 1]
-        if (isQuestionMathBoundary(char)) break
-        if (!isQuestionMathChar(char, prev, next)) break
-        end += 1
-      }
-
-      while (start < end && /\s/.test(input[start] || '')) start += 1
-      while (end > start && /\s/.test(input[end - 1] || '')) end -= 1
-      if (end <= start) continue
-
-      const candidate = input.slice(start, end)
-      if (!hasBareMathShape(candidate)) continue
-      ranges.push({ start, end })
-    }
-
-    if (ranges.length === 0) return input
-
-    const merged: Array<{ start: number; end: number }> = []
-    for (const range of ranges.sort((a, b) => a.start - b.start)) {
-      const last = merged[merged.length - 1]
-      if (last && range.start <= last.end) {
-        last.end = Math.max(last.end, range.end)
-      } else {
-        merged.push({ ...range })
-      }
-    }
-
-    let output = ''
-    let cursor = 0
-    for (const range of merged) {
-      output += input.slice(cursor, range.start)
-      output += `\\(${input.slice(range.start, range.end).trim()}\\)`
-      cursor = range.end
-    }
-    output += input.slice(cursor)
-    return output
-  }
-
-  const normalizeQuestionTextForRender = (input: string) => {
-    const withoutBrokenDollars = stripUnbalancedDollarDelimiters(input)
-    return wrapBareQuestionMath(withoutBrokenDollars)
-  }
-
   const readInlineQuestionLatex = (input: string, start: number) => {
     let index = start
     let braceDepth = 0
@@ -13703,8 +13590,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }
 
   const renderQuestionTextWithInlineLatex = (text: string) => {
-    const normalizedText = normalizeQuestionTextForRender(text)
-    if (!normalizedText.includes('\\')) return renderTextWithKatex(normalizedText)
+    if (!text.includes('\\')) return renderTextWithKatex(text)
 
     const nodes: React.ReactNode[] = []
     let cursor = 0
@@ -13714,18 +13600,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       nodes.push(<span key={`qb-text-${nodes.length}`}>{renderTextWithKatex(value)}</span>)
     }
 
-    while (cursor < normalizedText.length) {
-      const slashIndex = normalizedText.indexOf('\\', cursor)
+    while (cursor < text.length) {
+      const slashIndex = text.indexOf('\\', cursor)
       if (slashIndex < 0) {
-        pushText(normalizedText.slice(cursor))
+        pushText(text.slice(cursor))
         break
       }
 
-      pushText(normalizedText.slice(cursor, slashIndex))
+      pushText(text.slice(cursor, slashIndex))
 
-      const { expr, end, trailing } = readInlineQuestionLatex(normalizedText, slashIndex)
+      const { expr, end, trailing } = readInlineQuestionLatex(text, slashIndex)
       if (!expr) {
-        pushText(normalizedText.slice(slashIndex, slashIndex + 1))
+        pushText(text.slice(slashIndex, slashIndex + 1))
         cursor = slashIndex + 1
         continue
       }

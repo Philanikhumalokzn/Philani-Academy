@@ -139,18 +139,17 @@ test.describe('question bank upload extract and search', () => {
     await expect(questionBankTab).toBeVisible({ timeout: 30_000 })
     await questionBankTab.click()
 
-    const questionBankSection = page.locator('section').filter({ hasText: 'Question Bank' }).first()
-
-    const yearFilter = questionBankSection.locator('input[type="number"]').first()
+    const yearFilter = page.getByRole('spinbutton').first()
+    await expect(yearFilter).toBeVisible({ timeout: 30_000 })
     await yearFilter.fill('2024')
 
-    const monthFilter = questionBankSection.locator('select').first()
+    const monthFilter = page.getByRole('combobox').nth(0)
     await monthFilter.selectOption('November')
 
-    const paperFilter = questionBankSection.locator('select').nth(1)
-    await paperFilter.selectOption('1')
+    const paperFilter = page.getByRole('combobox').nth(1)
+    await paperFilter.selectOption({ label: 'Paper 1' })
 
-    const qNumberInput = questionBankSection.locator('input[placeholder*="1.1.5"]').first()
+    const qNumberInput = page.getByRole('textbox', { name: /Question number prefix/i }).first().or(page.getByPlaceholder('e.g. 1, 1.1, 1.1.5').first())
     await qNumberInput.fill(targetQuestionNumber)
 
     await page.getByRole('button', { name: /Search Questions/i }).click()

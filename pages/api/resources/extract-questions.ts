@@ -93,6 +93,171 @@ async function sleep(ms: number) {
   await new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+type ExtractProvider = 'openai' | 'gemini' | 'auto'
+
+function getExtractProvider(): ExtractProvider {
+  const value = String(process.env.EXTRACT_PROVIDER || 'gemini').trim().toLowerCase()
+  if (value === 'openai' || value === 'gemini' || value === 'auto') return value
+  return 'gemini'
+}
+
+async function extractQuestionsWithOpenAI(opts: {
+  apiKey: string
+  model: string
+  prompt: string
+}): Promise<any[]> {
+  const { apiKey, model, prompt } = opts
+  let lastError = ''
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const openAiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0,
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'exam_question_extraction',
+            strict: true,
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                questions: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      questionNumber: { type: 'string' },
+                      questionText: { type: 'string' },
+                      latex: { type: 'string' },
+                      marks: { type: ['integer', 'null'] },
+                      topic: { type: 'string' },
+                      cognitiveLevel: { type: ['integer', 'null'] },
+                    },
+                    required: ['questionNumber', 'questionText', 'latex', 'marks', 'topic', 'cognitiveLevel'],
+                  },
+                },
+              },
+              required: ['questions'],
+            },
+          },
+        },
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a South African NSC Mathematics exam parser. Return only JSON matching the provided schema. Do not add commentary.',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+      }),
+    })
+
+    if (openAiRes.ok) {
+      const openAiData: any = await openAiRes.json().catch(() => null)
+      const rawOutput = openAiData?.choices?.[0]?.message?.content ?? ''
+      const parsed = tryParseJsonLoose(typeof rawOutput === 'string' ? rawOutput : '')
+      const extractedQuestions = coerceGeminiQuestionsArray(parsed) || salvageJsonObjectsArray(String(rawOutput || ''))
+      if (extractedQuestions) return extractedQuestions
+
+      const parsedType = Array.isArray(parsed) ? 'array' : typeof parsed
+      const parsedKeys = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? Object.keys(parsed as Record<string, unknown>).slice(0, 20)
+        : []
+      const rawPreview = String(rawOutput || '').replace(/\s+/g, ' ').trim().slice(0, 1200)
+      throw new Error(
+        `OpenAI returned non-array output — could not extract questions; parsedType=${parsedType}; parsedKeys=${parsedKeys.join(',')}; raw=${rawPreview}`,
+      )
+    }
+
+    lastError = await openAiRes.text().catch(() => '')
+    if (openAiRes.status !== 429 && openAiRes.status !== 503) {
+      throw new Error(`OpenAI error (${openAiRes.status}): ${lastError.slice(0, 500)}`)
+    }
+
+    if (attempt < 3) {
+      await sleep(1500 * (attempt + 1))
+    }
+  }
+
+  throw new Error(`OpenAI error: ${lastError.slice(0, 500) || 'No response after retries'}`)
+}
+
+async function extractQuestionsWithGeminiApi(opts: {
+  apiKey: string
+  model: string
+  prompt: string
+}): Promise<any[]> {
+  const { apiKey, model, prompt } = opts
+  let geminiData: any = null
+  let geminiErr = ''
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0,
+            topP: 0.1,
+            maxOutputTokens: 8000,
+          },
+        }),
+      },
+    )
+
+    if (geminiRes.ok) {
+      geminiData = await geminiRes.json().catch(() => null)
+      geminiErr = ''
+      break
+    }
+
+    geminiErr = await geminiRes.text().catch(() => '')
+    if (geminiRes.status !== 429 && geminiRes.status !== 503) {
+      throw new Error(`Gemini error (${geminiRes.status}): ${geminiErr.slice(0, 500)}`)
+    }
+
+    if (attempt < 3) {
+      await sleep(1500 * (attempt + 1))
+    }
+  }
+
+  if (!geminiData) {
+    throw new Error(`Gemini error: ${geminiErr.slice(0, 500) || 'No response after retries'}`)
+  }
+
+  const rawOutput = geminiData?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join('') ?? ''
+  const parsed = tryParseJsonLoose(typeof rawOutput === 'string' ? rawOutput : '')
+  const extractedQuestions = coerceGeminiQuestionsArray(parsed) || salvageJsonObjectsArray(rawOutput)
+
+  if (!extractedQuestions) {
+    const parsedType = Array.isArray(parsed) ? 'array' : typeof parsed
+    const parsedKeys = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? Object.keys(parsed as Record<string, unknown>).slice(0, 20)
+      : []
+    const rawPreview = String(rawOutput || '').replace(/\s+/g, ' ').trim().slice(0, 1200)
+
+    throw new Error(
+      `Gemini returned non-array output — could not extract questions; parsedType=${parsedType}; parsedKeys=${parsedKeys.join(',')}; raw=${rawPreview}`,
+    )
+  }
+
+  return extractedQuestions
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST'])
@@ -138,11 +303,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ message: 'Resource has not been parsed yet. Parse it first using Mathpix OCR.' })
   }
 
+  const provider = getExtractProvider()
   const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim()
   const geminiModel = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim() || 'gemini-2.5-flash'
-  if (!geminiApiKey) {
-    return res.status(500).json({ message: 'Gemini is not configured (missing GEMINI_API_KEY)' })
-  }
+  const openAiApiKey = (process.env.OPENAI_API_KEY || '').trim()
+  const openAiModel = (process.env.OPENAI_MODEL || 'gpt-4.1-mini').trim() || 'gpt-4.1-mini'
 
   const parsed = resource.parsedJson as any
   const rawText = (typeof parsed?.text === 'string' ? parsed.text : '').trim()
@@ -164,68 +329,53 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   let geminiResult: any[]
   try {
-    let geminiData: any = null
-    let geminiErr = ''
-
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(geminiModel)}:generateContent?key=${encodeURIComponent(geminiApiKey)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: {
-              temperature: 0,
-              topP: 0.1,
-              maxOutputTokens: 8000,
-            },
-          }),
-        },
-      )
-
-      if (geminiRes.ok) {
-        geminiData = await geminiRes.json().catch(() => null)
-        geminiErr = ''
-        break
+    if (provider === 'openai') {
+      if (!openAiApiKey) {
+        return res.status(500).json({ message: 'OpenAI is not configured (missing OPENAI_API_KEY)' })
       }
-
-      geminiErr = await geminiRes.text().catch(() => '')
-      if (geminiRes.status !== 429 && geminiRes.status !== 503) {
-        return res.status(502).json({ message: `Gemini error (${geminiRes.status}): ${geminiErr.slice(0, 500)}` })
+      geminiResult = await extractQuestionsWithOpenAI({
+        apiKey: openAiApiKey,
+        model: openAiModel,
+        prompt,
+      })
+    } else if (provider === 'auto') {
+      if (openAiApiKey) {
+        try {
+          geminiResult = await extractQuestionsWithOpenAI({
+            apiKey: openAiApiKey,
+            model: openAiModel,
+            prompt,
+          })
+        } catch (openAiErr: any) {
+          if (!geminiApiKey) throw openAiErr
+          geminiResult = await extractQuestionsWithGeminiApi({
+            apiKey: geminiApiKey,
+            model: geminiModel,
+            prompt,
+          })
+        }
+      } else {
+        if (!geminiApiKey) {
+          return res.status(500).json({ message: 'No extraction provider is configured (missing OPENAI_API_KEY and GEMINI_API_KEY)' })
+        }
+        geminiResult = await extractQuestionsWithGeminiApi({
+          apiKey: geminiApiKey,
+          model: geminiModel,
+          prompt,
+        })
       }
-
-      if (attempt < 3) {
-        await sleep(1500 * (attempt + 1))
+    } else {
+      if (!geminiApiKey) {
+        return res.status(500).json({ message: 'Gemini is not configured (missing GEMINI_API_KEY)' })
       }
-    }
-
-    if (!geminiData) {
-      return res.status(502).json({ message: `Gemini error: ${geminiErr.slice(0, 500) || 'No response after retries'}` })
-    }
-
-    const rawOutput = geminiData?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join('') ?? ''
-    const parsed = tryParseJsonLoose(typeof rawOutput === 'string' ? rawOutput : '')
-    const extractedQuestions = coerceGeminiQuestionsArray(parsed) || salvageJsonObjectsArray(rawOutput)
-
-    if (!extractedQuestions) {
-      const parsedType = Array.isArray(parsed) ? 'array' : typeof parsed
-      const parsedKeys = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? Object.keys(parsed as Record<string, unknown>).slice(0, 20)
-        : []
-      const rawPreview = String(rawOutput || '').replace(/\s+/g, ' ').trim().slice(0, 1200)
-
-      return res.status(502).json({
-        message: 'Gemini returned non-array output — could not extract questions',
-        rawPreview,
-        parsedType,
-        parsedKeys,
+      geminiResult = await extractQuestionsWithGeminiApi({
+        apiKey: geminiApiKey,
+        model: geminiModel,
+        prompt,
       })
     }
-
-    geminiResult = extractedQuestions
   } catch (err: any) {
-    return res.status(500).json({ message: err?.message || 'Gemini extraction failed' })
+    return res.status(500).json({ message: err?.message || 'Question extraction failed' })
   }
 
   // Normalise and write to DB

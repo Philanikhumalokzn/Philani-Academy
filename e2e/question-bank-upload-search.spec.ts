@@ -114,7 +114,7 @@ test.describe('question bank upload extract and search', () => {
     await expect(reviewButton).toBeVisible({ timeout: 60_000 })
     await reviewButton.click()
 
-    const reviewModal = page.locator('div.rounded-2xl').filter({ hasText: 'Review extracted questions' }).first()
+    const reviewModal = page.getByRole('dialog').filter({ hasText: 'Review extracted questions' }).first()
     await expect(reviewModal).toBeVisible({ timeout: 30_000 })
 
     const firstReviewedQuestion = reviewModal.locator('li').first()
@@ -125,14 +125,15 @@ test.describe('question bank upload extract and search', () => {
     const targetQuestionNumber = String(questionMatch?.[1] || '').trim()
     expect(targetQuestionNumber.length).toBeGreaterThan(0)
 
-    await reviewModal.getByRole('button', { name: /^Close$/i }).click()
+    await reviewModal.locator('button.btn.btn-ghost', { hasText: 'Close' }).first().click()
+    await expect(reviewModal).toBeHidden({ timeout: 15_000 })
 
+    await page.setViewportSize({ width: 390, height: 844 })
     await page.goto(toAbsoluteUrl('/dashboard'), { waitUntil: 'domcontentloaded' })
 
-    const learningButton = page.getByRole('button', { name: /^Learning$/i }).first()
-    if (await learningButton.isVisible().catch(() => false)) {
-      await learningButton.click()
-    }
+    const learningHubButton = page.getByRole('button', { name: /Learning Hub/i }).first()
+    await expect(learningHubButton).toBeVisible({ timeout: 30_000 })
+    await learningHubButton.click()
 
     const questionBankTab = page.getByRole('button', { name: /^Question Bank$/i }).first()
     await expect(questionBankTab).toBeVisible({ timeout: 30_000 })

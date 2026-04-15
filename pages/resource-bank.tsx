@@ -81,6 +81,8 @@ export default function ResourceBankPage() {
   const [importYear, setImportYear] = useState(new Date().getFullYear())
   const [importMonth, setImportMonth] = useState('November')
   const [importPaper, setImportPaper] = useState(1)
+  const [importTitle, setImportTitle] = useState('')
+  const [importTag, setImportTag] = useState('')
   const [importJsonText, setImportJsonText] = useState('')
   const [importingQuestions, setImportingQuestions] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
@@ -462,7 +464,20 @@ export default function ResourceBankPage() {
     setImportItem(item)
     setImportError(null)
     setImportResult(null)
+    setImportTitle(item.title || '')
+    setImportTag(item.tag || '')
     setImportJsonText('')
+    setImportOpen(true)
+  }
+
+  const openTopLevelImportParsed = () => {
+    setImportItem(null)
+    setImportError(null)
+    setImportResult(null)
+    setImportTitle(title.trim() || `Parsed question import ${new Date().toLocaleDateString()}`)
+    setImportTag(tag.trim())
+    setImportJsonText('')
+    if (importJsonFileRef.current) importJsonFileRef.current.value = ''
     setImportOpen(true)
   }
 
@@ -479,7 +494,10 @@ export default function ResourceBankPage() {
   }
 
   const handleImportParsedQuestions = async () => {
-    if (!importItem?.id) return
+    if (!importItem?.id && !effectiveGrade) {
+      setImportError('Grade not configured for this account')
+      return
+    }
     setImportError(null)
     setImportResult(null)
 
@@ -493,23 +511,50 @@ export default function ResourceBankPage() {
 
     setImportingQuestions(true)
     try {
+      let body: Record<string, unknown> = {
+        year: importYear,
+        month: importMonth,
+        paper: importPaper,
+        payload: parsedPayload,
+      }
+
+      if (importItem?.id) {
+        body.resourceId = importItem.id
+      } else {
+        const fileFromPicker = importJsonFileRef.current?.files?.[0] || null
+        const filename = fileFromPicker?.name || `${(importTitle || 'parsed-question-import').replace(/[^a-z0-9._-]+/gi, '_').slice(0, 80) || 'parsed-question-import'}.json`
+        const uploadFile = fileFromPicker || new File([importJsonText], filename, { type: 'application/json' })
+        const blobPath = buildResourceBlobPath(effectiveGrade as GradeValue, uploadFile.name)
+
+        const uploadedBlob = await upload(blobPath, uploadFile, {
+          access: 'public',
+          handleUploadUrl: '/api/resources/blob-upload',
+        })
+
+        body = {
+          ...body,
+          title: importTitle.trim() || 'Parsed question import',
+          tag: importTag.trim() || undefined,
+          grade: effectiveGrade,
+          url: uploadedBlob?.url,
+          filename: uploadedBlob?.pathname || uploadFile.name,
+          contentType: uploadFile.type || 'application/json',
+          size: uploadFile.size,
+        }
+      }
+
       const res = await fetch('/api/resources/import-questions', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          resourceId: importItem.id,
-          year: importYear,
-          month: importMonth,
-          paper: importPaper,
-          payload: parsedPayload,
-        }),
+        body: JSON.stringify(body),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         throw new Error(data?.message || `Import failed (${res.status})`)
       }
       setImportResult({ created: data.created ?? 0, skipped: data.skipped ?? 0 })
+      await fetchItems(effectiveGrade)
     } catch (err: any) {
       setImportError(err?.message || 'Import failed')
     } finally {
@@ -834,15 +879,29 @@ export default function ResourceBankPage() {
 
             {importOpen ? (
               <FullScreenGlassOverlay
-                title="Import parsed questions"
-                subtitle={toDisplayFileName(importItem?.title) || importItem?.title || 'Resource'}
+                title={importItem ? 'Import parsed questions' : 'Create resource from parsed JSON'}
+                subtitle={toDisplayFileName(importItem?.title) || importItem?.title || (importTitle || 'Resource')}
                 zIndexClassName="z-50"
                 onClose={() => { if (!importingQuestions) setImportOpen(false) }}
               >
                 <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-4">
                   <p className="text-sm text-slate-600">
-                    Paste a pre-parsed JSON payload (or upload a .json file) to import questions directly, without AI parsing.
+                    {importItem
+                      ? 'Paste a pre-parsed JSON payload (or upload a .json file) to import questions into this resource.'
+                      : 'Paste a pre-parsed JSON payload (or upload a .json file) to create a new resource row and import questions directly, without any PDF step.'}
                   </p>
+                  {!importItem ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <div className="text-xs uppercase tracking-wide text-slate-600">Title</div>
+                        <input className="input" value={importTitle} onChange={(e) => setImportTitle(e.target.value)} placeholder="Parsed question import" />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="text-xs uppercase tracking-wide text-slate-600">Tag</div>
+                        <input className="input" value={importTag} onChange={(e) => setImportTag(e.target.value)} placeholder="Past paper, Algebra, Revision" />
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div className="space-y-1">
                       <div className="text-xs uppercase tracking-wide text-slate-600">Year</div>
@@ -917,9 +976,9 @@ export default function ResourceBankPage() {
                       type="button"
                       className="btn btn-primary"
                       onClick={() => void handleImportParsedQuestions()}
-                      disabled={importingQuestions || !importJsonText.trim()}
+                      disabled={importingQuestions || !importJsonText.trim() || (!importItem && !importTitle.trim())}
                     >
-                      {importingQuestions ? 'Importing...' : 'Import JSON'}
+                      {importingQuestions ? 'Importing...' : importItem ? 'Import JSON' : 'Create Resource and Import'}
                     </button>
                   </div>
                 </div>
@@ -1114,6 +1173,16 @@ export default function ResourceBankPage() {
                     >
                       {uploading ? 'Uploading…' : 'Upload'}
                     </button>
+                    {role === 'admin' ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost w-fit"
+                        onClick={() => openTopLevelImportParsed()}
+                        disabled={uploading || profileLoading || !effectiveGrade}
+                      >
+                        Import Parsed JSON
+                      </button>
+                    ) : null}
                   </div>
                 </div>
 

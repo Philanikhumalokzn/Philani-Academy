@@ -1,6 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import prisma from '../../../lib/prisma'
+import crypto from 'crypto'
+import { normalizeGradeInput } from '../../../lib/grades'
+import { upsertResourceBankItem } from '../../../lib/resourceBank'
 
 export const config = {
   api: {
@@ -57,6 +60,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const { resourceId, year, month, paper, payload } = req.body as {
+    title?: string
+    tag?: string
+    grade?: string
+    url?: string
+    filename?: string
+    contentType?: string
+    size?: number
     resourceId?: string
     year?: number
     month?: string
@@ -64,9 +74,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     payload?: unknown
   }
 
-  if (!resourceId || typeof resourceId !== 'string') {
-    return res.status(400).json({ message: 'resourceId is required' })
-  }
   if (!year || typeof year !== 'number' || year < 2000 || year > 2100) {
     return res.status(400).json({ message: 'Valid year (2000-2100) is required' })
   }
@@ -84,13 +91,61 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })
   }
 
-  const resource = await prisma.resourceBankItem.findUnique({
-    where: { id: resourceId },
-    select: { id: true, grade: true },
-  })
+  let resource: { id: string; grade: any } | null = null
 
-  if (!resource) {
-    return res.status(404).json({ message: 'Resource not found' })
+  if (resourceId && typeof resourceId === 'string') {
+    resource = await prisma.resourceBankItem.findUnique({
+      where: { id: resourceId },
+      select: { id: true, grade: true },
+    })
+
+    if (!resource) {
+      return res.status(404).json({ message: 'Resource not found' })
+    }
+  } else {
+    const tokenGrade = normalizeGradeInput((token as any)?.grade)
+    const requestedGrade = normalizeGradeInput((req.body as any)?.grade)
+    const grade = requestedGrade || tokenGrade
+    if (!grade) {
+      return res.status(400).json({ message: 'grade is required when resourceId is not provided' })
+    }
+
+    const cleanUrl = String((req.body as any)?.url || '').trim()
+    if (!cleanUrl) {
+      return res.status(400).json({ message: 'url is required when resourceId is not provided' })
+    }
+
+    const payloadText = JSON.stringify(payload)
+    const checksum = crypto.createHash('sha256').update(payloadText).digest('hex')
+
+    const createdOrExisting = await upsertResourceBankItem({
+      grade,
+      title: String((req.body as any)?.title || 'Parsed question import').trim() || 'Parsed question import',
+      tag: String((req.body as any)?.tag || '').trim() || null,
+      url: cleanUrl,
+      filename: String((req.body as any)?.filename || 'parsed-questions.json').trim() || 'parsed-questions.json',
+      contentType: String((req.body as any)?.contentType || 'application/json').trim() || 'application/json',
+      size: typeof (req.body as any)?.size === 'number' ? (req.body as any).size : null,
+      checksum,
+      source: 'json-import',
+      createdById: String((token as any)?.sub || '').trim() || null,
+      parsedJson: payload,
+      parsedAt: new Date(),
+      parseError: null,
+    })
+
+    const existingQuestionCount = await prisma.examQuestion.count({
+      where: { sourceId: createdOrExisting.id },
+    })
+
+    if (existingQuestionCount > 0) {
+      return res.status(409).json({
+        message: 'This parsed JSON has already been imported for this grade',
+        resourceId: createdOrExisting.id,
+      })
+    }
+
+    resource = { id: createdOrExisting.id, grade: createdOrExisting.grade }
   }
 
   const created: string[] = []
@@ -151,5 +206,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     created: created.length,
     skipped: skipped.length,
     ids: created,
+    resourceId: resource.id,
   })
 }

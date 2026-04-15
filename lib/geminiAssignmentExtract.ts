@@ -7,13 +7,20 @@ function clampText(input: any, max: number): string {
 export function tryParseJsonLoose(text: string): any | null {
   const trimmed = (text || '').trim()
   if (!trimmed) return null
+
+  const unfenced = (() => {
+    const fencedMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
+    if (fencedMatch?.[1]) return fencedMatch[1].trim()
+    return trimmed
+  })()
+
   try {
-    return JSON.parse(trimmed)
+    return JSON.parse(unfenced)
   } catch {
-    const arrayStart = trimmed.indexOf('[')
-    const arrayEnd = trimmed.lastIndexOf(']')
+    const arrayStart = unfenced.indexOf('[')
+    const arrayEnd = unfenced.lastIndexOf(']')
     if (arrayStart >= 0 && arrayEnd > arrayStart) {
-      const slicedArray = trimmed.slice(arrayStart, arrayEnd + 1)
+      const slicedArray = unfenced.slice(arrayStart, arrayEnd + 1)
       try {
         return JSON.parse(slicedArray)
       } catch {
@@ -21,10 +28,10 @@ export function tryParseJsonLoose(text: string): any | null {
       }
     }
 
-    const start = trimmed.indexOf('{')
-    const end = trimmed.lastIndexOf('}')
+    const start = unfenced.indexOf('{')
+    const end = unfenced.lastIndexOf('}')
     if (start >= 0 && end > start) {
-      const sliced = trimmed.slice(start, end + 1)
+      const sliced = unfenced.slice(start, end + 1)
       try {
         return JSON.parse(sliced)
       } catch {

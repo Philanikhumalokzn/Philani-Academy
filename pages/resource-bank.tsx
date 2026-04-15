@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { upload } from '@vercel/blob/client'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
+import { renderKatexDisplayHtml } from '../lib/latexRender'
+import { renderTextWithKatex } from '../lib/renderTextWithKatex'
 import { toDisplayFileName } from '../lib/fileName'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import ParsedDocumentViewer from '../components/ParsedDocumentViewer'
@@ -1034,9 +1036,28 @@ export default function ResourceBankPage() {
                             </div>
                           </div>
                           <div className="text-sm text-slate-800 whitespace-pre-wrap break-words">{q.questionText}</div>
-                          {q.latex ? (
-                            <div className="text-xs font-mono text-slate-500 whitespace-pre-wrap break-all">{q.latex}</div>
-                          ) : null}
+                          {(() => {
+                            const cleanText = (typeof q.questionText === 'string' ? q.questionText : '').replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim()
+                            const rawLatex = typeof q.latex === 'string' ? q.latex.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim() : ''
+                            const cleanLatex = rawLatex.startsWith('$$') && rawLatex.endsWith('$$') && rawLatex.length > 4
+                              ? rawLatex.slice(2, -2).trim()
+                              : rawLatex.startsWith('$') && rawLatex.endsWith('$') && rawLatex.length > 2
+                                ? rawLatex.slice(1, -1).trim()
+                                : rawLatex
+                            const latexHtml = cleanLatex ? renderKatexDisplayHtml(cleanLatex) : ''
+                            return (
+                              <>
+                                <div className="text-sm text-slate-800 break-words">{renderTextWithKatex(cleanText)}</div>
+                                {cleanLatex ? (
+                                  latexHtml ? (
+                                    <div className="mt-1 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-[#1c1e21] leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
+                                  ) : (
+                                    <div className="mt-1 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-sm break-words">{renderTextWithKatex(cleanLatex)}</div>
+                                  )
+                                ) : null}
+                              </>
+                            )
+                          })()}
                           <div className="text-xs text-slate-400">{q.year} {q.month} · Paper {q.paper} · {String(q.grade).replace('_', ' ')}</div>
                         </li>
                       ))}

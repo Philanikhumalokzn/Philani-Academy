@@ -37,6 +37,58 @@ function coerceGeminiQuestionsArray(value: unknown): any[] | null {
   return null
 }
 
+function salvageJsonObjectsArray(text: string): any[] | null {
+  const source = String(text || '')
+  if (!source) return null
+
+  const items: any[] = []
+  let depth = 0
+  let start = -1
+  let inString = false
+  let escaped = false
+
+  for (let index = 0; index < source.length; index += 1) {
+    const ch = source[index]
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (ch === '\\') {
+        escaped = true
+      } else if (ch === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (ch === '"') {
+      inString = true
+      continue
+    }
+
+    if (ch === '{') {
+      if (depth === 0) start = index
+      depth += 1
+      continue
+    }
+
+    if (ch === '}') {
+      if (depth > 0) depth -= 1
+      if (depth === 0 && start >= 0) {
+        const slice = source.slice(start, index + 1)
+        try {
+          items.push(JSON.parse(slice))
+        } catch {
+          // Skip malformed object slices.
+        }
+        start = -1
+      }
+    }
+  }
+
+  return items.length ? items : null
+}
+
 async function sleep(ms: number) {
   await new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -154,7 +206,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const rawOutput = geminiData?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join('') ?? ''
     const parsed = tryParseJsonLoose(typeof rawOutput === 'string' ? rawOutput : '')
-    const extractedQuestions = coerceGeminiQuestionsArray(parsed)
+    const extractedQuestions = coerceGeminiQuestionsArray(parsed) || salvageJsonObjectsArray(rawOutput)
 
     if (!extractedQuestions) {
       const parsedType = Array.isArray(parsed) ? 'array' : typeof parsed

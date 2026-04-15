@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { upload } from '@vercel/blob/client'
@@ -75,6 +75,17 @@ export default function ResourceBankPage() {
   const [extractError, setExtractError] = useState<string | null>(null)
   const [extractResult, setExtractResult] = useState<{ created: number; skipped: number } | null>(null)
 
+  // Import parsed JSON overlay
+  const [importOpen, setImportOpen] = useState(false)
+  const [importItem, setImportItem] = useState<ResourceBankItem | null>(null)
+  const [importYear, setImportYear] = useState(new Date().getFullYear())
+  const [importMonth, setImportMonth] = useState('November')
+  const [importPaper, setImportPaper] = useState(1)
+  const [importJsonText, setImportJsonText] = useState('')
+  const [importingQuestions, setImportingQuestions] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [importResult, setImportResult] = useState<{ created: number; skipped: number } | null>(null)
+
   // Review questions overlay
   const [reviewOpen, setReviewOpen] = useState(false)
   const [reviewItem, setReviewItem] = useState<ResourceBankItem | null>(null)
@@ -91,6 +102,7 @@ export default function ResourceBankPage() {
   const [pdfViewerSubtitle, setPdfViewerSubtitle] = useState('')
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const importJsonFileRef = useRef<HTMLInputElement | null>(null)
 
   const buildResourceBlobPath = (grade: GradeValue, originalName: string) => {
     const safe = String(originalName || 'resource')
@@ -446,6 +458,65 @@ export default function ResourceBankPage() {
     }
   }
 
+  const openImportParsed = (item: ResourceBankItem) => {
+    setImportItem(item)
+    setImportError(null)
+    setImportResult(null)
+    setImportJsonText('')
+    setImportOpen(true)
+  }
+
+  const onImportJsonFileChanged = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    try {
+      const text = await file.text()
+      setImportJsonText(text)
+      setImportError(null)
+    } catch {
+      setImportError('Failed to read JSON file')
+    }
+  }
+
+  const handleImportParsedQuestions = async () => {
+    if (!importItem?.id) return
+    setImportError(null)
+    setImportResult(null)
+
+    let parsedPayload: any
+    try {
+      parsedPayload = JSON.parse(importJsonText)
+    } catch {
+      setImportError('JSON is invalid. Paste valid JSON or choose a .json file.')
+      return
+    }
+
+    setImportingQuestions(true)
+    try {
+      const res = await fetch('/api/resources/import-questions', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resourceId: importItem.id,
+          year: importYear,
+          month: importMonth,
+          paper: importPaper,
+          payload: parsedPayload,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Import failed (${res.status})`)
+      }
+      setImportResult({ created: data.created ?? 0, skipped: data.skipped ?? 0 })
+    } catch (err: any) {
+      setImportError(err?.message || 'Import failed')
+    } finally {
+      setImportingQuestions(false)
+    }
+  }
+
   const openReview = async (item: ResourceBankItem) => {
     setReviewItem(item)
     setReviewQuestions([])
@@ -761,6 +832,100 @@ export default function ResourceBankPage() {
               </FullScreenGlassOverlay>
             ) : null}
 
+            {importOpen ? (
+              <FullScreenGlassOverlay
+                title="Import parsed questions"
+                subtitle={toDisplayFileName(importItem?.title) || importItem?.title || 'Resource'}
+                zIndexClassName="z-50"
+                onClose={() => { if (!importingQuestions) setImportOpen(false) }}
+              >
+                <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-4">
+                  <p className="text-sm text-slate-600">
+                    Paste a pre-parsed JSON payload (or upload a .json file) to import questions directly, without AI parsing.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="space-y-1">
+                      <div className="text-xs uppercase tracking-wide text-slate-600">Year</div>
+                      <input
+                        type="number"
+                        className="input"
+                        min={2000}
+                        max={2100}
+                        value={importYear}
+                        onChange={(e) => setImportYear(parseInt(e.target.value, 10) || new Date().getFullYear())}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs uppercase tracking-wide text-slate-600">Exam month</div>
+                      <select className="input" value={importMonth} onChange={(e) => setImportMonth(e.target.value)}>
+                        {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs uppercase tracking-wide text-slate-600">Paper</div>
+                      <select className="input" value={importPaper} onChange={(e) => setImportPaper(parseInt(e.target.value, 10))}>
+                        <option value={1}>Paper 1</option>
+                        <option value={2}>Paper 2</option>
+                        <option value={3}>Paper 3</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs uppercase tracking-wide text-slate-600">Parsed JSON</div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          ref={importJsonFileRef}
+                          type="file"
+                          accept="application/json,.json"
+                          className="hidden"
+                          onChange={(e) => void onImportJsonFileChanged(e)}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => importJsonFileRef.current?.click()}
+                          disabled={importingQuestions}
+                        >
+                          Choose JSON File
+                        </button>
+                      </div>
+                    </div>
+                    <textarea
+                      className="input min-h-[220px] font-mono text-xs"
+                      placeholder={'[{"questionNumber":"1","questionText":"...","latex":"","marks":5,"topic":"Algebra","cognitiveLevel":2}] or {"questions":[...]}'}
+                      value={importJsonText}
+                      onChange={(e) => setImportJsonText(e.target.value)}
+                    />
+                  </div>
+
+                  {importError ? <div className="text-sm text-red-600">{importError}</div> : null}
+                  {importResult ? (
+                    <div className="rounded-xl bg-green-50 p-3 text-sm text-green-800">
+                      Imported {importResult.created} question{importResult.created !== 1 ? 's' : ''}.
+                      {importResult.skipped > 0 ? ` ${importResult.skipped} skipped (invalid or incomplete).` : ''}{' '}
+                      Use <strong>Review Questions</strong> on this resource to approve them for students.
+                    </div>
+                  ) : null}
+
+                  <div className="flex items-center justify-end gap-2">
+                    <button type="button" className="btn btn-ghost" onClick={() => setImportOpen(false)} disabled={importingQuestions}>Cancel</button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => void handleImportParsedQuestions()}
+                      disabled={importingQuestions || !importJsonText.trim()}
+                    >
+                      {importingQuestions ? 'Importing...' : 'Import JSON'}
+                    </button>
+                  </div>
+                </div>
+              </FullScreenGlassOverlay>
+            ) : null}
+
             {reviewOpen ? (
               <FullScreenGlassOverlay
                 title="Review extracted questions"
@@ -1049,6 +1214,11 @@ export default function ResourceBankPage() {
                           {role === 'admin' && item.parsedAt ? (
                             <button type="button" className="btn btn-ghost" onClick={() => openExtract(item)}>
                               Extract Questions
+                            </button>
+                          ) : null}
+                          {role === 'admin' ? (
+                            <button type="button" className="btn btn-ghost" onClick={() => openImportParsed(item)}>
+                              Import Parsed JSON
                             </button>
                           ) : null}
                           {role === 'admin' && item.parsedAt ? (

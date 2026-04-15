@@ -13445,6 +13445,73 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const QB_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'] as const
 
+  const unwrapQuestionField = (value: unknown, preferredKeys: string[]): string => {
+    let current: unknown = value
+
+    // Some rows are double-encoded JSON strings; unwrap a few layers safely.
+    for (let i = 0; i < 3; i += 1) {
+      if (typeof current !== 'string') break
+      const t = current.trim()
+      if (!t) return ''
+      const looksJson =
+        ((t.startsWith('{') && t.endsWith('}')) ||
+          (t.startsWith('[') && t.endsWith(']')) ||
+          (t.startsWith('"') && t.endsWith('"')))
+      if (!looksJson) break
+      try {
+        current = JSON.parse(t)
+      } catch {
+        break
+      }
+    }
+
+    if (typeof current === 'string') return current
+
+    if (current && typeof current === 'object') {
+      const obj = current as Record<string, unknown>
+      for (const key of preferredKeys) {
+        if (typeof obj[key] === 'string') return obj[key] as string
+      }
+    }
+
+    return ''
+  }
+
+  const decodeEscapedQuestionText = (value: unknown) => {
+    const text = unwrapQuestionField(value, ['questionText', 'text', 'prompt'])
+    if (!text) return ''
+
+    return text
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\\t/g, '\t')
+      .replace(/\\"/g, '"')
+      .replace(/\\\$/g, '$')
+      .replace(/\\\\/g, '\\')
+      .trim()
+  }
+
+  const normalizeQuestionLatex = (value: unknown) => {
+    let latex = unwrapQuestionField(value, ['latex', 'equation', 'math'])
+    if (!latex) return ''
+
+    latex = latex
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\\"/g, '"')
+      .replace(/\\\$/g, '$')
+      .replace(/\\\\/g, '\\')
+      .trim()
+
+    if (latex.startsWith('$$') && latex.endsWith('$$') && latex.length > 4) {
+      latex = latex.slice(2, -2).trim()
+    } else if (latex.startsWith('$') && latex.endsWith('$') && latex.length > 2) {
+      latex = latex.slice(1, -1).trim()
+    }
+
+    return latex
+  }
+
   const searchQuestionBank = async () => {
     setQbLoading(true)
     setQbError(null)
@@ -13578,19 +13645,37 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </section>
           <ul>
             {qbItems.map((q) => (
-              <li key={q.id} className="border-b border-black/10 bg-white px-4 py-3">
-                <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <span className="text-xs font-bold text-[#65676b]">Q{q.questionNumber}</span>
-                  <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.year} {q.month} · Paper {q.paper}</span>
-                  {q.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{q.topic}</span> : null}
-                  {q.cognitiveLevel ? <span className="text-xs rounded-full bg-[#fff3cd] px-2 py-0.5 text-[#856404]">Level {q.cognitiveLevel}</span> : null}
-                  {q.marks ? <span className="text-xs text-[#65676b]">{q.marks} marks</span> : null}
-                </div>
-                <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">{q.questionText}</div>
-                {q.latex ? (
-                  <div className="mt-1 text-xs font-mono text-[#65676b] whitespace-pre-wrap break-all">{q.latex}</div>
-                ) : null}
-              </li>
+              (() => {
+                const cleanText = decodeEscapedQuestionText(q?.questionText)
+                const cleanLatex = normalizeQuestionLatex(q?.latex)
+                const latexHtml = cleanLatex ? renderKatexDisplayHtml(cleanLatex) : ''
+
+                return (
+                  <li key={q.id} className="border-b border-black/10 bg-white px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span className="text-xs font-bold text-[#65676b]">Q{q.questionNumber}</span>
+                      <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.year} {q.month} · Paper {q.paper}</span>
+                      {q.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{q.topic}</span> : null}
+                      {q.cognitiveLevel ? <span className="text-xs rounded-full bg-[#fff3cd] px-2 py-0.5 text-[#856404]">Level {q.cognitiveLevel}</span> : null}
+                      {q.marks ? <span className="text-xs text-[#65676b]">{q.marks} marks</span> : null}
+                    </div>
+
+                    <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
+                      {renderTextWithKatex(cleanText)}
+                    </div>
+
+                    {cleanLatex ? (
+                      latexHtml ? (
+                        <div className="mt-2 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-[#1c1e21] leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
+                      ) : (
+                        <div className="mt-2 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
+                          {renderTextWithKatex(cleanLatex)}
+                        </div>
+                      )
+                    ) : null}
+                  </li>
+                )
+              })()
             ))}
           </ul>
         </>

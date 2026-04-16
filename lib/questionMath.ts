@@ -104,6 +104,33 @@ function repairMalformedInlineMath(value: string): string {
     .replace(/\$(\s*[-+]?\d[\s\S]*?(?:\\leq|<=|≥|\\geq|=|<|>)\s*[-+]?\d[^$]*)\$/g, (_, expr: string) => wrapInlineMath(expr))
 }
 
+function stripLeakedTabularArtifacts(value: string): string {
+  let text = String(value || '')
+  if (!text) return ''
+
+  // Fast-path: skip if there are no obvious LaTeX table markers.
+  if (!/\\begin\{tabular\}|\\hline|&\s*\d|\\\\/.test(text)) return text
+
+  // Remove full LaTeX tabular environments that leaked into question prose.
+  text = text.replace(/\\begin\{tabular\}\{[^}]*\}[\s\S]*?\\end\{tabular\}/g, ' ')
+
+  // Remove common inline leaks: "\hline ... & ... & ... \\ \hline".
+  text = text.replace(/\\hline\s*[\s\S]{0,1200}?\s*\\hline/g, ' ')
+
+  // Remove standalone table-like rows that are mostly cell separators.
+  text = text.replace(
+    /(?:^|\n)\s*(?:[^\n&]+\s*&\s*){2,}[^\n&]+(?:\s*\\\\)?\s*(?=\n|$)/g,
+    '\n',
+  )
+
+  // Clean up residual markers that commonly leak from broken OCR/LLM output.
+  text = text
+    .replace(/\\hline/g, ' ')
+    .replace(/\s+\\\\\s+/g, ' ')
+
+  return text
+}
+
 export function normalizeStoredQuestionLatex(value: unknown): string {
   const decoded = decodeStoredMathString(value)
   if (!decoded) return ''
@@ -115,6 +142,7 @@ export function normalizeStoredQuestionText(value: unknown, options?: { latex?: 
   let text = decodeStoredMathString(value)
   if (!text) return ''
 
+  text = stripLeakedTabularArtifacts(text)
   text = standardizeQuestionTextDelimiters(text)
   text = repairMalformedInlineMath(text)
 
@@ -128,6 +156,8 @@ export function normalizeStoredQuestionText(value: unknown, options?: { latex?: 
 
   return text
     .replace(/\$\s*([^$]+?)\s*\$/g, (_, expr: string) => wrapInlineMath(expr))
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
     .trim()
 }
 

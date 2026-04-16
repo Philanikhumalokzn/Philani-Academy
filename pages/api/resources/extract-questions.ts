@@ -295,6 +295,8 @@ function buildQuestionPreambleMapFromMmd(mmd: string): Map<string, string> {
     if (/^\|.*\|\s*$/.test(line)) continue
     if (/^!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/.test(line)) continue
     if (/^\\(begin|end)\{tabular\}/.test(line)) continue
+    if (/^\\hline\b/.test(line)) continue
+    if (/(?:^|\s)(?:[^\s&]+\s*&\s*){2,}[^\s&]+(?:\s*\\\\)?(?:\s*\\hline)?\s*$/i.test(line)) continue
 
     appendPreambleLine(currentScope, line)
   }

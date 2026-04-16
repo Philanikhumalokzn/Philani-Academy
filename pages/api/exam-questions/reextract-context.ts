@@ -193,8 +193,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!questionId || typeof questionId !== 'string') {
     return res.status(400).json({ message: 'questionId is required' })
   }
-  if (action !== 'recover' && action !== 'ai-reextract' && action !== 'undo-ai-reextract') {
-    return res.status(400).json({ message: "action must be 'recover', 'ai-reextract', or 'undo-ai-reextract'" })
+  if (action !== 'recover' && action !== 'ai-reextract' && action !== 'undo-ai-reextract' && action !== 'delete-context') {
+    return res.status(400).json({ message: "action must be 'recover', 'ai-reextract', 'undo-ai-reextract', or 'delete-context'" })
   }
 
   // Load the question to derive sourceId, grade, year, month, paper
@@ -227,6 +227,47 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const rawMmd = String((source.parsedJson as any)?.raw?.mmd || '')
   const rootNumber = questionRootFromNumber(String(question.questionNumber || ''))
+
+  if (action === 'delete-context') {
+    const existingRoot = await prisma.examQuestion.findFirst({
+      where: {
+        sourceId: question.sourceId,
+        grade: question.grade,
+        year: question.year,
+        month: question.month,
+        paper: question.paper,
+        questionNumber: rootNumber,
+      },
+      select: { id: true, questionNumber: true },
+    })
+
+    if (!existingRoot) {
+      return res.status(200).json({ message: `No root context exists for Q${rootNumber}.`, deleted: false })
+    }
+
+    const siblingSubquestions = await prisma.examQuestion.count({
+      where: {
+        sourceId: question.sourceId,
+        grade: question.grade,
+        year: question.year,
+        month: question.month,
+        paper: question.paper,
+        questionNumber: { startsWith: `${rootNumber}.` },
+      },
+    })
+
+    if (siblingSubquestions <= 0) {
+      return res.status(400).json({
+        message: `Cannot delete Q${rootNumber} context because there are no subquestions to preserve. Use Edit context instead.`,
+      })
+    }
+
+    await prisma.examQuestion.delete({ where: { id: existingRoot.id } })
+    return res.status(200).json({
+      message: `Deleted root context for Q${rootNumber}. You can now recover or re-extract it.`,
+      deleted: true,
+    })
+  }
 
   // ── RECOVER: deterministic recovery from stored parse ──
   if (action === 'recover') {

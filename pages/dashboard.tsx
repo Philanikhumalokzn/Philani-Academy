@@ -1876,6 +1876,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [reextractApplying, setReextractApplying] = useState(false)
   const [reextractUndo, setReextractUndo] = useState<any>(null)
   const [reextractWarningAcknowledge, setReextractWarningAcknowledge] = useState(false)
+  const qbContextScrollRef = useRef<HTMLDivElement | null>(null)
   // QB admin CRUD state
   const [qbSelectedIds, setQbSelectedIds] = useState<Set<string>>(new Set())
   const [qbEditingQ, setQbEditingQ] = useState<any>(null)
@@ -13809,6 +13810,37 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }
 
+  const deleteRootContext = async (questionId: string, rootNumber: string) => {
+    const confirmed = window.confirm(`Delete the stored root context for Q${rootNumber}? Subquestions will remain and you can recover or re-extract the context afterwards.`)
+    if (!confirmed) return
+
+    setReextractStatus('loading')
+    setReextractMessage(null)
+    try {
+      const res = await fetch('/api/exam-questions/reextract-context', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ questionId, action: 'delete-context' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setReextractStatus('error')
+        setReextractMessage(data?.message || 'Delete failed')
+        return
+      }
+      setReextractUndo(null)
+      setReextractStatus('done')
+      setReextractMessage(data?.message || 'Context deleted')
+      window.setTimeout(() => {
+        if (qbContextQ) openPaperContext(qbContextQ)
+      }, 900)
+    } catch (err: any) {
+      setReextractStatus('error')
+      setReextractMessage(err?.message || 'Network error while deleting context')
+    }
+  }
+
   const loadRawMmd = async (sourceId: string) => {
     if (rawParseMmd) return // already loaded
     setRawParseMmdLoading(true)
@@ -16176,6 +16208,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           setReextractPreviewRequest(null)
           setReextractApplying(false)
           setReextractWarningAcknowledge(false)
+          setReextractUndo(null)
         }}
         backdrop
         closeOnBackdrop
@@ -16196,7 +16229,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             : 'Loading paper context'}
         </div>
 
-        <div className="min-h-0 max-h-[68dvh] overflow-y-auto overscroll-contain [touch-action:pan-y]">
+        <div
+          ref={qbContextScrollRef}
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain [touch-action:pan-y] pt-2 pb-24 sm:pb-10"
+          style={{
+            scrollPaddingTop: '1rem',
+            scrollPaddingBottom: 'calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 7rem)',
+          }}>
           {qbContextLoading ? (
             <div className="p-4 text-sm text-slate-600">Loading paper context...</div>
           ) : qbContextError ? (
@@ -16264,6 +16303,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               {reextractStatus === 'loading' ? 'Working…' : 'Undo last AI apply'}
                             </button>
                           ) : null}
+                          <button
+                            onClick={() => qbContextQ?.id && qbContextRoot && deleteRootContext(qbContextQ.id, qbContextRoot)}
+                            disabled={reextractStatus === 'loading' || !qbContextRoot}
+                            className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-white px-2.5 py-1 text-xs text-red-700 font-medium shadow-sm disabled:opacity-50">
+                            {reextractStatus === 'loading' ? 'Working…' : 'Delete context'}
+                          </button>
                           <button
                             onClick={() => {
                               if (!rawParseExpanded && qbContextQ?.sourceId) loadRawMmd(qbContextQ.sourceId)
@@ -16396,6 +16441,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             </button>
                           ) : null}
                           <button
+                            onClick={() => rootItem?.id && qbContextRoot && deleteRootContext(rootItem.id, qbContextRoot)}
+                            disabled={reextractStatus === 'loading' || !qbContextRoot}
+                            className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-white px-2.5 py-1 text-xs text-red-700 font-medium shadow-sm disabled:opacity-50">
+                            {reextractStatus === 'loading' ? 'Working…' : 'Delete context'}
+                          </button>
+                          <button
                             onClick={() => {
                               if (!rawParseExpanded && qbContextQ?.sourceId) loadRawMmd(qbContextQ.sourceId)
                               setRawParseExpanded((v) => !v)
@@ -16453,11 +16504,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <span className="text-xs font-bold text-amber-700 flex-1">Q{rootItem.questionNumber} — Question context</span>
                     {rootMarksLabel ? <span className="text-xs text-amber-600">{rootMarksLabel}</span> : null}
                     {isAdmin ? (
-                      <button
-                        onClick={() => openPreambleEditor(rootItem)}
-                        className="rounded-md border border-amber-300 bg-white px-2 py-0.5 text-xs text-amber-700 font-medium shadow-sm">
-                        Edit
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openPreambleEditor(rootItem)}
+                          className="rounded-md border border-amber-300 bg-white px-2 py-0.5 text-xs text-amber-700 font-medium shadow-sm">
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => rootItem?.id && deleteRootContext(rootItem.id, String(rootItem.questionNumber || qbContextRoot || ''))}
+                          disabled={reextractStatus === 'loading'}
+                          className="rounded-md border border-red-300 bg-white px-2 py-0.5 text-xs text-red-700 font-medium shadow-sm disabled:opacity-50">
+                          Delete context
+                        </button>
+                      </div>
                     ) : null}
                   </div>
                   {rootText ? (
@@ -16560,6 +16619,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   key={contextQ.id}
                   id={`qb-context-item-${String(contextQ.id)}`}
                   className={`px-3 py-3 ${isFocus ? 'bg-[#eef5ff]' : 'bg-white'}`}
+                  style={{ scrollMarginTop: '5rem', scrollMarginBottom: '7rem' }}
                 >
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <span className="text-xs font-bold text-[#65676b]">Q{contextQ.questionNumber}</span>

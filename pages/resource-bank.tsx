@@ -1035,7 +1035,6 @@ export default function ResourceBankPage() {
                               </button>
                             </div>
                           </div>
-                          <div className="text-sm text-slate-800 whitespace-pre-wrap break-words">{q.questionText}</div>
                           {(() => {
                             const cleanText = (typeof q.questionText === 'string' ? q.questionText : '').replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim()
                             const rawLatex = typeof q.latex === 'string' ? q.latex.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim() : ''

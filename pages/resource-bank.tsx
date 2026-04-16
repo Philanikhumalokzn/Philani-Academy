@@ -1045,9 +1045,39 @@ export default function ResourceBankPage() {
                                 ? rawLatex.slice(1, -1).trim()
                                 : rawLatex
                             const latexHtml = cleanLatex ? renderKatexDisplayHtml(cleanLatex) : ''
+
+                            // Collect image URLs
+                            const imageUrls: string[] = []
+                            const pushImageUrl = (value: unknown) => {
+                              const url = typeof value === 'string' ? value.trim() : ''
+                              if (!url) return
+                              if (!/^https?:\/\//i.test(url)) return
+                              if (!imageUrls.includes(url)) imageUrls.push(url)
+                            }
+                            if (Array.isArray(q?.imageUrls)) {
+                              for (const url of q.imageUrls) pushImageUrl(url)
+                            }
+                            pushImageUrl(q?.imageUrl)
+
                             return (
                               <>
                                 <div className="text-sm text-slate-800 break-words">{renderTextWithKatex(cleanText)}</div>
+
+                                {imageUrls.length > 0 ? (
+                                  <div className="mt-2 grid gap-1">
+                                    {imageUrls.map((imageUrl, index) => (
+                                      <div key={`img-${index}`} className="overflow-hidden rounded border border-slate-300 bg-slate-100">
+                                        <img
+                                          src={imageUrl}
+                                          alt={`Diagram ${index + 1} for question ${q.questionNumber}`}
+                                          className="max-h-[180px] w-full object-contain"
+                                          loading="lazy"
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null}
+
                                 {cleanLatex ? (
                                   latexHtml ? (
                                     <div className="mt-1 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-[#1c1e21] leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />

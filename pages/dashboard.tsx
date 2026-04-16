@@ -15823,7 +15823,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         backdrop
         closeOnBackdrop
         closeOnEscape
-        contentClassName="p-0"
+        className="bottom-0"
+        contentClassName="p-0 flex flex-col overflow-hidden"
         zIndexClassName="z-[80]"
       >
         <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -15838,14 +15839,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             : 'Loading paper context'}
         </div>
 
-        {qbContextLoading ? (
-          <div className="p-4 text-sm text-slate-600">Loading paper context...</div>
-        ) : qbContextError ? (
-          <div className="p-4 text-sm text-red-600">{qbContextError}</div>
-        ) : qbContextItems.length === 0 ? (
-          <div className="p-4 text-sm text-slate-600">No questions found for this paper.</div>
-        ) : (
-          <ul className="divide-y divide-slate-200">
+        <div className="min-h-0 max-h-[68dvh] overflow-y-auto overscroll-contain [touch-action:pan-y]">
+          {qbContextLoading ? (
+            <div className="p-4 text-sm text-slate-600">Loading paper context...</div>
+          ) : qbContextError ? (
+            <div className="p-4 text-sm text-red-600">{qbContextError}</div>
+          ) : qbContextItems.length === 0 ? (
+            <div className="p-4 text-sm text-slate-600">No questions found for this paper.</div>
+          ) : (
+            <ul className="divide-y divide-slate-200">
             {qbContextItems.map((contextQ) => {
               const normalizedQuestion = normalizeExamQuestionContent(
                 unwrapQuestionField(contextQ?.questionText, ['questionText', 'text', 'prompt']),
@@ -15917,8 +15919,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </li>
               )
             })}
-          </ul>
-        )}
+            </ul>
+          )}
+        </div>
       </BottomSheet>
 
       {/* QB admin edit BottomSheet */}

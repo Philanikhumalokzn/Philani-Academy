@@ -1862,6 +1862,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [qbContextItems, setQbContextItems] = useState<any[]>([])
   const [qbContextLoading, setQbContextLoading] = useState(false)
   const [qbContextError, setQbContextError] = useState<string | null>(null)
+  // QB admin CRUD state
+  const [qbSelectedIds, setQbSelectedIds] = useState<Set<string>>(new Set())
+  const [qbEditingQ, setQbEditingQ] = useState<any>(null)
+  const [qbEditDraft, setQbEditDraft] = useState<{
+    questionText: string; latex: string; questionNumber: string
+    topic: string; cognitiveLevel: string; marks: string; approved: boolean
+  }>({ questionText: '', latex: '', questionNumber: '', topic: '', cognitiveLevel: '', marks: '', approved: false })
+  const [qbEditSaving, setQbEditSaving] = useState(false)
+  const [qbEditError, setQbEditError] = useState<string | null>(null)
+  const [qbBulkBusy, setQbBulkBusy] = useState(false)
+  const [qbBulkError, setQbBulkError] = useState<string | null>(null)
   const [libraryGrades, setLibraryGrades] = useState<LibraryGradeItem[]>([])
   const [libraryGradesLoading, setLibraryGradesLoading] = useState(false)
   const [libraryGradesError, setLibraryGradesError] = useState<string | null>(null)
@@ -13491,6 +13502,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setQbLoading(true)
     setQbError(null)
     setQbSearched(true)
+    setQbSelectedIds(new Set())
+    setQbBulkError(null)
     try {
       const params = new URLSearchParams()
       if (qbYear) params.set('year', qbYear)
@@ -13565,6 +13578,137 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }, 80)
     return () => window.clearTimeout(handle)
   }, [qbContextOpen, qbContextQ, qbContextItems])
+
+  const qbToggleSelect = (id: string) => {
+    setQbSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const qbToggleSelectAll = () => {
+    setQbSelectedIds(prev =>
+      prev.size === qbItems.length && qbItems.length > 0
+        ? new Set()
+        : new Set(qbItems.map((q: any) => String(q.id)))
+    )
+  }
+
+  const qbOpenEdit = (q: any) => {
+    setQbEditingQ(q)
+    setQbEditDraft({
+      questionText: String(q.questionText || ''),
+      latex: String(q.latex || ''),
+      questionNumber: String(q.questionNumber || ''),
+      topic: String(q.topic || ''),
+      cognitiveLevel: q.cognitiveLevel != null ? String(q.cognitiveLevel) : '',
+      marks: q.marks != null ? String(q.marks) : '',
+      approved: Boolean(q.approved),
+    })
+    setQbEditError(null)
+  }
+
+  const qbSaveEdit = async () => {
+    if (!qbEditingQ) return
+    setQbEditSaving(true)
+    setQbEditError(null)
+    try {
+      const body: Record<string, unknown> = {
+        questionText: qbEditDraft.questionText.trim(),
+        latex: qbEditDraft.latex.trim() || null,
+        questionNumber: qbEditDraft.questionNumber.trim(),
+        topic: qbEditDraft.topic || null,
+        cognitiveLevel: qbEditDraft.cognitiveLevel ? parseInt(qbEditDraft.cognitiveLevel, 10) : null,
+        marks: qbEditDraft.marks !== '' ? parseFloat(qbEditDraft.marks) : null,
+        approved: qbEditDraft.approved,
+      }
+      const res = await fetch(`/api/exam-questions/${String(qbEditingQ.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(body),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as any)?.message || `Save failed (${res.status})`)
+      setQbItems(prev => prev.map((item: any) => item.id === qbEditingQ.id ? { ...item, ...data } : item))
+      setQbEditingQ(null)
+    } catch (err: any) {
+      setQbEditError((err as any)?.message || 'Failed to save')
+    } finally {
+      setQbEditSaving(false)
+    }
+  }
+
+  const qbDeleteOne = async (id: string) => {
+    if (!window.confirm('Delete this question? This cannot be undone.')) return
+    try {
+      const res = await fetch(`/api/exam-questions/${id}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error((data as any)?.message || `Delete failed (${res.status})`)
+      }
+      setQbItems(prev => prev.filter((item: any) => item.id !== id))
+      setQbSelectedIds(prev => { const next = new Set(prev); next.delete(id); return next })
+      setQbTotal(prev => Math.max(0, prev - 1))
+    } catch (err: any) {
+      window.alert((err as any)?.message || 'Delete failed')
+    }
+  }
+
+  const qbBulkDelete = async () => {
+    if (qbSelectedIds.size === 0) return
+    const count = qbSelectedIds.size
+    if (!window.confirm(`Delete ${count} question${count !== 1 ? 's' : ''}? This cannot be undone.`)) return
+    setQbBulkBusy(true)
+    setQbBulkError(null)
+    const ids = Array.from(qbSelectedIds)
+    try {
+      const res = await fetch('/api/exam-questions', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ ids }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as any)?.message || `Bulk delete failed (${res.status})`)
+      const deletedCount = typeof (data as any).deleted === 'number' ? (data as any).deleted : ids.length
+      setQbItems(prev => prev.filter((item: any) => !qbSelectedIds.has(item.id)))
+      setQbTotal(prev => Math.max(0, prev - deletedCount))
+      setQbSelectedIds(new Set())
+    } catch (err: any) {
+      setQbBulkError((err as any)?.message || 'Bulk delete failed')
+    } finally {
+      setQbBulkBusy(false)
+    }
+  }
+
+  const qbBulkPatch = async (patch: Record<string, unknown>) => {
+    if (qbSelectedIds.size === 0) return
+    setQbBulkBusy(true)
+    setQbBulkError(null)
+    const ids = Array.from(qbSelectedIds)
+    try {
+      const res = await fetch('/api/exam-questions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ ids, patch }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as any)?.message || `Bulk update failed (${res.status})`)
+      setQbItems(prev => prev.map((item: any) => qbSelectedIds.has(item.id) ? { ...item, ...patch } : item))
+      setQbSelectedIds(new Set())
+    } catch (err: any) {
+      setQbBulkError((err as any)?.message || 'Bulk update failed')
+    } finally {
+      setQbBulkBusy(false)
+    }
+  }
 
   const renderQuestionBankContent = () => (
     <div>
@@ -13669,9 +13813,64 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       {qbItems.length > 0 ? (
         <>
-          <section className="border-b border-black/10 bg-white px-4 py-2">
-            <div className="text-xs text-[#65676b]">{qbTotal} result{qbTotal !== 1 ? 's' : ''} (showing {qbItems.length})</div>
+          {/* Results header with select-all (admin) and count */}
+          <section className="border-b border-black/10 bg-white px-4 py-2 flex items-center gap-3">
+            {isAdmin ? (
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-[#d5def0] accent-[#1877f2] cursor-pointer"
+                  checked={qbItems.length > 0 && qbSelectedIds.size === qbItems.length}
+                  ref={(el) => { if (el) el.indeterminate = qbSelectedIds.size > 0 && qbSelectedIds.size < qbItems.length }}
+                  onChange={qbToggleSelectAll}
+                  aria-label="Select all results"
+                />
+                <span className="text-xs text-[#65676b]">All</span>
+              </label>
+            ) : null}
+            <div className="flex-1 text-xs text-[#65676b]">{qbTotal} result{qbTotal !== 1 ? 's' : ''} (showing {qbItems.length})</div>
           </section>
+
+          {/* Bulk action toolbar — shown when items are selected */}
+          {isAdmin && qbSelectedIds.size > 0 ? (
+            <section className="border-b border-black/10 bg-[#fff8e7] px-4 py-2.5 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-[#856404] mr-1">{qbSelectedIds.size} selected</span>
+              <button
+                type="button"
+                className="inline-flex h-7 items-center rounded-full bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                onClick={() => void qbBulkDelete()}
+                disabled={qbBulkBusy}
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                className="inline-flex h-7 items-center rounded-full bg-[#1877f2] px-3 text-xs font-semibold text-white hover:bg-[#166fe5] disabled:opacity-50"
+                onClick={() => void qbBulkPatch({ approved: true })}
+                disabled={qbBulkBusy}
+              >
+                Approve
+              </button>
+              <button
+                type="button"
+                className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-medium text-[#4b5563] hover:bg-[#f0f2f5] disabled:opacity-50"
+                onClick={() => void qbBulkPatch({ approved: false })}
+                disabled={qbBulkBusy}
+              >
+                Unapprove
+              </button>
+              <button
+                type="button"
+                className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-medium text-[#65676b] hover:bg-[#f0f2f5]"
+                onClick={() => setQbSelectedIds(new Set())}
+              >
+                Clear selection
+              </button>
+              {qbBulkBusy ? <span className="text-xs text-[#65676b]">Working…</span> : null}
+              {qbBulkError ? <span className="text-xs text-red-600">{qbBulkError}</span> : null}
+            </section>
+          ) : null}
+
           <ul>
             {qbItems.map((q) => (
               (() => {
@@ -13697,54 +13896,94 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   pushUrl(q?.imageUrl)
                   return urls
                 })()
+                const isSelected = isAdmin && qbSelectedIds.has(String(q.id))
 
                 return (
-                  <li key={q.id} className="border-b border-black/10 bg-white px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="text-xs font-bold text-[#65676b]">Q{q.questionNumber}</span>
-                      <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.year} {q.month} · Paper {q.paper}</span>
-                      {q.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{q.topic}</span> : null}
-                      {q.cognitiveLevel ? <span className="text-xs rounded-full bg-[#fff3cd] px-2 py-0.5 text-[#856404]">Level {q.cognitiveLevel}</span> : null}
-                      {q.marks ? <span className="text-xs text-[#65676b]">{q.marks} marks</span> : null}
-                    </div>
-
-                    <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
-                      {renderQuestionTextWithInlineLatex(cleanText)}
-                    </div>
-
-                    {questionImageUrls.length > 0 ? (
-                      <div className="mt-2 grid gap-2">
-                        {questionImageUrls.map((imageUrl, imageIndex) => (
-                          <div key={`${q.id}-diagram-${imageIndex}`} className="overflow-hidden rounded-lg border border-[#dbe4f3] bg-[#f8fbff]">
-                            <img
-                              src={imageUrl}
-                              alt={`Diagram ${imageIndex + 1} for question ${q.questionNumber}`}
-                              className="max-h-[280px] w-full object-contain"
-                              loading="lazy"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    {cleanLatex ? (
-                      latexHtml ? (
-                        <div className="mt-2 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-[#1c1e21] leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
-                      ) : (
-                        <div className="mt-2 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
-                          {renderTextWithKatex(cleanLatex)}
+                  <li key={q.id} className={`border-b border-black/10 bg-white px-4 py-3 transition-colors${isSelected ? ' !bg-[#f0f5ff]' : ''}`}>
+                    <div className="flex gap-3 items-start">
+                      {/* Row select checkbox (admin only) */}
+                      {isAdmin ? (
+                        <div className="flex-shrink-0 pt-0.5">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-[#d5def0] accent-[#1877f2] cursor-pointer"
+                            checked={isSelected}
+                            onChange={() => qbToggleSelect(String(q.id))}
+                            aria-label={`Select question ${String(q.questionNumber)}`}
+                          />
                         </div>
-                      )
-                    ) : null}
+                      ) : null}
 
-                    <div className="mt-2 flex justify-end">
-                      <button
-                        type="button"
-                        className="text-xs text-[#1877f2] hover:underline"
-                        onClick={() => void openPaperContext(q)}
-                      >
-                          View in paper {'>'}
-                      </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <span className="text-xs font-bold text-[#65676b]">Q{q.questionNumber}</span>
+                          <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.year} {q.month} · Paper {q.paper}</span>
+                          {q.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{q.topic}</span> : null}
+                          {q.cognitiveLevel ? <span className="text-xs rounded-full bg-[#fff3cd] px-2 py-0.5 text-[#856404]">Level {q.cognitiveLevel}</span> : null}
+                          {q.marks ? <span className="text-xs text-[#65676b]">{q.marks} marks</span> : null}
+                          {isAdmin && !q.approved ? <span className="text-xs rounded-full bg-red-100 px-2 py-0.5 text-red-600">Unapproved</span> : null}
+                        </div>
+
+                        <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
+                          {renderQuestionTextWithInlineLatex(cleanText)}
+                        </div>
+
+                        {questionImageUrls.length > 0 ? (
+                          <div className="mt-2 grid gap-2">
+                            {questionImageUrls.map((imageUrl, imageIndex) => (
+                              <div key={`${String(q.id)}-diagram-${imageIndex}`} className="overflow-hidden rounded-lg border border-[#dbe4f3] bg-[#f8fbff]">
+                                <img
+                                  src={imageUrl}
+                                  alt={`Diagram ${imageIndex + 1} for question ${String(q.questionNumber)}`}
+                                  className="max-h-[280px] w-full object-contain"
+                                  loading="lazy"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        {cleanLatex ? (
+                          latexHtml ? (
+                            <div className="mt-2 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-[#1c1e21] leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
+                          ) : (
+                            <div className="mt-2 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
+                              {renderTextWithKatex(cleanLatex)}
+                            </div>
+                          )
+                        ) : null}
+
+                        {/* Row actions */}
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            {isAdmin ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="text-xs text-[#4b5563] border border-[#d5def0] rounded-full px-2.5 py-0.5 hover:bg-[#f0f2f5] transition-colors"
+                                  onClick={() => qbOpenEdit(q)}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-xs text-red-600 border border-red-200 rounded-full px-2.5 py-0.5 hover:bg-red-50 transition-colors"
+                                  onClick={() => void qbDeleteOne(String(q.id))}
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
+                          <button
+                            type="button"
+                            className="text-xs text-[#1877f2] hover:underline"
+                            onClick={() => void openPaperContext(q)}
+                          >
+                            View in paper {'>'}
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </li>
                 )
@@ -15612,6 +15851,136 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             })}
           </ul>
         )}
+      </BottomSheet>
+
+      {/* QB admin edit BottomSheet */}
+      <BottomSheet
+        open={Boolean(qbEditingQ)}
+        title="Edit Question"
+        subtitle={qbEditingQ ? `Q${String(qbEditingQ.questionNumber)} · ${String(qbEditingQ.year)} ${String(qbEditingQ.month)} · Paper ${String(qbEditingQ.paper)}` : undefined}
+        onClose={() => { setQbEditingQ(null); setQbEditError(null) }}
+        backdrop
+        closeOnBackdrop={!qbEditSaving}
+        closeOnEscape={!qbEditSaving}
+        contentClassName="px-4 py-4 space-y-4"
+        zIndexClassName="z-[85]"
+      >
+        {qbEditError ? (
+          <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{qbEditError}</div>
+        ) : null}
+
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-[#65676b]">Question Number</label>
+          <input
+            type="text"
+            className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+            value={qbEditDraft.questionNumber}
+            onChange={(e) => setQbEditDraft(prev => ({ ...prev, questionNumber: e.target.value }))}
+            disabled={qbEditSaving}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-[#65676b]">Question Text</label>
+          <textarea
+            rows={5}
+            className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21] resize-y"
+            value={qbEditDraft.questionText}
+            onChange={(e) => setQbEditDraft(prev => ({ ...prev, questionText: e.target.value }))}
+            disabled={qbEditSaving}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-[#65676b]">LaTeX</label>
+          <textarea
+            rows={3}
+            className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm font-mono text-[#1c1e21] resize-y"
+            placeholder="Optional LaTeX expression"
+            value={qbEditDraft.latex}
+            onChange={(e) => setQbEditDraft(prev => ({ ...prev, latex: e.target.value }))}
+            disabled={qbEditSaving}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-[#65676b]">Topic</label>
+            <select
+              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+              value={qbEditDraft.topic}
+              onChange={(e) => setQbEditDraft(prev => ({ ...prev, topic: e.target.value }))}
+              disabled={qbEditSaving}
+            >
+              <option value="">— None —</option>
+              {QB_TOPICS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-[#65676b]">Cognitive Level</label>
+            <select
+              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+              value={qbEditDraft.cognitiveLevel}
+              onChange={(e) => setQbEditDraft(prev => ({ ...prev, cognitiveLevel: e.target.value }))}
+              disabled={qbEditSaving}
+            >
+              <option value="">— None —</option>
+              <option value="1">1 — Knowledge</option>
+              <option value="2">2 — Routine procedures</option>
+              <option value="3">3 — Complex procedures</option>
+              <option value="4">4 — Problem-solving</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-[#65676b]">Marks</label>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+              value={qbEditDraft.marks}
+              onChange={(e) => setQbEditDraft(prev => ({ ...prev, marks: e.target.value }))}
+              disabled={qbEditSaving}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-[#65676b]">Approved</label>
+            <div className="flex h-[38px] items-center">
+              <label className="flex cursor-pointer items-center gap-2 select-none">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-[#d5def0] accent-[#1877f2]"
+                  checked={qbEditDraft.approved}
+                  onChange={(e) => setQbEditDraft(prev => ({ ...prev, approved: e.target.checked }))}
+                  disabled={qbEditSaving}
+                />
+                <span className="text-sm text-[#1c1e21]">{qbEditDraft.approved ? 'Approved' : 'Not approved'}</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-2 pt-2">
+          <button
+            type="button"
+            className="flex-1 inline-flex h-10 items-center justify-center rounded-full bg-[#1c1e21] px-4 text-sm font-semibold text-white hover:bg-[#2d3036] disabled:opacity-50"
+            onClick={() => void qbSaveEdit()}
+            disabled={qbEditSaving}
+          >
+            {qbEditSaving ? 'Saving…' : 'Save Changes'}
+          </button>
+          <button
+            type="button"
+            className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] hover:bg-[#eef2f7] disabled:opacity-50"
+            onClick={() => { setQbEditingQ(null); setQbEditError(null) }}
+            disabled={qbEditSaving}
+          >
+            Cancel
+          </button>
+        </div>
       </BottomSheet>
 
       {liveOverlayOpen && (

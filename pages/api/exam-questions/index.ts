@@ -4,8 +4,14 @@ import prisma from '../../../lib/prisma'
 import { normalizeGradeInput } from '../../../lib/grades'
 
 export const config = {
-  api: { bodyParser: { sizeLimit: '4kb' } },
+  api: { bodyParser: { sizeLimit: '64kb' } },
 }
+
+const VALID_TOPICS = [
+  'Algebra', 'Functions', 'Number Patterns', 'Finance', 'Trigonometry',
+  'Euclidean Geometry', 'Analytical Geometry', 'Statistics', 'Probability',
+  'Calculus', 'Sequences and Series', 'Polynomials', 'Other',
+]
 
 function pushUniqueUrl(target: string[], value: unknown) {
   const url = typeof value === 'string' ? value.trim() : ''
@@ -131,8 +137,53 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!token) return res.status(401).json({ message: 'Unauthenticated' })
 
+  // Bulk DELETE
+  if (req.method === 'DELETE') {
+    if (role !== 'admin') return res.status(403).json({ message: 'Admin only' })
+    const { ids } = req.body as { ids?: unknown }
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: 'ids array is required' })
+    }
+    const safeIds = (ids as unknown[]).filter((id): id is string => typeof id === 'string' && id.length > 0).slice(0, 500)
+    if (safeIds.length === 0) return res.status(400).json({ message: 'No valid ids provided' })
+    const { count } = await prisma.examQuestion.deleteMany({ where: { id: { in: safeIds } } })
+    return res.status(200).json({ deleted: count })
+  }
+
+  // Bulk PATCH
+  if (req.method === 'PATCH') {
+    if (role !== 'admin') return res.status(403).json({ message: 'Admin only' })
+    const { ids, patch } = req.body as { ids?: unknown; patch?: any }
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: 'ids array is required' })
+    }
+    if (!patch || typeof patch !== 'object') {
+      return res.status(400).json({ message: 'patch object is required' })
+    }
+    const safeIds = (ids as unknown[]).filter((id): id is string => typeof id === 'string' && id.length > 0).slice(0, 500)
+    if (safeIds.length === 0) return res.status(400).json({ message: 'No valid ids provided' })
+    const data: any = {}
+    if (patch.approved !== undefined) data.approved = Boolean(patch.approved)
+    if (patch.topic !== undefined) {
+      data.topic = typeof patch.topic === 'string' && VALID_TOPICS.includes(patch.topic) ? patch.topic : null
+    }
+    if (patch.cognitiveLevel !== undefined) {
+      const cl = typeof patch.cognitiveLevel === 'number' ? patch.cognitiveLevel : parseInt(String(patch.cognitiveLevel), 10)
+      data.cognitiveLevel = Number.isFinite(cl) && cl >= 1 && cl <= 4 ? cl : null
+    }
+    if (patch.marks !== undefined) {
+      const m = typeof patch.marks === 'number' ? patch.marks : parseFloat(String(patch.marks))
+      data.marks = Number.isFinite(m) && m >= 0 ? Math.round(m) : null
+    }
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({ message: 'No patchable fields provided' })
+    }
+    const { count } = await prisma.examQuestion.updateMany({ where: { id: { in: safeIds } }, data })
+    return res.status(200).json({ updated: count })
+  }
+
   if (req.method !== 'GET') {
-    res.setHeader('Allow', ['GET'])
+    res.setHeader('Allow', ['GET', 'PATCH', 'DELETE'])
     return res.status(405).end('Method not allowed')
   }
 

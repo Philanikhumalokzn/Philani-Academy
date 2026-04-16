@@ -1874,6 +1874,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [qbEditError, setQbEditError] = useState<string | null>(null)
   const [qbBulkBusy, setQbBulkBusy] = useState(false)
   const [qbBulkError, setQbBulkError] = useState<string | null>(null)
+  // Preamble editor state (admin)
+  const [qbPreambleEditOpen, setQbPreambleEditOpen] = useState(false)
+  const [qbPreambleEditTarget, setQbPreambleEditTarget] = useState<{
+    mode: 'create' | 'update'
+    rootItemId?: string
+    grade: string; year: number; month: string; paper: number
+    questionNumber: string; sourceId?: string; sourceUrl?: string
+  } | null>(null)
+  const [qbPreambleDraft, setQbPreambleDraft] = useState({ text: '', imageUrl: '' })
+  const [qbPreambleImage, setQbPreambleImage] = useState<File | null>(null)
+  const [qbPreambleImagePreview, setQbPreambleImagePreview] = useState<string | null>(null)
+  const [qbPreambleSaving, setQbPreambleSaving] = useState(false)
+  const [qbPreambleError, setQbPreambleError] = useState<string | null>(null)
   const [libraryGrades, setLibraryGrades] = useState<LibraryGradeItem[]>([])
   const [libraryGradesLoading, setLibraryGradesLoading] = useState(false)
   const [libraryGradesError, setLibraryGradesError] = useState<string | null>(null)
@@ -13616,6 +13629,105 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return () => window.clearTimeout(handle)
   }, [qbContextOpen, qbContextQ, qbContextItems])
 
+  const openPreambleEditor = (rootItem: any | null) => {
+    const ref = rootItem || qbContextItems[0] || qbContextQ
+    const sourceUrl = (qbContextItems.find((i: any) => i.sourceUrl)?.sourceUrl) || null
+    const existingText = rootItem
+      ? (normalizeExamQuestionContent(
+          unwrapQuestionField(rootItem?.questionText, ['questionText', 'text', 'prompt']),
+          unwrapQuestionField(rootItem?.latex, ['latex', 'equation', 'math']),
+        ).questionText || '')
+      : ''
+    const existingImageUrl = rootItem?.imageUrl || rootItem?.imageUrls?.[0] || ''
+    setQbPreambleEditTarget({
+      mode: rootItem ? 'update' : 'create',
+      rootItemId: rootItem?.id,
+      grade: String(ref?.grade || ''),
+      year: Number(ref?.year || 0),
+      month: String(ref?.month || ''),
+      paper: Number(ref?.paper || 0),
+      questionNumber: qbContextRoot || String(ref?.questionNumber || ''),
+      sourceId: ref?.sourceId || undefined,
+      sourceUrl: sourceUrl || undefined,
+    })
+    setQbPreambleDraft({ text: existingText, imageUrl: existingImageUrl })
+    setQbPreambleImage(null)
+    setQbPreambleImagePreview(null)
+    setQbPreambleError(null)
+    setQbPreambleEditOpen(true)
+  }
+
+  const savePreamble = async () => {
+    if (!qbPreambleEditTarget) return
+    if (!qbPreambleDraft.text.trim()) {
+      setQbPreambleError('Please enter the preamble/context text.')
+      return
+    }
+    setQbPreambleSaving(true)
+    setQbPreambleError(null)
+    try {
+      let finalImageUrl: string | null = qbPreambleDraft.imageUrl.trim() || null
+      if (qbPreambleImage) {
+        const fd = new FormData()
+        fd.append('file', qbPreambleImage)
+        const upRes = await fetch('/api/exam-questions/upload-image', { method: 'POST', body: fd, credentials: 'same-origin' })
+        if (!upRes.ok) {
+          const upData = await upRes.json().catch(() => ({}))
+          throw new Error((upData as any)?.message || 'Image upload failed')
+        }
+        const upData = await upRes.json()
+        finalImageUrl = (upData as any)?.url || null
+      }
+      const payload: Record<string, any> = {
+        questionText: qbPreambleDraft.text.trim(),
+        imageUrl: finalImageUrl,
+      }
+      let savedItem: any
+      if (qbPreambleEditTarget.mode === 'update' && qbPreambleEditTarget.rootItemId) {
+        const res = await fetch(`/api/exam-questions/${qbPreambleEditTarget.rootItemId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          credentials: 'same-origin',
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error((data as any)?.message || 'Save failed')
+        savedItem = data
+      } else {
+        const res = await fetch('/api/exam-questions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...payload,
+            grade: qbPreambleEditTarget.grade,
+            year: qbPreambleEditTarget.year,
+            month: qbPreambleEditTarget.month,
+            paper: qbPreambleEditTarget.paper,
+            questionNumber: qbPreambleEditTarget.questionNumber,
+            questionDepth: 0,
+            sourceId: qbPreambleEditTarget.sourceId || null,
+            approved: true,
+          }),
+          credentials: 'same-origin',
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error((data as any)?.message || 'Create failed')
+        savedItem = data
+      }
+      const urls: string[] = finalImageUrl ? [finalImageUrl] : []
+      setQbContextItems(prev => {
+        const exists = prev.some((item: any) => item.id === savedItem.id)
+        if (exists) return prev.map((item: any) => item.id === savedItem.id ? { ...item, ...savedItem, imageUrls: urls } : item)
+        return [{ ...savedItem, imageUrls: urls }, ...prev]
+      })
+      setQbPreambleEditOpen(false)
+    } catch (err: any) {
+      setQbPreambleError(err?.message || 'Failed to save preamble')
+    } finally {
+      setQbPreambleSaving(false)
+    }
+  }
+
   const qbToggleSelect = (id: string) => {
     setQbSelectedIds(prev => {
       const next = new Set(prev)
@@ -15887,10 +15999,29 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     return itemIsTopLevel && getQNumRoot(item?.questionNumber) === qbContextRoot
                   })
                 : null
+              const sourceUrl = (qbContextItems.find((i: any) => i.sourceUrl) as any)?.sourceUrl as string | undefined
+
               if (!rootItem) {
                 return (
-                  <div className="border-b border-slate-200 bg-amber-50 px-3 py-3 text-xs text-amber-700">
-                    Question context is not available for this source yet. You can still view the subquestions below.
+                  <div className="border-b border-slate-200 bg-amber-50 px-3 py-3 space-y-2">
+                    <p className="text-xs text-amber-700">
+                      Question context is not available for this source yet. You can still view the subquestions below.
+                    </p>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      {sourceUrl ? (
+                        <a href={sourceUrl} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 py-1 text-xs text-amber-700 font-medium shadow-sm">
+                          View original paper ↗
+                        </a>
+                      ) : null}
+                      {isAdmin ? (
+                        <button
+                          onClick={() => openPreambleEditor(null)}
+                          className="inline-flex items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
+                          + Add context
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 )
               }
@@ -15899,22 +16030,75 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 unwrapQuestionField(rootItem?.latex, ['latex', 'equation', 'math']),
               )
               const rootText = rootNorm.questionText
-              if (!rootText) {
+              const rootImageUrls: string[] = (() => {
+                const urls: string[] = []
+                const push = (v: unknown) => {
+                  const u = typeof v === 'string' ? v.trim() : ''
+                  if (u && /^https?:\/\//i.test(u) && !urls.includes(u)) urls.push(u)
+                }
+                if (Array.isArray(rootItem?.imageUrls)) rootItem.imageUrls.forEach(push)
+                push(rootItem?.imageUrl)
+                return urls
+              })()
+              const rootTable = typeof rootItem?.tableMarkdown === 'string' ? rootItem.tableMarkdown.trim() : ''
+
+              if (!rootText && rootImageUrls.length === 0 && !rootTable) {
                 return (
-                  <div className="border-b border-slate-200 bg-amber-50 px-3 py-3 text-xs text-amber-700">
-                    Question context is missing on the root question record for Q{qbContextRoot}.
+                  <div className="border-b border-slate-200 bg-amber-50 px-3 py-3 space-y-2">
+                    <p className="text-xs text-amber-700">
+                      Question context is missing for Q{qbContextRoot}.
+                    </p>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      {sourceUrl ? (
+                        <a href={sourceUrl} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 py-1 text-xs text-amber-700 font-medium shadow-sm">
+                          View original paper ↗
+                        </a>
+                      ) : null}
+                      {isAdmin ? (
+                        <button
+                          onClick={() => openPreambleEditor(rootItem)}
+                          className="inline-flex items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
+                          Edit context
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 )
               }
               return (
-                <div className="border-b border-slate-200 bg-amber-50 px-3 py-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-bold text-amber-700">Q{rootItem.questionNumber} — Question context</span>
+                <div className="border-b border-slate-200 bg-amber-50 px-3 py-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-amber-700 flex-1">Q{rootItem.questionNumber} — Question context</span>
                     {rootItem.marks ? <span className="text-xs text-amber-600">{rootItem.marks} marks</span> : null}
+                    {isAdmin ? (
+                      <button
+                        onClick={() => openPreambleEditor(rootItem)}
+                        className="rounded-md border border-amber-300 bg-white px-2 py-0.5 text-xs text-amber-700 font-medium shadow-sm">
+                        Edit
+                      </button>
+                    ) : null}
                   </div>
-                  <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
-                    {renderQuestionTextWithInlineLatex(rootText)}
-                  </div>
+                  {rootText ? (
+                    <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
+                      {renderQuestionTextWithInlineLatex(rootText)}
+                    </div>
+                  ) : null}
+                  {rootImageUrls.length > 0 ? (
+                    <div className="grid gap-2">
+                      {rootImageUrls.map((url, idx) => (
+                        <div key={`root-img-${idx}`} className="overflow-hidden rounded-lg border border-amber-200 bg-white">
+                          <img src={url} alt={`Q${rootItem.questionNumber} diagram ${idx + 1}`}
+                            className="max-h-[260px] w-full object-contain" loading="lazy" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {rootTable ? (
+                    <pre className="overflow-x-auto rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs text-[#1c1e21] whitespace-pre font-mono">
+                      {rootTable}
+                    </pre>
+                  ) : null}
                 </div>
               )
             })()}
@@ -16126,6 +16310,119 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] hover:bg-[#eef2f7] disabled:opacity-50"
             onClick={() => { setQbEditingQ(null); setQbEditError(null) }}
             disabled={qbEditSaving}
+          >
+            Cancel
+          </button>
+        </div>
+      </BottomSheet>
+
+      {/* Preamble / context editor BottomSheet (admin) */}
+      <BottomSheet
+        open={qbPreambleEditOpen}
+        title={qbPreambleEditTarget?.mode === 'create' ? 'Add Question Context' : 'Edit Question Context'}
+        subtitle={qbPreambleEditTarget
+          ? `Q${qbPreambleEditTarget.questionNumber} · ${qbPreambleEditTarget.year} ${qbPreambleEditTarget.month} · Paper ${qbPreambleEditTarget.paper}`
+          : undefined}
+        onClose={() => { if (!qbPreambleSaving) { setQbPreambleEditOpen(false); setQbPreambleError(null) } }}
+        backdrop
+        closeOnBackdrop={!qbPreambleSaving}
+        closeOnEscape={!qbPreambleSaving}
+        contentClassName="px-4 py-4 space-y-4"
+        zIndexClassName="z-[90]"
+      >
+        {/* Link to original paper */}
+        {qbPreambleEditTarget?.sourceUrl ? (
+          <a
+            href={qbPreambleEditTarget.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-md border border-[#d5def0] bg-[#f7f8fa] px-3 py-1.5 text-xs text-blue-600 font-medium"
+          >
+            View original question paper ↗
+          </a>
+        ) : null}
+
+        {qbPreambleError ? (
+          <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{qbPreambleError}</div>
+        ) : null}
+
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-[#65676b]">Context / Preamble Text</label>
+          <textarea
+            rows={6}
+            className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21] resize-y"
+            placeholder="Enter the question context or preamble here (e.g. 'In the diagram below, ABCD is a rectangle…')"
+            value={qbPreambleDraft.text}
+            onChange={(e) => setQbPreambleDraft(prev => ({ ...prev, text: e.target.value }))}
+            disabled={qbPreambleSaving}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-[#65676b]">Diagram / Screenshot</label>
+          {qbPreambleImagePreview ? (
+            <div className="relative">
+              <img src={qbPreambleImagePreview} alt="Preview"
+                className="max-h-[200px] w-full rounded-lg border border-slate-200 object-contain bg-slate-50" />
+              <button
+                className="absolute right-1 top-1 rounded-full bg-white border border-slate-200 px-2 py-0.5 text-xs text-slate-500 shadow-sm"
+                onClick={() => { setQbPreambleImage(null); setQbPreambleImagePreview(null) }}
+              >✕</button>
+            </div>
+          ) : qbPreambleDraft.imageUrl ? (
+            <div className="relative">
+              <img src={qbPreambleDraft.imageUrl} alt="Current diagram"
+                className="max-h-[200px] w-full rounded-lg border border-slate-200 object-contain bg-slate-50" />
+              <button
+                className="absolute right-1 top-1 rounded-full bg-white border border-slate-200 px-2 py-0.5 text-xs text-slate-500 shadow-sm"
+                onClick={() => setQbPreambleDraft(prev => ({ ...prev, imageUrl: '' }))}
+              >✕</button>
+            </div>
+          ) : null}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="block text-xs text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-amber-50 file:px-2.5 file:py-1 file:text-xs file:font-medium file:text-amber-700"
+            disabled={qbPreambleSaving}
+            onChange={(e) => {
+              const file = e.target.files?.[0] || null
+              setQbPreambleImage(file)
+              if (file) {
+                const reader = new FileReader()
+                reader.onload = (ev) => setQbPreambleImagePreview(ev.target?.result as string || null)
+                reader.readAsDataURL(file)
+              } else {
+                setQbPreambleImagePreview(null)
+              }
+            }}
+          />
+          <div className="space-y-1">
+            <p className="text-xs text-slate-400">Or paste an image URL directly:</p>
+            <input
+              type="url"
+              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-xs text-[#1c1e21]"
+              placeholder="https://..."
+              value={qbPreambleDraft.imageUrl}
+              onChange={(e) => setQbPreambleDraft(prev => ({ ...prev, imageUrl: e.target.value }))}
+              disabled={qbPreambleSaving}
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <button
+            type="button"
+            className="flex-1 inline-flex h-10 items-center justify-center rounded-full bg-amber-500 px-4 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
+            onClick={() => void savePreamble()}
+            disabled={qbPreambleSaving || !qbPreambleDraft.text.trim()}
+          >
+            {qbPreambleSaving ? 'Saving…' : 'Save Context'}
+          </button>
+          <button
+            type="button"
+            className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] hover:bg-[#eef2f7] disabled:opacity-50"
+            onClick={() => { setQbPreambleEditOpen(false); setQbPreambleError(null) }}
+            disabled={qbPreambleSaving}
           >
             Cancel
           </button>

@@ -182,8 +182,56 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ updated: count })
   }
 
+  // POST: create a single (root) ExamQuestion record
+  if (req.method === 'POST') {
+    if (role !== 'admin') return res.status(403).json({ message: 'Admin only' })
+    const body = req.body as Record<string, unknown>
+    const postGrade = normalizeGradeInput(body.grade as string)
+    if (!postGrade) return res.status(400).json({ message: 'grade is required' })
+    const postYear = typeof body.year === 'number' ? body.year : parseInt(String(body.year || ''), 10)
+    if (!Number.isFinite(postYear)) return res.status(400).json({ message: 'year is required' })
+    const postMonth = typeof body.month === 'string' ? body.month.trim() : ''
+    if (!postMonth) return res.status(400).json({ message: 'month is required' })
+    const postPaper = typeof body.paper === 'number' ? body.paper : parseInt(String(body.paper || ''), 10)
+    if (!Number.isFinite(postPaper)) return res.status(400).json({ message: 'paper is required' })
+    const postQNum = typeof body.questionNumber === 'string' ? body.questionNumber.trim() : ''
+    if (!postQNum) return res.status(400).json({ message: 'questionNumber is required' })
+    const postText = typeof body.questionText === 'string' ? body.questionText.trim() : ''
+    if (!postText) return res.status(400).json({ message: 'questionText is required' })
+    const postDepth = typeof body.questionDepth === 'number' ? body.questionDepth : 0
+    const postImageUrl = typeof body.imageUrl === 'string' && /^https?:\/\//i.test(body.imageUrl.trim()) ? body.imageUrl.trim() : null
+    const postTableMd = typeof body.tableMarkdown === 'string' ? body.tableMarkdown.trim() || null : null
+    const postSourceId = typeof body.sourceId === 'string' ? body.sourceId.trim() || null : null
+    const postApproved = body.approved !== undefined ? Boolean(body.approved) : false
+    try {
+      const created = await prisma.examQuestion.create({
+        data: {
+          grade: postGrade,
+          year: postYear,
+          month: postMonth,
+          paper: postPaper,
+          questionNumber: postQNum,
+          questionDepth: postDepth,
+          questionText: postText,
+          imageUrl: postImageUrl,
+          tableMarkdown: postTableMd,
+          sourceId: postSourceId,
+          approved: postApproved,
+        },
+        select: {
+          id: true, grade: true, year: true, month: true, paper: true,
+          questionNumber: true, questionDepth: true, questionText: true,
+          latex: true, imageUrl: true, tableMarkdown: true, approved: true, sourceId: true,
+        },
+      })
+      return res.status(201).json(created)
+    } catch (err: any) {
+      return res.status(500).json({ message: err?.message || 'Failed to create question' })
+    }
+  }
+
   if (req.method !== 'GET') {
-    res.setHeader('Allow', ['GET', 'PATCH', 'DELETE'])
+    res.setHeader('Allow', ['GET', 'PATCH', 'DELETE', 'POST'])
     return res.status(405).end('Method not allowed')
   }
 
@@ -249,14 +297,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const sources = sourceIds.length
     ? await prisma.resourceBankItem.findMany({
         where: { id: { in: sourceIds } },
-        select: { id: true, title: true, parsedJson: true },
+        select: { id: true, title: true, url: true, parsedJson: true },
       })
     : []
 
   const sourceImageMap = new Map<string, Map<string, string[]>>()
   const sourceTitleMap = new Map<string, string>()
+  const sourceUrlMap = new Map<string, string>()
   for (const source of sources) {
     sourceTitleMap.set(source.id, String(source.title || '').trim())
+    if (source.url) sourceUrlMap.set(source.id, String(source.url).trim())
     const parsed = source.parsedJson as any
     const combined = new Map<string, string[]>()
 
@@ -293,6 +343,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       imageUrl: imageUrls[0] || null,
       imageUrls,
       sourceTitle: item.sourceId ? (sourceTitleMap.get(item.sourceId) || null) : null,
+      sourceUrl: item.sourceId ? (sourceUrlMap.get(item.sourceId) || null) : null,
     }
   })
 

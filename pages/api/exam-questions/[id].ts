@@ -23,7 +23,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === 'PATCH') {
     if (role !== 'admin') return res.status(403).json({ message: 'Admin only' })
 
-    const { topic, cognitiveLevel, marks, approved, questionText, latex, questionNumber } = req.body as {
+    const { topic, cognitiveLevel, marks, approved, questionText, latex, questionNumber, imageUrl, tableMarkdown } = req.body as {
       topic?: string | null
       cognitiveLevel?: number | null
       marks?: number | null
@@ -31,6 +31,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       questionText?: string
       latex?: string | null
       questionNumber?: string
+      imageUrl?: string | null
+      tableMarkdown?: string | null
     }
 
     const data: any = {}
@@ -58,6 +60,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Recompute depth
       data.questionDepth = Math.max(0, n.split('.').length - 1)
     }
+    if (imageUrl !== undefined) {
+      const u = typeof imageUrl === 'string' ? imageUrl.trim() : ''
+      data.imageUrl = u && /^https?:\/\//i.test(u) ? u : null
+    }
+    if (tableMarkdown !== undefined) {
+      data.tableMarkdown = typeof tableMarkdown === 'string' ? tableMarkdown.trim() || null : null
+    }
 
     if (Object.keys(data).length === 0) {
       return res.status(400).json({ message: 'No updatable fields provided' })
@@ -70,6 +79,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         select: {
           id: true, topic: true, cognitiveLevel: true, marks: true,
           approved: true, questionText: true, latex: true, questionNumber: true, questionDepth: true,
+          imageUrl: true, tableMarkdown: true,
         },
       })
       return res.status(200).json(updated)

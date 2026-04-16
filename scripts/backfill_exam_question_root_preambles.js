@@ -268,55 +268,41 @@ function pickQuestionTableMarkdown(qNum, tableMap) {
     const parent = parts.slice(0, i).join('.')
     const inherited = tableMap.get(parent)
     if (inherited && inherited.length) return inherited.join('\n\n')
-
-  // For ROOT (depth-0) preamble records we also look at direct children (root.1, root.2…)
-  // as a fallback. This covers cases where Mathpix placed the shared preamble diagram or
-  // table after the first sub-question marker in the MMD output.
-  function pickRootPreambleImageUrls(root, imageMap) {
-    const urls = []
-    const push = (u) => { if (u && !urls.includes(u)) urls.push(u) }
-
-    // 1. Direct root scope (preamble section images — before any n.x line)
-    for (const u of imageMap.get(root) || []) push(u)
-    if (urls.length > 0) return urls
-
-    // 2. Fallback: images tagged to direct children (root.1, root.2, …)
-    //    Sort children numerically so root.1 is checked before root.2
-    const childKeys = Array.from(imageMap.keys())
-      .filter((k) => {
-        const parts = String(k).split('.')
-        return parts.length === 2 && parts[0] === root
-      })
-      .sort((a, b) => Number(a.split('.')[1]) - Number(b.split('.')[1]))
-
-    for (const key of childKeys) {
-      for (const u of imageMap.get(key) || []) push(u)
-      if (urls.length > 0) break // take first child that has images
-    }
-
-    return urls
   }
 
-  function pickRootPreambleTableMarkdown(root, tableMap) {
-    // 1. Direct root scope
-    const direct = tableMap.get(root)
-    if (direct && direct.length) return direct.join('\n\n')
+  return null
+}
 
-    // 2. Fallback: first direct child with tables
-    const childKeys = Array.from(tableMap.keys())
-      .filter((k) => {
-        const parts = String(k).split('.')
-        return parts.length === 2 && parts[0] === root
-      })
-      .sort((a, b) => Number(a.split('.')[1]) - Number(b.split('.')[1]))
+function pickRootPreambleImageUrls(root, imageMap) {
+  const urls = []
+  const push = (u) => { if (u && !urls.includes(u)) urls.push(u) }
 
-    for (const key of childKeys) {
-      const tables = tableMap.get(key)
-      if (tables && tables.length) return tables.join('\n\n')
-    }
+  for (const u of imageMap.get(root) || []) push(u)
+  if (urls.length > 0) return urls
 
-    return null
+  const childKeys = Array.from(imageMap.keys())
+    .filter((k) => { const p = String(k).split('.'); return p.length === 2 && p[0] === root })
+    .sort((a, b) => Number(a.split('.')[1]) - Number(b.split('.')[1]))
+
+  for (const key of childKeys) {
+    for (const u of imageMap.get(key) || []) push(u)
+    if (urls.length > 0) break
   }
+
+  return urls
+}
+
+function pickRootPreambleTableMarkdown(root, tableMap) {
+  const direct = tableMap.get(root)
+  if (direct && direct.length) return direct.join('\n\n')
+
+  const childKeys = Array.from(tableMap.keys())
+    .filter((k) => { const p = String(k).split('.'); return p.length === 2 && p[0] === root })
+    .sort((a, b) => Number(a.split('.')[1]) - Number(b.split('.')[1]))
+
+  for (const key of childKeys) {
+    const tables = tableMap.get(key)
+    if (tables && tables.length) return tables.join('\n\n')
   }
 
   return null

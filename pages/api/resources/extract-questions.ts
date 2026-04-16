@@ -431,8 +431,9 @@ async function upsertRootPreambleRecords(opts: {
     const cleanPreamble = normalizeExamQuestionContent(String(preamble || ''), '').questionText
     if (!cleanPreamble) continue
 
-    const rootImageUrl = pickQuestionImageUrl(root, imageMap)
-    const rootTableMarkdown = pickQuestionTableMarkdown(root, tableMap)
+    const rootImageUrls = pickRootPreambleImageUrls(root, imageMap)
+    const rootImageUrl = rootImageUrls[0] || null
+    const rootTableMarkdown = pickRootPreambleTableMarkdown(root, tableMap)
 
     const existingRoot = existing.find((row) => {
       const rowNumber = String(row.questionNumber || '')
@@ -975,8 +976,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     `- marks: the mark allocation as an integer if shown in brackets (e.g. "(3)" ÔåÆ 3), else null\n` +
     `- topic: one of: ${VALID_TOPICS.join(', ')}\n` +
     `- cognitiveLevel: integer 1-4 where 1=Knowledge, 2=Routine procedures, 3=Complex procedures, 4=Problem-solving\n` +
-    `- Include question preambles in questionText. If a main question starts with context text after "QUESTION n" and before numbered parts, keep that context. If a sub-question has its own preamble, keep it too.\n` +
-    `- tableMarkdown: if the question refers to a data table (e.g. frequency table, timetable, statistics table), copy the FULL pipe-table markdown exactly as it appears in the input (including header separator row). If the question has no table, use null.\n\n` +
+    `- Include question preambles in questionText. If a main question (e.g. "1") starts with shared context text or a scenario after "QUESTION n" and before the first numbered sub-part (e.g. "1.1"), include that FULL preamble in the root question's questionText. If a sub-question has its own preamble, keep it too.\n` +
+    `- tableMarkdown: CRITICAL — if the question or its preamble contains a data table (frequency table, value table, timetable, two-way table, statistics table, etc.), copy the FULL pipe-table markdown exactly as it appears in the input (including the header row and separator row "| --- | --- |"). For root questions (e.g. questionNumber "1") that have a shared preamble table, include it in that root record's tableMarkdown even if individual sub-questions also refer to it. If there is no table, use null.\n` +
+    `- imageUrl: leave absent — diagram images are extracted separately from the source document.\n\n` +
     `Return ONLY a valid JSON array of objects with keys: questionNumber, questionText, latex, marks, topic, cognitiveLevel, tableMarkdown\n` +
     `Do not include any text outside the JSON array.\n\n` +
     `OCR/MMD INPUT (may be imperfect):\n${inputText}`

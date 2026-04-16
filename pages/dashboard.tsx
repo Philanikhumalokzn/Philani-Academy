@@ -13774,6 +13774,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const cleanText = decodeEscapedQuestionText(q?.questionText)
                 const cleanLatex = normalizeQuestionLatex(q?.latex)
                 const latexHtml = cleanLatex ? renderKatexDisplayHtml(cleanLatex) : ''
+                const questionImageUrls = (() => {
+                  const urls: string[] = []
+                  const pushUrl = (value: unknown) => {
+                    const url = typeof value === 'string' ? value.trim() : ''
+                    if (!url) return
+                    if (!/^https?:\/\//i.test(url)) return
+                    if (!urls.includes(url)) urls.push(url)
+                  }
+
+                  if (Array.isArray(q?.imageUrls)) {
+                    for (const imageUrl of q.imageUrls) pushUrl(imageUrl)
+                  }
+                  pushUrl(q?.imageUrl)
+                  return urls
+                })()
 
                 return (
                   <li key={q.id} className="border-b border-black/10 bg-white px-4 py-3">
@@ -13789,14 +13804,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       {renderQuestionTextWithInlineLatex(cleanText)}
                     </div>
 
-                    {typeof q?.imageUrl === 'string' && q.imageUrl.trim() ? (
-                      <div className="mt-2 overflow-hidden rounded-lg border border-[#dbe4f3] bg-[#f8fbff]">
-                        <img
-                          src={q.imageUrl}
-                          alt={`Diagram for question ${q.questionNumber}`}
-                          className="max-h-[280px] w-full object-contain"
-                          loading="lazy"
-                        />
+                    {questionImageUrls.length > 0 ? (
+                      <div className="mt-2 grid gap-2">
+                        {questionImageUrls.map((imageUrl, imageIndex) => (
+                          <div key={`${q.id}-diagram-${imageIndex}`} className="overflow-hidden rounded-lg border border-[#dbe4f3] bg-[#f8fbff]">
+                            <img
+                              src={imageUrl}
+                              alt={`Diagram ${imageIndex + 1} for question ${q.questionNumber}`}
+                              className="max-h-[280px] w-full object-contain"
+                              loading="lazy"
+                            />
+                          </div>
+                        ))}
                       </div>
                     ) : null}
 

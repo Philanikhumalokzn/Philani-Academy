@@ -18,17 +18,18 @@ function buildQuestionTableMapFromMmd(mmd) {
 
   const collapseNestedTabulars = (input) => {
     let text = input
-    const nestedTabularRegex = /\\begin\{tabular\}\{[^}]*\}((?:(?!\\begin\{tabular\}).|\n|\r)*)\\end\{tabular\}/g
-
-    while (nestedTabularRegex.test(text)) {
-      text = text.replace(nestedTabularRegex, (_match, inner) => String(inner || '')
-        .replace(/\\hline/g, ' ')
-        .replace(/\\\\/g, ' ')
-        .replace(/[\r\n]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim())
+    let prev = ''
+    while (prev !== text) {
+      prev = text
+      text = text.replace(
+        /\\begin\{tabular\}\{[^}]*\}([\s\S]*?)\\end\{tabular\}/g,
+        (_match, inner) => String(inner || '')
+          .replace(/\\hline/g, '')
+          .replace(/\\\\/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      )
     }
-
     return text
   }
 
@@ -36,21 +37,18 @@ function buildQuestionTableMapFromMmd(mmd) {
     let text = String(tabular || '').trim()
     if (!text.includes('\\begin{tabular}')) return null
 
-    text = collapseNestedTabulars(text)
     text = text
       .replace(/^\\begin\{tabular\}\{[^}]*\}\s*/i, '')
       .replace(/\s*\\end\{tabular\}\s*$/i, '')
-      .replace(/\\hline/g, ' ')
-      .replace(/[\r\n]+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
+
+    text = collapseNestedTabulars(text)
 
     const rows = text
       .split(/\\\\/)
-      .map((row) => row.trim())
+      .map((row) => row.replace(/\\hline/g, '').replace(/[\r\n]+/g, ' ').trim())
       .filter(Boolean)
-      .map((row) => row.split('&').map((cell) => cell.trim()).filter(Boolean))
-      .filter((row) => row.length > 0)
+      .map((row) => row.split('&').map((cell) => cell.trim()).filter((_c, i, arr) => i < arr.length))
+      .filter((row) => row.some((cell) => cell.length > 0))
 
     if (rows.length === 0) return null
 
@@ -150,11 +148,6 @@ async function main() {
       grade,
       paper: { in: papers },
       sourceId: { not: null },
-      OR: [
-        { tableMarkdown: null },
-        { tableMarkdown: '' },
-        { tableMarkdown: { startsWith: '| Col 1 |' } },
-      ],
     },
     select: {
       id: true,

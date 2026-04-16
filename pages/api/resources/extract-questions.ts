@@ -90,18 +90,22 @@ function buildQuestionImageMapFromMmd(mmd: string): Map<string, string[]> {
 }
 
 function collapseNestedTabulars(input: string): string {
+  // Replace inner \begin{tabular}...\end{tabular} with flat cell text.
+  // We must NOT consume \\ row separators that belong to the outer tabular,
+  // so we only strip \\ *inside* the nested block.
   let text = input
-  const nestedTabularRegex = /\\begin\{tabular\}\{[^}]*\}((?:(?!\\begin\{tabular\}).|\n|\r)*)\\end\{tabular\}/g
-
-  while (nestedTabularRegex.test(text)) {
-    text = text.replace(nestedTabularRegex, (_match, inner) => String(inner || '')
-      .replace(/\\hline/g, ' ')
-      .replace(/\\\\/g, ' ')
-      .replace(/[\r\n]+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim())
+  let prev = ''
+  while (prev !== text) {
+    prev = text
+    text = text.replace(
+      /\\begin\{tabular\}\{[^}]*\}((?:(?!\\begin\{tabular\})[\s\S])*?)\\end\{tabular\}/g,
+      (_match, inner) => String(inner || '')
+        .replace(/\\hline/g, '')
+        .replace(/\\\\/g, ' ')  // row breaks inside nested cell become spaces
+        .replace(/\s+/g, ' ')
+        .trim()
+    )
   }
-
   return text
 }
 
@@ -109,21 +113,21 @@ function tabularToPipeTable(tabular: string): string | null {
   let text = String(tabular || '').trim()
   if (!text.includes('\\begin{tabular}')) return null
 
-  text = collapseNestedTabulars(text)
+  // Strip outer \begin{tabular}{...} and \end{tabular} wrappers first
   text = text
     .replace(/^\\begin\{tabular\}\{[^}]*\}\s*/i, '')
     .replace(/\s*\\end\{tabular\}\s*$/i, '')
-    .replace(/\\hline/g, ' ')
-    .replace(/[\r\n]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
 
+  // Collapse nested tabular blocks so their inner \\ don't split as row breaks
+  text = collapseNestedTabulars(text)
+
+  // Now split on outer LaTeX row breaks (\\) to get rows
   const rows = text
     .split(/\\\\/)
-    .map((row) => row.trim())
+    .map((row) => row.replace(/\\hline/g, '').replace(/[\r\n]+/g, ' ').trim())
     .filter(Boolean)
-    .map((row) => row.split('&').map((cell) => cell.trim()).filter(Boolean))
-    .filter((row) => row.length > 0)
+    .map((row) => row.split('&').map((cell) => cell.trim()).filter((_c, i, arr) => i < arr.length))
+    .filter((row) => row.some((cell) => cell.length > 0))
 
   if (rows.length === 0) return null
 

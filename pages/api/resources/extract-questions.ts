@@ -37,6 +37,70 @@ function coerceGeminiQuestionsArray(value: unknown): any[] | null {
   return null
 }
 
+function buildQuestionImageMapFromMmd(mmd: string): Map<string, string[]> {
+  const map = new Map<string, string[]>()
+  if (!mmd.trim()) return map
+
+  const push = (qNum: string, url: string) => {
+    if (!qNum || !url) return
+    const current = map.get(qNum) || []
+    if (!current.includes(url)) current.push(url)
+    map.set(qNum, current)
+  }
+
+  const lines = mmd.split(/\r?\n/)
+  let currentTop = ''
+  let currentSub = ''
+
+  for (const rawLine of lines) {
+    const line = String(rawLine || '').trim()
+    if (!line) continue
+
+    const topSectionMatch = line.match(/\\section\*\{\s*QUESTION\s+(\d+)\s*\}/i)
+      || line.match(/^QUESTION\s+(\d+)\b/i)
+    if (topSectionMatch?.[1]) {
+      currentTop = topSectionMatch[1]
+      currentSub = ''
+    }
+
+    const numberedMatch = line.match(/^((?:\d+)(?:\.\d+){1,5})\b/)
+    if (numberedMatch?.[1]) {
+      const candidate = numberedMatch[1]
+      if (!currentTop || candidate === currentTop || candidate.startsWith(`${currentTop}.`)) {
+        currentSub = candidate
+      }
+    }
+
+    const imageMatches = line.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)
+    for (const match of imageMatches) {
+      const url = String(match?.[1] || '').trim()
+      if (!url) continue
+
+      if (currentSub) {
+        push(currentSub, url)
+      } else if (currentTop) {
+        push(currentTop, url)
+      }
+    }
+  }
+
+  return map
+}
+
+function pickQuestionImageUrl(qNum: string, imageMap: Map<string, string[]>): string | null {
+  const direct = imageMap.get(qNum)
+  if (direct?.length) return direct[0]
+
+  const parts = qNum.split('.').filter(Boolean)
+  for (let i = parts.length - 1; i > 0; i -= 1) {
+    const parent = parts.slice(0, i).join('.')
+    const inherited = imageMap.get(parent)
+    if (inherited?.length) return inherited[0]
+  }
+
+  return null
+}
+
 function salvageJsonObjectsArray(text: string): any[] | null {
   const source = String(text || '')
   if (!source) return null
@@ -311,6 +375,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const parsed = resource.parsedJson as any
   const rawText = (typeof parsed?.text === 'string' ? parsed.text : '').trim()
+  const rawMmd = (typeof parsed?.raw?.mmd === 'string' ? parsed.raw.mmd : '').trim()
+  const questionImageMap = buildQuestionImageMapFromMmd(rawMmd)
   const gradeLabel = String(resource.grade).replace('_', ' ').replace('GRADE ', 'Grade ')
 
   const prompt =
@@ -398,6 +464,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const topic = VALID_TOPICS.includes(item.topic) ? item.topic : null
     const cl = typeof item.cognitiveLevel === 'number' ? Math.min(4, Math.max(1, Math.round(item.cognitiveLevel))) : null
     const depth = questionDepthFromNumber(qNum)
+    const imageUrl = pickQuestionImageUrl(qNum, questionImageMap)
 
     try {
       const eq = await prisma.examQuestion.create({
@@ -414,6 +481,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           marks,
           questionText: qText,
           latex: latex || null,
+          imageUrl,
           approved: false,
         },
         select: { id: true },

@@ -13789,6 +13789,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       {renderQuestionTextWithInlineLatex(cleanText)}
                     </div>
 
+                    {typeof q?.imageUrl === 'string' && q.imageUrl.trim() ? (
+                      <div className="mt-2 overflow-hidden rounded-lg border border-[#dbe4f3] bg-[#f8fbff]">
+                        <img
+                          src={q.imageUrl}
+                          alt={`Diagram for question ${q.questionNumber}`}
+                          className="max-h-[280px] w-full object-contain"
+                          loading="lazy"
+                        />
+                      </div>
+                    ) : null}
+
                     {cleanLatex ? (
                       latexHtml ? (
                         <div className="mt-2 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-[#1c1e21] leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />

@@ -47,6 +47,22 @@ function toSafeInt(value: unknown): number | null {
   return null
 }
 
+function coerceQuestionImageUrl(item: Record<string, unknown>): string | null {
+  const direct = typeof item.imageUrl === 'string' ? item.imageUrl.trim() : ''
+  if (direct) return direct
+
+  const diagrams = Array.isArray(item.diagrams) ? item.diagrams : []
+  for (const diagram of diagrams) {
+    if (!diagram || typeof diagram !== 'object') continue
+    const url = typeof (diagram as Record<string, unknown>).url === 'string'
+      ? String((diagram as Record<string, unknown>).url).trim()
+      : ''
+    if (url) return url
+  }
+
+  return null
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST'])
@@ -175,6 +191,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const levelRaw = toSafeInt((item as any).cognitiveLevel)
     const cognitiveLevel = typeof levelRaw === 'number' ? Math.min(4, Math.max(1, levelRaw)) : null
     const depth = questionDepthFromNumber(qNum)
+    const imageUrl = coerceQuestionImageUrl(item as Record<string, unknown>)
 
     try {
       const eq = await prisma.examQuestion.create({
@@ -191,6 +208,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           marks,
           questionText: qText,
           latex: latex || null,
+          imageUrl,
           approved: false,
         },
         select: { id: true },

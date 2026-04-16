@@ -26,6 +26,25 @@ function questionDepthFromNumber(qNum: string): number {
   return Math.max(0, parts.length - 1)
 }
 
+function questionNumberParts(qNum: string): number[] {
+  const match = String(qNum || '').trim().match(/(\d+(?:\.\d+)*)/)
+  if (!match?.[1]) return []
+  return match[1]
+    .split('.')
+    .map((part) => Number(part))
+    .filter((part) => Number.isFinite(part))
+}
+
+function questionRootFromNumber(qNum: string): string {
+  const parts = questionNumberParts(qNum)
+  return parts.length > 0 ? String(parts[0]) : ''
+}
+
+function isTopLevelQuestionNumber(qNum: string, depth?: number | null): boolean {
+  if (typeof depth === 'number') return depth <= 0
+  return questionNumberParts(qNum).length <= 1
+}
+
 function coerceGeminiQuestionsArray(value: unknown): any[] | null {
   if (Array.isArray(value)) return value
   if (!value || typeof value !== 'object') return null
@@ -364,6 +383,113 @@ function mergePreambleIntoQuestionText(questionText: string, preamble: string | 
   if (overlapRatio >= 0.78) return qText
 
   return `${pText}\n\n${qText}`
+}
+
+async function upsertRootPreambleRecords(opts: {
+  sourceId: string
+  grade: any
+  year: number
+  month: string
+  paper: number
+  preambleMap: Map<string, string>
+  imageMap: Map<string, string[]>
+  tableMap: Map<string, string[]>
+}): Promise<{ created: number; updated: number }> {
+  const {
+    sourceId,
+    grade,
+    year,
+    month,
+    paper,
+    preambleMap,
+    imageMap,
+    tableMap,
+  } = opts
+
+  const roots = Array.from(preambleMap.entries())
+    .filter(([scope, text]) => !scope.includes('.') && String(text || '').trim().length > 0)
+    .sort(([a], [b]) => Number(a) - Number(b))
+
+  if (roots.length === 0) return { created: 0, updated: 0 }
+
+  const existing = await prisma.examQuestion.findMany({
+    where: { sourceId, grade, year, month, paper },
+    select: {
+      id: true,
+      questionNumber: true,
+      questionDepth: true,
+      questionText: true,
+      imageUrl: true,
+      tableMarkdown: true,
+    },
+  })
+
+  let created = 0
+  let updated = 0
+
+  for (const [root, preamble] of roots) {
+    const cleanPreamble = normalizeExamQuestionContent(String(preamble || ''), '').questionText
+    if (!cleanPreamble) continue
+
+    const rootImageUrl = pickQuestionImageUrl(root, imageMap)
+    const rootTableMarkdown = pickQuestionTableMarkdown(root, tableMap)
+
+    const existingRoot = existing.find((row) => {
+      const rowNumber = String(row.questionNumber || '')
+      return isTopLevelQuestionNumber(rowNumber, row.questionDepth) && questionRootFromNumber(rowNumber) === root
+    })
+
+    if (existingRoot) {
+      const mergedText = mergePreambleIntoQuestionText(existingRoot.questionText, cleanPreamble)
+      const updateData: Record<string, unknown> = {}
+
+      if (mergedText && mergedText !== existingRoot.questionText) {
+        updateData.questionText = mergedText
+      }
+      if ((existingRoot.questionDepth ?? 0) !== 0) {
+        updateData.questionDepth = 0
+      }
+      if (!existingRoot.imageUrl && rootImageUrl) {
+        updateData.imageUrl = rootImageUrl
+      }
+      if (!existingRoot.tableMarkdown && rootTableMarkdown) {
+        updateData.tableMarkdown = rootTableMarkdown
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        await prisma.examQuestion.update({
+          where: { id: existingRoot.id },
+          data: updateData,
+        })
+        updated += 1
+      }
+      continue
+    }
+
+    await prisma.examQuestion.create({
+      data: {
+        sourceId,
+        grade,
+        year,
+        month,
+        paper,
+        questionNumber: root,
+        questionDepth: 0,
+        topic: null,
+        cognitiveLevel: null,
+        marks: null,
+        questionText: cleanPreamble,
+        latex: null,
+        imageUrl: rootImageUrl,
+        tableMarkdown: rootTableMarkdown,
+        approved: false,
+      },
+      select: { id: true },
+    })
+    created += 1
+  }
+
+  return { created, updated }
 }
 
 function salvageJsonObjectsArray(text: string): any[] | null {
@@ -927,6 +1053,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const created: string[] = []
   const skipped: number[] = []
 
+  const rootPreambleResult = await upsertRootPreambleRecords({
+    sourceId: resource.id,
+    grade: gradeEnum,
+    year,
+    month,
+    paper,
+    preambleMap: questionPreambleMap,
+    imageMap: questionImageMap,
+    tableMap: questionTableMap,
+  })
+
   for (let i = 0; i < geminiResult.length; i++) {
     const item = geminiResult[i]
     if (!item || typeof item !== 'object') { skipped.push(i); continue }
@@ -1018,6 +1155,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     message: `Extracted ${created.length} question(s). ${skipped.length} skipped.`,
     created: created.length,
     skipped: skipped.length,
+    rootPreamblesCreated: rootPreambleResult.created,
+    rootPreamblesUpdated: rootPreambleResult.updated,
     ids: created,
   })
 }

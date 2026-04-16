@@ -70,7 +70,7 @@ function wrapExactLatexLiteral(segment: string, latex: string): string {
 
 function wrapBackslashCommands(segment: string): string {
   return segment.replace(
-    /(\\(?:frac|dfrac|tfrac|sqrt|theta|alpha|beta|gamma|pi|sigma|mu|sin|cos|tan|log|ln|cdot|times|pm|mp|leq|geq|neq|approx|left|right|text|mathrm|mathbf|mathit)(?:\[[^\]]+\])?(?:\{[^{}]+\}|\([^()]*\)|\[[^\]]*\]|[A-Za-z0-9])+)/g,
+    /(\\(?:frac|dfrac|tfrac|sqrt|theta|alpha|beta|gamma|pi|sigma|mu|sin|cos|tan|cot|sec|csc|log|ln|cdot|times|pm|mp|leq|geq|neq|approx|left|right|text|mathrm|mathbf|mathit|hat|widehat|triangle|quad|qquad|degree)(?:\[[^\]]+\])?(?:(?:\{[^{}]+\}|\([^()]*\)|\[[^\]]*\]|[A-Za-z0-9])+)?)/g,
     (match) => wrapInlineMath(match),
   )
 }

@@ -13507,47 +13507,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return latex
   }
 
-  const normalizeComparableMath = (value: string) => {
-    return String(value || '')
-      .replace(/\$\$?/g, '')
-      .replace(/\\\(|\\\)|\\\[|\\\]/g, '')
-      .replace(/\\left|\\right/g, '')
-      .replace(/[{}]/g, '')
-      .replace(/\\/g, '')
-      .replace(/\s+/g, '')
-      .toLowerCase()
-      .trim()
-  }
-
-  const stripTrailingDuplicatedMath = (questionText: string, latex: string) => {
-    const text = String(questionText || '').trim()
-    const math = String(latex || '').trim()
-    if (!text || !math) return text
-
-    const mathComparable = normalizeComparableMath(math)
-    if (!mathComparable || mathComparable.length < 4) return text
-
-    const colonTailMatch = text.match(/^(.*?:)\s*(.+)$/s)
-    if (!colonTailMatch) return text
-
-    const prefix = String(colonTailMatch[1] || '').trim()
-    const tail = String(colonTailMatch[2] || '').trim()
-    if (!prefix || !tail) return text
-
-    const tailComparable = normalizeComparableMath(tail)
-    if (!tailComparable) return text
-
-    if (
-      tailComparable === mathComparable
-      || tailComparable.includes(mathComparable)
-      || mathComparable.includes(tailComparable)
-    ) {
-      return prefix
-    }
-
-    return text
-  }
-
   const readInlineQuestionLatex = (input: string, start: number) => {
     let index = start
     let braceDepth = 0
@@ -13814,7 +13773,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               (() => {
                 const cleanText = decodeEscapedQuestionText(q?.questionText)
                 const cleanLatex = normalizeQuestionLatex(q?.latex)
-                const displayText = stripTrailingDuplicatedMath(cleanText, cleanLatex)
                 const latexHtml = cleanLatex ? renderKatexDisplayHtml(cleanLatex) : ''
                 const questionImageUrls = (() => {
                   const urls: string[] = []
@@ -13842,11 +13800,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       {q.marks ? <span className="text-xs text-[#65676b]">{q.marks} marks</span> : null}
                     </div>
 
-                    {displayText ? (
-                      <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
-                        {renderQuestionTextWithInlineLatex(displayText)}
-                      </div>
-                    ) : null}
+                    <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
+                      {renderQuestionTextWithInlineLatex(cleanText)}
+                    </div>
 
                     {questionImageUrls.length > 0 ? (
                       <div className="mt-2 grid gap-2">

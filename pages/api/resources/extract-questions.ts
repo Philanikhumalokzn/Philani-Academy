@@ -89,6 +89,128 @@ function buildQuestionImageMapFromMmd(mmd: string): Map<string, string[]> {
   return map
 }
 
+function collapseNestedTabulars(input: string): string {
+  let text = input
+  const nestedTabularRegex = /\\begin\{tabular\}\{[^}]*\}((?:(?!\\begin\{tabular\}).|\n|\r)*)\\end\{tabular\}/g
+
+  while (nestedTabularRegex.test(text)) {
+    text = text.replace(nestedTabularRegex, (_match, inner) => String(inner || '')
+      .replace(/\\hline/g, ' ')
+      .replace(/\\\\/g, ' ')
+      .replace(/[\r\n]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim())
+  }
+
+  return text
+}
+
+function tabularToPipeTable(tabular: string): string | null {
+  let text = String(tabular || '').trim()
+  if (!text.includes('\\begin{tabular}')) return null
+
+  text = collapseNestedTabulars(text)
+  text = text
+    .replace(/^\\begin\{tabular\}\{[^}]*\}\s*/i, '')
+    .replace(/\s*\\end\{tabular\}\s*$/i, '')
+    .replace(/\\hline/g, ' ')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const rows = text
+    .split(/\\\\/)
+    .map((row) => row.trim())
+    .filter(Boolean)
+    .map((row) => row.split('&').map((cell) => cell.trim()).filter(Boolean))
+    .filter((row) => row.length > 0)
+
+  if (rows.length === 0) return null
+
+  const header = rows.length === 1
+    ? rows[0].map((_cell, index) => `Col ${index + 1}`)
+    : rows[0]
+  const bodyRows = rows.length === 1 ? [rows[0]] : rows.slice(1)
+  const width = Math.max(header.length, ...bodyRows.map((row) => row.length))
+  const normalizeRow = (row: string[]) => Array.from({ length: width }, (_value, index) => row[index] || '')
+
+  const pipeRow = (row: string[]) => `| ${normalizeRow(row).join(' | ')} |`
+  return [
+    pipeRow(header),
+    `| ${Array.from({ length: width }, () => '---').join(' | ')} |`,
+    ...bodyRows.map(pipeRow),
+  ].join('\n')
+}
+
+function buildQuestionTableMapFromMmd(mmd: string): Map<string, string[]> {
+  const map = new Map<string, string[]>()
+  if (!mmd.trim()) return map
+
+  const push = (qNum: string, tableMarkdown: string) => {
+    if (!qNum || !tableMarkdown) return
+    const current = map.get(qNum) || []
+    if (!current.includes(tableMarkdown)) current.push(tableMarkdown)
+    map.set(qNum, current)
+  }
+
+  const isTableLine = (line: string) => /^\|.*\|\s*$/.test(line)
+  const lines = mmd.split(/\r?\n/)
+  let currentTop = ''
+  let currentSub = ''
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = String(lines[i] || '').trim()
+    if (!line) continue
+
+    const topSectionMatch = line.match(/\\section\*\{\s*QUESTION\s+(\d+)\s*\}/i)
+      || line.match(/^QUESTION\s+(\d+)\b/i)
+    if (topSectionMatch?.[1]) {
+      currentTop = topSectionMatch[1]
+      currentSub = ''
+    }
+
+    const numberedMatch = line.match(/^((?:\d+)(?:\.\d+){1,5})\b/)
+    if (numberedMatch?.[1]) {
+      const candidate = numberedMatch[1]
+      if (!currentTop || candidate === currentTop || candidate.startsWith(`${currentTop}.`)) {
+        currentSub = candidate
+      }
+    }
+
+    if (isTableLine(line)) {
+      const block: string[] = [line]
+      while (i + 1 < lines.length && isTableLine(String(lines[i + 1] || '').trim())) {
+        i += 1
+        block.push(String(lines[i] || '').trim())
+      }
+
+      if (block.length >= 2) {
+        const target = currentSub || currentTop
+        if (target) push(target, block.join('\n'))
+      }
+      continue
+    }
+
+    if (/\\begin\{tabular\}\{[^}]*\}/.test(line)) {
+      const block: string[] = [line]
+      let depth = (line.match(/\\begin\{tabular\}\{[^}]*\}/g) || []).length - (line.match(/\\end\{tabular\}/g) || []).length
+      while (i + 1 < lines.length && depth > 0) {
+        i += 1
+        const nextLine = String(lines[i] || '').trim()
+        block.push(nextLine)
+        depth += (nextLine.match(/\\begin\{tabular\}\{[^}]*\}/g) || []).length
+        depth -= (nextLine.match(/\\end\{tabular\}/g) || []).length
+      }
+
+      const tableMarkdown = tabularToPipeTable(block.join('\n'))
+      const target = currentSub || currentTop
+      if (target && tableMarkdown) push(target, tableMarkdown)
+    }
+  }
+
+  return map
+}
+
 function pickQuestionImageUrl(qNum: string, imageMap: Map<string, string[]>): string | null {
   const direct = imageMap.get(qNum)
   if (direct?.length) return direct[0]
@@ -98,6 +220,20 @@ function pickQuestionImageUrl(qNum: string, imageMap: Map<string, string[]>): st
     const parent = parts.slice(0, i).join('.')
     const inherited = imageMap.get(parent)
     if (inherited?.length) return inherited[0]
+  }
+
+  return null
+}
+
+function pickQuestionTableMarkdown(qNum: string, tableMap: Map<string, string[]>): string | null {
+  const direct = tableMap.get(qNum)
+  if (direct?.length) return direct.join('\n\n')
+
+  const parts = qNum.split('.').filter(Boolean)
+  for (let i = parts.length - 1; i > 0; i -= 1) {
+    const parent = parts.slice(0, i).join('.')
+    const inherited = tableMap.get(parent)
+    if (inherited?.length) return inherited.join('\n\n')
   }
 
   return null
@@ -569,6 +705,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const rawText = (typeof parsed?.text === 'string' ? parsed.text : '').trim()
   const rawMmd = (typeof parsed?.raw?.mmd === 'string' ? parsed.raw.mmd : '').trim()
   const questionImageMap = buildQuestionImageMapFromMmd(rawMmd)
+  const questionTableMap = buildQuestionTableMapFromMmd(rawMmd)
   const gradeLabel = String(resource.grade).replace('_', ' ').replace('GRADE ', 'Grade ')
 
   // Prefer Mathpix MMD (preserves pipe-table formatting) over raw text
@@ -677,7 +814,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const cl = typeof item.cognitiveLevel === 'number' ? Math.min(4, Math.max(1, Math.round(item.cognitiveLevel))) : null
     const depth = questionDepthFromNumber(qNum)
     const imageUrl = pickQuestionImageUrl(qNum, questionImageMap)
-    const tableMarkdown = typeof item.tableMarkdown === 'string' && item.tableMarkdown.trim() ? item.tableMarkdown.trim() : null
+    const aiTableMarkdown = typeof item.tableMarkdown === 'string' && item.tableMarkdown.trim() ? item.tableMarkdown.trim() : null
+    const tableMarkdown = aiTableMarkdown || pickQuestionTableMarkdown(qNum, questionTableMap)
 
     const existingExact = await prisma.examQuestion.findFirst({
       where: {
@@ -689,10 +827,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         questionText: qText,
         latex: latex || null,
       },
-      select: { id: true },
+      select: { id: true, sourceId: true, imageUrl: true, tableMarkdown: true },
     })
 
     if (existingExact) {
+      const updateData: Record<string, unknown> = {}
+      if (!existingExact.sourceId && resource.id) updateData.sourceId = resource.id
+      if (!existingExact.imageUrl && imageUrl) updateData.imageUrl = imageUrl
+      if (!existingExact.tableMarkdown && tableMarkdown) updateData.tableMarkdown = tableMarkdown
+
+      if (Object.keys(updateData).length > 0) {
+        try {
+          await prisma.examQuestion.update({
+            where: { id: existingExact.id },
+            data: updateData,
+          })
+        } catch {
+          // Non-fatal: preserve original skip behaviour if enrichment update fails.
+        }
+      }
+
       skipped.push(i)
       continue
     }

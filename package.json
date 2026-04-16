@@ -13,6 +13,7 @@
     "silence:baseline-warning": "node scripts/silence_baseline_warning.js",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:studio": "prisma studio",
+    "questions:backfill-math": "node scripts/backfill_exam_question_math.js --write",
     "resend:domains": "node scripts/manage_resend_domain.js",
     "emis:import": "node scripts/import_emis_schools.js"
   },

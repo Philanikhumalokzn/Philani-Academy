@@ -4,6 +4,7 @@ import { useSession } from 'next-auth/react'
 import { upload } from '@vercel/blob/client'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 import { renderKatexDisplayHtml } from '../lib/latexRender'
+import { normalizeExamQuestionContent } from '../lib/questionMath'
 import { renderTextWithKatex } from '../lib/renderTextWithKatex'
 import { renderQuestionTextWithInlineLatex } from '../lib/renderQuestionText'
 import { toDisplayFileName } from '../lib/fileName'
@@ -1037,13 +1038,9 @@ export default function ResourceBankPage() {
                             </div>
                           </div>
                           {(() => {
-                            const cleanText = (typeof q.questionText === 'string' ? q.questionText : '').replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim()
-                            const rawLatex = typeof q.latex === 'string' ? q.latex.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim() : ''
-                            const cleanLatex = rawLatex.startsWith('$$') && rawLatex.endsWith('$$') && rawLatex.length > 4
-                              ? rawLatex.slice(2, -2).trim()
-                              : rawLatex.startsWith('$') && rawLatex.endsWith('$') && rawLatex.length > 2
-                                ? rawLatex.slice(1, -1).trim()
-                                : rawLatex
+                            const normalizedQuestion = normalizeExamQuestionContent(q.questionText, q.latex)
+                            const cleanText = normalizedQuestion.questionText
+                            const cleanLatex = normalizedQuestion.latex
                             const latexHtml = cleanLatex ? renderKatexDisplayHtml(cleanLatex) : ''
 
                             // Collect image URLs

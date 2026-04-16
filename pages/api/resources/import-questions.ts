@@ -3,6 +3,7 @@ import { getToken } from 'next-auth/jwt'
 import prisma from '../../../lib/prisma'
 import crypto from 'crypto'
 import { normalizeGradeInput } from '../../../lib/grades'
+import { normalizeExamQuestionContent } from '../../../lib/questionMath'
 import { upsertResourceBankItem } from '../../../lib/resourceBank'
 
 export const config = {
@@ -177,14 +178,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const qNum = (typeof (item as any).questionNumber === 'string'
       ? (item as any).questionNumber
       : String((item as any).questionNumber || '')).trim()
-    const qText = (typeof (item as any).questionText === 'string' ? (item as any).questionText : '').trim()
+    const normalized = normalizeExamQuestionContent((item as any).questionText, (item as any).latex)
+    const qText = normalized.questionText
 
     if (!qNum || !qText) {
       skipped.push(i)
       continue
     }
 
-    const latex = typeof (item as any).latex === 'string' ? (item as any).latex.trim() : null
+    const latex = normalized.latex || null
     const marksRaw = toSafeInt((item as any).marks)
     const marks = typeof marksRaw === 'number' ? Math.max(0, marksRaw) : null
     const topic = VALID_TOPICS.includes((item as any).topic) ? (item as any).topic : null

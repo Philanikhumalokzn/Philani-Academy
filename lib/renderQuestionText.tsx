@@ -1,4 +1,5 @@
 import React from 'react'
+import { normalizeStoredQuestionText } from './questionMath'
 import { renderTextWithKatex } from './renderTextWithKatex'
 import { renderKatexInlineHtml } from './latexRender'
 
@@ -11,11 +12,12 @@ import { renderKatexInlineHtml } from './latexRender'
  * This is the unified renderer for both dashboard search results and review modals.
  */
 export function renderQuestionTextWithInlineLatex(text: string): React.ReactNode {
-  if (!text) return text
+  const normalizedText = normalizeStoredQuestionText(text)
+  if (!normalizedText) return normalizedText
 
   // If no backslash, just use the delimited renderer
-  if (!text.includes('\\')) {
-    return renderTextWithKatex(text)
+  if (!normalizedText.includes('\\')) {
+    return renderTextWithKatex(normalizedText)
   }
 
   const nodes: React.ReactNode[] = []
@@ -128,18 +130,18 @@ export function renderQuestionTextWithInlineLatex(text: string): React.ReactNode
   }
 
   // Main parsing loop
-  while (cursor < text.length) {
-    const slashIndex = text.indexOf('\\', cursor)
+  while (cursor < normalizedText.length) {
+    const slashIndex = normalizedText.indexOf('\\', cursor)
     if (slashIndex < 0) {
-      pushText(text.slice(cursor))
+      pushText(normalizedText.slice(cursor))
       break
     }
 
     // Push text before the backslash
-    pushText(text.slice(cursor, slashIndex))
+    pushText(normalizedText.slice(cursor, slashIndex))
 
     // Read the LaTeX expression
-    const { expr, end, trailing } = readInlineLatex(text, slashIndex)
+    const { expr, end, trailing } = readInlineLatex(normalizedText, slashIndex)
     if (!expr) {
       pushText(text.slice(slashIndex, slashIndex + 1))
       cursor = slashIndex + 1

@@ -4,6 +4,7 @@ import katex from 'katex'
 import prisma from '../../../lib/prisma'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { tryParseJsonLoose } from '../../../lib/geminiAssignmentExtract'
+import { normalizeExamQuestionContent } from '../../../lib/questionMath'
 
 export const config = {
   api: {
@@ -326,8 +327,9 @@ async function extractQuestionsWithGeminiApi(opts: {
 // Validate math expressions in extracted questions
 function validateQuestionMath(question: any): { valid: boolean; errors: string[] } {
   const errors: string[] = []
-  const qText = typeof question.questionText === 'string' ? question.questionText : ''
-  const latexText = typeof question.latex === 'string' ? question.latex : ''
+  const normalized = normalizeExamQuestionContent(question?.questionText, question?.latex)
+  const qText = normalized.questionText
+  const latexText = normalized.latex
 
   // Validate inline math in questionText (look for $...$ patterns)
   const inlineMatches = qText.matchAll(/\$([^$]+)\$/g)
@@ -355,6 +357,10 @@ function validateQuestionMath(question: any): { valid: boolean; errors: string[]
     errors.push('Unmatched $ delimiter in questionText')
   }
 
+  if (/\$\$|\\\(|\\\)|\\\[|\\\]/.test(qText)) {
+    errors.push('questionText contains non-canonical math delimiters; use only single-dollar inline math')
+  }
+
   return { valid: errors.length === 0, errors }
 }
 
@@ -376,7 +382,9 @@ async function repairQuestionMath(opts: {
     `LaTeX: ${question.latex || '(none)'}\n\n` +
     `Rules:\n` +
     `- Fix all math syntax errors so KaTeX can render them\n` +
-    `- Wrap individual expression in $...$ in questionText\n` +
+    `- In questionText, use ONLY inline single-dollar math in the exact form $Expression$\n` +
+    `- Never use $$...$$, \\(...\\), or \\[...\\] in questionText\n` +
+    `- Use normal single-backslash LaTeX commands inside expressions, e.g. \\frac{a}{b}\n` +
     `- Return ONLY valid JSON with keys: questionNumber, questionText, latex, marks, topic, cognitiveLevel\n` +
     `- Preserve all original content; only fix syntax\n` +
     `Return only the corrected question object as a single JSON object (not an array).`
@@ -457,7 +465,10 @@ async function validateAndRepairQuestions(opts: {
   const result: any[] = []
 
   for (const question of questions) {
-    let current = { ...question }
+    let current = {
+      ...question,
+      ...normalizeExamQuestionContent(question?.questionText, question?.latex),
+    }
     let attempts = 0
 
     while (attempts < 2) {
@@ -485,7 +496,10 @@ async function validateAndRepairQuestions(opts: {
       })
 
       if (repaired) {
-        current = repaired
+        current = {
+          ...repaired,
+          ...normalizeExamQuestionContent(repaired?.questionText, repaired?.latex),
+        }
       } else {
         current._validationWarning = `Math validation failed; repair attempt ${attempts} did not produce valid JSON`
         result.push(current)
@@ -562,8 +576,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     `You are given OCR text from a ${gradeLabel} Mathematics Paper ${paper} exam (${month} ${year}).\n\n` +
     `Extract every question and sub-question as a JSON array. Rules:\n` +
     `- questionNumber: the dot-notation number exactly as it appears (e.g. "1", "1.1", "1.1.2")\n` +
-    `- questionText: the full question text. Where the question contains mathematical expressions, wrap each expression inline using $...$  KaTeX delimiters so the prose and math are unified in one readable string. Example: "Solve for x: $3x^{2}-5x-2=0$" or "Simplify $\\\\frac{a^2-b^2}{a-b}$". Do NOT leave math as bare undelimited text.\n` +
-    `- latex: the PRIMARY mathematical expression for the question in valid LaTeX without outer $ delimiters (e.g. "3x^{2}-5x-2=0"). Leave empty string if questionText contains no math at all.\n` +
+    `- questionText: the full question text. Where the question contains mathematical expressions, wrap each expression inline using ONLY single-dollar delimiters in the exact form $Expression$. Example: "Solve for x: $3x^{2}-5x-2=0$" or "Simplify $\\frac{a^2-b^2}{a-b}$". Do NOT use $$...$$. Do NOT use \\(...\\) or \\[...\\]. Do NOT leave math as bare undelimited text.\n` +
+    `- latex: the PRIMARY mathematical expression for the question in valid LaTeX without outer $ delimiters (e.g. "3x^{2}-5x-2=0"). Use normal LaTeX commands such as \\frac and \\sqrt. Leave empty string if questionText contains no math at all.\n` +
     `- marks: the mark allocation as an integer if shown in brackets (e.g. "(3)" → 3), else null\n` +
     `- topic: one of: ${VALID_TOPICS.join(', ')}\n` +
     `- cognitiveLevel: integer 1-4 where 1=Knowledge, 2=Routine procedures, 3=Complex procedures, 4=Problem-solving\n\n` +
@@ -648,11 +662,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!item || typeof item !== 'object') { skipped.push(i); continue }
 
     const qNum = (typeof item.questionNumber === 'string' ? item.questionNumber : String(item.questionNumber || '')).trim()
-    const qText = (typeof item.questionText === 'string' ? item.questionText : '').trim()
+    const normalized = normalizeExamQuestionContent(item.questionText, item.latex)
+    const qText = normalized.questionText
 
     if (!qNum || !qText) { skipped.push(i); continue }
 
-    const latex = typeof item.latex === 'string' ? item.latex.trim() : null
+    const latex = normalized.latex || null
     const marks = typeof item.marks === 'number' && Number.isFinite(item.marks) ? Math.round(item.marks) : null
     const topic = VALID_TOPICS.includes(item.topic) ? item.topic : null
     const cl = typeof item.cognitiveLevel === 'number' ? Math.min(4, Math.max(1, Math.round(item.cognitiveLevel))) : null

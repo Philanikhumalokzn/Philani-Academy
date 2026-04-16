@@ -166,6 +166,10 @@ test.describe('Question extraction validation pipeline', () => {
         katexIssues.push(` ${qNum}: Unmatched $ delimiters`)
       }
 
+      if (/\$\$|\\\(|\\\)|\\\[|\\\]/.test(text)) {
+        katexIssues.push(`${qNum}: Non-canonical delimiters visible in review output`)
+      }
+
       // Check for raw backslash commands (should be properly delimited)
       if (text.match(/\\[a-zA-Z]+/)) {
         const isDangling = !text.match(/\$[^$]*\\[a-zA-Z]+[^$]*\$/)
@@ -251,6 +255,10 @@ test.describe('Question extraction validation pipeline', () => {
       const dollarMatches = (text.match(/\$/g) || []).length
       if (dollarMatches % 2 !== 0) {
         searchResultIssues.push(`${qNum}: Unmatched $ delimiters`)
+      }
+
+      if (/\$\$|\\\(|\\\)|\\\[|\\\]/.test(text)) {
+        searchResultIssues.push(`${qNum}: Non-canonical delimiters visible in search output`)
       }
     }
 

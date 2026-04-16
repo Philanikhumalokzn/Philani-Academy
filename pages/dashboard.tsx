@@ -38,6 +38,7 @@ import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../
 import { isSpecialTestStudentEmail } from '../lib/testUsers'
 import { createLessonRoleProfile, getPlatformRoleDisplayLabel, hasLessonCapabilityForRole, isRecognizedLessonParticipantRole, normalizePlatformRole } from '../lib/lessonAccessControl'
 import { renderKatexDisplayHtml as renderKatexDisplayHtmlRaw, renderKatexInlineHtml as renderKatexInlineHtmlRaw, splitLatexIntoSteps as splitLatexIntoStepsRaw } from '../lib/latexRender'
+import { normalizeExamQuestionContent } from '../lib/questionMath'
 import { renderTextWithKatex as renderTextWithKatexRaw } from '../lib/renderTextWithKatex'
 import { renderQuestionTextWithInlineLatex as renderQuestionTextWithInlineLatexShared } from '../lib/renderQuestionText'
 import { toDisplayFileName } from '../lib/fileName'
@@ -13478,37 +13479,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return ''
   }
 
-  const decodeEscapedQuestionText = (value: unknown) => {
-    const text = unwrapQuestionField(value, ['questionText', 'text', 'prompt'])
-    if (!text) return ''
-
-    return text
-      .replace(/\\"/g, '"')
-      .replace(/\\\$/g, '$')
-      .replace(/\\\\/g, '\\')
-      .trim()
-  }
-
-  const normalizeQuestionLatex = (value: unknown) => {
-    let latex = unwrapQuestionField(value, ['latex', 'equation', 'math'])
-    if (!latex) return ''
-
-    latex = latex
-      .replace(/\\"/g, '"')
-      .replace(/\\\$/g, '$')
-      .replace(/\\\\/g, '\\')
-      .trim()
-
-    if (latex.startsWith('$$') && latex.endsWith('$$') && latex.length > 4) {
-      latex = latex.slice(2, -2).trim()
-    } else if (latex.startsWith('$') && latex.endsWith('$') && latex.length > 2) {
-      latex = latex.slice(1, -1).trim()
-    }
-
-    return latex
-  }
-
-
   const renderQuestionTextWithInlineLatex = renderQuestionTextWithInlineLatexShared
 
   const searchQuestionBank = async () => {
@@ -13645,8 +13615,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           <ul>
             {qbItems.map((q) => (
               (() => {
-                const cleanText = decodeEscapedQuestionText(q?.questionText)
-                const cleanLatex = normalizeQuestionLatex(q?.latex)
+                const normalizedQuestion = normalizeExamQuestionContent(
+                  unwrapQuestionField(q?.questionText, ['questionText', 'text', 'prompt']),
+                  unwrapQuestionField(q?.latex, ['latex', 'equation', 'math']),
+                )
+                const cleanText = normalizedQuestion.questionText
+                const cleanLatex = normalizedQuestion.latex
                 const latexHtml = cleanLatex ? renderKatexDisplayHtml(cleanLatex) : ''
                 const questionImageUrls = (() => {
                   const urls: string[] = []

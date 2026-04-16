@@ -114,6 +114,11 @@ function stripLeakedTabularArtifacts(value: string): string {
   // Remove full LaTeX tabular environments that leaked into question prose.
   text = text.replace(/\\begin\{tabular\}\{[^}]*\}[\s\S]*?\\end\{tabular\}/g, ' ')
 
+  // Remove dangling tabular markers when OCR/LLM output is truncated.
+  text = text
+    .replace(/\\begin\{tabular\}\{[^}]*\}/g, ' ')
+    .replace(/\\end\{tabular\}/g, ' ')
+
   // Remove common inline leaks: "\hline ... & ... & ... \\ \hline".
   text = text.replace(/\\hline\s*[\s\S]{0,1200}?\s*\\hline/g, ' ')
 
@@ -127,8 +132,43 @@ function stripLeakedTabularArtifacts(value: string): string {
   text = text
     .replace(/\\hline/g, ' ')
     .replace(/\s+\\\\\s+/g, ' ')
+    .replace(/\s+\\(?=\s|$|[.,;:!?])/g, ' ')
 
   return text
+}
+
+function dedupeRepeatedLeadingBlocks(value: string): string {
+  const text = String(value || '').trim()
+  if (!text) return ''
+
+  const blocks = text
+    .split(/\n{2,}/)
+    .map((b) => b.trim())
+    .filter(Boolean)
+
+  if (blocks.length < 2) return text
+
+  const normalizeBlock = (block: string) => block
+    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9 ]/gi, '')
+    .trim()
+    .toLowerCase()
+
+  const first = normalizeBlock(blocks[0])
+  const second = normalizeBlock(blocks[1])
+  const minLen = 80
+  const nearDuplicate = first.length >= minLen
+    && second.length >= minLen
+    && (first === second || first.includes(second) || second.includes(first))
+
+  if (!nearDuplicate) return text
+
+  const keepFirst = first.length >= second.length
+  const dedupedBlocks = keepFirst
+    ? [blocks[0], ...blocks.slice(2)]
+    : [blocks[1], ...blocks.slice(2)]
+
+  return dedupedBlocks.join('\n\n')
 }
 
 export function normalizeStoredQuestionLatex(value: unknown): string {
@@ -142,6 +182,11 @@ export function normalizeStoredQuestionText(value: unknown, options?: { latex?: 
   let text = decodeStoredMathString(value)
   if (!text) return ''
 
+  // Normalize OCR-broken inline delimiters like "\ (x)" -> "\(x)".
+  text = text
+    .replace(/\\\s+\(/g, '\\(')
+    .replace(/\)\s+\\/g, '\\)')
+
   text = stripLeakedTabularArtifacts(text)
   text = standardizeQuestionTextDelimiters(text)
   text = repairMalformedInlineMath(text)
@@ -154,11 +199,14 @@ export function normalizeStoredQuestionText(value: unknown, options?: { latex?: 
   text = mapPlainSegments(text, wrapSuperscriptTerms)
   text = mapPlainSegments(text, wrapOperatorExpressions)
 
-  return text
+  const cleaned = text
     .replace(/\$\s*([^$]+?)\s*\$/g, (_, expr: string) => wrapInlineMath(expr))
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n +/g, '\n')
     .trim()
+
+  return dedupeRepeatedLeadingBlocks(cleaned).trim()
 }
 
 export function normalizeExamQuestionContent(questionText: unknown, latex: unknown): { questionText: string; latex: string } {

@@ -13527,9 +13527,25 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }
 
+  const getQNumParts = (value: unknown): number[] => {
+    const raw = String(value ?? '').trim()
+    if (!raw) return []
+    const match = raw.match(/(\d+(?:\.\d+)*)/)
+    if (!match?.[1]) return []
+    return match[1].split('.').map((part) => Number(part)).filter((part) => Number.isFinite(part))
+  }
+
+  const getQNumRoot = (value: unknown): string => {
+    const parts = getQNumParts(value)
+    return parts.length > 0 ? String(parts[0]) : ''
+  }
+
   const compareQNum = (a: string, b: string): number => {
-    const pa = a.split('.').map(Number)
-    const pb = b.split('.').map(Number)
+    const pa = getQNumParts(a)
+    const pb = getQNumParts(b)
+    if (pa.length === 0 || pb.length === 0) {
+      return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' })
+    }
     for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
       const na = pa[i] ?? 0
       const nb = pb[i] ?? 0
@@ -13563,12 +13579,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       items.sort((a, b) => compareQNum(String(a.questionNumber), String(b.questionNumber)))
 
       const selectedQNum = String(q?.questionNumber || '').trim()
-      const selectedRoot = selectedQNum.split('.').filter(Boolean)[0] || ''
+      const selectedRoot = getQNumRoot(selectedQNum)
 
       if (selectedRoot) {
         const scoped = items.filter((item) => {
-          const itemQNum = String(item?.questionNumber || '').trim()
-          return itemQNum === selectedRoot || itemQNum.startsWith(`${selectedRoot}.`)
+          const itemRoot = getQNumRoot(item?.questionNumber)
+          return itemRoot === selectedRoot
         })
 
         if (scoped.length > 0) {
@@ -15864,15 +15880,32 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             {/* Pinned preamble header: shown when a root question row exists */}
             {(() => {
               const rootItem = qbContextRoot
-                ? qbContextItems.find(item => String(item?.questionNumber ?? '').trim() === qbContextRoot)
+                ? qbContextItems.find((item) => {
+                    const depth = typeof item?.questionDepth === 'number' ? item.questionDepth : null
+                    const parts = getQNumParts(item?.questionNumber)
+                    const itemIsTopLevel = depth === 0 || parts.length <= 1
+                    return itemIsTopLevel && getQNumRoot(item?.questionNumber) === qbContextRoot
+                  })
                 : null
-              if (!rootItem) return null
+              if (!rootItem) {
+                return (
+                  <div className="border-b border-slate-200 bg-amber-50 px-3 py-3 text-xs text-amber-700">
+                    Question context is not available for this source yet. You can still view the subquestions below.
+                  </div>
+                )
+              }
               const rootNorm = normalizeExamQuestionContent(
                 unwrapQuestionField(rootItem?.questionText, ['questionText', 'text', 'prompt']),
                 unwrapQuestionField(rootItem?.latex, ['latex', 'equation', 'math']),
               )
               const rootText = rootNorm.questionText
-              if (!rootText) return null
+              if (!rootText) {
+                return (
+                  <div className="border-b border-slate-200 bg-amber-50 px-3 py-3 text-xs text-amber-700">
+                    Question context is missing on the root question record for Q{qbContextRoot}.
+                  </div>
+                )
+              }
               return (
                 <div className="border-b border-slate-200 bg-amber-50 px-3 py-3">
                   <div className="flex items-center gap-2 mb-1">
@@ -15886,7 +15919,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               )
             })()}
             <ul className="divide-y divide-slate-200">
-            {qbContextItems.filter(item => String(item?.questionNumber ?? '').trim() !== qbContextRoot).map((contextQ) => {
+            {qbContextItems.filter((item) => {
+              if (!qbContextRoot) return true
+              const depth = typeof item?.questionDepth === 'number' ? item.questionDepth : null
+              const parts = getQNumParts(item?.questionNumber)
+              const itemIsTopLevel = depth === 0 || parts.length <= 1
+              return !(itemIsTopLevel && getQNumRoot(item?.questionNumber) === qbContextRoot)
+            }).map((contextQ) => {
               const normalizedQuestion = normalizeExamQuestionContent(
                 unwrapQuestionField(contextQ?.questionText, ['questionText', 'text', 'prompt']),
                 unwrapQuestionField(contextQ?.latex, ['latex', 'equation', 'math']),

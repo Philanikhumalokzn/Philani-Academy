@@ -177,43 +177,65 @@ function buildQuestionTableMapFromMmd(mmd) {
     map.set(qNum, current)
   }
 
-  const text = String(mmd || '')
-  const tabularRegex = /\\begin\{tabular\}\{[^}]*\}[\s\S]*?\\end\{tabular\}/g
-  let match
+  const isPipeLine = (line) => /^\|.*\|\s*$/.test(line)
 
-  while ((match = tabularRegex.exec(text)) !== null) {
-    const tabular = match[0]
-    const before = text.slice(0, match.index)
-    const prefixLines = before.split(/\r?\n/).slice(-80)
+  const lines = String(mmd || '').split(/\r?\n/)
+  let currentTop = ''
+  let currentSub = ''
 
-    let currentTop = ''
-    let currentSub = ''
-    for (const rawLine of prefixLines) {
-      const line = String(rawLine || '').trim()
-      if (!line) continue
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = String(lines[i] || '').trim()
+    if (!line) continue
 
-      const topSectionMatch = line.match(/\\section\*\{\s*QUESTION\s+(\d+)\s*\}/i)
-        || line.match(/^QUESTION\s+(\d+)\b/i)
-      if (topSectionMatch && topSectionMatch[1]) {
-        currentTop = topSectionMatch[1]
-        currentSub = ''
-        continue
-      }
-
-      const numberedMatch = line.match(/^((?:\d+)(?:\.\d+){1,5})\b/)
-      if (numberedMatch && numberedMatch[1]) {
-        const candidate = numberedMatch[1]
-        if (!currentTop || candidate === currentTop || candidate.startsWith(`${currentTop}.`)) {
-          currentSub = candidate
-        }
-      }
+    const topSectionMatch = line.match(/\\section\*\{\s*QUESTION\s+(\d+)\s*\}/i)
+      || line.match(/^QUESTION\s+(\d+)\b/i)
+    if (topSectionMatch && topSectionMatch[1]) {
+      currentTop = topSectionMatch[1]
+      currentSub = ''
+      continue
     }
 
-    const tableMd = tabularToPipeTable(tabular)
-    if (!tableMd) continue
+    const numberedMatch = line.match(/^((?:\d+)(?:\.\d+){1,5})\b/)
+    if (numberedMatch && numberedMatch[1]) {
+      const candidate = numberedMatch[1]
+      if (!currentTop || candidate === currentTop || candidate.startsWith(`${currentTop}.`)) {
+        currentSub = candidate
+      }
+      continue
+    }
 
-    if (currentSub) push(currentSub, tableMd)
-    else if (currentTop) push(currentTop, tableMd)
+    // ── Pipe-table block ──────────────────────────────────────────────────────
+    if (isPipeLine(line)) {
+      const block = [line]
+      while (i + 1 < lines.length && isPipeLine(String(lines[i + 1] || '').trim())) {
+        i += 1
+        block.push(String(lines[i] || '').trim())
+      }
+      if (block.length >= 2) {
+        const target = currentSub || currentTop
+        if (target) push(target, block.join('\n'))
+      }
+      continue
+    }
+
+    // ── LaTeX tabular block ───────────────────────────────────────────────────
+    if (/\\begin\{tabular\}\{[^}]*\}/.test(line)) {
+      const block = [line]
+      let depth = (line.match(/\\begin\{tabular\}\{[^}]*\}/g) || []).length
+                - (line.match(/\\end\{tabular\}/g) || []).length
+      while (i + 1 < lines.length && depth > 0) {
+        i += 1
+        const nextLine = String(lines[i] || '').trim()
+        block.push(nextLine)
+        depth += (nextLine.match(/\\begin\{tabular\}\{[^}]*\}/g) || []).length
+        depth -= (nextLine.match(/\\end\{tabular\}/g) || []).length
+      }
+      const tableMd = tabularToPipeTable(block.join('\n'))
+      if (!tableMd) continue
+      const target = currentSub || currentTop
+      if (target) push(target, tableMd)
+      continue
+    }
   }
 
   return map
@@ -246,6 +268,55 @@ function pickQuestionTableMarkdown(qNum, tableMap) {
     const parent = parts.slice(0, i).join('.')
     const inherited = tableMap.get(parent)
     if (inherited && inherited.length) return inherited.join('\n\n')
+
+  // For ROOT (depth-0) preamble records we also look at direct children (root.1, root.2…)
+  // as a fallback. This covers cases where Mathpix placed the shared preamble diagram or
+  // table after the first sub-question marker in the MMD output.
+  function pickRootPreambleImageUrls(root, imageMap) {
+    const urls = []
+    const push = (u) => { if (u && !urls.includes(u)) urls.push(u) }
+
+    // 1. Direct root scope (preamble section images — before any n.x line)
+    for (const u of imageMap.get(root) || []) push(u)
+    if (urls.length > 0) return urls
+
+    // 2. Fallback: images tagged to direct children (root.1, root.2, …)
+    //    Sort children numerically so root.1 is checked before root.2
+    const childKeys = Array.from(imageMap.keys())
+      .filter((k) => {
+        const parts = String(k).split('.')
+        return parts.length === 2 && parts[0] === root
+      })
+      .sort((a, b) => Number(a.split('.')[1]) - Number(b.split('.')[1]))
+
+    for (const key of childKeys) {
+      for (const u of imageMap.get(key) || []) push(u)
+      if (urls.length > 0) break // take first child that has images
+    }
+
+    return urls
+  }
+
+  function pickRootPreambleTableMarkdown(root, tableMap) {
+    // 1. Direct root scope
+    const direct = tableMap.get(root)
+    if (direct && direct.length) return direct.join('\n\n')
+
+    // 2. Fallback: first direct child with tables
+    const childKeys = Array.from(tableMap.keys())
+      .filter((k) => {
+        const parts = String(k).split('.')
+        return parts.length === 2 && parts[0] === root
+      })
+      .sort((a, b) => Number(a.split('.')[1]) - Number(b.split('.')[1]))
+
+    for (const key of childKeys) {
+      const tables = tableMap.get(key)
+      if (tables && tables.length) return tables.join('\n\n')
+    }
+
+    return null
+  }
   }
 
   return null
@@ -321,8 +392,9 @@ async function upsertRootPreamblesForGroup({ sourceId, grade, year, month, paper
     const preambleText = normalizeQuestionText(preamble)
     if (!preambleText) continue
 
-    const rootImageUrl = pickQuestionImageUrl(root, imageMap)
-    const rootTableMarkdown = pickQuestionTableMarkdown(root, tableMap)
+    const rootImageUrls = pickRootPreambleImageUrls(root, imageMap)
+    const rootImageUrl = rootImageUrls[0] || null
+    const rootTableMarkdown = pickRootPreambleTableMarkdown(root, tableMap)
 
     const existingRoot = existingRows.find((row) => {
       const qNum = String(row.questionNumber || '')

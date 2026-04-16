@@ -1,4 +1,4 @@
-import type { NextApiRequest, NextApiResponse } from 'next'
+﻿import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import katex from 'katex'
 import prisma from '../../../lib/prisma'
@@ -631,7 +631,7 @@ async function extractQuestionsWithOpenAI(opts: {
         : []
       const rawPreview = String(rawOutput || '').replace(/\s+/g, ' ').trim().slice(0, 1200)
       throw new Error(
-        `OpenAI returned non-array output — could not extract questions; parsedType=${parsedType}; parsedKeys=${parsedKeys.join(',')}; raw=${rawPreview}`,
+        `OpenAI returned non-array output ÔÇö could not extract questions; parsedType=${parsedType}; parsedKeys=${parsedKeys.join(',')}; raw=${rawPreview}`,
       )
     }
 
@@ -706,7 +706,7 @@ async function extractQuestionsWithGeminiApi(opts: {
     const rawPreview = String(rawOutput || '').replace(/\s+/g, ' ').trim().slice(0, 1200)
 
     throw new Error(
-      `Gemini returned non-array output — could not extract questions; parsedType=${parsedType}; parsedKeys=${parsedKeys.join(',')}; raw=${rawPreview}`,
+      `Gemini returned non-array output ÔÇö could not extract questions; parsedType=${parsedType}; parsedKeys=${parsedKeys.join(',')}; raw=${rawPreview}`,
     )
   }
 
@@ -972,7 +972,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     `- questionNumber: the dot-notation number exactly as it appears (e.g. "1", "1.1", "1.1.2")\n` +
     `- questionText: the full question text. Where the question contains mathematical expressions, wrap each expression inline using ONLY single-dollar delimiters in the exact form $Expression$. Example: "Solve for x: $3x^{2}-5x-2=0$" or "Simplify $\\frac{a^2-b^2}{a-b}$". Do NOT use $$...$$. Do NOT use \\(...\\) or \\[...\\]. Do NOT leave math as bare undelimited text.\n` +
     `- latex: the PRIMARY mathematical expression for the question in valid LaTeX without outer $ delimiters (e.g. "3x^{2}-5x-2=0"). Use normal LaTeX commands such as \\frac and \\sqrt. Leave empty string if questionText contains no math at all.\n` +
-    `- marks: the mark allocation as an integer if shown in brackets (e.g. "(3)" → 3), else null\n` +
+    `- marks: the mark allocation as an integer if shown in brackets (e.g. "(3)" ÔåÆ 3), else null\n` +
     `- topic: one of: ${VALID_TOPICS.join(', ')}\n` +
     `- cognitiveLevel: integer 1-4 where 1=Knowledge, 2=Routine procedures, 3=Complex procedures, 4=Problem-solving\n` +
     `- Include question preambles in questionText. If a main question starts with context text after "QUESTION n" and before numbered parts, keep that context. If a sub-question has its own preamble, keep it too.\n` +

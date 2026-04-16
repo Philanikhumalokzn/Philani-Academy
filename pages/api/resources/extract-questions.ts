@@ -262,6 +262,46 @@ function pickQuestionTableMarkdown(qNum: string, tableMap: Map<string, string[]>
   return null
 }
 
+// For ROOT (depth-0) preamble records, also check direct child scopes (root.1, root.2…)
+// as a fallback. Covers cases where Mathpix placed the shared preamble diagram or table
+// after the first sub-question marker line in the MMD output.
+function pickRootPreambleImageUrls(root: string, imageMap: Map<string, string[]>): string[] {
+  const urls: string[] = []
+  const push = (u: string) => { if (u && !urls.includes(u)) urls.push(u) }
+
+  for (const u of imageMap.get(root) || []) push(u)
+  if (urls.length > 0) return urls
+
+  // Fallback: images from direct children (root.1, root.2, ...) — take first child with images
+  const childKeys = Array.from(imageMap.keys())
+    .filter((k) => { const p = k.split('.'); return p.length === 2 && p[0] === root })
+    .sort((a, b) => Number(a.split('.')[1]) - Number(b.split('.')[1]))
+
+  for (const key of childKeys) {
+    for (const u of imageMap.get(key) || []) push(u)
+    if (urls.length > 0) break
+  }
+
+  return urls
+}
+
+function pickRootPreambleTableMarkdown(root: string, tableMap: Map<string, string[]>): string | null {
+  const direct = tableMap.get(root)
+  if (direct?.length) return direct.join('\n\n')
+
+  // Fallback: first direct child with tables
+  const childKeys = Array.from(tableMap.keys())
+    .filter((k) => { const p = k.split('.'); return p.length === 2 && p[0] === root })
+    .sort((a, b) => Number(a.split('.')[1]) - Number(b.split('.')[1]))
+
+  for (const key of childKeys) {
+    const tables = tableMap.get(key)
+    if (tables?.length) return tables.join('\n\n')
+  }
+
+  return null
+}
+
 function buildQuestionPreambleMapFromMmd(mmd: string): Map<string, string> {
   const map = new Map<string, string>()
   if (!mmd.trim()) return map

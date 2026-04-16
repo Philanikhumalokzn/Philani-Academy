@@ -13567,6 +13567,50 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return 0
   }
 
+  const getQuestionMarksLabel = (marksValue: unknown, questionTextValue?: unknown): string | null => {
+    const toLabel = (n: number): string => `${n} mark${n === 1 ? '' : 's'}`
+
+    if (typeof marksValue === 'number' && Number.isFinite(marksValue)) {
+      const n = Math.max(0, Math.trunc(marksValue))
+      return toLabel(n)
+    }
+
+    const marksRaw = String(marksValue ?? '').trim()
+    if (marksRaw) {
+      const plainNumber = marksRaw.match(/^\(?\s*(\d+(?:\.\d+)?)\s*\)?$/)
+      if (plainNumber?.[1]) {
+        const n = Math.max(0, Math.trunc(Number(plainNumber[1])))
+        return toLabel(n)
+      }
+
+      const numberWithWord = marksRaw.match(/^(\d+(?:\.\d+)?)\s*(?:marks?|mks?)$/i)
+      if (numberWithWord?.[1]) {
+        const n = Math.max(0, Math.trunc(Number(numberWithWord[1])))
+        return toLabel(n)
+      }
+
+      return marksRaw
+    }
+
+    const questionText = String(questionTextValue ?? '').trim()
+    if (!questionText) return null
+
+    const trailingBracketed = questionText.match(/(?:\(\s*(\d+)\s*(?:marks?|mks?)?\s*\)|\[\s*(\d+)\s*(?:marks?|mks?)?\s*\])\s*$/i)
+    const bracketedNumber = trailingBracketed?.[1] || trailingBracketed?.[2]
+    if (bracketedNumber) {
+      const n = Math.max(0, Math.trunc(Number(bracketedNumber)))
+      return toLabel(n)
+    }
+
+    const trailingWord = questionText.match(/(\d+)\s*(?:marks?|mks?)\s*$/i)
+    if (trailingWord?.[1]) {
+      const n = Math.max(0, Math.trunc(Number(trailingWord[1])))
+      return toLabel(n)
+    }
+
+    return null
+  }
+
   const openPaperContext = async (q: any) => {
     setQbContextQ(q)
     setQbContextItems([])
@@ -14030,6 +14074,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const cleanText = normalizedQuestion.questionText
                 const cleanLatex = normalizedQuestion.latex
                 const latexHtml = cleanLatex ? renderKatexDisplayHtml(cleanLatex) : ''
+                const marksLabel = getQuestionMarksLabel(q?.marks, cleanText)
                 const questionImageUrls = (() => {
                   const urls: string[] = []
                   const pushUrl = (value: unknown) => {
@@ -14070,7 +14115,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.year} {q.month} · Paper {q.paper}</span>
                           {q.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{q.topic}</span> : null}
                           {q.cognitiveLevel ? <span className="text-xs rounded-full bg-[#fff3cd] px-2 py-0.5 text-[#856404]">Level {q.cognitiveLevel}</span> : null}
-                          {q.marks ? <span className="text-xs text-[#65676b]">{q.marks} marks</span> : null}
+                          {marksLabel ? <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{marksLabel}</span> : null}
                           {isAdmin && !q.approved ? <span className="text-xs rounded-full bg-red-100 px-2 py-0.5 text-red-600">Unapproved</span> : null}
                         </div>
 
@@ -16032,6 +16077,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 unwrapQuestionField(rootItem?.latex, ['latex', 'equation', 'math']),
               )
               const rootText = rootNorm.questionText
+              const rootMarksLabel = getQuestionMarksLabel(rootItem?.marks, rootText)
               const rootImageUrls: string[] = (() => {
                 const urls: string[] = []
                 const push = (v: unknown) => {
@@ -16088,7 +16134,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 <div className="border-b border-slate-200 bg-amber-50 px-3 py-3 space-y-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-amber-700 flex-1">Q{rootItem.questionNumber} — Question context</span>
-                    {rootItem.marks ? <span className="text-xs text-amber-600">{rootItem.marks} marks</span> : null}
+                    {rootMarksLabel ? <span className="text-xs text-amber-600">{rootMarksLabel}</span> : null}
                     {isAdmin ? (
                       <button
                         onClick={() => openPreambleEditor(rootItem)}
@@ -16173,6 +16219,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               const cleanText = normalizedQuestion.questionText
               const cleanLatex = normalizedQuestion.latex
               const latexHtml = cleanLatex ? renderKatexDisplayHtml(cleanLatex) : ''
+              const contextMarksLabel = getQuestionMarksLabel(contextQ?.marks, cleanText)
               const contextImageUrls = (() => {
                 const urls: string[] = []
                 const pushUrl = (value: unknown) => {
@@ -16201,7 +16248,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <span className="text-xs font-bold text-[#65676b]">Q{contextQ.questionNumber}</span>
                     {contextQ.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{contextQ.topic}</span> : null}
                     {contextQ.cognitiveLevel ? <span className="text-xs rounded-full bg-[#fff3cd] px-2 py-0.5 text-[#856404]">Level {contextQ.cognitiveLevel}</span> : null}
-                    {contextQ.marks ? <span className="text-xs text-[#65676b]">{contextQ.marks} marks</span> : null}
+                    {contextMarksLabel ? <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{contextMarksLabel}</span> : null}
                     {isFocus ? <span className="text-xs rounded-full bg-[#dce9ff] px-2 py-0.5 text-[#1d4ed8]">Selected result</span> : null}
                   </div>
 

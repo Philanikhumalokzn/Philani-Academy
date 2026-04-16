@@ -243,6 +243,109 @@ function pickQuestionTableMarkdown(qNum: string, tableMap: Map<string, string[]>
   return null
 }
 
+function buildQuestionPreambleMapFromMmd(mmd: string): Map<string, string> {
+  const map = new Map<string, string>()
+  if (!mmd.trim()) return map
+
+  const lines = mmd.split(/\r?\n/)
+  const preambleLines = new Map<string, string[]>()
+  const sealed = new Set<string>()
+  let currentScope = ''
+
+  const ensureScope = (scope: string) => {
+    if (!scope) return
+    if (!preambleLines.has(scope)) preambleLines.set(scope, [])
+  }
+
+  const parentScope = (scope: string): string => {
+    const parts = scope.split('.').filter(Boolean)
+    if (parts.length <= 1) return ''
+    return parts.slice(0, parts.length - 1).join('.')
+  }
+
+  const appendPreambleLine = (scope: string, line: string) => {
+    if (!scope || !line || sealed.has(scope)) return
+    ensureScope(scope)
+    preambleLines.get(scope)?.push(line)
+  }
+
+  for (const rawLine of lines) {
+    const line = String(rawLine || '').trim()
+    if (!line) continue
+
+    const topSectionMatch = line.match(/\\section\*\{\s*QUESTION\s+(\d+)\s*\}/i)
+      || line.match(/^QUESTION\s+(\d+)\b/i)
+    if (topSectionMatch?.[1]) {
+      const scope = topSectionMatch[1]
+      ensureScope(scope)
+      currentScope = scope
+      continue
+    }
+
+    const numberedMatch = line.match(/^((?:\d+)(?:\.\d+){1,5})\b/)
+    if (numberedMatch?.[1]) {
+      const scope = numberedMatch[1]
+      ensureScope(scope)
+      const parent = parentScope(scope)
+      if (parent) sealed.add(parent)
+      currentScope = scope
+      continue
+    }
+
+    if (/^\|.*\|\s*$/.test(line)) continue
+    if (/^!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/.test(line)) continue
+    if (/^\\(begin|end)\{tabular\}/.test(line)) continue
+
+    appendPreambleLine(currentScope, line)
+  }
+
+  for (const [scope, scopeLines] of preambleLines.entries()) {
+    const text = scopeLines
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (text) map.set(scope, text)
+  }
+
+  return map
+}
+
+function pickQuestionPreambleText(qNum: string, preambleMap: Map<string, string>): string | null {
+  if (!qNum) return null
+
+  const segments = qNum.split('.').filter(Boolean)
+  const candidates: string[] = []
+
+  for (let i = 1; i <= segments.length; i += 1) {
+    const scope = segments.slice(0, i).join('.')
+    const scopePreamble = preambleMap.get(scope)
+    if (scopePreamble) candidates.push(scopePreamble)
+  }
+
+  if (candidates.length === 0) return null
+
+  const merged = candidates
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return merged || null
+}
+
+function mergePreambleIntoQuestionText(questionText: string, preamble: string | null): string {
+  const qText = String(questionText || '').trim()
+  const pText = String(preamble || '').trim()
+  if (!qText) return pText
+  if (!pText) return qText
+
+  const normalize = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase()
+  const qNorm = normalize(qText)
+  const pNorm = normalize(pText)
+  if (!pNorm || qNorm.includes(pNorm)) return qText
+
+  return `${pText}\n\n${qText}`
+}
+
 function salvageJsonObjectsArray(text: string): any[] | null {
   const source = String(text || '')
   if (!source) return null
@@ -710,6 +813,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const rawMmd = (typeof parsed?.raw?.mmd === 'string' ? parsed.raw.mmd : '').trim()
   const questionImageMap = buildQuestionImageMapFromMmd(rawMmd)
   const questionTableMap = buildQuestionTableMapFromMmd(rawMmd)
+  const questionPreambleMap = buildQuestionPreambleMapFromMmd(rawMmd)
   const gradeLabel = String(resource.grade).replace('_', ' ').replace('GRADE ', 'Grade ')
 
   // Prefer Mathpix MMD (preserves pipe-table formatting) over raw text
@@ -725,9 +829,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     `- marks: the mark allocation as an integer if shown in brackets (e.g. "(3)" → 3), else null\n` +
     `- topic: one of: ${VALID_TOPICS.join(', ')}\n` +
     `- cognitiveLevel: integer 1-4 where 1=Knowledge, 2=Routine procedures, 3=Complex procedures, 4=Problem-solving\n` +
+    `- Include question preambles in questionText. If a main question starts with context text after "QUESTION n" and before numbered parts, keep that context. If a sub-question has its own preamble, keep it too.\n` +
     `- tableMarkdown: if the question refers to a data table (e.g. frequency table, timetable, statistics table), copy the FULL pipe-table markdown exactly as it appears in the input (including header separator row). If the question has no table, use null.\n\n` +
     `Return ONLY a valid JSON array of objects with keys: questionNumber, questionText, latex, marks, topic, cognitiveLevel, tableMarkdown\n` +
-    `Do not include preamble, instructions, or any text outside the JSON array.\n\n` +
+    `Do not include any text outside the JSON array.\n\n` +
     `OCR/MMD INPUT (may be imperfect):\n${inputText}`
 
   let geminiResult: any[]
@@ -807,7 +912,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!item || typeof item !== 'object') { skipped.push(i); continue }
 
     const qNum = (typeof item.questionNumber === 'string' ? item.questionNumber : String(item.questionNumber || '')).trim()
-    const normalized = normalizeExamQuestionContent(item.questionText, item.latex)
+    const mergedQuestionText = mergePreambleIntoQuestionText(
+      typeof item.questionText === 'string' ? item.questionText : String(item.questionText || ''),
+      pickQuestionPreambleText(qNum, questionPreambleMap),
+    )
+    const normalized = normalizeExamQuestionContent(mergedQuestionText, item.latex)
     const qText = normalized.questionText
 
     if (!qNum || !qText) { skipped.push(i); continue }

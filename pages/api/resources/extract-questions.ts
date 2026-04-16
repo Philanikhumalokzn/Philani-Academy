@@ -14,14 +14,14 @@ export const config = {
   },
 }
 
-const VALID_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-const VALID_TOPICS = [
+export const VALID_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+export const VALID_TOPICS = [
   'Algebra', 'Functions', 'Number Patterns', 'Finance', 'Trigonometry',
   'Euclidean Geometry', 'Analytical Geometry', 'Statistics', 'Probability',
   'Calculus', 'Sequences and Series', 'Polynomials', 'Other',
 ]
 
-function questionDepthFromNumber(qNum: string): number {
+export function questionDepthFromNumber(qNum: string): number {
   const parts = (qNum || '').split('.')
   return Math.max(0, parts.length - 1)
 }
@@ -35,17 +35,17 @@ function questionNumberParts(qNum: string): number[] {
     .filter((part) => Number.isFinite(part))
 }
 
-function questionRootFromNumber(qNum: string): string {
+export function questionRootFromNumber(qNum: string): string {
   const parts = questionNumberParts(qNum)
   return parts.length > 0 ? String(parts[0]) : ''
 }
 
-function isTopLevelQuestionNumber(qNum: string, depth?: number | null): boolean {
+export function isTopLevelQuestionNumber(qNum: string, depth?: number | null): boolean {
   if (typeof depth === 'number') return depth <= 0
   return questionNumberParts(qNum).length <= 1
 }
 
-function normalizeMarksValue(value: unknown): number | null {
+export function normalizeMarksValue(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
     const n = Math.round(value)
     return n >= 0 ? n : null
@@ -63,7 +63,7 @@ function normalizeMarksValue(value: unknown): number | null {
   return null
 }
 
-function extractMarksFromText(value: unknown): number | null {
+export function extractMarksFromText(value: unknown): number | null {
   const text = String(value ?? '').trim()
   if (!text) return null
 
@@ -77,7 +77,7 @@ function extractMarksFromText(value: unknown): number | null {
   return null
 }
 
-function buildQuestionMarksMapFromMmd(mmd: string): Map<string, number> {
+export function buildQuestionMarksMapFromMmd(mmd: string): Map<string, number> {
   const map = new Map<string, number>()
   if (!mmd.trim()) return map
 
@@ -119,7 +119,7 @@ function buildQuestionMarksMapFromMmd(mmd: string): Map<string, number> {
   return map
 }
 
-function pickQuestionMarks(qNum: string, marksMap: Map<string, number>): number | null {
+export function pickQuestionMarks(qNum: string, marksMap: Map<string, number>): number | null {
   const parts = questionNumberParts(qNum)
   if (parts.length === 0) return null
 
@@ -144,7 +144,7 @@ function coerceGeminiQuestionsArray(value: unknown): any[] | null {
   return null
 }
 
-function buildQuestionImageMapFromMmd(mmd: string): Map<string, string[]> {
+export function buildQuestionImageMapFromMmd(mmd: string): Map<string, string[]> {
   const map = new Map<string, string[]>()
   if (!mmd.trim()) return map
 
@@ -194,7 +194,7 @@ function buildQuestionImageMapFromMmd(mmd: string): Map<string, string[]> {
   return map
 }
 
-function collapseNestedTabulars(input: string): string {
+export function collapseNestedTabulars(input: string): string {
   // Replace inner \begin{tabular}...\end{tabular} with flat cell text.
   // We must NOT consume \\ row separators that belong to the outer tabular,
   // so we only strip \\ *inside* the nested block.
@@ -214,7 +214,7 @@ function collapseNestedTabulars(input: string): string {
   return text
 }
 
-function tabularToPipeTable(tabular: string): string | null {
+export function tabularToPipeTable(tabular: string): string | null {
   let text = String(tabular || '').trim()
   if (!text.includes('\\begin{tabular}')) return null
 
@@ -251,7 +251,7 @@ function tabularToPipeTable(tabular: string): string | null {
   ].join('\n')
 }
 
-function buildQuestionTableMapFromMmd(mmd: string): Map<string, string[]> {
+export function buildQuestionTableMapFromMmd(mmd: string): Map<string, string[]> {
   const map = new Map<string, string[]>()
   if (!mmd.trim()) return map
 
@@ -351,7 +351,7 @@ function pickQuestionTableMarkdown(qNum: string, tableMap: Map<string, string[]>
 // For ROOT (depth-0) preamble records, also check direct child scopes (root.1, root.2…)
 // as a fallback. Covers cases where Mathpix placed the shared preamble diagram or table
 // after the first sub-question marker line in the MMD output.
-function pickRootPreambleImageUrls(root: string, imageMap: Map<string, string[]>): string[] {
+export function pickRootPreambleImageUrls(root: string, imageMap: Map<string, string[]>): string[] {
   const urls: string[] = []
   const push = (u: string) => { if (u && !urls.includes(u)) urls.push(u) }
 
@@ -371,7 +371,7 @@ function pickRootPreambleImageUrls(root: string, imageMap: Map<string, string[]>
   return urls
 }
 
-function isMultiColumnTable(tableMd: string | null | undefined): boolean {
+export function isMultiColumnTable(tableMd: string | null | undefined): boolean {
   if (!tableMd) return false
   const firstLine = String(tableMd).split('\n').map(l => l.trim()).find(l => l.startsWith('|'))
   if (!firstLine) return false
@@ -379,7 +379,7 @@ function isMultiColumnTable(tableMd: string | null | undefined): boolean {
   return cells.length >= 2
 }
 
-function pickRootPreambleTableMarkdown(root: string, tableMap: Map<string, string[]>): string | null {
+export function pickRootPreambleTableMarkdown(root: string, tableMap: Map<string, string[]>): string | null {
   const direct = tableMap.get(root)
   const directMd = direct?.length ? direct.join('\n\n') : null
 
@@ -400,7 +400,7 @@ function pickRootPreambleTableMarkdown(root: string, tableMap: Map<string, strin
   return directMd
 }
 
-function buildQuestionPreambleMapFromMmd(mmd: string): Map<string, string> {
+export function buildQuestionPreambleMapFromMmd(mmd: string): Map<string, string> {
   const map = new Map<string, string>()
   if (!mmd.trim()) return map
 
@@ -468,7 +468,7 @@ function buildQuestionPreambleMapFromMmd(mmd: string): Map<string, string> {
   return map
 }
 
-function pickQuestionPreambleText(qNum: string, preambleMap: Map<string, string>): string | null {
+export function pickQuestionPreambleText(qNum: string, preambleMap: Map<string, string>): string | null {
   if (!qNum) return null
 
   const segments = qNum.split('.').filter(Boolean)
@@ -490,7 +490,7 @@ function pickQuestionPreambleText(qNum: string, preambleMap: Map<string, string>
   return merged || null
 }
 
-function mergePreambleIntoQuestionText(questionText: string, preamble: string | null): string {
+export function mergePreambleIntoQuestionText(questionText: string, preamble: string | null): string {
   const qText = String(questionText || '').trim()
   const pText = String(preamble || '').trim()
   if (!qText) return pText
@@ -523,7 +523,7 @@ function mergePreambleIntoQuestionText(questionText: string, preamble: string | 
   return `${pText}\n\n${qText}`
 }
 
-async function upsertRootPreambleRecords(opts: {
+export async function upsertRootPreambleRecords(opts: {
   sourceId: string
   grade: any
   year: number
@@ -689,13 +689,13 @@ async function sleep(ms: number) {
 
 type ExtractProvider = 'openai' | 'gemini' | 'auto'
 
-function getExtractProvider(): ExtractProvider {
+export function getExtractProvider(): ExtractProvider {
   const value = String(process.env.EXTRACT_PROVIDER || 'gemini').trim().toLowerCase()
   if (value === 'openai' || value === 'gemini' || value === 'auto') return value
   return 'gemini'
 }
 
-async function extractQuestionsWithOpenAI(opts: {
+export async function extractQuestionsWithOpenAI(opts: {
   apiKey: string
   model: string
   prompt: string
@@ -787,7 +787,7 @@ async function extractQuestionsWithOpenAI(opts: {
   throw new Error(`OpenAI error: ${lastError.slice(0, 500) || 'No response after retries'}`)
 }
 
-async function extractQuestionsWithGeminiApi(opts: {
+export async function extractQuestionsWithGeminiApi(opts: {
   apiKey: string
   model: string
   prompt: string

@@ -1863,6 +1863,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [qbContextRoot, setQbContextRoot] = useState<string>('')
   const [qbContextLoading, setQbContextLoading] = useState(false)
   const [qbContextError, setQbContextError] = useState<string | null>(null)
+  // Re-extract context state (admin)
+  const [reextractStatus, setReextractStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [reextractMessage, setReextractMessage] = useState<string | null>(null)
+  const [rawParseExpanded, setRawParseExpanded] = useState(false)
+  const [rawParseMmd, setRawParseMmd] = useState<string | null>(null)
+  const [rawParseMmdLoading, setRawParseMmdLoading] = useState(false)
+  const [rawParseSelection, setRawParseSelection] = useState('')
   // QB admin CRUD state
   const [qbSelectedIds, setQbSelectedIds] = useState<Set<string>>(new Set())
   const [qbEditingQ, setQbEditingQ] = useState<any>(null)
@@ -13618,6 +13625,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setQbContextError(null)
     setQbContextLoading(true)
     setQbContextOpen(true)
+    setReextractStatus('idle')
+    setReextractMessage(null)
+    setRawParseExpanded(false)
+    setRawParseSelection('')
     try {
       const params = new URLSearchParams()
       if (q.sourceId) {
@@ -13659,6 +13670,53 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setQbContextError(err?.message || 'Unable to load paper context')
     } finally {
       setQbContextLoading(false)
+    }
+  }
+
+  const triggerReextract = async (questionId: string, action: 'recover' | 'ai-reextract', mmdSlice?: string) => {
+    setReextractStatus('loading')
+    setReextractMessage(null)
+    try {
+      const body: Record<string, unknown> = { questionId, action }
+      if (mmdSlice) body.mmdSlice = mmdSlice
+      const res = await fetch('/api/exam-questions/reextract-context', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(body),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setReextractStatus('error')
+        setReextractMessage(data?.message || 'Failed')
+        return
+      }
+      setReextractStatus('done')
+      setReextractMessage(data?.message || 'Done')
+      // Refresh the context panel after a short delay so the user sees the success message
+      window.setTimeout(() => {
+        if (qbContextQ) openPaperContext(qbContextQ)
+      }, 1600)
+    } catch (err: any) {
+      setReextractStatus('error')
+      setReextractMessage(err?.message || 'Network error')
+    }
+  }
+
+  const loadRawMmd = async (sourceId: string) => {
+    if (rawParseMmd) return // already loaded
+    setRawParseMmdLoading(true)
+    try {
+      const res = await fetch(
+        `/api/exam-questions/reextract-context?sourceId=${encodeURIComponent(sourceId)}`,
+        { credentials: 'same-origin' },
+      )
+      const data = await res.json().catch(() => ({}))
+      setRawParseMmd(data?.mmd || '[No MMD data found for this source]')
+    } catch {
+      setRawParseMmd('[Failed to load raw parse]')
+    } finally {
+      setRawParseMmdLoading(false)
     }
   }
 
@@ -16062,13 +16120,77 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         </a>
                       ) : null}
                       {isAdmin ? (
-                        <button
-                          onClick={() => openPreambleEditor(null)}
-                          className="inline-flex items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
-                          + Add context
-                        </button>
+                        <>
+                          <button
+                            onClick={() => openPreambleEditor(null)}
+                            className="inline-flex items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
+                            + Add context
+                          </button>
+                          <button
+                            onClick={() => qbContextQ?.id && triggerReextract(qbContextQ.id, 'recover')}
+                            disabled={reextractStatus === 'loading'}
+                            className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-600 font-medium shadow-sm disabled:opacity-50">
+                            {reextractStatus === 'loading' ? 'Working…' : '↺ Recover from stored parse'}
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (qbContextQ?.sourceId) loadRawMmd(qbContextQ.sourceId)
+                              if (rawParseSelection && qbContextQ?.id) {
+                                triggerReextract(qbContextQ.id, 'ai-reextract', rawParseSelection)
+                              } else if (qbContextQ?.id) {
+                                triggerReextract(qbContextQ.id, 'ai-reextract')
+                              }
+                            }}
+                            disabled={reextractStatus === 'loading'}
+                            className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                            {reextractStatus === 'loading' ? 'Working…' : '✦ AI re-extract'}
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (!rawParseExpanded && qbContextQ?.sourceId) loadRawMmd(qbContextQ.sourceId)
+                              setRawParseExpanded((v) => !v)
+                              if (rawParseExpanded) setRawParseSelection('')
+                            }}
+                            className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-500 font-medium shadow-sm">
+                            {rawParseExpanded ? 'Hide raw parse' : 'Show raw parse'}
+                          </button>
+                        </>
                       ) : null}
                     </div>
+                    {reextractStatus !== 'idle' && reextractMessage ? (
+                      <p className={`text-xs ${reextractStatus === 'error' ? 'text-red-600' : reextractStatus === 'done' ? 'text-green-700' : 'text-slate-500'}`}>
+                        {reextractMessage}
+                      </p>
+                    ) : null}
+                    {isAdmin && rawParseExpanded ? (
+                      <div className="mt-1 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-medium text-slate-500">Raw parse</span>
+                          {rawParseSelection ? (
+                            <button
+                              onClick={() => qbContextQ?.id && triggerReextract(qbContextQ.id, 'ai-reextract', rawParseSelection)}
+                              disabled={reextractStatus === 'loading'}
+                              className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                              ✦ Use selection for AI
+                            </button>
+                          ) : (
+                            <span className="text-xs text-slate-400">Select text below to target AI extraction</span>
+                          )}
+                        </div>
+                        {rawParseMmdLoading ? (
+                          <div className="text-xs text-slate-400">Loading…</div>
+                        ) : (
+                          <pre
+                            className="max-h-48 overflow-auto rounded bg-slate-50 border border-slate-200 p-2 text-xs text-slate-700 whitespace-pre-wrap select-text cursor-text"
+                            onMouseUp={() => {
+                              const sel = window.getSelection()?.toString().trim() || ''
+                              setRawParseSelection(sel)
+                            }}>
+                            {rawParseMmd}
+                          </pre>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                 )
               }
@@ -16120,13 +16242,81 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         </a>
                       ) : null}
                       {isAdmin ? (
-                        <button
-                          onClick={() => openPreambleEditor(rootItem)}
-                          className="inline-flex items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
-                          Edit context
-                        </button>
+                        <>
+                          <button
+                            onClick={() => openPreambleEditor(rootItem)}
+                            className="inline-flex items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
+                            Edit context
+                          </button>
+                          <button
+                            onClick={() => rootItem?.id && triggerReextract(rootItem.id, 'recover')}
+                            disabled={reextractStatus === 'loading'}
+                            className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-600 font-medium shadow-sm disabled:opacity-50">
+                            {reextractStatus === 'loading' ? 'Working…' : '↺ Recover from stored parse'}
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (qbContextQ?.sourceId) loadRawMmd(qbContextQ.sourceId)
+                              const targetId = rootItem?.id || qbContextQ?.id
+                              if (rawParseSelection && targetId) {
+                                triggerReextract(targetId, 'ai-reextract', rawParseSelection)
+                              } else if (targetId) {
+                                triggerReextract(targetId, 'ai-reextract')
+                              }
+                            }}
+                            disabled={reextractStatus === 'loading'}
+                            className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                            {reextractStatus === 'loading' ? 'Working…' : '✦ AI re-extract'}
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (!rawParseExpanded && qbContextQ?.sourceId) loadRawMmd(qbContextQ.sourceId)
+                              setRawParseExpanded((v) => !v)
+                              if (rawParseExpanded) setRawParseSelection('')
+                            }}
+                            className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-500 font-medium shadow-sm">
+                            {rawParseExpanded ? 'Hide raw parse' : 'Show raw parse'}
+                          </button>
+                        </>
                       ) : null}
                     </div>
+                    {reextractStatus !== 'idle' && reextractMessage ? (
+                      <p className={`text-xs ${reextractStatus === 'error' ? 'text-red-600' : reextractStatus === 'done' ? 'text-green-700' : 'text-slate-500'}`}>
+                        {reextractMessage}
+                      </p>
+                    ) : null}
+                    {isAdmin && rawParseExpanded ? (
+                      <div className="mt-1 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-medium text-slate-500">Raw parse</span>
+                          {rawParseSelection ? (
+                            <button
+                              onClick={() => {
+                                const targetId = rootItem?.id || qbContextQ?.id
+                                if (targetId) triggerReextract(targetId, 'ai-reextract', rawParseSelection)
+                              }}
+                              disabled={reextractStatus === 'loading'}
+                              className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                              ✦ Use selection for AI
+                            </button>
+                          ) : (
+                            <span className="text-xs text-slate-400">Select text below to target AI extraction</span>
+                          )}
+                        </div>
+                        {rawParseMmdLoading ? (
+                          <div className="text-xs text-slate-400">Loading…</div>
+                        ) : (
+                          <pre
+                            className="max-h-48 overflow-auto rounded bg-slate-50 border border-slate-200 p-2 text-xs text-slate-700 whitespace-pre-wrap select-text cursor-text"
+                            onMouseUp={() => {
+                              const sel = window.getSelection()?.toString().trim() || ''
+                              setRawParseSelection(sel)
+                            }}>
+                            {rawParseMmd}
+                          </pre>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                 )
               }

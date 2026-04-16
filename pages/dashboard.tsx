@@ -1877,6 +1877,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [reextractUndo, setReextractUndo] = useState<any>(null)
   const [reextractWarningAcknowledge, setReextractWarningAcknowledge] = useState(false)
   const qbContextScrollRef = useRef<HTMLDivElement | null>(null)
+  const qbContextAutoScrollDoneRef = useRef(false)
+  const qbContextAutoScrollCancelledRef = useRef(false)
+  const qbContextAutoScrollTimerRef = useRef<number | null>(null)
   // QB admin CRUD state
   const [qbSelectedIds, setQbSelectedIds] = useState<Set<string>>(new Set())
   const [qbEditingQ, setQbEditingQ] = useState<any>(null)
@@ -13626,6 +13629,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }
 
   const openPaperContext = async (q: any) => {
+    if (qbContextAutoScrollTimerRef.current != null) {
+      window.clearTimeout(qbContextAutoScrollTimerRef.current)
+      qbContextAutoScrollTimerRef.current = null
+    }
+    qbContextAutoScrollDoneRef.current = false
+    qbContextAutoScrollCancelledRef.current = false
     setQbContextQ(q)
     setQbContextItems([])
     setQbContextRoot('')
@@ -13858,16 +13867,33 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }
 
+  const cancelPendingQbContextAutoScroll = () => {
+    qbContextAutoScrollCancelledRef.current = true
+    if (qbContextAutoScrollTimerRef.current != null) {
+      window.clearTimeout(qbContextAutoScrollTimerRef.current)
+      qbContextAutoScrollTimerRef.current = null
+    }
+  }
+
   useEffect(() => {
     if (!qbContextOpen || !qbContextQ?.id || qbContextItems.length === 0) return
-    const handle = window.setTimeout(() => {
+    if (qbContextAutoScrollDoneRef.current || qbContextAutoScrollCancelledRef.current) return
+    qbContextAutoScrollTimerRef.current = window.setTimeout(() => {
+      if (qbContextAutoScrollCancelledRef.current || qbContextAutoScrollDoneRef.current) return
       const el = document.getElementById(`qb-context-item-${String(qbContextQ.id)}`)
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }
+      qbContextAutoScrollDoneRef.current = true
+      qbContextAutoScrollTimerRef.current = null
     }, 80)
-    return () => window.clearTimeout(handle)
-  }, [qbContextOpen, qbContextQ, qbContextItems])
+    return () => {
+      if (qbContextAutoScrollTimerRef.current != null) {
+        window.clearTimeout(qbContextAutoScrollTimerRef.current)
+        qbContextAutoScrollTimerRef.current = null
+      }
+    }
+  }, [qbContextOpen, qbContextQ?.id, qbContextItems.length])
 
   const openPreambleEditor = (rootItem: any | null) => {
     const ref = rootItem || qbContextItems[0] || qbContextQ
@@ -16197,6 +16223,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         title="Paper context"
         subtitle={qbContextQ ? `${qbContextQ.sourceTitle ? `${qbContextQ.sourceTitle} · ` : ''}${qbContextQ.year} ${qbContextQ.month} · Paper ${qbContextQ.paper}` : undefined}
         onClose={() => {
+          if (qbContextAutoScrollTimerRef.current != null) {
+            window.clearTimeout(qbContextAutoScrollTimerRef.current)
+            qbContextAutoScrollTimerRef.current = null
+          }
+          qbContextAutoScrollDoneRef.current = false
+          qbContextAutoScrollCancelledRef.current = false
           setQbContextOpen(false)
           setQbContextQ(null)
           setQbContextItems([])
@@ -16235,7 +16267,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           style={{
             scrollPaddingTop: '1rem',
             scrollPaddingBottom: 'calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 7rem)',
-          }}>
+          }}
+          onWheel={cancelPendingQbContextAutoScroll}
+          onTouchStart={cancelPendingQbContextAutoScroll}
+          onPointerDown={cancelPendingQbContextAutoScroll}>
           {qbContextLoading ? (
             <div className="p-4 text-sm text-slate-600">Loading paper context...</div>
           ) : qbContextError ? (

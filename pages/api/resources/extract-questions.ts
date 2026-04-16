@@ -128,7 +128,7 @@ function tabularToPipeTable(tabular: string): string | null {
   if (rows.length === 0) return null
 
   const header = rows.length === 1
-    ? rows[0].map((_cell, index) => `Col ${index + 1}`)
+    ? rows[0].map(() => '')
     : rows[0]
   const bodyRows = rows.length === 1 ? [rows[0]] : rows.slice(1)
   const width = Math.max(header.length, ...bodyRows.map((row) => row.length))

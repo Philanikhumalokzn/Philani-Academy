@@ -160,7 +160,7 @@ export default function BottomSheet(props: BottomSheetProps) {
         </div>
       ) : null}
 
-      <div className={`min-h-0 overflow-y-auto ${contentClassName || 'p-2'}`.trim()}>{children}</div>
+      <div className={`min-h-0 flex-1 overflow-y-auto ${contentClassName || 'p-2'}`.trim()}>{children}</div>
     </div>
   )
 

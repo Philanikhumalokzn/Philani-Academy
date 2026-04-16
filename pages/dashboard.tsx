@@ -1856,6 +1856,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [qbLoading, setQbLoading] = useState(false)
   const [qbError, setQbError] = useState<string | null>(null)
   const [qbSearched, setQbSearched] = useState(false)
+  // Paper context sheet state (View in paper)
+  const [qbContextOpen, setQbContextOpen] = useState(false)
+  const [qbContextQ, setQbContextQ] = useState<any>(null)
+  const [qbContextItems, setQbContextItems] = useState<any[]>([])
+  const [qbContextLoading, setQbContextLoading] = useState(false)
+  const [qbContextError, setQbContextError] = useState<string | null>(null)
   const [libraryGrades, setLibraryGrades] = useState<LibraryGradeItem[]>([])
   const [libraryGradesLoading, setLibraryGradesLoading] = useState(false)
   const [libraryGradesError, setLibraryGradesError] = useState<string | null>(null)
@@ -13507,8 +13513,58 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }
 
+  const compareQNum = (a: string, b: string): number => {
+    const pa = a.split('.').map(Number)
+    const pb = b.split('.').map(Number)
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const na = pa[i] ?? 0
+      const nb = pb[i] ?? 0
+      if (na !== nb) return na - nb
+    }
+    return 0
+  }
+
+  const openPaperContext = async (q: any) => {
+    setQbContextQ(q)
+    setQbContextItems([])
+    setQbContextError(null)
+    setQbContextLoading(true)
+    setQbContextOpen(true)
+    try {
+      const params = new URLSearchParams()
+      params.set('grade', q.grade)
+      params.set('year', String(q.year))
+      params.set('month', q.month)
+      params.set('paper', String(q.paper))
+      params.set('take', '200')
+      const res = await fetch(`/api/exam-questions?${params.toString()}`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Unable to load paper context (${res.status})`)
+      const items: any[] = Array.isArray(data?.items) ? data.items : []
+      items.sort((a, b) => compareQNum(String(a.questionNumber), String(b.questionNumber)))
+      setQbContextItems(items)
+    } catch (err: any) {
+      setQbContextItems([])
+      setQbContextError(err?.message || 'Unable to load paper context')
+    } finally {
+      setQbContextLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!qbContextOpen || !qbContextQ?.id || qbContextItems.length === 0) return
+    const handle = window.setTimeout(() => {
+      const el = document.getElementById(`qb-context-item-${String(qbContextQ.id)}`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }, 80)
+    return () => window.clearTimeout(handle)
+  }, [qbContextOpen, qbContextQ, qbContextItems])
+
   const renderQuestionBankContent = () => (
     <div>
+
       <section className="border-b border-black/10 bg-white px-4 py-4 space-y-3">
         <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Question Bank</div>
         <div className="text-sm text-[#1f2937]">Search past exam questions by year, paper, topic, and difficulty.</div>
@@ -13676,6 +13732,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         </div>
                       )
                     ) : null}
+
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        type="button"
+                        className="text-xs text-[#1877f2] hover:underline"
+                        onClick={() => void openPaperContext(q)}
+                      >
+                          View in paper {'>'}
+                      </button>
+                    </div>
                   </li>
                 )
               })()
@@ -15435,6 +15501,111 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </FullScreenGlassOverlay>
       )}
       </main>
+
+      <BottomSheet
+        open={qbContextOpen}
+        title="Paper context"
+        subtitle={qbContextQ ? `${qbContextQ.year} ${qbContextQ.month} · Paper ${qbContextQ.paper}` : undefined}
+        onClose={() => {
+          setQbContextOpen(false)
+          setQbContextQ(null)
+          setQbContextItems([])
+          setQbContextLoading(false)
+          setQbContextError(null)
+        }}
+        backdrop
+        closeOnBackdrop
+        closeOnEscape
+        contentClassName="p-0"
+        zIndexClassName="z-[80]"
+      >
+        <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          {qbContextQ ? `Showing full paper sequence around Q${qbContextQ.questionNumber}` : 'Loading paper context'}
+        </div>
+
+        {qbContextLoading ? (
+          <div className="p-4 text-sm text-slate-600">Loading paper context...</div>
+        ) : qbContextError ? (
+          <div className="p-4 text-sm text-red-600">{qbContextError}</div>
+        ) : qbContextItems.length === 0 ? (
+          <div className="p-4 text-sm text-slate-600">No questions found for this paper.</div>
+        ) : (
+          <ul className="divide-y divide-slate-200">
+            {qbContextItems.map((contextQ) => {
+              const normalizedQuestion = normalizeExamQuestionContent(
+                unwrapQuestionField(contextQ?.questionText, ['questionText', 'text', 'prompt']),
+                unwrapQuestionField(contextQ?.latex, ['latex', 'equation', 'math']),
+              )
+              const cleanText = normalizedQuestion.questionText
+              const cleanLatex = normalizedQuestion.latex
+              const latexHtml = cleanLatex ? renderKatexDisplayHtml(cleanLatex) : ''
+              const contextImageUrls = (() => {
+                const urls: string[] = []
+                const pushUrl = (value: unknown) => {
+                  const url = typeof value === 'string' ? value.trim() : ''
+                  if (!url) return
+                  if (!/^https?:\/\//i.test(url)) return
+                  if (!urls.includes(url)) urls.push(url)
+                }
+
+                if (Array.isArray(contextQ?.imageUrls)) {
+                  for (const imageUrl of contextQ.imageUrls) pushUrl(imageUrl)
+                }
+                pushUrl(contextQ?.imageUrl)
+                return urls
+              })()
+
+              const isFocus = String(contextQ.id) === String(qbContextQ?.id)
+
+              return (
+                <li
+                  key={contextQ.id}
+                  id={`qb-context-item-${String(contextQ.id)}`}
+                  className={`px-3 py-3 ${isFocus ? 'bg-[#eef5ff]' : 'bg-white'}`}
+                >
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <span className="text-xs font-bold text-[#65676b]">Q{contextQ.questionNumber}</span>
+                    {contextQ.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{contextQ.topic}</span> : null}
+                    {contextQ.cognitiveLevel ? <span className="text-xs rounded-full bg-[#fff3cd] px-2 py-0.5 text-[#856404]">Level {contextQ.cognitiveLevel}</span> : null}
+                    {contextQ.marks ? <span className="text-xs text-[#65676b]">{contextQ.marks} marks</span> : null}
+                    {isFocus ? <span className="text-xs rounded-full bg-[#dce9ff] px-2 py-0.5 text-[#1d4ed8]">Selected result</span> : null}
+                  </div>
+
+                  <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
+                    {renderQuestionTextWithInlineLatex(cleanText)}
+                  </div>
+
+                  {contextImageUrls.length > 0 ? (
+                    <div className="mt-2 grid gap-2">
+                      {contextImageUrls.map((imageUrl, imageIndex) => (
+                        <div key={`${contextQ.id}-context-diagram-${imageIndex}`} className="overflow-hidden rounded-lg border border-[#dbe4f3] bg-[#f8fbff]">
+                          <img
+                            src={imageUrl}
+                            alt={`Diagram ${imageIndex + 1} for question ${contextQ.questionNumber}`}
+                            className="max-h-[220px] w-full object-contain"
+                            loading="lazy"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {cleanLatex ? (
+                    latexHtml ? (
+                      <div className="mt-2 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-[#1c1e21] leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
+                    ) : (
+                      <div className="mt-2 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
+                        {renderTextWithKatex(cleanLatex)}
+                      </div>
+                    )
+                  ) : null}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </BottomSheet>
+
       {liveOverlayOpen && (
         <div
           className={`live-call-overlay${liveWindows.some(win => win.kind === 'canvas' && !win.minimized) ? ' live-call-overlay--canvas-open' : ''}${liveOverlayChromeVisible ? ' live-call-overlay--chrome-visible' : ''}`}

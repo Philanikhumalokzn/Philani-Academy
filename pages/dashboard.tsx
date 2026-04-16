@@ -13918,6 +13918,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   return urls
                 })()
                 const isSelected = isAdmin && qbSelectedIds.has(String(q.id))
+                const isSubquestion = String(q.questionNumber ?? '').includes('.')
 
                 return (
                   <li key={q.id} className={`border-b border-black/10 bg-white px-4 py-3 transition-colors${isSelected ? ' !bg-[#f0f5ff]' : ''}`}>
@@ -13945,9 +13946,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           {isAdmin && !q.approved ? <span className="text-xs rounded-full bg-red-100 px-2 py-0.5 text-red-600">Unapproved</span> : null}
                         </div>
 
-                        <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
-                          {renderQuestionTextWithInlineLatex(cleanText)}
-                        </div>
+                        {isSubquestion ? (
+                          <button
+                            type="button"
+                            className="w-full text-left text-sm text-[#1c1e21] whitespace-pre-wrap break-words rounded-lg border border-transparent hover:border-[#dbe4f3] hover:bg-[#f8fbff] px-2 py-1 -mx-2 transition-colors cursor-pointer active:bg-[#eef5ff]"
+                            onClick={() => void openPaperContext(q)}
+                            title="Tap to view this question in its full paper context"
+                          >
+                            {renderQuestionTextWithInlineLatex(cleanText)}
+                            <span className="block mt-1 text-[10px] text-[#1877f2] opacity-60">tap to view in context ↗</span>
+                          </button>
+                        ) : (
+                          <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
+                            {renderQuestionTextWithInlineLatex(cleanText)}
+                          </div>
+                        )}
 
                         {questionImageUrls.length > 0 ? (
                           <div className="mt-2 grid gap-2">

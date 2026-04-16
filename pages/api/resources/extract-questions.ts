@@ -932,10 +932,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!item || typeof item !== 'object') { skipped.push(i); continue }
 
     const qNum = (typeof item.questionNumber === 'string' ? item.questionNumber : String(item.questionNumber || '')).trim()
-    const mergedQuestionText = mergePreambleIntoQuestionText(
-      typeof item.questionText === 'string' ? item.questionText : String(item.questionText || ''),
-      pickQuestionPreambleText(qNum, questionPreambleMap),
-    )
+    const rawQuestionText = typeof item.questionText === 'string' ? item.questionText : String(item.questionText || '')
+    // Subquestions (e.g. "2.3") display only their own statement; preamble is accessible via
+    // View in Paper scroll. Only top-level questions (e.g. "2") get the preamble prepended.
+    const isSubQuestion = qNum.includes('.')
+    const mergedQuestionText = isSubQuestion
+      ? rawQuestionText
+      : mergePreambleIntoQuestionText(rawQuestionText, pickQuestionPreambleText(qNum, questionPreambleMap))
     const normalized = normalizeExamQuestionContent(mergedQuestionText, item.latex)
     const qText = normalized.questionText
 

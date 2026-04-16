@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
 import { formatSocialCountLabel } from '../lib/socialCounterFormat'
@@ -15860,8 +15860,33 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           ) : qbContextItems.length === 0 ? (
             <div className="p-4 text-sm text-slate-600">No questions found for this paper.</div>
           ) : (
+            <>
+            {/* Pinned preamble header: shown when a root question row exists */}
+            {(() => {
+              const rootItem = qbContextRoot
+                ? qbContextItems.find(item => String(item?.questionNumber ?? '').trim() === qbContextRoot)
+                : null
+              if (!rootItem) return null
+              const rootNorm = normalizeExamQuestionContent(
+                unwrapQuestionField(rootItem?.questionText, ['questionText', 'text', 'prompt']),
+                unwrapQuestionField(rootItem?.latex, ['latex', 'equation', 'math']),
+              )
+              const rootText = rootNorm.questionText
+              if (!rootText) return null
+              return (
+                <div className="border-b border-slate-200 bg-amber-50 px-3 py-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-bold text-amber-700">Q{rootItem.questionNumber} — Question context</span>
+                    {rootItem.marks ? <span className="text-xs text-amber-600">{rootItem.marks} marks</span> : null}
+                  </div>
+                  <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
+                    {renderQuestionTextWithInlineLatex(rootText)}
+                  </div>
+                </div>
+              )
+            })()}
             <ul className="divide-y divide-slate-200">
-            {qbContextItems.map((contextQ) => {
+            {qbContextItems.filter(item => String(item?.questionNumber ?? '').trim() !== qbContextRoot).map((contextQ) => {
               const normalizedQuestion = normalizeExamQuestionContent(
                 unwrapQuestionField(contextQ?.questionText, ['questionText', 'text', 'prompt']),
                 unwrapQuestionField(contextQ?.latex, ['latex', 'equation', 'math']),
@@ -15933,6 +15958,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               )
             })}
             </ul>
+            </>
           )}
         </div>
       </BottomSheet>

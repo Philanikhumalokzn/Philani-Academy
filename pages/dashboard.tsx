@@ -1860,6 +1860,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [qbContextOpen, setQbContextOpen] = useState(false)
   const [qbContextQ, setQbContextQ] = useState<any>(null)
   const [qbContextItems, setQbContextItems] = useState<any[]>([])
+  const [qbContextRoot, setQbContextRoot] = useState<string>('')
   const [qbContextLoading, setQbContextLoading] = useState(false)
   const [qbContextError, setQbContextError] = useState<string | null>(null)
   // QB admin CRUD state
@@ -13540,6 +13541,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const openPaperContext = async (q: any) => {
     setQbContextQ(q)
     setQbContextItems([])
+    setQbContextRoot('')
     setQbContextError(null)
     setQbContextLoading(true)
     setQbContextOpen(true)
@@ -13559,9 +13561,28 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       if (!res.ok) throw new Error(data?.message || `Unable to load paper context (${res.status})`)
       const items: any[] = Array.isArray(data?.items) ? data.items : []
       items.sort((a, b) => compareQNum(String(a.questionNumber), String(b.questionNumber)))
+
+      const selectedQNum = String(q?.questionNumber || '').trim()
+      const selectedRoot = selectedQNum.split('.').filter(Boolean)[0] || ''
+
+      if (selectedRoot) {
+        const scoped = items.filter((item) => {
+          const itemQNum = String(item?.questionNumber || '').trim()
+          return itemQNum === selectedRoot || itemQNum.startsWith(`${selectedRoot}.`)
+        })
+
+        if (scoped.length > 0) {
+          setQbContextRoot(selectedRoot)
+          setQbContextItems(scoped)
+          return
+        }
+      }
+
+      setQbContextRoot('')
       setQbContextItems(items)
     } catch (err: any) {
       setQbContextItems([])
+      setQbContextRoot('')
       setQbContextError(err?.message || 'Unable to load paper context')
     } finally {
       setQbContextLoading(false)
@@ -15795,6 +15816,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           setQbContextOpen(false)
           setQbContextQ(null)
           setQbContextItems([])
+          setQbContextRoot('')
           setQbContextLoading(false)
           setQbContextError(null)
         }}
@@ -15807,8 +15829,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
           {qbContextQ
             ? (qbContextQ.sourceId
-              ? `Showing the original extracted source for Q${qbContextQ.questionNumber}`
-              : `Showing paper metadata context around Q${qbContextQ.questionNumber}`)
+              ? (qbContextRoot
+                ? `Showing Question ${qbContextRoot} in original sequence. Selected: Q${qbContextQ.questionNumber}`
+                : `Showing the original extracted source for Q${qbContextQ.questionNumber}`)
+              : (qbContextRoot
+                ? `Showing Question ${qbContextRoot} in paper sequence. Selected: Q${qbContextQ.questionNumber}`
+                : `Showing paper metadata context around Q${qbContextQ.questionNumber}`))
             : 'Loading paper context'}
         </div>
 

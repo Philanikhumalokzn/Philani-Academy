@@ -16096,24 +16096,24 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   ) : null}
                   {rootTable ? (() => {
                     const tableLines = rootTable.split('\n').map((l: string) => l.trim()).filter((l: string) => l.startsWith('|'))
-                    if (tableLines.length < 2) return (
-                      <pre className="overflow-x-auto rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs text-[#1c1e21] whitespace-pre font-mono">{rootTable}</pre>
-                    )
+                    if (tableLines.length < 2) return null
                     const parseRow = (line: string) => line.replace(/^\||\|$/g, '').split('|').map((c: string) => c.trim())
                     const headerCells = parseRow(tableLines[0])
                     const dataRows = tableLines.slice(2).map(parseRow)
                     const isSyntheticHeader = headerCells.length > 0 && headerCells.every((cell: string, idx: number) => new RegExp(`^col\\s*${idx + 1}$`, 'i').test(cell))
                     const isBlankHeader = headerCells.length > 0 && headerCells.every((cell: string) => !cell)
                     const showHeader = !(isSyntheticHeader || isBlankHeader)
-                    const bodyRows = showHeader ? dataRows : (dataRows.length > 0 ? dataRows : [headerCells])
+                    const bodyRows = showHeader
+                      ? dataRows
+                      : (dataRows.length > 0 ? dataRows : [headerCells])
                     return (
-                      <div className="mt-1 overflow-x-auto border border-amber-200 rounded-lg bg-white">
+                      <div className="mt-2 overflow-x-auto border border-[#9aa4b2] bg-white">
                         <table className="min-w-full border-collapse text-xs text-black">
                           {showHeader ? (
                             <thead>
                               <tr>
                                 {headerCells.map((h: string, i: number) => (
-                                  <th key={i} className="border border-amber-200 px-2 py-1 text-left font-semibold whitespace-nowrap">
+                                  <th key={i} className="border border-[#9aa4b2] px-2 py-1 text-left font-semibold whitespace-nowrap text-black bg-white">
                                     {renderQuestionTextWithInlineLatex(h)}
                                   </th>
                                 ))}
@@ -16124,7 +16124,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             {bodyRows.map((row: string[], ri: number) => (
                               <tr key={ri}>
                                 {row.map((cell: string, ci: number) => (
-                                  <td key={ci} className="border border-amber-200 px-2 py-1">
+                                  <td key={ci} className="border border-[#9aa4b2] px-2 py-1 text-black">
                                     {renderQuestionTextWithInlineLatex(cell)}
                                   </td>
                                 ))}

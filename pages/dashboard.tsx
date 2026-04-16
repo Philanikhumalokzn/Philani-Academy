@@ -14111,12 +14111,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           const parseRow = (line: string) => line.replace(/^\||\|$/g, '').split('|').map((c: string) => c.trim())
                           const headerCells = parseRow(tableLines[0])
                           const dataRows = tableLines.slice(2).map(parseRow)
+                          const isSepRow = (row: string[]) => row.length > 0 && row.every((c: string) => /^[-:]+$/.test(c.replace(/\s/g, '')))
+                          const filteredDataRows = dataRows.filter((row: string[]) => !isSepRow(row))
                           const isSyntheticHeader = headerCells.length > 0 && headerCells.every((cell: string, idx: number) => new RegExp(`^col\\s*${idx + 1}$`, 'i').test(cell))
                           const isBlankHeader = headerCells.length > 0 && headerCells.every((cell: string) => !cell)
                           const showHeader = !(isSyntheticHeader || isBlankHeader)
                           const bodyRows = showHeader
-                            ? dataRows
-                            : (dataRows.length > 0 ? dataRows : [headerCells])
+                            ? filteredDataRows
+                            : (filteredDataRows.length > 0 ? filteredDataRows : [headerCells])
                           return (
                             <div className="mt-2 overflow-x-auto border border-[#9aa4b2] bg-white">
                               <table className="min-w-full border-collapse text-xs text-black">
@@ -16040,7 +16042,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 push(rootItem?.imageUrl)
                 return urls
               })()
-              const rootTable = typeof rootItem?.tableMarkdown === 'string' ? rootItem.tableMarkdown.trim() : ''
+              const countPipeColumns = (tableMd: string): number => {
+                const firstLine = String(tableMd || '').split('\n').map((l: string) => l.trim()).find((l: string) => l.startsWith('|'))
+                if (!firstLine) return 0
+                return firstLine.replace(/^\||\|$/g, '').split('|').map((c: string) => c.trim()).filter((c: string) => c).length
+              }
+              const rootTableRaw = typeof rootItem?.tableMarkdown === 'string' ? rootItem.tableMarkdown.trim() : ''
+              const rootTable = (() => {
+                const rootCols = countPipeColumns(rootTableRaw)
+                if (rootCols >= 2) return rootTableRaw
+
+                // If root table is fragmented/single-column, reuse first multi-column child table in this root context.
+                const childTable = qbContextItems
+                  .filter((item) => getQNumRoot(item?.questionNumber) === qbContextRoot && String(item?.questionNumber || '').includes('.'))
+                  .map((item) => (typeof item?.tableMarkdown === 'string' ? item.tableMarkdown.trim() : ''))
+                  .find((tableMd) => countPipeColumns(tableMd) >= 2)
+                return childTable || rootTableRaw
+              })()
 
               if (!rootText && rootImageUrls.length === 0 && !rootTable) {
                 return (
@@ -16100,12 +16118,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     const parseRow = (line: string) => line.replace(/^\||\|$/g, '').split('|').map((c: string) => c.trim())
                     const headerCells = parseRow(tableLines[0])
                     const dataRows = tableLines.slice(2).map(parseRow)
+                    const isSepRow = (row: string[]) => row.length > 0 && row.every((c: string) => /^[-:]+$/.test(c.replace(/\s/g, '')))
+                    const filteredDataRows = dataRows.filter((row: string[]) => !isSepRow(row))
                     const isSyntheticHeader = headerCells.length > 0 && headerCells.every((cell: string, idx: number) => new RegExp(`^col\\s*${idx + 1}$`, 'i').test(cell))
                     const isBlankHeader = headerCells.length > 0 && headerCells.every((cell: string) => !cell)
                     const showHeader = !(isSyntheticHeader || isBlankHeader)
                     const bodyRows = showHeader
-                      ? dataRows
-                      : (dataRows.length > 0 ? dataRows : [headerCells])
+                      ? filteredDataRows
+                      : (filteredDataRows.length > 0 ? filteredDataRows : [headerCells])
                     return (
                       <div className="mt-2 overflow-x-auto border border-[#9aa4b2] bg-white">
                         <table className="min-w-full border-collapse text-xs text-black">

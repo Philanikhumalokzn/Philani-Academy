@@ -285,11 +285,22 @@ function pickRootPreambleImageUrls(root: string, imageMap: Map<string, string[]>
   return urls
 }
 
+function isMultiColumnTable(tableMd: string | null | undefined): boolean {
+  if (!tableMd) return false
+  const firstLine = String(tableMd).split('\n').map(l => l.trim()).find(l => l.startsWith('|'))
+  if (!firstLine) return false
+  const cells = firstLine.replace(/^\||\|$/g, '').split('|').map(c => c.trim()).filter(c => c)
+  return cells.length >= 2
+}
+
 function pickRootPreambleTableMarkdown(root: string, tableMap: Map<string, string[]>): string | null {
   const direct = tableMap.get(root)
-  if (direct?.length) return direct.join('\n\n')
+  const directMd = direct?.length ? direct.join('\n\n') : null
 
-  // Fallback: first direct child with tables
+  // Only use direct root table if it has 2+ columns; single-column ones are just column-label lists
+  if (directMd && isMultiColumnTable(directMd)) return directMd
+
+  // Prefer first child with a multi-column table
   const childKeys = Array.from(tableMap.keys())
     .filter((k) => { const p = k.split('.'); return p.length === 2 && p[0] === root })
     .sort((a, b) => Number(a.split('.')[1]) - Number(b.split('.')[1]))
@@ -299,7 +310,8 @@ function pickRootPreambleTableMarkdown(root: string, tableMap: Map<string, strin
     if (tables?.length) return tables.join('\n\n')
   }
 
-  return null
+  // Fallback to single-column direct table if no child table found
+  return directMd
 }
 
 function buildQuestionPreambleMapFromMmd(mmd: string): Map<string, string> {

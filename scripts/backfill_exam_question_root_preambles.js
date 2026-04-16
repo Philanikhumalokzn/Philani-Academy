@@ -292,9 +292,20 @@ function pickRootPreambleImageUrls(root, imageMap) {
   return urls
 }
 
+function isMultiColumnTable(tableMd) {
+  if (!tableMd) return false
+  const firstLine = String(tableMd).split('\n').map(l => l.trim()).find(l => l.startsWith('|'))
+  if (!firstLine) return false
+  const cells = firstLine.replace(/^\||\|$/g, '').split('|').map(c => c.trim()).filter(c => c)
+  return cells.length >= 2
+}
+
 function pickRootPreambleTableMarkdown(root, tableMap) {
   const direct = tableMap.get(root)
-  if (direct && direct.length) return direct.join('\n\n')
+  const directMd = direct && direct.length ? direct.join('\n\n') : null
+
+  // Only use direct root table if it has 2+ columns; single-column ones are just column-label lists
+  if (directMd && isMultiColumnTable(directMd)) return directMd
 
   const childKeys = Array.from(tableMap.keys())
     .filter((k) => { const p = String(k).split('.'); return p.length === 2 && p[0] === root })
@@ -305,7 +316,8 @@ function pickRootPreambleTableMarkdown(root, tableMap) {
     if (tables && tables.length) return tables.join('\n\n')
   }
 
-  return null
+  // Fallback to single-column direct table if no child table found
+  return directMd
 }
 
 function questionNumberParts(qNum) {
@@ -394,7 +406,12 @@ async function upsertRootPreamblesForGroup({ sourceId, grade, year, month, paper
       if (mergedText && mergedText !== existingRoot.questionText) updateData.questionText = mergedText
       if ((existingRoot.questionDepth || 0) !== 0) updateData.questionDepth = 0
       if (!existingRoot.imageUrl && rootImageUrl) updateData.imageUrl = rootImageUrl
-      if (!existingRoot.tableMarkdown && rootTableMarkdown) updateData.tableMarkdown = rootTableMarkdown
+      // Replace existing single-column table if a multi-column table is available
+      const existingIsSingleCol = existingRoot.tableMarkdown && !isMultiColumnTable(existingRoot.tableMarkdown)
+      const newIsMultiCol = rootTableMarkdown && isMultiColumnTable(rootTableMarkdown)
+      if ((!existingRoot.tableMarkdown && rootTableMarkdown) || (existingIsSingleCol && newIsMultiCol)) {
+        updateData.tableMarkdown = rootTableMarkdown
+      }
 
       if (Object.keys(updateData).length > 0) {
         await prisma.examQuestion.update({

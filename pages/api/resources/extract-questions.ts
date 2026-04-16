@@ -339,10 +339,29 @@ function mergePreambleIntoQuestionText(questionText: string, preamble: string | 
   if (!qText) return pText
   if (!pText) return qText
 
-  const normalize = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase()
-  const qNorm = normalize(qText)
-  const pNorm = normalize(pText)
-  if (!pNorm || qNorm.includes(pNorm)) return qText
+  const normalizeForCompare = (value: string) => value
+    .replace(/\\begin\{tabular\}\{[^}]*\}[\s\S]*?\\end\{tabular\}/g, ' ')
+    .replace(/\\begin\{tabular\}\{[^}]*\}|\\end\{tabular\}|\\hline/g, ' ')
+    .replace(/\\\s*\(/g, '(')
+    .replace(/\\\s*\)/g, ')')
+    .replace(/(?:^|\s)(?:[^\s&]+\s*&\s*){2,}[^\s&]+(?:\s*\\\\)?/g, ' ')
+    .replace(/\\\\/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+
+  const qNorm = normalizeForCompare(qText)
+  const pNorm = normalizeForCompare(pText)
+  if (!pNorm || qNorm.includes(pNorm) || pNorm.includes(qNorm)) return qText
+
+  const qWords = new Set(qNorm.split(' ').filter(Boolean))
+  const pWords = pNorm.split(' ').filter(Boolean)
+  let overlap = 0
+  for (const word of pWords) {
+    if (qWords.has(word)) overlap += 1
+  }
+  const overlapRatio = pWords.length > 0 ? overlap / pWords.length : 0
+  if (overlapRatio >= 0.78) return qText
 
   return `${pText}\n\n${qText}`
 }

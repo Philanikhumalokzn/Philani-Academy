@@ -101,12 +101,76 @@ function mergePreambleIntoQuestionText(questionText, preamble) {
   if (!qText) return pText
   if (!pText) return qText
 
-  const normalize = (value) => value.replace(/\s+/g, ' ').trim().toLowerCase()
-  const qNorm = normalize(qText)
-  const pNorm = normalize(pText)
-  if (!pNorm || qNorm.includes(pNorm)) return qText
+  const normalizeForCompare = (value) => String(value || '')
+    .replace(/\\begin\{tabular\}\{[^}]*\}[\s\S]*?\\end\{tabular\}/g, ' ')
+    .replace(/\\begin\{tabular\}\{[^}]*\}|\\end\{tabular\}|\\hline/g, ' ')
+    .replace(/\\\s*\(/g, '(')
+    .replace(/\\\s*\)/g, ')')
+    .replace(/(?:^|\s)(?:[^\s&]+\s*&\s*){2,}[^\s&]+(?:\s*\\\\)?/g, ' ')
+    .replace(/\\\\/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+
+  const qNorm = normalizeForCompare(qText)
+  const pNorm = normalizeForCompare(pText)
+  if (!pNorm || qNorm.includes(pNorm) || pNorm.includes(qNorm)) return qText
+
+  const qWords = new Set(qNorm.split(' ').filter(Boolean))
+  const pWords = pNorm.split(' ').filter(Boolean)
+  let overlap = 0
+  for (const word of pWords) {
+    if (qWords.has(word)) overlap += 1
+  }
+  const overlapRatio = pWords.length > 0 ? overlap / pWords.length : 0
+  if (overlapRatio >= 0.78) return qText
 
   return `${pText}\n\n${qText}`
+}
+
+function cleanupQuestionTextArtifacts(value) {
+  const blocks = String(value || '')
+    .replace(/\\begin\{tabular\}\{[^}]*\}[\s\S]*?\\end\{tabular\}/g, ' ')
+    .replace(/\\begin\{tabular\}\{[^}]*\}|\\end\{tabular\}|\\hline/g, ' ')
+    .replace(/\\\s*\(/g, '(')
+    .replace(/\\\s*\)/g, ')')
+    .replace(/(?:^|\s)(?:[^\s&]+\s*&\s*){2,}[^\s&]+(?:\s*\\\\)?/g, ' ')
+    .replace(/\\\\/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n +/g, '\n')
+    .trim()
+    .split(/\n{2,}/)
+    .map((b) => b.trim())
+    .filter(Boolean)
+
+  const normalizeBlock = (block) => block
+    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9 ]/gi, '')
+    .trim()
+    .toLowerCase()
+
+  if (blocks.length >= 2) {
+    const first = normalizeBlock(blocks[0])
+    const second = normalizeBlock(blocks[1])
+    const wordsA = new Set(first.split(' ').filter(Boolean))
+    const wordsB = second.split(' ').filter(Boolean)
+    let common = 0
+    for (const word of wordsB) {
+      if (wordsA.has(word)) common += 1
+    }
+    const overlapRatio = wordsB.length > 0 ? common / wordsB.length : 0
+    const nearDuplicate = first.length >= 80
+      && second.length >= 80
+      && (first === second || first.includes(second) || second.includes(first) || overlapRatio >= 0.75)
+    if (nearDuplicate) {
+      const keepFirst = first.length >= second.length
+      const deduped = keepFirst ? [blocks[0], ...blocks.slice(2)] : [blocks[1], ...blocks.slice(2)]
+      return deduped.join('\n\n').trim()
+    }
+  }
+
+  return blocks.join('\n\n').trim()
 }
 
 async function main() {
@@ -146,10 +210,11 @@ async function main() {
     const preambleMap = preambleMaps.get(sourceId)
     if (!preambleMap) continue
 
+    const cleanedText = cleanupQuestionTextArtifacts(question.questionText)
     const preambleText = pickQuestionPreambleText(question.questionNumber, preambleMap)
-    if (!preambleText) continue
-
-    const mergedText = mergePreambleIntoQuestionText(question.questionText, preambleText)
+    const mergedText = preambleText
+      ? mergePreambleIntoQuestionText(cleanedText, preambleText)
+      : cleanedText
     if (!mergedText || mergedText === question.questionText) continue
 
     await prisma.examQuestion.update({

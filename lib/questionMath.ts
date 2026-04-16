@@ -154,12 +154,29 @@ function dedupeRepeatedLeadingBlocks(value: string): string {
     .trim()
     .toLowerCase()
 
+  const tokenSet = (block: string) => new Set(normalizeBlock(block).split(' ').filter(Boolean))
+  const tokenOverlap = (a: string, b: string) => {
+    const sa = tokenSet(a)
+    const sb = tokenSet(b)
+    if (sa.size === 0 || sb.size === 0) return 0
+    let common = 0
+    for (const token of sa) {
+      if (sb.has(token)) common += 1
+    }
+    return common / Math.min(sa.size, sb.size)
+  }
+
   const first = normalizeBlock(blocks[0])
   const second = normalizeBlock(blocks[1])
   const minLen = 80
   const nearDuplicate = first.length >= minLen
     && second.length >= minLen
-    && (first === second || first.includes(second) || second.includes(first))
+    && (
+      first === second
+      || first.includes(second)
+      || second.includes(first)
+      || tokenOverlap(blocks[0], blocks[1]) >= 0.75
+    )
 
   if (!nearDuplicate) return text
 

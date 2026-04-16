@@ -45,6 +45,92 @@ function isTopLevelQuestionNumber(qNum: string, depth?: number | null): boolean 
   return questionNumberParts(qNum).length <= 1
 }
 
+function normalizeMarksValue(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const n = Math.round(value)
+    return n >= 0 ? n : null
+  }
+
+  const raw = String(value ?? '').trim()
+  if (!raw) return null
+
+  const plain = raw.match(/^\(?\s*(\d{1,2})\s*\)?$/)
+  if (plain?.[1]) return Number(plain[1])
+
+  const withWord = raw.match(/^(\d{1,2})\s*(?:marks?|mks?)$/i)
+  if (withWord?.[1]) return Number(withWord[1])
+
+  return null
+}
+
+function extractMarksFromText(value: unknown): number | null {
+  const text = String(value ?? '').trim()
+  if (!text) return null
+
+  const tailBracketed = text.match(/(?:\(\s*(\d{1,2})\s*(?:marks?|mks?)?\s*\)|\[\s*(\d{1,2})\s*(?:marks?|mks?)?\s*\])\s*$/i)
+  const bracketNum = tailBracketed?.[1] || tailBracketed?.[2]
+  if (bracketNum) return Number(bracketNum)
+
+  const tailWord = text.match(/(\d{1,2})\s*(?:marks?|mks?)\s*$/i)
+  if (tailWord?.[1]) return Number(tailWord[1])
+
+  return null
+}
+
+function buildQuestionMarksMapFromMmd(mmd: string): Map<string, number> {
+  const map = new Map<string, number>()
+  if (!mmd.trim()) return map
+
+  const lines = mmd.split(/\r?\n/)
+  let currentTop = ''
+  let currentSub = ''
+
+  const setMark = (qNum: string, mark: number | null) => {
+    if (!qNum || mark === null || !Number.isFinite(mark)) return
+    if (!map.has(qNum)) map.set(qNum, Math.max(0, Math.round(mark)))
+  }
+
+  for (const rawLine of lines) {
+    const line = String(rawLine || '').trim()
+    if (!line) continue
+
+    const topSectionMatch = line.match(/\\section\*\{\s*QUESTION\s+(\d+)\s*\}/i)
+      || line.match(/^QUESTION\s+(\d+)\b/i)
+    if (topSectionMatch?.[1]) {
+      currentTop = topSectionMatch[1]
+      currentSub = ''
+    }
+
+    const numberedMatch = line.match(/^((?:\d+)(?:\.\d+){1,5})\b/)
+    if (numberedMatch?.[1]) {
+      const candidate = numberedMatch[1]
+      if (!currentTop || candidate === currentTop || candidate.startsWith(`${currentTop}.`)) {
+        currentSub = candidate
+      }
+    }
+
+    const target = currentSub || currentTop
+    if (!target) continue
+
+    const inferred = extractMarksFromText(line)
+    if (inferred !== null) setMark(target, inferred)
+  }
+
+  return map
+}
+
+function pickQuestionMarks(qNum: string, marksMap: Map<string, number>): number | null {
+  const parts = questionNumberParts(qNum)
+  if (parts.length === 0) return null
+
+  for (let i = parts.length; i > 0; i -= 1) {
+    const key = parts.slice(0, i).join('.')
+    if (marksMap.has(key)) return marksMap.get(key) ?? null
+  }
+
+  return null
+}
+
 function coerceGeminiQuestionsArray(value: unknown): any[] | null {
   if (Array.isArray(value)) return value
   if (!value || typeof value !== 'object') return null
@@ -1013,6 +1099,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const questionImageMap = buildQuestionImageMapFromMmd(rawMmd)
   const questionTableMap = buildQuestionTableMapFromMmd(rawMmd)
   const questionPreambleMap = buildQuestionPreambleMapFromMmd(rawMmd)
+  const questionMarksMap = buildQuestionMarksMapFromMmd(rawMmd)
   const gradeLabel = String(resource.grade).replace('_', ' ').replace('GRADE ', 'Grade ')
 
   // Prefer Mathpix MMD (preserves pipe-table formatting) over raw text
@@ -1136,7 +1223,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!qNum || !qText) { skipped.push(i); continue }
 
     const latex = normalized.latex || null
-    const marks = typeof item.marks === 'number' && Number.isFinite(item.marks) ? Math.round(item.marks) : null
+    const marks = normalizeMarksValue(item.marks)
+      ?? extractMarksFromText(qText)
+      ?? pickQuestionMarks(qNum, questionMarksMap)
     const topic = VALID_TOPICS.includes(item.topic) ? item.topic : null
     const cl = typeof item.cognitiveLevel === 'number' ? Math.min(4, Math.max(1, Math.round(item.cognitiveLevel))) : null
     const depth = questionDepthFromNumber(qNum)
@@ -1154,7 +1243,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         questionText: qText,
         latex: latex || null,
       },
-      select: { id: true, sourceId: true, imageUrl: true, tableMarkdown: true },
+      select: { id: true, sourceId: true, imageUrl: true, tableMarkdown: true, marks: true },
     })
 
     if (existingExact) {
@@ -1162,6 +1251,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!existingExact.sourceId && resource.id) updateData.sourceId = resource.id
       if (!existingExact.imageUrl && imageUrl) updateData.imageUrl = imageUrl
       if (!existingExact.tableMarkdown && tableMarkdown) updateData.tableMarkdown = tableMarkdown
+      if (existingExact.marks == null && marks != null) updateData.marks = marks
 
       if (Object.keys(updateData).length > 0) {
         try {

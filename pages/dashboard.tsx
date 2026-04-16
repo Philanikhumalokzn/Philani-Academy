@@ -1870,6 +1870,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [rawParseMmd, setRawParseMmd] = useState<string | null>(null)
   const [rawParseMmdLoading, setRawParseMmdLoading] = useState(false)
   const [rawParseSelection, setRawParseSelection] = useState('')
+  const [reextractPreviewOpen, setReextractPreviewOpen] = useState(false)
+  const [reextractPreviewData, setReextractPreviewData] = useState<any>(null)
+  const [reextractPreviewRequest, setReextractPreviewRequest] = useState<{ questionId: string; mmdSlice?: string } | null>(null)
+  const [reextractApplying, setReextractApplying] = useState(false)
+  const [reextractUndo, setReextractUndo] = useState<any>(null)
+  const [reextractWarningAcknowledge, setReextractWarningAcknowledge] = useState(false)
   // QB admin CRUD state
   const [qbSelectedIds, setQbSelectedIds] = useState<Set<string>>(new Set())
   const [qbEditingQ, setQbEditingQ] = useState<any>(null)
@@ -13628,7 +13634,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setReextractStatus('idle')
     setReextractMessage(null)
     setRawParseExpanded(false)
+    setRawParseMmd(null)
     setRawParseSelection('')
+    setReextractPreviewOpen(false)
+    setReextractPreviewData(null)
+    setReextractPreviewRequest(null)
+    setReextractApplying(false)
+    setReextractWarningAcknowledge(false)
+    setReextractPreviewData(null)
+    setReextractPreviewRequest(null)
+    setReextractApplying(false)
+    setReextractUndo(null)
     try {
       const params = new URLSearchParams()
       if (q.sourceId) {
@@ -13679,6 +13695,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     try {
       const body: Record<string, unknown> = { questionId, action }
       if (mmdSlice) body.mmdSlice = mmdSlice
+      if (action === 'ai-reextract') body.preview = true
       const res = await fetch('/api/exam-questions/reextract-context', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -13691,6 +13708,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         setReextractMessage(data?.message || 'Failed')
         return
       }
+
+      if (action === 'ai-reextract') {
+        setReextractStatus('idle')
+        setReextractPreviewData(data?.preview || null)
+        setReextractPreviewRequest({ questionId, ...(mmdSlice ? { mmdSlice } : {}) })
+        setReextractWarningAcknowledge(false)
+        setReextractPreviewOpen(true)
+        return
+      }
+
       setReextractStatus('done')
       setReextractMessage(data?.message || 'Done')
       // Refresh the context panel after a short delay so the user sees the success message
@@ -13700,6 +13727,85 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } catch (err: any) {
       setReextractStatus('error')
       setReextractMessage(err?.message || 'Network error')
+    }
+  }
+
+  const applyReextractPreview = async () => {
+    if (!reextractPreviewRequest?.questionId) return
+    setReextractApplying(true)
+    setReextractStatus('loading')
+    setReextractMessage(null)
+    try {
+      const body: Record<string, unknown> = {
+        questionId: reextractPreviewRequest.questionId,
+        action: 'ai-reextract',
+      }
+      if (reextractPreviewRequest.mmdSlice) body.mmdSlice = reextractPreviewRequest.mmdSlice
+      const res = await fetch('/api/exam-questions/reextract-context', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(body),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setReextractStatus('error')
+        setReextractMessage(data?.message || 'Apply failed')
+        return
+      }
+
+      setReextractPreviewOpen(false)
+      setReextractPreviewData(null)
+      setReextractPreviewRequest(null)
+      setReextractWarningAcknowledge(false)
+      setReextractUndo(data?.undo || null)
+      setReextractStatus('done')
+      const warning = typeof data?.selectionWarning === 'string' && data.selectionWarning.trim()
+        ? ` Warning: ${data.selectionWarning.trim()}`
+        : ''
+      setReextractMessage(`${data?.message || 'Applied'}${warning}`)
+
+      window.setTimeout(() => {
+        if (qbContextQ) openPaperContext(qbContextQ)
+      }, 1200)
+    } catch (err: any) {
+      setReextractStatus('error')
+      setReextractMessage(err?.message || 'Network error while applying')
+    } finally {
+      setReextractApplying(false)
+    }
+  }
+
+  const undoLastReextract = async () => {
+    if (!reextractUndo?.rootQuestionId || !qbContextQ?.id) return
+    setReextractStatus('loading')
+    setReextractMessage(null)
+    try {
+      const res = await fetch('/api/exam-questions/reextract-context', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          questionId: String(qbContextQ.id),
+          action: 'undo-ai-reextract',
+          undo: reextractUndo,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setReextractStatus('error')
+        setReextractMessage(data?.message || 'Undo failed')
+        return
+      }
+      setReextractUndo(null)
+      setReextractStatus('done')
+      setReextractMessage(data?.message || 'Undo complete')
+      window.setTimeout(() => {
+        if (qbContextQ) openPaperContext(qbContextQ)
+      }, 1200)
+    } catch (err: any) {
+      setReextractStatus('error')
+      setReextractMessage(err?.message || 'Network error while undoing')
     }
   }
 
@@ -16065,6 +16171,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           setQbContextRoot('')
           setQbContextLoading(false)
           setQbContextError(null)
+          setReextractPreviewOpen(false)
+          setReextractPreviewData(null)
+          setReextractPreviewRequest(null)
+          setReextractApplying(false)
+          setReextractWarningAcknowledge(false)
         }}
         backdrop
         closeOnBackdrop
@@ -16143,8 +16254,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             }}
                             disabled={reextractStatus === 'loading'}
                             className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
-                            {reextractStatus === 'loading' ? 'Working…' : '✦ AI re-extract'}
+                            {reextractStatus === 'loading' ? 'Working…' : '✦ Preview AI extraction'}
                           </button>
+                          {reextractUndo ? (
+                            <button
+                              onClick={undoLastReextract}
+                              disabled={reextractStatus === 'loading'}
+                              className="inline-flex items-center gap-1 rounded-md border border-violet-300 bg-white px-2.5 py-1 text-xs text-violet-700 font-medium shadow-sm disabled:opacity-50">
+                              {reextractStatus === 'loading' ? 'Working…' : 'Undo last AI apply'}
+                            </button>
+                          ) : null}
                           <button
                             onClick={() => {
                               if (!rawParseExpanded && qbContextQ?.sourceId) loadRawMmd(qbContextQ.sourceId)
@@ -16171,7 +16290,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               onClick={() => qbContextQ?.id && triggerReextract(qbContextQ.id, 'ai-reextract', rawParseSelection)}
                               disabled={reextractStatus === 'loading'}
                               className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
-                              ✦ Use selection for AI
+                              ✦ Preview selection
                             </button>
                           ) : (
                             <span className="text-xs text-slate-400">Select text below to target AI extraction</span>
@@ -16266,8 +16385,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             }}
                             disabled={reextractStatus === 'loading'}
                             className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
-                            {reextractStatus === 'loading' ? 'Working…' : '✦ AI re-extract'}
+                            {reextractStatus === 'loading' ? 'Working…' : '✦ Preview AI extraction'}
                           </button>
+                          {reextractUndo ? (
+                            <button
+                              onClick={undoLastReextract}
+                              disabled={reextractStatus === 'loading'}
+                              className="inline-flex items-center gap-1 rounded-md border border-violet-300 bg-white px-2.5 py-1 text-xs text-violet-700 font-medium shadow-sm disabled:opacity-50">
+                              {reextractStatus === 'loading' ? 'Working…' : 'Undo last AI apply'}
+                            </button>
+                          ) : null}
                           <button
                             onClick={() => {
                               if (!rawParseExpanded && qbContextQ?.sourceId) loadRawMmd(qbContextQ.sourceId)
@@ -16297,7 +16424,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               }}
                               disabled={reextractStatus === 'loading'}
                               className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
-                              ✦ Use selection for AI
+                              ✦ Preview selection
                             </button>
                           ) : (
                             <span className="text-xs text-slate-400">Select text below to target AI extraction</span>
@@ -16476,6 +16603,122 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </ul>
             </>
           )}
+        </div>
+      </BottomSheet>
+
+      <BottomSheet
+        open={reextractPreviewOpen}
+        title="Confirm AI context update"
+        subtitle={reextractPreviewData?.rootNumber ? `Q${reextractPreviewData.rootNumber} root context` : undefined}
+        onClose={() => {
+          if (reextractApplying) return
+          setReextractPreviewOpen(false)
+          setReextractWarningAcknowledge(false)
+        }}
+        backdrop
+        closeOnBackdrop={!reextractApplying}
+        closeOnEscape={!reextractApplying}
+        className="bottom-0"
+        contentClassName="p-0 flex flex-col overflow-hidden"
+        zIndexClassName="z-[88]"
+      >
+        <div className="max-h-[72dvh] overflow-y-auto px-4 py-3 space-y-3">
+          {!reextractPreviewData ? (
+            <p className="text-sm text-slate-600">No preview data available.</p>
+          ) : (
+            <>
+              {reextractPreviewData.selectionWarning ? (
+                <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  <div className="font-semibold">Warning: possible wrong selection</div>
+                  <div className="mt-1">{reextractPreviewData.selectionWarning}</div>
+                  <label className="mt-2 flex items-start gap-2 text-xs text-red-700">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={reextractWarningAcknowledge}
+                      onChange={(e) => setReextractWarningAcknowledge(e.target.checked)}
+                    />
+                    <span>I understand the risk and still want to apply this AI update.</span>
+                  </label>
+                </div>
+              ) : null}
+
+              {!reextractPreviewData.hasChanges ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                  No changes are proposed for this root context.
+                </div>
+              ) : null}
+
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Question Text</div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  <div className="rounded-lg border border-slate-200 bg-white p-2">
+                    <div className="text-[11px] font-semibold text-slate-500 mb-1">Before</div>
+                    <div className="text-xs text-slate-700 whitespace-pre-wrap break-words">{reextractPreviewData.before?.questionText || '∅'}</div>
+                  </div>
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                    <div className="text-[11px] font-semibold text-emerald-700 mb-1">Proposed</div>
+                    <div className="text-xs text-emerald-900 whitespace-pre-wrap break-words">{reextractPreviewData.proposed?.questionText || '∅'}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Table Markdown</div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  <div className="rounded-lg border border-slate-200 bg-white p-2">
+                    <div className="text-[11px] font-semibold text-slate-500 mb-1">Before</div>
+                    <pre className="text-xs text-slate-700 whitespace-pre-wrap break-words">{reextractPreviewData.before?.tableMarkdown || '∅'}</pre>
+                  </div>
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2">
+                    <div className="text-[11px] font-semibold text-emerald-700 mb-1">Proposed</div>
+                    <pre className="text-xs text-emerald-900 whitespace-pre-wrap break-words">{reextractPreviewData.proposed?.tableMarkdown || '∅'}</pre>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Image URL and Marks</div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  <div className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-700 space-y-1">
+                    <div><span className="font-semibold text-slate-500">Before image:</span> {reextractPreviewData.before?.imageUrl || '∅'}</div>
+                    <div><span className="font-semibold text-slate-500">Before marks:</span> {reextractPreviewData.before?.marks ?? '∅'}</div>
+                  </div>
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-900 space-y-1">
+                    <div><span className="font-semibold text-emerald-700">Proposed image:</span> {reextractPreviewData.proposed?.imageUrl || '∅'}</div>
+                    <div><span className="font-semibold text-emerald-700">Proposed marks:</span> {reextractPreviewData.proposed?.marks ?? '∅'}</div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (reextractApplying) return
+              setReextractPreviewOpen(false)
+              setReextractWarningAcknowledge(false)
+            }}
+            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm"
+            disabled={reextractApplying}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={applyReextractPreview}
+            disabled={
+              reextractApplying
+              || !reextractPreviewData?.hasChanges
+              || Boolean(reextractPreviewData?.selectionWarning && !reextractWarningAcknowledge)
+            }
+            className="rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50"
+          >
+            {reextractApplying ? 'Applying…' : 'Apply AI update'}
+          </button>
         </div>
       </BottomSheet>
 

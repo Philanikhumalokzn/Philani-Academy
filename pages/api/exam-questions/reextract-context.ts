@@ -2,7 +2,6 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import prisma from '../../../lib/prisma'
 import { normalizeExamQuestionContent } from '../../../lib/questionMath'
-import { tryParseJsonLoose } from '../../../lib/geminiAssignmentExtract'
 import {
   questionRootFromNumber,
   questionDepthFromNumber,
@@ -29,6 +28,68 @@ export const config = {
       sizeLimit: '32kb',
     },
   },
+}
+
+type RootContextSnapshot = {
+  questionText: string | null
+  latex: string | null
+  imageUrl: string | null
+  tableMarkdown: string | null
+  marks: number | null
+}
+
+type UndoPayload =
+  | {
+      mode: 'restore-existing'
+      rootQuestionId: string
+      snapshot: RootContextSnapshot
+    }
+  | {
+      mode: 'delete-created'
+      rootQuestionId: string
+    }
+
+function normalizeTextValue(value: unknown): string | null {
+  const text = typeof value === 'string' ? value.trim() : ''
+  return text || null
+}
+
+function buildSnapshot(row: {
+  questionText?: string | null
+  latex?: string | null
+  imageUrl?: string | null
+  tableMarkdown?: string | null
+  marks?: number | null
+} | null | undefined): RootContextSnapshot {
+  return {
+    questionText: normalizeTextValue(row?.questionText),
+    latex: normalizeTextValue(row?.latex),
+    imageUrl: normalizeTextValue(row?.imageUrl),
+    tableMarkdown: normalizeTextValue(row?.tableMarkdown),
+    marks: typeof row?.marks === 'number' && Number.isFinite(row.marks) ? row.marks : null,
+  }
+}
+
+function rootSelectionWarning(inputMmd: string, rootNumber: string): string | null {
+  const text = String(inputMmd || '')
+  const hasQuestionHeading = new RegExp(`\\bQUESTION\\s+${rootNumber}\\b`, 'i').test(text)
+  const hasRootReference = new RegExp(`\\b${rootNumber}(?:\\.\\d+)?\\b`).test(text)
+  if (hasQuestionHeading || hasRootReference) return null
+  return `Selected text does not appear to reference QUESTION ${rootNumber}. Review before applying.`
+}
+
+function sameNullableText(a: string | null, b: string | null): boolean {
+  return (a || '') === (b || '')
+}
+
+function hasSnapshotChanges(before: RootContextSnapshot, proposed: RootContextSnapshot): boolean {
+  return !(
+    sameNullableText(before.questionText, proposed.questionText)
+    && sameNullableText(before.latex, proposed.latex)
+    && sameNullableText(before.imageUrl, proposed.imageUrl)
+    && sameNullableText(before.tableMarkdown, proposed.tableMarkdown)
+    && before.marks === proposed.marks
+  )
 }
 
 /** Slice MMD to the section for a specific root question number. */
@@ -95,20 +156,6 @@ function buildContextExtractionPrompt(
   ].join('\n')
 }
 
-function coerceToSingleContext(value: unknown): any | null {
-  if (Array.isArray(value)) return value[0] ?? null
-  if (value && typeof value === 'object') {
-    const rec = value as Record<string, unknown>
-    // Try known wrapper keys
-    for (const key of ['questions', 'items', 'results', 'data']) {
-      if (Array.isArray(rec[key])) return (rec[key] as any[])[0] ?? null
-    }
-    // If the object itself looks like a single question object, use it directly
-    if (rec.questionText || rec.questionNumber) return rec
-  }
-  return null
-}
-
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const token = await getToken({ req })
   if ((token as any)?.role !== 'admin') {
@@ -135,17 +182,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ message: 'Method not allowed' })
   }
 
-  const { questionId, action, mmdSlice } = req.body as {
+  const { questionId, action, mmdSlice, preview, undo } = req.body as {
     questionId?: string
     action?: string
     mmdSlice?: string
+    preview?: boolean
+    undo?: UndoPayload
   }
 
   if (!questionId || typeof questionId !== 'string') {
     return res.status(400).json({ message: 'questionId is required' })
   }
-  if (action !== 'recover' && action !== 'ai-reextract') {
-    return res.status(400).json({ message: "action must be 'recover' or 'ai-reextract'" })
+  if (action !== 'recover' && action !== 'ai-reextract' && action !== 'undo-ai-reextract') {
+    return res.status(400).json({ message: "action must be 'recover', 'ai-reextract', or 'undo-ai-reextract'" })
   }
 
   // Load the question to derive sourceId, grade, year, month, paper
@@ -252,11 +301,58 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })
   }
 
+  if (action === 'undo-ai-reextract') {
+    if (!undo || typeof undo !== 'object' || !undo.rootQuestionId) {
+      return res.status(400).json({ message: 'undo payload is required' })
+    }
+
+    if (undo.mode === 'delete-created') {
+      const existing = await prisma.examQuestion.findUnique({
+        where: { id: undo.rootQuestionId },
+        select: { id: true, sourceId: true },
+      })
+      if (!existing || existing.sourceId !== question.sourceId) {
+        return res.status(404).json({ message: 'Undo target not found for this source' })
+      }
+
+      await prisma.examQuestion.delete({ where: { id: undo.rootQuestionId } })
+      return res.status(200).json({ message: `Undid AI apply by deleting root context Q${rootNumber}.`, undone: true })
+    }
+
+    if (undo.mode === 'restore-existing') {
+      const existing = await prisma.examQuestion.findUnique({
+        where: { id: undo.rootQuestionId },
+        select: { id: true, sourceId: true },
+      })
+      if (!existing || existing.sourceId !== question.sourceId) {
+        return res.status(404).json({ message: 'Undo target not found for this source' })
+      }
+
+      await prisma.examQuestion.update({
+        where: { id: undo.rootQuestionId },
+        data: {
+          questionText: undo.snapshot.questionText,
+          latex: undo.snapshot.latex,
+          imageUrl: undo.snapshot.imageUrl,
+          tableMarkdown: undo.snapshot.tableMarkdown,
+          marks: undo.snapshot.marks,
+        },
+      })
+      return res.status(200).json({ message: `Undid AI apply for Q${rootNumber}.`, undone: true })
+    }
+
+    return res.status(400).json({ message: 'Invalid undo payload' })
+  }
+
   // ── AI RE-EXTRACT: targeted AI extraction for this root question ──
   const inputMmd =
     (typeof mmdSlice === 'string' && mmdSlice.trim())
       ? mmdSlice.trim()
       : sliceMmdForRootQuestion(rawMmd, rootNumber)
+
+  const manualSelectionWarning = typeof mmdSlice === 'string' && mmdSlice.trim()
+    ? rootSelectionWarning(inputMmd, rootNumber)
+    : null
 
   const prompt = buildContextExtractionPrompt(
     inputMmd,
@@ -340,31 +436,67 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       paper: question.paper,
       questionNumber: rootNumber,
     },
-    select: { id: true, questionText: true, imageUrl: true, tableMarkdown: true, marks: true },
+    select: { id: true, questionText: true, latex: true, imageUrl: true, tableMarkdown: true, marks: true },
   })
+
+  const beforeSnapshot = buildSnapshot(existingRoot)
+  const proposedSnapshot: RootContextSnapshot = {
+    questionText: aiText || beforeSnapshot.questionText,
+    latex: aiLatex || beforeSnapshot.latex,
+    imageUrl: beforeSnapshot.imageUrl || aiImageUrls[0] || null,
+    tableMarkdown: (
+      aiTableMarkdown && (!beforeSnapshot.tableMarkdown || !isMultiColumnTable(beforeSnapshot.tableMarkdown))
+    )
+      ? aiTableMarkdown
+      : beforeSnapshot.tableMarkdown,
+    marks: beforeSnapshot.marks == null && aiMarks != null ? aiMarks : beforeSnapshot.marks,
+  }
+
+  const hasChanges = hasSnapshotChanges(beforeSnapshot, proposedSnapshot)
+
+  if (preview === true) {
+    return res.status(200).json({
+      message: hasChanges ? `Preview ready for Q${rootNumber}.` : `No changes proposed for Q${rootNumber}.`,
+      preview: {
+        questionId,
+        rootNumber,
+        existingRootQuestionId: existingRoot?.id || null,
+        selectionWarning: manualSelectionWarning,
+        hasChanges,
+        before: beforeSnapshot,
+        proposed: proposedSnapshot,
+      },
+    })
+  }
 
   if (existingRoot) {
     const patch: Record<string, unknown> = {}
-    if (aiText) patch.questionText = aiText
-    if (aiLatex) patch.latex = aiLatex
-    if (!existingRoot.imageUrl && aiImageUrls[0]) patch.imageUrl = aiImageUrls[0]
-    if (
-      aiTableMarkdown &&
-      (!existingRoot.tableMarkdown || !isMultiColumnTable(existingRoot.tableMarkdown))
-    ) {
-      patch.tableMarkdown = aiTableMarkdown
-    }
-    if (existingRoot.marks == null && aiMarks != null) patch.marks = aiMarks
+    if (proposedSnapshot.questionText !== beforeSnapshot.questionText) patch.questionText = proposedSnapshot.questionText
+    if (proposedSnapshot.latex !== beforeSnapshot.latex) patch.latex = proposedSnapshot.latex
+    if (proposedSnapshot.imageUrl !== beforeSnapshot.imageUrl) patch.imageUrl = proposedSnapshot.imageUrl
+    if (proposedSnapshot.tableMarkdown !== beforeSnapshot.tableMarkdown) patch.tableMarkdown = proposedSnapshot.tableMarkdown
+    if (proposedSnapshot.marks !== beforeSnapshot.marks) patch.marks = proposedSnapshot.marks
 
     if (Object.keys(patch).length > 0) {
       await prisma.examQuestion.update({ where: { id: existingRoot.id }, data: patch })
     }
-    return res.status(200).json({ message: 'Root context updated from AI extraction.', updated: true })
+    const undoPayload: UndoPayload = {
+      mode: 'restore-existing',
+      rootQuestionId: existingRoot.id,
+      snapshot: beforeSnapshot,
+    }
+    return res.status(200).json({
+      message: hasChanges ? 'Root context updated from AI extraction.' : 'No changes were applied.',
+      updated: hasChanges,
+      selectionWarning: manualSelectionWarning,
+      undo: undoPayload,
+      rootQuestionId: existingRoot.id,
+    })
   }
 
   // No root record exists — create one if we have text
-  if (aiText) {
-    await prisma.examQuestion.create({
+  if (proposedSnapshot.questionText) {
+    const created = await prisma.examQuestion.create({
       data: {
         sourceId: question.sourceId,
         grade: question.grade,
@@ -372,20 +504,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         month: question.month,
         paper: question.paper,
         questionNumber: rootNumber,
-        questionDepth: 0,
+        questionDepth: questionDepthFromNumber(rootNumber),
         topic: null,
         cognitiveLevel: null,
-        marks: aiMarks,
-        questionText: aiText,
-        latex: aiLatex,
-        imageUrl: aiImageUrls[0] ?? null,
-        tableMarkdown: aiTableMarkdown,
+        marks: proposedSnapshot.marks,
+        questionText: proposedSnapshot.questionText,
+        latex: proposedSnapshot.latex,
+        imageUrl: proposedSnapshot.imageUrl,
+        tableMarkdown: proposedSnapshot.tableMarkdown,
         approved: false,
       },
       select: { id: true },
     })
-    return res.status(200).json({ message: 'Root context created from AI extraction.', updated: true })
+    const undoPayload: UndoPayload = {
+      mode: 'delete-created',
+      rootQuestionId: created.id,
+    }
+    return res.status(200).json({
+      message: 'Root context created from AI extraction.',
+      updated: true,
+      selectionWarning: manualSelectionWarning,
+      undo: undoPayload,
+      rootQuestionId: created.id,
+    })
   }
 
-  return res.status(200).json({ message: 'AI returned no usable content for this question.', updated: false })
+  return res.status(200).json({
+    message: 'AI returned no usable content for this question.',
+    updated: false,
+    selectionWarning: manualSelectionWarning,
+  })
 }

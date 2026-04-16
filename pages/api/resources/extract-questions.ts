@@ -384,8 +384,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     `You are given OCR text from a ${gradeLabel} Mathematics Paper ${paper} exam (${month} ${year}).\n\n` +
     `Extract every question and sub-question as a JSON array. Rules:\n` +
     `- questionNumber: the dot-notation number exactly as it appears (e.g. "1", "1.1", "1.1.2")\n` +
-    `- questionText: the full question text, preserving wording exactly\n` +
-    `- latex: any mathematical expression in valid LaTeX (or empty string if none)\n` +
+    `- questionText: the full question text. Where the question contains mathematical expressions, wrap each expression inline using $...$  KaTeX delimiters so the prose and math are unified in one readable string. Example: "Solve for x: $3x^{2}-5x-2=0$" or "Simplify $\\\\frac{a^2-b^2}{a-b}$". Do NOT leave math as bare undelimited text.\n` +
+    `- latex: the PRIMARY mathematical expression for the question in valid LaTeX without outer $ delimiters (e.g. "3x^{2}-5x-2=0"). Leave empty string if questionText contains no math at all.\n` +
     `- marks: the mark allocation as an integer if shown in brackets (e.g. "(3)" → 3), else null\n` +
     `- topic: one of: ${VALID_TOPICS.join(', ')}\n` +
     `- cognitiveLevel: integer 1-4 where 1=Knowledge, 2=Routine procedures, 3=Complex procedures, 4=Problem-solving\n\n` +

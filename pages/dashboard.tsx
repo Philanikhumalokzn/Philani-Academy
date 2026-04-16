@@ -5761,7 +5761,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           Delete
                         </button>
                       </>
-                      </div>
                     ) : usesAttemptRules ? (
                       canAttempt && !hasAttempted ? (
                         <button
@@ -16700,6 +16699,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </ul>
             </>
           )}
+        </div>
         </div>
       </BottomSheet>
 

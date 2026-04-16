@@ -5,6 +5,7 @@ import { upload } from '@vercel/blob/client'
 import { gradeToLabel, GRADE_VALUES, GradeValue, normalizeGradeInput } from '../lib/grades'
 import { renderKatexDisplayHtml } from '../lib/latexRender'
 import { renderTextWithKatex } from '../lib/renderTextWithKatex'
+import { renderQuestionTextWithInlineLatex } from '../lib/renderQuestionText'
 import { toDisplayFileName } from '../lib/fileName'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import ParsedDocumentViewer from '../components/ParsedDocumentViewer'
@@ -1060,7 +1061,7 @@ export default function ResourceBankPage() {
 
                             return (
                               <>
-                                <div className="text-sm text-slate-800 break-words">{renderTextWithKatex(cleanText)}</div>
+                                <div className="text-sm text-slate-800 break-words">{renderQuestionTextWithInlineLatex(cleanText)}</div>
 
                                 {imageUrls.length > 0 ? (
                                   <div className="mt-2 grid gap-1">

@@ -39,6 +39,7 @@ import { isSpecialTestStudentEmail } from '../lib/testUsers'
 import { createLessonRoleProfile, getPlatformRoleDisplayLabel, hasLessonCapabilityForRole, isRecognizedLessonParticipantRole, normalizePlatformRole } from '../lib/lessonAccessControl'
 import { renderKatexDisplayHtml as renderKatexDisplayHtmlRaw, renderKatexInlineHtml as renderKatexInlineHtmlRaw, splitLatexIntoSteps as splitLatexIntoStepsRaw } from '../lib/latexRender'
 import { renderTextWithKatex as renderTextWithKatexRaw } from '../lib/renderTextWithKatex'
+import { renderQuestionTextWithInlineLatex as renderQuestionTextWithInlineLatexShared } from '../lib/renderQuestionText'
 import { toDisplayFileName } from '../lib/fileName'
 import { useTapToPeek } from '../lib/useTapToPeek'
 import { useOverlayRestore } from '../lib/overlayRestore'
@@ -13507,135 +13508,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return latex
   }
 
-  const readInlineQuestionLatex = (input: string, start: number) => {
-    let index = start
-    let braceDepth = 0
-    let parenDepth = 0
-    let bracketDepth = 0
 
-    while (index < input.length) {
-      const char = input[index]
-      const next = input[index + 1] || ''
-
-      if (char === '\\') {
-        if (/^[A-Za-z]$/.test(next)) {
-          index += 2
-          while (index < input.length && /[A-Za-z*]/.test(input[index] || '')) index += 1
-          continue
-        }
-        if (next) {
-          index += 2
-          continue
-        }
-      }
-
-      if (char === '{') {
-        braceDepth += 1
-        index += 1
-        continue
-      }
-      if (char === '}') {
-        if (braceDepth === 0) break
-        braceDepth -= 1
-        index += 1
-        continue
-      }
-      if (char === '(') {
-        parenDepth += 1
-        index += 1
-        continue
-      }
-      if (char === ')') {
-        if (parenDepth > 0) parenDepth -= 1
-        index += 1
-        continue
-      }
-      if (char === '[') {
-        bracketDepth += 1
-        index += 1
-        continue
-      }
-      if (char === ']') {
-        if (bracketDepth > 0) bracketDepth -= 1
-        index += 1
-        continue
-      }
-
-      if (char === '\n' || char === '\r') break
-
-      if (braceDepth === 0 && parenDepth === 0 && bracketDepth === 0) {
-        if (/[;?!]/.test(char)) break
-
-        if (char === ' ') {
-          const nextWordMatch = input.slice(index).match(/^\s+([A-Za-z]+)/)
-          const nextWord = nextWordMatch?.[1] || ''
-          if (nextWord && !/^(and|or|of|to|for|in|on|at|by|with)$/i.test(nextWord)) {
-            break
-          }
-        }
-      }
-
-      if (!/[A-Za-z0-9.,:=+\-*/^_'%° ]/.test(char)) break
-      index += 1
-    }
-
-    let expr = input.slice(start, index).trim()
-    let trailing = ''
-    while (expr.endsWith(',') || expr.endsWith('.')) {
-      trailing = `${expr.slice(-1)}${trailing}`
-      expr = expr.slice(0, -1).trimEnd()
-    }
-
-    return { expr, end: index, trailing }
-  }
-
-  const renderQuestionTextWithInlineLatex = (text: string) => {
-    if (!text.includes('\\')) return renderTextWithKatex(text)
-
-    const nodes: React.ReactNode[] = []
-    let cursor = 0
-
-    const pushText = (value: string) => {
-      if (!value) return
-      nodes.push(<span key={`qb-text-${nodes.length}`}>{renderTextWithKatex(value)}</span>)
-    }
-
-    while (cursor < text.length) {
-      const slashIndex = text.indexOf('\\', cursor)
-      if (slashIndex < 0) {
-        pushText(text.slice(cursor))
-        break
-      }
-
-      pushText(text.slice(cursor, slashIndex))
-
-      const { expr, end, trailing } = readInlineQuestionLatex(text, slashIndex)
-      if (!expr) {
-        pushText(text.slice(slashIndex, slashIndex + 1))
-        cursor = slashIndex + 1
-        continue
-      }
-
-      const inlineHtml = renderKatexInlineHtmlRaw(expr)
-      if (inlineHtml) {
-        nodes.push(
-          <span
-            key={`qb-inline-${nodes.length}`}
-            className="inline"
-            dangerouslySetInnerHTML={{ __html: inlineHtml }}
-          />
-        )
-        if (trailing) pushText(trailing)
-        cursor = end
-        continue
-      }
-
-      pushText(expr + trailing)
-      cursor = end
-    }
-
-    return nodes
-  }
+  const renderQuestionTextWithInlineLatex = renderQuestionTextWithInlineLatexShared
 
   const searchQuestionBank = async () => {
     setQbLoading(true)

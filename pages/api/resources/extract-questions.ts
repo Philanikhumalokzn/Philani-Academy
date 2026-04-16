@@ -674,6 +674,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const depth = questionDepthFromNumber(qNum)
     const imageUrl = pickQuestionImageUrl(qNum, questionImageMap)
 
+    const existingExact = await prisma.examQuestion.findFirst({
+      where: {
+        grade: gradeEnum,
+        year,
+        month,
+        paper,
+        questionNumber: qNum,
+        questionText: qText,
+        latex: latex || null,
+      },
+      select: { id: true },
+    })
+
+    if (existingExact) {
+      skipped.push(i)
+      continue
+    }
+
     try {
       const eq = await prisma.examQuestion.create({
         data: {

@@ -102,6 +102,12 @@ function standardizeQuestionTextDelimiters(value) {
     .replace(/\\\[\s*([\s\S]+?)\s*\\\]/g, (_, expr) => wrapInlineMath(expr))
 }
 
+function repairMalformedInlineMath(value) {
+  return value
+    .replace(/\\(hat|widehat)\{\s*\$\s*([^$]+?)\s*\$\s*\}/g, (_m, cmd, inner) => `\\${cmd}{${String(inner || '').trim()}}`)
+    .replace(/\$(\s*[-+]?\d[\s\S]*?(?:\\leq|<=|≥|\\geq|=|<|>)\s*[-+]?\d[^$]*)\$/g, (_, expr) => wrapInlineMath(expr))
+}
+
 function normalizeStoredQuestionLatex(value) {
   const decoded = decodeStoredMathString(value)
   if (!decoded) return ''
@@ -114,6 +120,7 @@ function normalizeStoredQuestionText(value, latex) {
   if (!text) return ''
 
   text = standardizeQuestionTextDelimiters(text)
+  text = repairMalformedInlineMath(text)
 
   if (normalizedLatex) {
     text = mapPlainSegments(text, (segment) => wrapExactLatexLiteral(segment, normalizedLatex))

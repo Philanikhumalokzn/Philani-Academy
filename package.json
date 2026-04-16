@@ -14,6 +14,7 @@
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:studio": "prisma studio",
     "questions:backfill-math": "node scripts/backfill_exam_question_math.js --write",
+    "questions:dedupe-exact": "node scripts/dedupe_exact_exam_questions.js --write",
     "resend:domains": "node scripts/manage_resend_domain.js",
     "emis:import": "node scripts/import_emis_schools.js"
   },

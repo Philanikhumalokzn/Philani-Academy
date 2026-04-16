@@ -162,7 +162,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (topic) where.topic = topic
   if (cognitiveLevel && Number.isFinite(cognitiveLevel)) where.cognitiveLevel = cognitiveLevel
   if (questionNumber) where.questionNumber = { startsWith: questionNumber }
-  if (sourceId && role === 'admin') where.sourceId = sourceId
+  if (sourceId) where.sourceId = sourceId
   if (approvedOnly) where.approved = true
 
   const [total, items] = await Promise.all([
@@ -197,12 +197,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const sources = sourceIds.length
     ? await prisma.resourceBankItem.findMany({
         where: { id: { in: sourceIds } },
-        select: { id: true, parsedJson: true },
+        select: { id: true, title: true, parsedJson: true },
       })
     : []
 
   const sourceImageMap = new Map<string, Map<string, string[]>>()
+  const sourceTitleMap = new Map<string, string>()
   for (const source of sources) {
+    sourceTitleMap.set(source.id, String(source.title || '').trim())
     const parsed = source.parsedJson as any
     const combined = new Map<string, string[]>()
 
@@ -238,6 +240,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ...item,
       imageUrl: imageUrls[0] || null,
       imageUrls,
+      sourceTitle: item.sourceId ? (sourceTitleMap.get(item.sourceId) || null) : null,
     }
   })
 

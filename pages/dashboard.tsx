@@ -13532,10 +13532,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setQbContextOpen(true)
     try {
       const params = new URLSearchParams()
-      params.set('grade', q.grade)
-      params.set('year', String(q.year))
-      params.set('month', q.month)
-      params.set('paper', String(q.paper))
+      if (q.sourceId) {
+        params.set('sourceId', String(q.sourceId))
+      } else {
+        params.set('grade', q.grade)
+        params.set('year', String(q.year))
+        params.set('month', q.month)
+        params.set('paper', String(q.paper))
+      }
       params.set('take', '200')
       const res = await fetch(`/api/exam-questions?${params.toString()}`, { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
@@ -15505,7 +15509,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       <BottomSheet
         open={qbContextOpen}
         title="Paper context"
-        subtitle={qbContextQ ? `${qbContextQ.year} ${qbContextQ.month} · Paper ${qbContextQ.paper}` : undefined}
+        subtitle={qbContextQ ? `${qbContextQ.sourceTitle ? `${qbContextQ.sourceTitle} · ` : ''}${qbContextQ.year} ${qbContextQ.month} · Paper ${qbContextQ.paper}` : undefined}
         onClose={() => {
           setQbContextOpen(false)
           setQbContextQ(null)
@@ -15520,7 +15524,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         zIndexClassName="z-[80]"
       >
         <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          {qbContextQ ? `Showing full paper sequence around Q${qbContextQ.questionNumber}` : 'Loading paper context'}
+          {qbContextQ
+            ? (qbContextQ.sourceId
+              ? `Showing the original extracted source for Q${qbContextQ.questionNumber}`
+              : `Showing paper metadata context around Q${qbContextQ.questionNumber}`)
+            : 'Loading paper context'}
         </div>
 
         {qbContextLoading ? (

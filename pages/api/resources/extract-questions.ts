@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
+import katex from 'katex'
 import prisma from '../../../lib/prisma'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { tryParseJsonLoose } from '../../../lib/geminiAssignmentExtract'
@@ -322,6 +323,183 @@ async function extractQuestionsWithGeminiApi(opts: {
   return extractedQuestions
 }
 
+// Validate math expressions in extracted questions
+function validateQuestionMath(question: any): { valid: boolean; errors: string[] } {
+  const errors: string[] = []
+  const qText = typeof question.questionText === 'string' ? question.questionText : ''
+  const latexText = typeof question.latex === 'string' ? question.latex : ''
+
+  // Validate inline math in questionText (look for $...$ patterns)
+  const inlineMatches = qText.matchAll(/\$([^$]+)\$/g)
+  for (const match of inlineMatches) {
+    const expr = match[1]
+    try {
+      katex.render(expr, {}, { throwOnError: true, strict: 'error' })
+    } catch (e: any) {
+      errors.push(`Invalid inline math "$${expr}$": ${String(e?.message || e).substring(0, 100)}`)
+    }
+  }
+
+  // Validate latex field (display mode)
+  if (latexText) {
+    try {
+      katex.render(latexText, {}, { throwOnError: true, strict: 'error' })
+    } catch (e: any) {
+      errors.push(`Invalid LaTeX: ${String(e?.message || e).substring(0, 100)}`)
+    }
+  }
+
+  // Check for raw unescaped characters that might indicate broken extraction
+  const rawDollarCount = (qText.match(/\$/g) || []).length
+  if (rawDollarCount % 2 !== 0) {
+    errors.push('Unmatched $ delimiter in questionText')
+  }
+
+  return { valid: errors.length === 0, errors }
+}
+
+// Attempt to repair broken math via AI
+async function repairQuestionMath(opts: {
+  question: any
+  validationErrors: string[]
+  apiKey: string
+  model: string
+  provider: 'openai' | 'gemini'
+}): Promise<any> {
+  const { question, validationErrors, apiKey, model, provider } = opts
+
+  const repairPrompt =
+    `Fix the following extracted exam question. The KaTeX math expressions have errors:\n\n` +
+    `Errors: ${validationErrors.join('; ')}\n\n` +
+    `Current question:\n` +
+    `Q${question.questionNumber}: ${question.questionText}\n` +
+    `LaTeX: ${question.latex || '(none)'}\n\n` +
+    `Rules:\n` +
+    `- Fix all math syntax errors so KaTeX can render them\n` +
+    `- Wrap individual expression in $...$ in questionText\n` +
+    `- Return ONLY valid JSON with keys: questionNumber, questionText, latex, marks, topic, cognitiveLevel\n` +
+    `- Preserve all original content; only fix syntax\n` +
+    `Return only the corrected question object as a single JSON object (not an array).`
+
+  try {
+    let repairedJson: any = null
+
+    if (provider === 'openai') {
+      const openAiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a LaTeX syntax expert. Fix broken math expressions.',
+            },
+            {
+              role: 'user',
+              content: repairPrompt,
+            },
+          ],
+        }),
+      })
+
+      if (openAiRes.ok) {
+        const openAiData: any = await openAiRes.json().catch(() => null)
+        const rawOutput = openAiData?.choices?.[0]?.message?.content ?? ''
+        repairedJson = tryParseJsonLoose(typeof rawOutput === 'string' ? rawOutput : '')
+      }
+    } else {
+      const geminiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: repairPrompt }] }],
+            generationConfig: {
+              temperature: 0,
+              topP: 0.1,
+              maxOutputTokens: 2000,
+            },
+          }),
+        },
+      )
+
+      if (geminiRes.ok) {
+        const geminiData: any = await geminiRes.json().catch(() => null)
+        const rawOutput = geminiData?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join('') ?? ''
+        repairedJson = tryParseJsonLoose(typeof rawOutput === 'string' ? rawOutput : '')
+      }
+    }
+
+    if (repairedJson && typeof repairedJson === 'object' && !Array.isArray(repairedJson)) {
+      return repairedJson
+    }
+  } catch {
+    // Repair attempt failed; return original
+  }
+
+  return null
+}
+
+// Validate and repair extracted questions (max 2 repair attempts per question)
+async function validateAndRepairQuestions(opts: {
+  questions: any[]
+  apiKey: string
+  model: string
+  provider: 'openai' | 'gemini'
+}): Promise<any[]> {
+  const { questions, apiKey, model, provider } = opts
+  const result: any[] = []
+
+  for (const question of questions) {
+    let current = { ...question }
+    let attempts = 0
+
+    while (attempts < 2) {
+      const { valid, errors } = validateQuestionMath(current)
+      if (valid) {
+        result.push(current)
+        break
+      }
+
+      attempts += 1
+      if (attempts >= 2) {
+        // Mark question as unvalidated but don't skip it
+        current._validationWarning = `Math validation failed after ${attempts} attempts: ${errors.join('; ')}`
+        result.push(current)
+        break
+      }
+
+      // Attempt repair
+      const repaired = await repairQuestionMath({
+        question: current,
+        validationErrors: errors,
+        apiKey,
+        model,
+        provider,
+      })
+
+      if (repaired) {
+        current = repaired
+      } else {
+        current._validationWarning = `Math validation failed; repair attempt ${attempts} did not produce valid JSON`
+        result.push(current)
+        break
+      }
+
+      // Small delay between repair attempts
+      await sleep(500)
+    }
+  }
+
+  return result
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST'])
@@ -442,6 +620,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   } catch (err: any) {
     return res.status(500).json({ message: err?.message || 'Question extraction failed' })
+  }
+
+  // Validate and repair extracted questions' math expressions
+  try {
+    const apiKey = provider === 'openai' ? openAiApiKey : geminiApiKey
+    const model = provider === 'openai' ? openAiModel : geminiModel
+    const validationProvider = provider === 'openai' ? 'openai' : 'gemini'
+    geminiResult = await validateAndRepairQuestions({
+      questions: geminiResult,
+      apiKey,
+      model,
+      provider: validationProvider,
+    })
+  } catch (_validationErr) {
+    // Validation errors are non-fatal; proceed with imperfect questions
   }
 
   // Normalise and write to DB

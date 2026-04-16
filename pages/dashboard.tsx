@@ -5761,6 +5761,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           Delete
                         </button>
                       </>
+                      </div>
                     ) : usesAttemptRules ? (
                       canAttempt && !hasAttempted ? (
                         <button
@@ -16246,10 +16247,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         closeOnBackdrop
         closeOnEscape
         className="bottom-0"
-        contentClassName="p-0 flex flex-col"
+        contentClassName="p-0"
         zIndexClassName="z-[80]"
       >
-        <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        <div className="flex flex-col h-full min-h-0 overflow-hidden">
+          <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
           {qbContextQ
             ? (qbContextQ.sourceId
               ? (qbContextRoot

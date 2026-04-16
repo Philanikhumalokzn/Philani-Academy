@@ -571,19 +571,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const questionImageMap = buildQuestionImageMapFromMmd(rawMmd)
   const gradeLabel = String(resource.grade).replace('_', ' ').replace('GRADE ', 'Grade ')
 
+  // Prefer Mathpix MMD (preserves pipe-table formatting) over raw text
+  const inputText = (rawMmd || rawText).slice(0, 24000)
   const prompt =
     `You are a South African National Senior Certificate (NSC) Mathematics exam parser.\n` +
-    `You are given OCR text from a ${gradeLabel} Mathematics Paper ${paper} exam (${month} ${year}).\n\n` +
+    `You are given OCR/Mathpix output from a ${gradeLabel} Mathematics Paper ${paper} exam (${month} ${year}).\n` +
+    `The input uses Mathpix Markdown (MMD): math is already in LaTeX, and data tables appear as GitHub-Flavored Markdown pipe tables.\n\n` +
     `Extract every question and sub-question as a JSON array. Rules:\n` +
     `- questionNumber: the dot-notation number exactly as it appears (e.g. "1", "1.1", "1.1.2")\n` +
     `- questionText: the full question text. Where the question contains mathematical expressions, wrap each expression inline using ONLY single-dollar delimiters in the exact form $Expression$. Example: "Solve for x: $3x^{2}-5x-2=0$" or "Simplify $\\frac{a^2-b^2}{a-b}$". Do NOT use $$...$$. Do NOT use \\(...\\) or \\[...\\]. Do NOT leave math as bare undelimited text.\n` +
     `- latex: the PRIMARY mathematical expression for the question in valid LaTeX without outer $ delimiters (e.g. "3x^{2}-5x-2=0"). Use normal LaTeX commands such as \\frac and \\sqrt. Leave empty string if questionText contains no math at all.\n` +
     `- marks: the mark allocation as an integer if shown in brackets (e.g. "(3)" → 3), else null\n` +
     `- topic: one of: ${VALID_TOPICS.join(', ')}\n` +
-    `- cognitiveLevel: integer 1-4 where 1=Knowledge, 2=Routine procedures, 3=Complex procedures, 4=Problem-solving\n\n` +
-    `Return ONLY a valid JSON array of objects with keys: questionNumber, questionText, latex, marks, topic, cognitiveLevel\n` +
+    `- cognitiveLevel: integer 1-4 where 1=Knowledge, 2=Routine procedures, 3=Complex procedures, 4=Problem-solving\n` +
+    `- tableMarkdown: if the question refers to a data table (e.g. frequency table, timetable, statistics table), copy the FULL pipe-table markdown exactly as it appears in the input (including header separator row). If the question has no table, use null.\n\n` +
+    `Return ONLY a valid JSON array of objects with keys: questionNumber, questionText, latex, marks, topic, cognitiveLevel, tableMarkdown\n` +
     `Do not include preamble, instructions, or any text outside the JSON array.\n\n` +
-    `OCR TEXT (may be imperfect):\n${rawText.slice(0, 20000)}`
+    `OCR/MMD INPUT (may be imperfect):\n${inputText}`
 
   let geminiResult: any[]
   try {
@@ -673,6 +677,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const cl = typeof item.cognitiveLevel === 'number' ? Math.min(4, Math.max(1, Math.round(item.cognitiveLevel))) : null
     const depth = questionDepthFromNumber(qNum)
     const imageUrl = pickQuestionImageUrl(qNum, questionImageMap)
+    const tableMarkdown = typeof item.tableMarkdown === 'string' && item.tableMarkdown.trim() ? item.tableMarkdown.trim() : null
 
     const existingExact = await prisma.examQuestion.findFirst({
       where: {
@@ -708,6 +713,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           questionText: qText,
           latex: latex || null,
           imageUrl,
+          tableMarkdown,
           approved: false,
         },
         select: { id: true },

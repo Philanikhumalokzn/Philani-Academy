@@ -13943,6 +13943,40 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           </div>
                         ) : null}
 
+                        {q.tableMarkdown ? (() => {
+                          const tableLines = String(q.tableMarkdown).split('\n').map((l: string) => l.trim()).filter((l: string) => l.startsWith('|'))
+                          if (tableLines.length < 2) return null
+                          const parseRow = (line: string) => line.replace(/^\||\|$/g, '').split('|').map((c: string) => c.trim())
+                          const headerCells = parseRow(tableLines[0])
+                          const dataRows = tableLines.slice(2).map(parseRow)
+                          return (
+                            <div className="mt-2 overflow-x-auto rounded-lg border border-[#dbe4f3] bg-[#f8fbff]">
+                              <table className="min-w-full text-xs text-[#1c1e21] border-collapse">
+                                <thead className="bg-[#eaf0fd]">
+                                  <tr>
+                                    {headerCells.map((h: string, i: number) => (
+                                      <th key={i} className="px-3 py-1.5 text-left font-semibold whitespace-nowrap border-b border-[#dbe4f3]">
+                                        {renderQuestionTextWithInlineLatex(h)}
+                                      </th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {dataRows.map((row: string[], ri: number) => (
+                                    <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-[#f0f5ff]'}>
+                                      {row.map((cell: string, ci: number) => (
+                                        <td key={ci} className="px-3 py-1 border-t border-[#dbe4f3]">
+                                          {renderQuestionTextWithInlineLatex(cell)}
+                                        </td>
+                                      ))}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )
+                        })() : null}
+
                         {cleanLatex ? (
                           latexHtml ? (
                             <div className="mt-2 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-[#1c1e21] leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />

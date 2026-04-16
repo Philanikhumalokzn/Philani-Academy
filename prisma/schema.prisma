@@ -155,6 +155,7 @@ model ExamQuestion {
   questionText   String   @db.Text
   latex          String?  @db.Text
   imageUrl       String?
+  tableMarkdown  String?  @db.Text
 
   // Admin review
   approved       Boolean  @default(false)

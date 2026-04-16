@@ -237,6 +237,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         questionText: true,
         latex: true,
         imageUrl: true,
+        tableMarkdown: true,
         approved: true,
         sourceId: true,
         createdAt: true,

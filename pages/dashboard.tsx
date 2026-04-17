@@ -13576,6 +13576,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return parts.length > 0 ? String(parts[0]) : ''
   }
 
+  const formatQNumLabel = (value: unknown): string => {
+    return String(value ?? '').trim().replace(/^Q+/i, '')
+  }
+
   const compareQNum = (a: string, b: string): number => {
     const pa = getQNumParts(a)
     const pb = getQNumParts(b)
@@ -16322,11 +16326,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             {qbContextQ
               ? (qbContextQ.sourceId
                 ? (qbContextRoot
-                  ? `Showing Question ${qbContextRoot} in original sequence. Selected: Q${qbContextQ.questionNumber}`
-                  : `Showing the original extracted source for Q${qbContextQ.questionNumber}`)
+                  ? `Showing Question ${qbContextRoot} in original sequence. Selected: Q${formatQNumLabel(qbContextQ.questionNumber)}`
+                  : `Showing the original extracted source for Q${formatQNumLabel(qbContextQ.questionNumber)}`)
                 : (qbContextRoot
-                  ? `Showing Question ${qbContextRoot} in paper sequence. Selected: Q${qbContextQ.questionNumber}`
-                  : `Showing paper metadata context around Q${qbContextQ.questionNumber}`))
+                  ? `Showing Question ${qbContextRoot} in paper sequence. Selected: Q${formatQNumLabel(qbContextQ.questionNumber)}`
+                  : `Showing paper metadata context around Q${formatQNumLabel(qbContextQ.questionNumber)}`))
               : 'Loading paper context'}
           </div>
           {qbContextDocumentMmd?.trim() ? (

@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { renderQuestionTextWithInlineLatex } from '../lib/renderQuestionText'
+import { renderKatexDisplayHtml } from '../lib/latexRender'
 
 type MmdPaperViewerProps = {
   mmd: string
@@ -214,12 +215,139 @@ function renderPipeTable(lines: string[]) {
   )
 }
 
+function parseLatexTabularRows(lines: string[]): string[][] {
+  const raw = lines.join(' ')
+  if (!raw.trim()) return []
+
+  const withFlattenedNested = raw.replace(/\\begin\{tabular\}\{[^}]*\}([\s\S]*?)\\end\{tabular\}/g, (_full, inner: string) => {
+    return String(inner || '')
+      .replace(/\\\\/g, ' | ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  })
+
+  const stripped = withFlattenedNested
+    .replace(/\\begin\{tabular\}\{[^}]*\}/g, ' ')
+    .replace(/\\end\{tabular\}/g, ' ')
+    .replace(/\\hline/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!stripped) return []
+
+  return stripped
+    .split(/\\\\/)
+    .map((row) => row.trim())
+    .filter(Boolean)
+    .map((row) => row.split('&').map((cell) => cell.trim()).filter((cell) => cell.length > 0))
+    .filter((row) => row.length > 0)
+}
+
+function renderLatexTabular(lines: string[]) {
+  const rows = parseLatexTabularRows(lines)
+  if (rows.length === 0) {
+    return <pre className="overflow-x-auto whitespace-pre-wrap text-xs text-slate-700">{lines.join('\n')}</pre>
+  }
+
+  const maxCols = rows.reduce((max, row) => Math.max(max, row.length), 0)
+  const normalizedRows = rows.map((row) => {
+    if (row.length >= maxCols) return row
+    const next = row.slice()
+    while (next.length < maxCols) next.push('')
+    return next
+  })
+
+  const hasHeaderLikeFirstRow = normalizedRows.length > 1
+  const header = hasHeaderLikeFirstRow ? normalizedRows[0] : null
+  const bodyRows = hasHeaderLikeFirstRow ? normalizedRows.slice(1) : normalizedRows
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full border-collapse text-sm text-slate-800">
+        {header ? (
+          <thead>
+            <tr>
+              {header.map((cell, index) => (
+                <th key={`latex-header-${index}`} className="border border-stone-300 bg-stone-100 px-3 py-2 text-left font-semibold align-top">
+                  {renderMmdText(cell)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+        ) : null}
+        <tbody>
+          {bodyRows.map((row, rowIndex) => (
+            <tr key={`latex-row-${rowIndex}`}>
+              {row.map((cell, cellIndex) => (
+                <td key={`latex-cell-${rowIndex}-${cellIndex}`} className="border border-stone-200 px-3 py-2 align-top">
+                  {renderMmdText(cell)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function stripQuestionPrefix(raw: string): string {
+  return String(raw || '').trim().replace(/^Q+/i, '')
+}
+
+function looksLikeStandaloneLatex(line: string): boolean {
+  const trimmed = String(line || '').trim()
+  if (!trimmed) return false
+  if (trimmed.includes('$') || trimmed.includes('\\(') || trimmed.includes('\\[')) return false
+  if (!/\\[a-zA-Z]+/.test(trimmed)) return false
+  return /^\\/.test(trimmed) || /:\s*\\/.test(trimmed)
+}
+
+function renderMmdText(raw: string) {
+  const source = String(raw || '')
+  const lines = source.split(/\n/)
+
+  return lines.map((line, index) => {
+    const trimmed = line.trim()
+
+    if (!trimmed) {
+      return <br key={`mmd-line-break-${index}`} />
+    }
+
+    if (looksLikeStandaloneLatex(trimmed)) {
+      const colonIdx = trimmed.indexOf(':')
+      let prefix = ''
+      let expr = trimmed
+      if (colonIdx >= 0 && colonIdx + 1 < trimmed.length) {
+        const right = trimmed.slice(colonIdx + 1).trim()
+        if (/^\\/.test(right)) {
+          prefix = trimmed.slice(0, colonIdx + 1).trim()
+          expr = right
+        }
+      }
+
+      const html = renderKatexDisplayHtml(expr)
+      if (html) {
+        return (
+          <span key={`mmd-latex-${index}`} className="block my-1">
+            {prefix ? <span className="block mb-1">{renderQuestionTextWithInlineLatex(prefix)}</span> : null}
+            <span dangerouslySetInnerHTML={{ __html: html }} />
+          </span>
+        )
+      }
+    }
+
+    return <span key={`mmd-line-${index}`}>{renderQuestionTextWithInlineLatex(line)}</span>
+  })
+}
+
 export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaperViewerProps) {
   const blocks = useMemo(() => buildBlocks(mmd), [mmd])
-  const selectedRoot = String(selectedQuestionNumber || '').split('.').filter(Boolean)[0] || ''
+  const normalizedSelectedQuestionNumber = stripQuestionPrefix(String(selectedQuestionNumber || ''))
+  const selectedRoot = normalizedSelectedQuestionNumber.split('.').filter(Boolean)[0] || ''
 
   useEffect(() => {
-    const selected = String(selectedQuestionNumber || '').trim()
+    const selected = normalizedSelectedQuestionNumber.trim()
     if (!selected) return
 
     const tryIds = [selected]
@@ -235,7 +363,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
     }, 120)
 
     return () => window.clearTimeout(timer)
-  }, [selectedQuestionNumber, selectedRoot, mmd])
+  }, [normalizedSelectedQuestionNumber, selectedRoot, mmd])
 
   if (!String(mmd || '').trim()) {
     return <div className="px-4 py-6 text-sm text-slate-500">No MMD document is available for this paper.</div>
@@ -251,7 +379,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
 
         <div className="space-y-4 px-4 py-5 sm:px-6">
           {blocks.map((block) => {
-            const isSelected = !!selectedQuestionNumber && block.questionNumber === selectedQuestionNumber
+            const isSelected = !!normalizedSelectedQuestionNumber && block.questionNumber === normalizedSelectedQuestionNumber
             const isSelectedRoot = !isSelected && !!selectedRoot && block.questionNumber === selectedRoot
             const anchorId = block.questionNumber ? buildAnchorId(block.questionNumber) : undefined
             const selectedClass = isSelected
@@ -288,7 +416,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
                       {block.label}
                     </div>
                     <div className="min-w-0 flex-1 text-[15px] leading-7 text-stone-900 whitespace-pre-wrap break-words">
-                      {block.body ? renderQuestionTextWithInlineLatex(block.body) : <span className="text-stone-400">Question heading</span>}
+                      {block.body ? renderMmdText(block.body) : <span className="text-stone-400">Question heading</span>}
                     </div>
                   </div>
                 </section>
@@ -303,7 +431,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
                   className={`scroll-mt-24 rounded-2xl px-3 py-1 ${selectedClass}`.trim()}
                 >
                   <div className="text-[15px] leading-7 text-stone-900 whitespace-pre-wrap break-words">
-                    {renderQuestionTextWithInlineLatex(block.text)}
+                    {renderMmdText(block.text)}
                   </div>
                 </section>
               )
@@ -337,7 +465,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
                 <div className="rounded-2xl border border-stone-200 bg-white p-3 shadow-sm">
                   {block.tableKind === 'pipe'
                     ? renderPipeTable(block.lines)
-                    : <pre className="overflow-x-auto whitespace-pre-wrap text-xs text-slate-700">{block.lines.join('\n')}</pre>}
+                    : renderLatexTabular(block.lines)}
                 </div>
               </section>
             )

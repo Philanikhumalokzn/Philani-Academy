@@ -140,6 +140,22 @@ function buildBlocks(mmd: string): Block[] {
         tableLines.push(String(lines[index] || ''))
         if (/\\end\{tabular\}/.test(String(lines[index] || ''))) break
       }
+      // Merge consecutive \begin{tabular} blocks (Mathpix sometimes emits one per row)
+      while (true) {
+        let next = index + 1
+        while (next < lines.length && String(lines[next] || '').trim() === '') next++
+        if (next < lines.length && isLatexTabularStart(String(lines[next] || '').trim())) {
+          index = next
+          tableLines.push(String(lines[index] || ''))
+          while (index + 1 < lines.length) {
+            index += 1
+            tableLines.push(String(lines[index] || ''))
+            if (/\\end\{tabular\}/.test(String(lines[index] || ''))) break
+          }
+        } else {
+          break
+        }
+      }
       blocks.push({
         type: 'table',
         key: `latex-table-${blocks.length}`,
@@ -197,13 +213,13 @@ function renderPipeTable(lines: string[]) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-stone-300 bg-white">
-      <table className="min-w-full border-collapse bg-white text-sm text-slate-900 [&_.katex]:text-slate-900">
+    <div className="overflow-x-auto my-2">
+      <table className="border-collapse text-sm text-slate-900 [&_.katex]:text-slate-900">
         <tbody>
           {rows.map((row, rowIndex) => (
             <tr key={`row-${rowIndex}`}>
               {row.map((cell, cellIndex) => (
-                <td key={`cell-${rowIndex}-${cellIndex}`} className="border border-stone-200 bg-white px-3 py-2 align-top text-slate-900">
+                <td key={`cell-${rowIndex}-${cellIndex}`} className="border border-stone-400 px-3 py-1.5 align-top text-slate-900">
                   {renderQuestionTextWithInlineLatex(cell)}
                 </td>
               ))}
@@ -258,13 +274,13 @@ function renderLatexTabular(lines: string[]) {
   })
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-stone-300 bg-white">
-      <table className="min-w-full border-collapse bg-white text-sm text-slate-900 [&_.katex]:text-slate-900">
+    <div className="overflow-x-auto my-2">
+      <table className="border-collapse text-sm text-slate-900 [&_.katex]:text-slate-900">
         <tbody>
           {normalizedRows.map((row, rowIndex) => (
             <tr key={`latex-row-${rowIndex}`}>
               {row.map((cell, cellIndex) => (
-                <td key={`latex-cell-${rowIndex}-${cellIndex}`} className="border border-stone-200 bg-white px-3 py-2 align-top text-slate-900">
+                <td key={`latex-cell-${rowIndex}-${cellIndex}`} className="border border-stone-400 px-3 py-1.5 align-top text-slate-900">
                   {renderMmdText(cell)}
                 </td>
               ))}

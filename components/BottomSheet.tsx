@@ -134,9 +134,9 @@ export default function BottomSheet(props: BottomSheetProps) {
   const safeTopClearance = 'calc(max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) + 15rem + 12px)'
   const safeBottomInset = 'max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px))'
   const cappedSheetStyle: React.CSSProperties = {
-    ...(style || {}),
     maxHeight: `calc(100dvh - ${safeTopClearance} - ${safeBottomInset} - 8px)`,
     overflow: 'hidden',
+    ...(style || {}),
   }
 
   const sheetInner = (
@@ -160,7 +160,7 @@ export default function BottomSheet(props: BottomSheetProps) {
         </div>
       ) : null}
 
-      <div className={`min-h-0 flex-1 ${contentClassName?.includes('overflow-hidden') ? '' : 'overflow-y-auto '}${contentClassName || 'p-2'}`.trim()}>{children}</div>
+      <div className={`min-h-0 flex-1 overflow-y-auto ${contentClassName || 'p-2'}`.trim()}>{children}</div>
     </div>
   )
 

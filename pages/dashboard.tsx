@@ -16246,10 +16246,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         closeOnBackdrop
         closeOnEscape
         className="bottom-0"
-        contentClassName="p-0 flex flex-col overflow-hidden"
+        style={{
+          maxHeight: 'calc(100dvh - max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) - max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) - 5rem)',
+        }}
+        contentClassName="p-0 overflow-hidden"
         zIndexClassName="z-[80]"
       >
-        <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
           {qbContextQ
             ? (qbContextQ.sourceId
               ? (qbContextRoot
@@ -16263,7 +16266,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
         <div
           ref={qbContextScrollRef}
-          className="flex-1 min-h-0 overflow-y-auto overscroll-contain [touch-action:pan-y] pt-2 pb-24 sm:pb-10"
+          className="min-h-0 max-h-[74dvh] overflow-y-auto overscroll-contain [touch-action:pan-y] pt-2 pb-24 sm:pb-10"
           style={{
             WebkitOverflowScrolling: 'touch',
             overscrollBehaviorY: 'contain',

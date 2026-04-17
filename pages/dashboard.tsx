@@ -1886,6 +1886,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [topicBackfillMessage, setTopicBackfillMessage] = useState<string | null>(null)
   const [topicBackfillDryRun, setTopicBackfillDryRun] = useState<any[]>([])
   const [topicBackfillAllPapers, setTopicBackfillAllPapers] = useState(false)
+  const [topicAiBackfillStatus, setTopicAiBackfillStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [topicAiBackfillMessage, setTopicAiBackfillMessage] = useState<string | null>(null)
+  const [topicAiBackfillDryRun, setTopicAiBackfillDryRun] = useState<any[]>([])
   const qbContextScrollRef = useRef<HTMLDivElement | null>(null)
   const qbContextAutoScrollDoneRef = useRef(false)
   const qbContextAutoScrollCancelledRef = useRef(false)
@@ -13677,6 +13680,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setTopicBackfillMessage(null)
     setTopicBackfillDryRun([])
     setTopicBackfillAllPapers(false)
+    setTopicAiBackfillStatus('idle')
+    setTopicAiBackfillMessage(null)
+    setTopicAiBackfillDryRun([])
     try {
       const params = new URLSearchParams()
       const paperDocParams = new URLSearchParams()
@@ -14006,6 +14012,66 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } catch (err: any) {
       setTopicBackfillStatus('error')
       setTopicBackfillMessage(err?.message || 'Network error during regex topic backfill')
+    }
+  }
+
+  const triggerAiTopicBackfill = async (sid: string | undefined, dryRun: boolean) => {
+    if (!topicBackfillAllPapers && !sid) {
+      setTopicAiBackfillStatus('error')
+      setTopicAiBackfillMessage('No source selected for scoped AI topic backfill.')
+      return
+    }
+
+    setTopicAiBackfillStatus('loading')
+    setTopicAiBackfillMessage(null)
+    if (dryRun) setTopicAiBackfillDryRun([])
+
+    try {
+      const payload: Record<string, unknown> = {
+        onlyMissing: backfillOnlyMissing,
+        dryRun,
+        processAll: topicBackfillAllPapers,
+      }
+      if (!topicBackfillAllPapers && sid) payload.sourceId = sid
+
+      const res = await fetch('/api/exam-questions/backfill-topics-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setTopicAiBackfillStatus('error')
+        setTopicAiBackfillMessage((data as any)?.message || 'AI topic backfill failed')
+        return
+      }
+
+      const scanned = Number((data as any)?.scanned ?? 0)
+      const updated = Number((data as any)?.updated ?? 0)
+      const missingContextCount = Number((data as any)?.missingContextCount ?? 0)
+      const previews = Array.isArray((data as any)?.previews) ? (data as any).previews : []
+
+      setTopicAiBackfillStatus('done')
+      if (dryRun) {
+        setTopicAiBackfillDryRun(previews)
+        const previewList = previews
+          .slice(0, 5)
+          .map((p: any) => `Q${String(p?.questionNumber || '?')}: ${String(p?.proposedTopic || 'Other')}`)
+        const sampleSuffix = previewList.length > 0 ? `\n${previewList.join('\n')}` : ''
+        const scopeLabel = topicBackfillAllPapers ? 'ALL papers' : 'selected paper'
+        setTopicAiBackfillMessage(`AI preview ready (${scopeLabel}) — ${scanned} roots scanned, missing MMD roots: ${missingContextCount}.${sampleSuffix}`)
+        return
+      }
+
+      const scopeLabel = topicBackfillAllPapers ? 'ALL papers' : 'selected paper'
+      setTopicAiBackfillMessage(`AI topic scrub applied (${scopeLabel}) — ${updated} updated from ${scanned} root questions. Missing MMD roots: ${missingContextCount}.`)
+      if (updated > 0) {
+        window.setTimeout(() => { if (qbContextQ) openPaperContext(qbContextQ) }, 1200)
+      }
+    } catch (err: any) {
+      setTopicAiBackfillStatus('error')
+      setTopicAiBackfillMessage(err?.message || 'Network error during AI topic backfill')
     }
   }
 
@@ -16389,6 +16455,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           setTopicBackfillMessage(null)
           setTopicBackfillDryRun([])
           setTopicBackfillAllPapers(false)
+          setTopicAiBackfillStatus('idle')
+          setTopicAiBackfillMessage(null)
+          setTopicAiBackfillDryRun([])
         }}
         backdrop
         closeOnBackdrop
@@ -16572,6 +16641,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
                           {topicBackfillStatus === 'loading' ? 'Running…' : 'Apply topic regex'}
                         </button>
+                        <button
+                          onClick={() => triggerAiTopicBackfill(qbContextQ?.sourceId, true)}
+                          disabled={topicAiBackfillStatus === 'loading'}
+                          className="inline-flex items-center gap-1 rounded-md border border-fuchsia-300 bg-white px-2.5 py-1 text-xs font-medium text-fuchsia-700 shadow-sm disabled:opacity-50">
+                          {topicAiBackfillStatus === 'loading' ? 'Running…' : 'Preview topic AI'}
+                        </button>
+                        <button
+                          onClick={() => triggerAiTopicBackfill(qbContextQ?.sourceId, false)}
+                          disabled={topicAiBackfillStatus === 'loading' || topicAiBackfillDryRun.length === 0}
+                          className="inline-flex items-center gap-1 rounded-md bg-fuchsia-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                          {topicAiBackfillStatus === 'loading' ? 'Running…' : 'Apply topic AI'}
+                        </button>
                         {backfillStatus !== 'idle' && backfillMessage ? (
                           <span className={`text-xs ${backfillStatus === 'error' ? 'text-red-600' : backfillStatus === 'done' ? 'text-green-700' : 'text-slate-500'}`}>
                             {backfillMessage}
@@ -16580,6 +16661,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         {topicBackfillStatus !== 'idle' && topicBackfillMessage ? (
                           <span className={`whitespace-pre-wrap text-xs ${topicBackfillStatus === 'error' ? 'text-red-600' : topicBackfillStatus === 'done' ? 'text-indigo-700' : 'text-slate-500'}`}>
                             {topicBackfillMessage}
+                          </span>
+                        ) : null}
+                        {topicAiBackfillStatus !== 'idle' && topicAiBackfillMessage ? (
+                          <span className={`whitespace-pre-wrap text-xs ${topicAiBackfillStatus === 'error' ? 'text-red-600' : topicAiBackfillStatus === 'done' ? 'text-fuchsia-700' : 'text-slate-500'}`}>
+                            {topicAiBackfillMessage}
                           </span>
                         ) : null}
                       </div>
@@ -16761,6 +16847,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
                           {topicBackfillStatus === 'loading' ? 'Running…' : 'Apply topic regex'}
                         </button>
+                        <button
+                          onClick={() => triggerAiTopicBackfill(qbContextQ?.sourceId, true)}
+                          disabled={topicAiBackfillStatus === 'loading'}
+                          className="inline-flex items-center gap-1 rounded-md border border-fuchsia-300 bg-white px-2.5 py-1 text-xs font-medium text-fuchsia-700 shadow-sm disabled:opacity-50">
+                          {topicAiBackfillStatus === 'loading' ? 'Running…' : 'Preview topic AI'}
+                        </button>
+                        <button
+                          onClick={() => triggerAiTopicBackfill(qbContextQ?.sourceId, false)}
+                          disabled={topicAiBackfillStatus === 'loading' || topicAiBackfillDryRun.length === 0}
+                          className="inline-flex items-center gap-1 rounded-md bg-fuchsia-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                          {topicAiBackfillStatus === 'loading' ? 'Running…' : 'Apply topic AI'}
+                        </button>
                         {backfillStatus !== 'idle' && backfillMessage ? (
                           <span className={`text-xs ${backfillStatus === 'error' ? 'text-red-600' : backfillStatus === 'done' ? 'text-green-700' : 'text-slate-500'}`}>
                             {backfillMessage}
@@ -16769,6 +16867,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         {topicBackfillStatus !== 'idle' && topicBackfillMessage ? (
                           <span className={`whitespace-pre-wrap text-xs ${topicBackfillStatus === 'error' ? 'text-red-600' : topicBackfillStatus === 'done' ? 'text-indigo-700' : 'text-slate-500'}`}>
                             {topicBackfillMessage}
+                          </span>
+                        ) : null}
+                        {topicAiBackfillStatus !== 'idle' && topicAiBackfillMessage ? (
+                          <span className={`whitespace-pre-wrap text-xs ${topicAiBackfillStatus === 'error' ? 'text-red-600' : topicAiBackfillStatus === 'done' ? 'text-fuchsia-700' : 'text-slate-500'}`}>
+                            {topicAiBackfillMessage}
                           </span>
                         ) : null}
                       </div>
@@ -16847,6 +16950,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               className="rounded-md bg-indigo-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
                               {topicBackfillStatus === 'loading' ? 'Running…' : 'Apply topic regex'}
                             </button>
+                            <button
+                              onClick={() => triggerAiTopicBackfill(qbContextQ?.sourceId, true)}
+                              disabled={topicAiBackfillStatus === 'loading'}
+                              className="rounded-md border border-fuchsia-300 bg-white px-2 py-0.5 text-xs font-medium text-fuchsia-700 shadow-sm disabled:opacity-50">
+                              {topicAiBackfillStatus === 'loading' ? 'Running…' : 'Preview topic AI'}
+                            </button>
+                            <button
+                              onClick={() => triggerAiTopicBackfill(qbContextQ?.sourceId, false)}
+                              disabled={topicAiBackfillStatus === 'loading' || topicAiBackfillDryRun.length === 0}
+                              className="rounded-md bg-fuchsia-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                              {topicAiBackfillStatus === 'loading' ? 'Running…' : 'Apply topic AI'}
+                            </button>
                             <label className="flex items-center gap-1 cursor-pointer select-none">
                               <input
                                 type="checkbox"
@@ -16877,6 +16992,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   {isAdmin && topicBackfillStatus !== 'idle' && topicBackfillMessage ? (
                     <p className={`whitespace-pre-wrap text-xs ${topicBackfillStatus === 'error' ? 'text-red-600' : topicBackfillStatus === 'done' ? 'text-indigo-700' : 'text-slate-500'}`}>
                       {topicBackfillMessage}
+                    </p>
+                  ) : null}
+                  {isAdmin && topicAiBackfillStatus !== 'idle' && topicAiBackfillMessage ? (
+                    <p className={`whitespace-pre-wrap text-xs ${topicAiBackfillStatus === 'error' ? 'text-red-600' : topicAiBackfillStatus === 'done' ? 'text-fuchsia-700' : 'text-slate-500'}`}>
+                      {topicAiBackfillMessage}
                     </p>
                   ) : null}
                   {rootText ? (

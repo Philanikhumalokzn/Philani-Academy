@@ -24,6 +24,80 @@ function normalizeScopedQuestionNumber(line: string): string | null {
   return match?.[1] || null
 }
 
+function extractMarksFromText(value: unknown): number | null {
+  const text = String(value ?? '').trim()
+  if (!text) return null
+
+  const tailBracketed = text.match(/(?:\(\s*(\d{1,2})\s*(?:marks?|mks?)?\s*\)|\[\s*(\d{1,2})\s*(?:marks?|mks?)?\s*\])\s*$/i)
+  const bracketNum = tailBracketed?.[1] || tailBracketed?.[2]
+  if (bracketNum) return Number(bracketNum)
+
+  const tailWord = text.match(/(\d{1,2})\s*(?:marks?|mks?)\s*$/i)
+  if (tailWord?.[1]) return Number(tailWord[1])
+
+  return null
+}
+
+function buildQuestionMarksMapFromMmd(mmd: string): Map<string, number> {
+  const map = new Map<string, number>()
+  if (!mmd.trim()) return map
+
+  const lines = mmd.split(/\r?\n/)
+  let currentTop = ''
+  let currentSub = ''
+
+  const setMark = (qNum: string, mark: number | null) => {
+    if (!qNum || mark === null || !Number.isFinite(mark)) return
+    if (!map.has(qNum)) map.set(qNum, Math.max(0, Math.round(mark)))
+  }
+
+  for (const rawLine of lines) {
+    const line = String(rawLine || '').trim()
+    if (!line) continue
+
+    const topSectionMatch = line.match(/\\section\*\{\s*QUESTION\s+(\d+)\s*\}/i)
+      || line.match(/^QUESTION\s+(\d+)\b/i)
+    if (topSectionMatch?.[1]) {
+      currentTop = topSectionMatch[1]
+      currentSub = ''
+    }
+
+    const numberedMatch = line.match(/^((?:\d+)(?:\.\d+){1,5})\b/)
+    if (numberedMatch?.[1]) {
+      const candidate = numberedMatch[1]
+      if (!currentTop || candidate === currentTop || candidate.startsWith(`${currentTop}.`)) {
+        currentSub = candidate
+      }
+    }
+
+    const target = currentSub || currentTop
+    if (!target) continue
+
+    const inferred = extractMarksFromText(line)
+    if (inferred !== null) setMark(target, inferred)
+  }
+
+  return map
+}
+
+function pickQuestionMarks(qNum: string, marksMap: Map<string, number>): number | null {
+  const parts = String(qNum || '').split('.').filter((p) => /^\d+$/.test(p)).map((p) => Number(p))
+  if (parts.length === 0) return null
+
+  for (let i = parts.length; i > 0; i -= 1) {
+    const key = parts.slice(0, i).join('.')
+    if (marksMap.has(key)) return marksMap.get(key) ?? null
+  }
+
+  return null
+}
+
+function toMarksLabel(value: number | null): string | null {
+  if (value === null || !Number.isFinite(value)) return null
+  const n = Math.max(0, Math.round(value))
+  return `${n} mark${n === 1 ? '' : 's'}`
+}
+
 function buildAnchorId(questionNumber: string): string {
   return `mmd-paper-anchor-${String(questionNumber || '').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase()}`
 }
@@ -450,6 +524,7 @@ function renderMmdText(raw: string) {
 
 export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaperViewerProps) {
   const blocks = useMemo(() => buildBlocks(mmd), [mmd])
+  const marksMap = useMemo(() => buildQuestionMarksMapFromMmd(mmd), [mmd])
   const [renderedHtml, setRenderedHtml] = useState('')
   const [useMathpixRenderer, setUseMathpixRenderer] = useState(false)
   const normalizedSelectedQuestionNumber = stripQuestionPrefix(String(selectedQuestionNumber || ''))
@@ -538,6 +613,36 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
     return () => window.clearTimeout(timer)
   }, [normalizedSelectedQuestionNumber, selectedRoot, mmd, renderedHtml, useMathpixRenderer])
 
+  useEffect(() => {
+    if (!useMathpixRenderer || !renderedHtml || typeof document === 'undefined') return
+    const root = document.getElementById('mmd-paper-viewer-content')
+    if (!root) return
+
+    const nodes = Array.from(root.querySelectorAll<HTMLElement>('.mmd-question-heading, .mmd-question-subpart'))
+    for (const node of nodes) {
+      if (node.querySelector('.mmd-mark-badge')) continue
+      const text = String(node.textContent || '').trim()
+      const qNum = normalizeQuestionHeadingNumber(text) || normalizeScopedQuestionNumber(text)
+      if (!qNum) continue
+      const label = toMarksLabel(pickQuestionMarks(qNum, marksMap))
+      if (!label) continue
+
+      const badge = document.createElement('span')
+      badge.className = 'mmd-mark-badge'
+      badge.textContent = label
+      badge.style.display = 'inline-block'
+      badge.style.marginLeft = '0.45rem'
+      badge.style.padding = '0.05rem 0.42rem'
+      badge.style.borderRadius = '999px'
+      badge.style.border = '1px solid #cbd5e1'
+      badge.style.background = '#f8fafc'
+      badge.style.color = '#334155'
+      badge.style.fontSize = '0.7rem'
+      badge.style.fontWeight = '600'
+      node.appendChild(badge)
+    }
+  }, [marksMap, renderedHtml, useMathpixRenderer])
+
   if (!String(mmd || '').trim()) {
     return <div className="px-4 py-6 text-sm text-slate-500">No MMD document is available for this paper.</div>
   }
@@ -586,6 +691,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
             }
 
             if (block.type === 'question-line') {
+              const marksLabel = toMarksLabel(pickQuestionMarks(block.questionNumber, marksMap))
               return (
                 <section
                   key={block.key}
@@ -597,6 +703,11 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
                       {block.label}
                     </div>
                     <div className="min-w-0 flex-1 text-[13px] leading-[1.4] text-stone-900 whitespace-pre-wrap break-words">
+                      {marksLabel ? (
+                        <div className="mb-1 inline-flex rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                          {marksLabel}
+                        </div>
+                      ) : null}
                       {block.body ? renderMmdText(block.body) : <span className="text-stone-400">Question heading</span>}
                     </div>
                   </div>

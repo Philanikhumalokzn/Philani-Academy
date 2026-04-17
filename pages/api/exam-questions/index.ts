@@ -130,6 +130,74 @@ function collectInheritedImages(questionNumber: string, map: Map<string, string[
   return urls
 }
 
+function extractMarksFromText(value: unknown): number | null {
+  const text = String(value ?? '').trim()
+  if (!text) return null
+
+  const tailBracketed = text.match(/(?:\(\s*(\d{1,2})\s*(?:marks?|mks?)?\s*\)|\[\s*(\d{1,2})\s*(?:marks?|mks?)?\s*\])\s*$/i)
+  const bracketNum = tailBracketed?.[1] || tailBracketed?.[2]
+  if (bracketNum) return Number(bracketNum)
+
+  const tailWord = text.match(/(\d{1,2})\s*(?:marks?|mks?)\s*$/i)
+  if (tailWord?.[1]) return Number(tailWord[1])
+
+  return null
+}
+
+function buildQuestionMarksMapFromMmd(mmd: string): Map<string, number> {
+  const map = new Map<string, number>()
+  if (!mmd.trim()) return map
+
+  const lines = mmd.split(/\r?\n/)
+  let currentTop = ''
+  let currentSub = ''
+
+  const setMark = (qNum: string, mark: number | null) => {
+    if (!qNum || mark === null || !Number.isFinite(mark)) return
+    if (!map.has(qNum)) map.set(qNum, Math.max(0, Math.round(mark)))
+  }
+
+  for (const rawLine of lines) {
+    const line = String(rawLine || '').trim()
+    if (!line) continue
+
+    const topSectionMatch = line.match(/\\section\*\{\s*QUESTION\s+(\d+)\s*\}/i)
+      || line.match(/^QUESTION\s+(\d+)\b/i)
+    if (topSectionMatch?.[1]) {
+      currentTop = topSectionMatch[1]
+      currentSub = ''
+    }
+
+    const numberedMatch = line.match(/^((?:\d+)(?:\.\d+){1,5})\b/)
+    if (numberedMatch?.[1]) {
+      const candidate = numberedMatch[1]
+      if (!currentTop || candidate === currentTop || candidate.startsWith(`${currentTop}.`)) {
+        currentSub = candidate
+      }
+    }
+
+    const target = currentSub || currentTop
+    if (!target) continue
+
+    const inferred = extractMarksFromText(line)
+    if (inferred !== null) setMark(target, inferred)
+  }
+
+  return map
+}
+
+function pickQuestionMarks(qNum: string, marksMap: Map<string, number>): number | null {
+  const parts = String(qNum || '').split('.').filter((p) => /^\d+$/.test(p)).map((p) => Number(p))
+  if (parts.length === 0) return null
+
+  for (let i = parts.length; i > 0; i -= 1) {
+    const key = parts.slice(0, i).join('.')
+    if (marksMap.has(key)) return marksMap.get(key) ?? null
+  }
+
+  return null
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const token = await getToken({ req })
   const role = ((token as any)?.role as string | undefined) || 'student'
@@ -302,6 +370,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     : []
 
   const sourceImageMap = new Map<string, Map<string, string[]>>()
+  const sourceMarksMap = new Map<string, Map<string, number>>()
   const sourceTitleMap = new Map<string, string>()
   const sourceUrlMap = new Map<string, string>()
   for (const source of sources) {
@@ -327,6 +396,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     sourceImageMap.set(source.id, combined)
+    sourceMarksMap.set(source.id, buildQuestionMarksMapFromMmd(mmd))
   }
 
   const enrichedItems = items.map((item) => {
@@ -338,8 +408,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     pushUniqueUrl(imageUrls, item.imageUrl)
     for (const url of derivedUrls) pushUniqueUrl(imageUrls, url)
 
+    const resolvedMarks = item.marks ?? (
+      item.sourceId
+        ? pickQuestionMarks(item.questionNumber, sourceMarksMap.get(item.sourceId) || new Map<string, number>())
+        : null
+    )
+
     return {
       ...item,
+      marks: resolvedMarks,
       imageUrl: imageUrls[0] || null,
       imageUrls,
       sourceTitle: item.sourceId ? (sourceTitleMap.get(item.sourceId) || null) : null,

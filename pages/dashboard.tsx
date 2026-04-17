@@ -16266,12 +16266,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           ref={qbContextScrollRef}
           className="flex-1 min-h-0 overflow-y-auto overscroll-contain [touch-action:pan-y] pt-2 pb-24 sm:pb-10"
           style={{
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehaviorY: 'contain',
             scrollPaddingTop: '1rem',
             scrollPaddingBottom: 'calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 7rem)',
           }}
           onWheel={cancelPendingQbContextAutoScroll}
           onTouchStart={cancelPendingQbContextAutoScroll}
-          onTouchMove={(e) => e.stopPropagation()}
           onPointerDown={cancelPendingQbContextAutoScroll}>
           {qbContextLoading ? (
             <div className="p-4 text-sm text-slate-600">Loading paper context...</div>

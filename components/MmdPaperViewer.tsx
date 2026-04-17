@@ -533,7 +533,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
   }
 
   return (
-    <div className="px-3 pb-8 pt-3 sm:px-4">
+    <div className="px-3 pb-8 pt-3 sm:px-4" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
       <div className="mx-auto max-w-4xl rounded-[28px] border border-stone-300 bg-[#fffdf7] shadow-[0_18px_54px_rgba(15,23,42,0.08)]">
         <div className="border-b border-stone-200 bg-[linear-gradient(180deg,rgba(255,250,240,0.95),rgba(255,253,247,0.92))] px-5 py-4">
           <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-stone-500">Paper View</div>

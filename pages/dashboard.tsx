@@ -13891,7 +13891,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       const created = Number((data as any)?.created ?? 0)
       const updated = Number((data as any)?.updated ?? 0)
       setBackfillStatus('done')
-      setBackfillMessage(`Preamble backfill done — ${created} created, ${updated} updated`)
+      const noteLines: string[] = (data as any)?.notes ?? []
+      const noteSuffix = noteLines.length > 0 ? `\n${noteLines.join('\n')}` : ''
+      setBackfillMessage(`Preamble backfill done — ${created} created, ${updated} updated${noteSuffix}`)
       if (created > 0 || updated > 0) {
         window.setTimeout(() => { if (qbContextQ) openPaperContext(qbContextQ) }, 1400)
       }

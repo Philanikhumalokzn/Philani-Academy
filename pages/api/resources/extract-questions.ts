@@ -711,9 +711,17 @@ export async function upsertRootPreambleRecords(opts: {
     rootPreambleBlocks,
   } = opts
 
-  const roots = Array.from(preambleMap.entries())
-    .filter(([scope, text]) => !scope.includes('.') && String(text || '').trim().length > 0)
-    .sort(([a], [b]) => Number(a) - Number(b))
+  // Collect root numbers to process: text roots from preambleMap plus image/table roots from rootPreambleBlocks
+  const rootSet = new Set<string>()
+  for (const [scope, text] of preambleMap.entries()) {
+    if (!scope.includes('.') && String(text || '').trim().length > 0) rootSet.add(scope)
+  }
+  if (rootPreambleBlocks) {
+    for (const [root, block] of rootPreambleBlocks.entries()) {
+      if (block.imageUrls.length > 0 || block.tableMarkdown) rootSet.add(root)
+    }
+  }
+  const roots = Array.from(rootSet).sort((a, b) => Number(a) - Number(b))
 
   if (roots.length === 0) return { created: 0, updated: 0 }
 
@@ -732,9 +740,9 @@ export async function upsertRootPreambleRecords(opts: {
   let created = 0
   let updated = 0
 
-  for (const [root, preamble] of roots) {
-    const cleanPreamble = normalizeExamQuestionContent(String(preamble || ''), '').questionText
-    if (!cleanPreamble) continue
+  for (const root of roots) {
+    const preamble = preambleMap.get(root) || ''
+    const cleanPreamble = normalizeExamQuestionContent(String(preamble), '').questionText
 
     const strictRootBlock = rootPreambleBlocks?.get(root)
     const rootImageUrls = strictRootBlock?.imageUrls?.length
@@ -743,7 +751,10 @@ export async function upsertRootPreambleRecords(opts: {
     const rootImageUrl = rootImageUrls[0] || null
     const rootTableMarkdown = strictRootBlock?.tableMarkdown || pickRootPreambleTableMarkdown(root, tableMap)
 
-    const existingRoot = existing.find((row) => {
+  // Skip only if there is truly nothing to contribute to this root record
+  if (!cleanPreamble && !rootImageUrl && !rootTableMarkdown) continue
+
+  const existingRoot = existing.find((row) => {
       const rowNumber = String(row.questionNumber || '')
       return isTopLevelQuestionNumber(rowNumber, row.questionDepth) && questionRootFromNumber(rowNumber) === root
     })

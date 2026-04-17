@@ -14,6 +14,12 @@ type BackfillResult = {
   identities: number
   created: number
   updated: number
+  note?: string
+}
+
+type SkippedEntry = {
+  sourceId: string
+  reason: string
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -123,6 +129,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const results: BackfillResult[] = []
+    const skipped: SkippedEntry[] = []
   let totalCreated = 0
   let totalUpdated = 0
 
@@ -131,10 +138,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       where: { id: sid },
       select: { parsedJson: true },
     })
-    if (!source) continue
+    if (!source) {
+      skipped.push({ sourceId: sid, reason: 'resourceBankItem not found — source document may not exist' })
+      continue
+    }
 
     const rawMmd = String((source.parsedJson as any)?.raw?.mmd || '').trim()
-    if (!rawMmd) continue
+    if (!rawMmd) {
+      skipped.push({ sourceId: sid, reason: 'parsedJson?.raw?.mmd is empty — source was not parsed via Mathpix MMD path' })
+      continue
+    }
 
     const preambleMap = buildQuestionPreambleMapFromMmd(rawMmd)
     const rootPreambleBlocks = buildRootPreambleBlocksFromMmd(rawMmd)
@@ -159,7 +172,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       orderBy: [{ year: 'asc' }, { month: 'asc' }, { paper: 'asc' }],
     })
 
-    if (identities.length === 0) continue
+    if (identities.length === 0) {
+      skipped.push({ sourceId: sid, reason: 'no exam questions linked to this sourceId — run Extract Questions first' })
+      continue
+    }
 
     let created = 0
     let updated = 0
@@ -182,7 +198,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     totalCreated += created
     totalUpdated += updated
-    results.push({ sourceId: sid, identities: identities.length, created, updated })
+    const preambleRoots = Array.from(preambleMap.entries()).filter(([s, t]) => !s.includes('.') && String(t || '').trim().length > 0).length
+    const blockRoots = Array.from(rootPreambleBlocks.entries()).length
+    let note: string | undefined
+    if (created === 0 && updated === 0) {
+      if (preambleRoots === 0 && blockRoots === 0) {
+        note = `MMD found (${rawMmd.length} chars) but no QUESTION headings detected — check MMD format`
+      } else {
+        note = `${preambleRoots} text root(s), ${blockRoots} block(s) found — all records already have matching content`
+      }
+    }
+    results.push({ sourceId: sid, identities: identities.length, created, updated, note })
   }
 
   return res.status(200).json({
@@ -191,5 +217,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     created: totalCreated,
     updated: totalUpdated,
     results,
+    skipped,
+    notes: [
+      ...skipped.map((s) => `Skipped ${s.sourceId.slice(0, 8)}…: ${s.reason}`),
+      ...results.filter((r) => r.note).map((r) => `Source ${r.sourceId.slice(0, 8)}…: ${r.note}`),
+    ],
   })
 }

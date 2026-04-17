@@ -326,8 +326,10 @@ function decorateMmdHtmlWithAnchors(html: string): string {
       const scopedMatch = text.match(/^Q?((?:\d+)(?:\.\d+){0,6})\b/)
       if (scopedMatch?.[1]) {
         const questionNumber = stripQuestionPrefix(scopedMatch[1])
-        if (element.tagName.toLowerCase() === 'p') {
-          element.classList.add('mmd-question-subpart')
+        element.classList.add('mmd-question-subpart')
+        // Force spacing before sub-question lines even when upstream styles are aggressive.
+        if (element instanceof HTMLElement) {
+          element.style.setProperty('margin-top', '0.9rem', 'important')
         }
         if (!assigned.has(questionNumber)) {
           element.id = buildAnchorId(questionNumber)

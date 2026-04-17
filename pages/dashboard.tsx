@@ -1876,6 +1876,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [reextractApplying, setReextractApplying] = useState(false)
   const [reextractUndo, setReextractUndo] = useState<any>(null)
   const [reextractWarningAcknowledge, setReextractWarningAcknowledge] = useState(false)
+  const [backfillStatus, setBackfillStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [backfillMessage, setBackfillMessage] = useState<string | null>(null)
+  const [backfillOnlyMissing, setBackfillOnlyMissing] = useState(true)
   const qbContextScrollRef = useRef<HTMLDivElement | null>(null)
   const qbContextAutoScrollDoneRef = useRef(false)
   const qbContextAutoScrollCancelledRef = useRef(false)
@@ -13655,6 +13658,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setReextractPreviewRequest(null)
     setReextractApplying(false)
     setReextractUndo(null)
+    setBackfillStatus('idle')
+    setBackfillMessage(null)
     try {
       const params = new URLSearchParams()
       if (q.sourceId) {
@@ -13867,8 +13872,36 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }
 
-  const cancelPendingQbContextAutoScroll = () => {
-    qbContextAutoScrollCancelledRef.current = true
+  const triggerBackfill = async (sid: string) => {
+    setBackfillStatus('loading')
+    setBackfillMessage(null)
+    try {
+      const res = await fetch('/api/exam-questions/backfill-preambles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ sourceId: sid, onlyMissing: backfillOnlyMissing }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setBackfillStatus('error')
+        setBackfillMessage((data as any)?.message || 'Backfill failed')
+        return
+      }
+      const created = Number((data as any)?.created ?? 0)
+      const updated = Number((data as any)?.updated ?? 0)
+      setBackfillStatus('done')
+      setBackfillMessage(`Preamble backfill done — ${created} created, ${updated} updated`)
+      if (created > 0 || updated > 0) {
+        window.setTimeout(() => { if (qbContextQ) openPaperContext(qbContextQ) }, 1400)
+      }
+    } catch (err: any) {
+      setBackfillStatus('error')
+      setBackfillMessage(err?.message || 'Network error during backfill')
+    }
+  }
+
+  const cancelPendingQbContextAutoScroll = () => {    qbContextAutoScrollCancelledRef.current = true
     if (qbContextAutoScrollTimerRef.current != null) {
       window.clearTimeout(qbContextAutoScrollTimerRef.current)
       qbContextAutoScrollTimerRef.current = null
@@ -16364,6 +16397,30 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         {reextractMessage}
                       </p>
                     ) : null}
+                    {isAdmin && qbContextQ?.sourceId ? (
+                      <div className="flex flex-wrap items-center gap-2 pt-0.5 border-t border-slate-200">
+                        <button
+                          onClick={() => triggerBackfill(qbContextQ.sourceId)}
+                          disabled={backfillStatus === 'loading'}
+                          className="inline-flex items-center gap-1 rounded-md bg-teal-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                          {backfillStatus === 'loading' ? 'Running…' : '⚙ Backfill preambles'}
+                        </button>
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={backfillOnlyMissing}
+                            onChange={(e) => setBackfillOnlyMissing(e.target.checked)}
+                            className="h-3.5 w-3.5 rounded border-slate-300 text-teal-600"
+                          />
+                          <span className="text-xs text-slate-600">Only questions without preamble</span>
+                        </label>
+                        {backfillStatus !== 'idle' && backfillMessage ? (
+                          <span className={`text-xs ${backfillStatus === 'error' ? 'text-red-600' : backfillStatus === 'done' ? 'text-green-700' : 'text-slate-500'}`}>
+                            {backfillMessage}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
                     {isAdmin && rawParseExpanded ? (
                       <div className="mt-1 space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -16501,6 +16558,30 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         {reextractMessage}
                       </p>
                     ) : null}
+                    {isAdmin && qbContextQ?.sourceId ? (
+                      <div className="flex flex-wrap items-center gap-2 pt-0.5 border-t border-slate-200">
+                        <button
+                          onClick={() => triggerBackfill(qbContextQ.sourceId)}
+                          disabled={backfillStatus === 'loading'}
+                          className="inline-flex items-center gap-1 rounded-md bg-teal-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                          {backfillStatus === 'loading' ? 'Running…' : '⚙ Backfill preambles'}
+                        </button>
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={backfillOnlyMissing}
+                            onChange={(e) => setBackfillOnlyMissing(e.target.checked)}
+                            className="h-3.5 w-3.5 rounded border-slate-300 text-teal-600"
+                          />
+                          <span className="text-xs text-slate-600">Only questions without preamble</span>
+                        </label>
+                        {backfillStatus !== 'idle' && backfillMessage ? (
+                          <span className={`text-xs ${backfillStatus === 'error' ? 'text-red-600' : backfillStatus === 'done' ? 'text-green-700' : 'text-slate-500'}`}>
+                            {backfillMessage}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
                     {isAdmin && rawParseExpanded ? (
                       <div className="mt-1 space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -16554,9 +16635,33 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           className="rounded-md border border-red-300 bg-white px-2 py-0.5 text-xs text-red-700 font-medium shadow-sm disabled:opacity-50">
                           Delete context
                         </button>
+                        {qbContextQ?.sourceId ? (
+                          <>
+                            <button
+                              onClick={() => triggerBackfill(qbContextQ.sourceId)}
+                              disabled={backfillStatus === 'loading'}
+                              className="rounded-md bg-teal-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                              {backfillStatus === 'loading' ? 'Running…' : '⚙ Backfill'}
+                            </button>
+                            <label className="flex items-center gap-1 cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={backfillOnlyMissing}
+                                onChange={(e) => setBackfillOnlyMissing(e.target.checked)}
+                                className="h-3 w-3 rounded border-slate-300 text-teal-600"
+                              />
+                              <span className="text-xs text-slate-500">Only missing</span>
+                            </label>
+                          </>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
+                  {isAdmin && backfillStatus !== 'idle' && backfillMessage ? (
+                    <p className={`text-xs ${backfillStatus === 'error' ? 'text-red-600' : backfillStatus === 'done' ? 'text-green-700' : 'text-slate-500'}`}>
+                      {backfillMessage}
+                    </p>
+                  ) : null}
                   {rootText ? (
                     <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
                       {renderQuestionTextWithInlineLatex(rootText)}

@@ -34,6 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     year,
     month,
     paper,
+    onlyMissing,
   } = (req.body || {}) as {
     sourceId?: string
     limit?: number
@@ -41,6 +42,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     year?: number
     month?: string
     paper?: number
+    onlyMissing?: boolean
   }
 
   const effectiveLimit = Number.isFinite(limit) ? Math.max(1, Math.min(500, Number(limit))) : 100
@@ -49,25 +51,64 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (typeof sourceId === 'string' && sourceId.trim()) {
     sourceIds.push(sourceId.trim())
   } else {
-    const where: Record<string, unknown> = {
+    const baseWhere: Record<string, unknown> = {
       sourceId: { not: null },
     }
 
-    if (typeof grade === 'string' && grade.trim()) where.grade = grade.trim()
-    if (Number.isFinite(year)) where.year = Number(year)
-    if (typeof month === 'string' && month.trim()) where.month = month.trim()
-    if (Number.isFinite(paper)) where.paper = Number(paper)
+    if (typeof grade === 'string' && grade.trim()) baseWhere.grade = grade.trim()
+    if (Number.isFinite(year)) baseWhere.year = Number(year)
+    if (typeof month === 'string' && month.trim()) baseWhere.month = month.trim()
+    if (Number.isFinite(paper)) baseWhere.paper = Number(paper)
 
-    const rows = await prisma.examQuestion.findMany({
-      where,
-      select: { sourceId: true },
-      distinct: ['sourceId'],
-      take: effectiveLimit,
-      orderBy: { sourceId: 'asc' },
-    })
+    if (onlyMissing) {
+      // Sources where a root question record exists but has no preamble content
+      const missingContentRows = await prisma.examQuestion.findMany({
+        where: {
+          ...baseWhere,
+          questionDepth: 0,
+          OR: [{ questionText: null }, { questionText: '' }],
+          imageUrl: null,
+          tableMarkdown: null,
+        },
+        select: { sourceId: true },
+        distinct: ['sourceId'],
+        orderBy: { sourceId: 'asc' },
+      })
 
-    for (const row of rows) {
-      if (row.sourceId && !sourceIds.includes(row.sourceId)) sourceIds.push(row.sourceId)
+      // Sources that have any question but NO depth-0 root record at all
+      const sourcesWithRootRows = await prisma.examQuestion.findMany({
+        where: { ...baseWhere, questionDepth: 0 },
+        select: { sourceId: true },
+        distinct: ['sourceId'],
+      })
+      const sourcesWithRoot = new Set(sourcesWithRootRows.map((r) => r.sourceId!))
+
+      const allSourceRows = await prisma.examQuestion.findMany({
+        where: baseWhere,
+        select: { sourceId: true },
+        distinct: ['sourceId'],
+        orderBy: { sourceId: 'asc' },
+      })
+
+      const combined = new Set<string>()
+      for (const r of missingContentRows) if (r.sourceId) combined.add(r.sourceId)
+      for (const r of allSourceRows) if (r.sourceId && !sourcesWithRoot.has(r.sourceId)) combined.add(r.sourceId)
+
+      for (const sid of Array.from(combined).sort().slice(0, effectiveLimit)) {
+        sourceIds.push(sid)
+      }
+    } else {
+      const rows = await prisma.examQuestion.findMany({
+        where: baseWhere,
+        select: { sourceId: true },
+        distinct: ['sourceId'],
+        take: effectiveLimit,
+        orderBy: { sourceId: 'asc' },
+      })
+
+      for (const row of rows) {
+        if (row.sourceId && !sourceIds.includes(row.sourceId)) sourceIds.push(row.sourceId)
+      }
     }
   }
 
@@ -145,7 +186,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   return res.status(200).json({
-    message: `Root preamble backfill complete for ${results.length} source(s).`,
+    message: `Root preamble backfill complete for ${results.length} source(s)${onlyMissing ? ' (only missing)' : ''}.`,
     processedSources: results.length,
     created: totalCreated,
     updated: totalUpdated,

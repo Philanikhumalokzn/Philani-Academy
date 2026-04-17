@@ -110,9 +110,17 @@ function buildBlocks(mmd: string): Block[] {
     if (isPipeTableLine(line)) {
       flushParagraph()
       const tableLines: string[] = [line]
-      while (index + 1 < lines.length && isPipeTableLine(lines[index + 1])) {
-        index += 1
-        tableLines.push(String(lines[index] || '').trim())
+      // Consume all pipe-table lines, skipping over blank lines between rows
+      // so that table rows separated by a single blank are merged into one block.
+      while (true) {
+        let next = index + 1
+        while (next < lines.length && String(lines[next] || '').trim() === '') next++
+        if (next < lines.length && isPipeTableLine(String(lines[next] || '').trim())) {
+          index = next
+          tableLines.push(String(lines[next] || '').trim())
+        } else {
+          break
+        }
       }
       blocks.push({
         type: 'table',
@@ -178,29 +186,21 @@ function buildBlocks(mmd: string): Block[] {
   return blocks
 }
 
+function isSeparatorRow(row: string[]): boolean {
+  return row.length > 0 && row.every((cell) => /^[-:]+$/.test(cell.replace(/\s/g, '')))
+}
+
 function renderPipeTable(lines: string[]) {
-  const rows = parsePipeTableRows(lines)
-  if (rows.length < 2) {
+  const rows = parsePipeTableRows(lines).filter((row) => !isSeparatorRow(row))
+  if (rows.length === 0) {
     return <pre className="whitespace-pre-wrap text-xs text-slate-700">{lines.join('\n')}</pre>
   }
-
-  const header = rows[0]
-  const bodyRows = rows.slice(1).filter((row) => !row.every((cell) => /^[-:]+$/.test(cell.replace(/\s/g, ''))))
 
   return (
     <div className="overflow-x-auto rounded-xl border border-stone-300 bg-white">
       <table className="min-w-full border-collapse bg-white text-sm text-slate-900 [&_.katex]:text-slate-900">
-        <thead>
-          <tr>
-            {header.map((cell, index) => (
-              <th key={`header-${index}`} className="border border-stone-300 bg-stone-100 px-3 py-2 text-left font-semibold text-slate-900">
-                {renderQuestionTextWithInlineLatex(cell)}
-              </th>
-            ))}
-          </tr>
-        </thead>
         <tbody>
-          {bodyRows.map((row, rowIndex) => (
+          {rows.map((row, rowIndex) => (
             <tr key={`row-${rowIndex}`}>
               {row.map((cell, cellIndex) => (
                 <td key={`cell-${rowIndex}-${cellIndex}`} className="border border-stone-200 bg-white px-3 py-2 align-top text-slate-900">
@@ -257,26 +257,11 @@ function renderLatexTabular(lines: string[]) {
     return next
   })
 
-  const hasHeaderLikeFirstRow = normalizedRows.length > 1
-  const header = hasHeaderLikeFirstRow ? normalizedRows[0] : null
-  const bodyRows = hasHeaderLikeFirstRow ? normalizedRows.slice(1) : normalizedRows
-
   return (
     <div className="overflow-x-auto rounded-xl border border-stone-300 bg-white">
       <table className="min-w-full border-collapse bg-white text-sm text-slate-900 [&_.katex]:text-slate-900">
-        {header ? (
-          <thead>
-            <tr>
-              {header.map((cell, index) => (
-                <th key={`latex-header-${index}`} className="border border-stone-300 bg-stone-100 px-3 py-2 text-left font-semibold align-top text-slate-900">
-                  {renderMmdText(cell)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-        ) : null}
         <tbody>
-          {bodyRows.map((row, rowIndex) => (
+          {normalizedRows.map((row, rowIndex) => (
             <tr key={`latex-row-${rowIndex}`}>
               {row.map((cell, cellIndex) => (
                 <td key={`latex-cell-${rowIndex}-${cellIndex}`} className="border border-stone-200 bg-white px-3 py-2 align-top text-slate-900">

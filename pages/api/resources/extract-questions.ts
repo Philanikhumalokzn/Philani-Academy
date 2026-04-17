@@ -21,6 +21,15 @@ export const VALID_TOPICS = [
   'Calculus', 'Sequences and Series', 'Polynomials', 'Other',
 ]
 
+function normalizeTopicLabel(value: unknown): string | null {
+  const raw = typeof value === 'string' ? value.trim() : ''
+  if (!raw) return null
+
+  const lowered = raw.toLowerCase()
+  const match = VALID_TOPICS.find((topic) => topic.toLowerCase() === lowered)
+  return match || null
+}
+
 export function questionDepthFromNumber(qNum: string): number {
   const parts = (qNum || '').split('.')
   return Math.max(0, parts.length - 1)
@@ -1113,7 +1122,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     `- questionText: the full question text. Where the question contains mathematical expressions, wrap each expression inline using ONLY single-dollar delimiters in the exact form $Expression$. Example: "Solve for x: $3x^{2}-5x-2=0$" or "Simplify $\\frac{a^2-b^2}{a-b}$". Do NOT use $$...$$. Do NOT use \\(...\\) or \\[...\\]. Do NOT leave math as bare undelimited text.\n` +
     `- latex: the PRIMARY mathematical expression for the question in valid LaTeX without outer $ delimiters (e.g. "3x^{2}-5x-2=0"). Use normal LaTeX commands such as \\frac and \\sqrt. Leave empty string if questionText contains no math at all.\n` +
     `- marks: the mark allocation as an integer if shown in brackets (e.g. "(3)" ÔåÆ 3), else null\n` +
-    `- topic: one of: ${VALID_TOPICS.join(', ')}\n` +
+    `- topic: choose EXACTLY ONE label from this fixed list and return it EXACTLY as written (strict parsing requirement): ${VALID_TOPICS.join(', ')}\n` +
+    `- topic strictness rules: do not invent, paraphrase, merge, or partially rewrite topic names; if unsure, return "Other"\n` +
+    `- root-topic consistency rule: all sub-questions under the same root (e.g. 5, 5.1, 5.2, 5.3) MUST share the same topic, determined by the root question preamble/context\n` +
     `- cognitiveLevel: integer 1-4 where 1=Knowledge, 2=Routine procedures, 3=Complex procedures, 4=Problem-solving\n` +
     `- Include question preambles in questionText. If a main question (e.g. "1") starts with shared context text or a scenario after "QUESTION n" and before the first numbered sub-part (e.g. "1.1"), include that FULL preamble in the root question's questionText. If a sub-question has its own preamble, keep it too.\n` +
     `- tableMarkdown: CRITICAL — if the question or its preamble contains a data table (frequency table, value table, timetable, two-way table, statistics table, etc.), copy the FULL pipe-table markdown exactly as it appears in the input (including the header row and separator row "| --- | --- |"). For root questions (e.g. questionNumber "1") that have a shared preamble table, include it in that root record's tableMarkdown even if individual sub-questions also refer to it. If there is no table, use null.\n` +
@@ -1205,6 +1216,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     tableMap: questionTableMap,
   })
 
+  const rootTopicByRoot = new Map<string, string>()
+  for (const rawItem of geminiResult) {
+    if (!rawItem || typeof rawItem !== 'object') continue
+
+    const qNum = (typeof rawItem.questionNumber === 'string' ? rawItem.questionNumber : String(rawItem.questionNumber || '')).trim()
+    if (!qNum) continue
+
+    const root = questionRootFromNumber(qNum)
+    if (!root) continue
+
+    const normalizedTopic = normalizeTopicLabel(rawItem.topic)
+    if (!normalizedTopic) continue
+
+    const existingTopic = rootTopicByRoot.get(root)
+    const isRootRow = qNum === root
+    if (!existingTopic || (isRootRow && existingTopic !== normalizedTopic)) {
+      rootTopicByRoot.set(root, normalizedTopic)
+    }
+  }
+
   for (let i = 0; i < geminiResult.length; i++) {
     const item = geminiResult[i]
     if (!item || typeof item !== 'object') { skipped.push(i); continue }
@@ -1226,7 +1257,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const marks = normalizeMarksValue(item.marks)
       ?? extractMarksFromText(qText)
       ?? pickQuestionMarks(qNum, questionMarksMap)
-    const topic = VALID_TOPICS.includes(item.topic) ? item.topic : null
+    const root = questionRootFromNumber(qNum)
+    const topic = (root ? rootTopicByRoot.get(root) : null) || normalizeTopicLabel(item.topic)
     const cl = typeof item.cognitiveLevel === 'number' ? Math.min(4, Math.max(1, Math.round(item.cognitiveLevel))) : null
     const depth = questionDepthFromNumber(qNum)
     const imageUrl = pickQuestionImageUrl(qNum, questionImageMap)
@@ -1243,7 +1275,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         questionText: qText,
         latex: latex || null,
       },
-      select: { id: true, sourceId: true, imageUrl: true, tableMarkdown: true, marks: true },
+      select: { id: true, sourceId: true, imageUrl: true, tableMarkdown: true, marks: true, topic: true, cognitiveLevel: true },
     })
 
     if (existingExact) {
@@ -1252,6 +1284,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!existingExact.imageUrl && imageUrl) updateData.imageUrl = imageUrl
       if (!existingExact.tableMarkdown && tableMarkdown) updateData.tableMarkdown = tableMarkdown
       if (existingExact.marks == null && marks != null) updateData.marks = marks
+      if (!existingExact.topic && topic) updateData.topic = topic
+      if (existingExact.cognitiveLevel == null && cl != null) updateData.cognitiveLevel = cl
 
       if (Object.keys(updateData).length > 0) {
         try {

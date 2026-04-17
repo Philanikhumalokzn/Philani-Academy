@@ -5,7 +5,6 @@ import { renderKatexDisplayHtml } from '../lib/latexRender'
 type MmdPaperViewerProps = {
   mmd: string
   selectedQuestionNumber?: string | null
-  questionMarksByNumber?: Record<string, number | null | undefined>
 }
 
 type Block =
@@ -523,27 +522,13 @@ function renderMmdText(raw: string) {
   })
 }
 
-export default function MmdPaperViewer({ mmd, selectedQuestionNumber, questionMarksByNumber }: MmdPaperViewerProps) {
+export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaperViewerProps) {
   const blocks = useMemo(() => buildBlocks(mmd), [mmd])
   const marksMap = useMemo(() => buildQuestionMarksMapFromMmd(mmd), [mmd])
-  const externalMarksMap = useMemo(() => {
-    const map = new Map<string, number>()
-    const source = questionMarksByNumber || {}
-    for (const [qNum, rawValue] of Object.entries(source)) {
-      const n = Number(rawValue)
-      if (!Number.isFinite(n)) continue
-      map.set(String(qNum).trim(), Math.max(0, Math.round(n)))
-    }
-    return map
-  }, [questionMarksByNumber])
   const [renderedHtml, setRenderedHtml] = useState('')
   const [useMathpixRenderer, setUseMathpixRenderer] = useState(false)
   const normalizedSelectedQuestionNumber = stripQuestionPrefix(String(selectedQuestionNumber || ''))
   const selectedRoot = normalizedSelectedQuestionNumber.split('.').filter(Boolean)[0] || ''
-
-  const resolveQuestionMarks = (qNum: string): number | null => {
-    return pickQuestionMarks(qNum, externalMarksMap) ?? pickQuestionMarks(qNum, marksMap)
-  }
 
   useEffect(() => {
     let cancelled = false
@@ -639,7 +624,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, questionMa
       const text = String(node.textContent || '').trim()
       const qNum = normalizeQuestionHeadingNumber(text) || normalizeScopedQuestionNumber(text)
       if (!qNum) continue
-      const label = toMarksLabel(resolveQuestionMarks(qNum))
+      const label = toMarksLabel(pickQuestionMarks(qNum, marksMap))
       if (!label) continue
 
       const badge = document.createElement('span')
@@ -656,7 +641,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, questionMa
       badge.style.fontWeight = '600'
       node.appendChild(badge)
     }
-  }, [externalMarksMap, marksMap, renderedHtml, useMathpixRenderer])
+  }, [marksMap, renderedHtml, useMathpixRenderer])
 
   if (!String(mmd || '').trim()) {
     return <div className="px-4 py-6 text-sm text-slate-500">No MMD document is available for this paper.</div>
@@ -706,7 +691,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, questionMa
             }
 
             if (block.type === 'question-line') {
-              const marksLabel = toMarksLabel(resolveQuestionMarks(block.questionNumber))
+              const marksLabel = toMarksLabel(pickQuestionMarks(block.questionNumber, marksMap))
               return (
                 <section
                   key={block.key}

@@ -6,6 +6,7 @@ import {
   questionRootFromNumber,
   questionDepthFromNumber,
   buildQuestionPreambleMapFromMmd,
+  buildRootPreambleBlocksFromMmd,
   buildQuestionImageMapFromMmd,
   buildQuestionTableMapFromMmd,
   buildQuestionMarksMapFromMmd,
@@ -274,6 +275,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // ── RECOVER: deterministic recovery from stored parse ──
   if (action === 'recover') {
     const preambleMap = buildQuestionPreambleMapFromMmd(rawMmd)
+    const rootPreambleBlocks = buildRootPreambleBlocksFromMmd(rawMmd)
     const imageMap = buildQuestionImageMapFromMmd(rawMmd)
     const tableMap = buildQuestionTableMapFromMmd(rawMmd)
 
@@ -334,6 +336,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       preambleMap: filteredPreambleMap,
       imageMap,
       tableMap,
+      rootPreambleBlocks,
     })
 
     return res.status(200).json({

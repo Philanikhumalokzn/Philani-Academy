@@ -409,6 +409,153 @@ export function pickRootPreambleTableMarkdown(root: string, tableMap: Map<string
   return directMd
 }
 
+type RootPreambleBlock = {
+  preambleText: string
+  imageUrls: string[]
+  tableMarkdown: string | null
+}
+
+function normalizeQuestionHeadingNumber(line: string): string | null {
+  const section = line.match(/\\section\*\{\s*QUESTION\s+(\d+)\s*\}/i)
+  if (section?.[1]) return String(Number(section[1]))
+
+  const plain = line.match(/^QUESTION\s+(\d+)\b/i)
+  if (plain?.[1]) return String(Number(plain[1]))
+
+  return null
+}
+
+function stripQuestionHeadingPrefix(line: string, root: string): string {
+  return line
+    .replace(new RegExp(`^\\\\section\\*\\{\\s*QUESTION\\s+${root}\\s*\\}\\s*`, 'i'), '')
+    .replace(new RegExp(`^QUESTION\\s+${root}\\b\\s*`, 'i'), '')
+    .trim()
+}
+
+function isRootSubquestionStart(line: string, root: string): boolean {
+  return new RegExp(`^${root}\\s*\\.\\s*\\d+\\b`).test(line)
+}
+
+function extractImageUrlsFromLines(lines: string[]): string[] {
+  const urls: string[] = []
+  const push = (value: string) => {
+    const url = String(value || '').trim()
+    if (!url) return
+    if (!/^https?:\/\//i.test(url)) return
+    if (!urls.includes(url)) urls.push(url)
+  }
+
+  for (const rawLine of lines) {
+    const line = String(rawLine || '').trim()
+    if (!line) continue
+    const matches = line.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)
+    for (const match of matches) push(String(match?.[1] || ''))
+  }
+
+  return urls
+}
+
+function extractTablesFromLines(lines: string[]): string[] {
+  const tables: string[] = []
+  const push = (table: string | null) => {
+    const normalized = String(table || '').trim()
+    if (!normalized) return
+    if (!tables.includes(normalized)) tables.push(normalized)
+  }
+
+  const isTableLine = (line: string) => /^\|.*\|\s*$/.test(line)
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = String(lines[i] || '').trim()
+    if (!line) continue
+
+    if (isTableLine(line)) {
+      const block: string[] = [line]
+      while (i + 1 < lines.length && isTableLine(String(lines[i + 1] || '').trim())) {
+        i += 1
+        block.push(String(lines[i] || '').trim())
+      }
+      if (block.length >= 2) push(block.join('\n'))
+      continue
+    }
+
+    if (/\\begin\{tabular\}\{[^}]*\}/.test(line)) {
+      const block: string[] = [line]
+      let depth = (line.match(/\\begin\{tabular\}\{[^}]*\}/g) || []).length - (line.match(/\\end\{tabular\}/g) || []).length
+      while (i + 1 < lines.length && depth > 0) {
+        i += 1
+        const nextLine = String(lines[i] || '').trim()
+        block.push(nextLine)
+        depth += (nextLine.match(/\\begin\{tabular\}\{[^}]*\}/g) || []).length
+        depth -= (nextLine.match(/\\end\{tabular\}/g) || []).length
+      }
+      push(tabularToPipeTable(block.join('\n')))
+    }
+  }
+
+  return tables
+}
+
+export function buildRootPreambleBlocksFromMmd(mmd: string): Map<string, RootPreambleBlock> {
+  const blocks = new Map<string, RootPreambleBlock>()
+  const source = String(mmd || '')
+  if (!source.trim()) return blocks
+
+  const lines = source.split(/\r?\n/)
+  const questionSections: Array<{ root: string; start: number; end: number }> = []
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = String(lines[i] || '').trim()
+    const root = normalizeQuestionHeadingNumber(line)
+    if (!root) continue
+
+    questionSections.push({ root, start: i, end: lines.length })
+  }
+
+  for (let i = 0; i < questionSections.length; i += 1) {
+    if (i + 1 < questionSections.length) {
+      questionSections[i].end = questionSections[i + 1].start
+    }
+  }
+
+  for (const section of questionSections) {
+    const scopeLines = lines.slice(section.start, section.end)
+    if (scopeLines.length === 0) continue
+
+    let firstSubIndex = scopeLines.findIndex((line, idx) => idx > 0 && isRootSubquestionStart(String(line || '').trim(), section.root))
+    if (firstSubIndex < 0) firstSubIndex = scopeLines.length
+
+    const preambleScope = scopeLines.slice(0, firstSubIndex)
+    const imageUrls = extractImageUrlsFromLines(preambleScope)
+    const tables = extractTablesFromLines(preambleScope)
+
+    const textFragments: string[] = []
+    for (let j = 0; j < preambleScope.length; j += 1) {
+      const raw = String(preambleScope[j] || '').trim()
+      if (!raw) continue
+
+      const noHeading = j === 0 ? stripQuestionHeadingPrefix(raw, section.root) : raw
+      if (!noHeading) continue
+      if (/^!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/.test(noHeading)) continue
+      if (/^\|.*\|\s*$/.test(noHeading)) continue
+      if (/\\begin\{tabular\}|\\end\{tabular\}|\\hline\b/.test(noHeading)) continue
+
+      textFragments.push(noHeading)
+    }
+
+    const preambleText = textFragments.join(' ').replace(/\s+/g, ' ').trim()
+    if (!preambleText && imageUrls.length === 0 && tables.length === 0) continue
+
+    blocks.set(section.root, {
+      preambleText,
+      imageUrls,
+      tableMarkdown: tables.length > 0 ? tables.join('\n\n') : null,
+    })
+  }
+
+  return blocks
+}
+
 export function buildQuestionPreambleMapFromMmd(mmd: string): Map<string, string> {
   const map = new Map<string, string>()
   if (!mmd.trim()) return map
@@ -472,6 +619,15 @@ export function buildQuestionPreambleMapFromMmd(mmd: string): Map<string, string
       .replace(/\s+/g, ' ')
       .trim()
     if (text) map.set(scope, text)
+  }
+
+  // Root preambles must follow strict QUESTION n -> first n.1 boundaries.
+  // Overlay root entries with deterministic block extraction.
+  const strictRootBlocks = buildRootPreambleBlocksFromMmd(mmd)
+  for (const [root, block] of strictRootBlocks.entries()) {
+    if (block.preambleText) {
+      map.set(root, block.preambleText)
+    }
   }
 
   return map
@@ -541,6 +697,7 @@ export async function upsertRootPreambleRecords(opts: {
   preambleMap: Map<string, string>
   imageMap: Map<string, string[]>
   tableMap: Map<string, string[]>
+  rootPreambleBlocks?: Map<string, RootPreambleBlock>
 }): Promise<{ created: number; updated: number }> {
   const {
     sourceId,
@@ -551,6 +708,7 @@ export async function upsertRootPreambleRecords(opts: {
     preambleMap,
     imageMap,
     tableMap,
+    rootPreambleBlocks,
   } = opts
 
   const roots = Array.from(preambleMap.entries())
@@ -578,9 +736,12 @@ export async function upsertRootPreambleRecords(opts: {
     const cleanPreamble = normalizeExamQuestionContent(String(preamble || ''), '').questionText
     if (!cleanPreamble) continue
 
-    const rootImageUrls = pickRootPreambleImageUrls(root, imageMap)
+    const strictRootBlock = rootPreambleBlocks?.get(root)
+    const rootImageUrls = strictRootBlock?.imageUrls?.length
+      ? strictRootBlock.imageUrls
+      : pickRootPreambleImageUrls(root, imageMap)
     const rootImageUrl = rootImageUrls[0] || null
-    const rootTableMarkdown = pickRootPreambleTableMarkdown(root, tableMap)
+    const rootTableMarkdown = strictRootBlock?.tableMarkdown || pickRootPreambleTableMarkdown(root, tableMap)
 
     const existingRoot = existing.find((row) => {
       const rowNumber = String(row.questionNumber || '')
@@ -1108,6 +1269,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const questionImageMap = buildQuestionImageMapFromMmd(rawMmd)
   const questionTableMap = buildQuestionTableMapFromMmd(rawMmd)
   const questionPreambleMap = buildQuestionPreambleMapFromMmd(rawMmd)
+  const rootPreambleBlocks = buildRootPreambleBlocksFromMmd(rawMmd)
   const questionMarksMap = buildQuestionMarksMapFromMmd(rawMmd)
   const gradeLabel = String(resource.grade).replace('_', ' ').replace('GRADE ', 'Grade ')
 
@@ -1214,6 +1376,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     preambleMap: questionPreambleMap,
     imageMap: questionImageMap,
     tableMap: questionTableMap,
+    rootPreambleBlocks,
   })
 
   const rootTopicByRoot = new Map<string, string>()

@@ -14011,9 +14011,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       const scopeLabel = topicBackfillAllPapers ? 'ALL papers' : 'selected paper'
       setTopicBackfillMessage(`Regex topic backfill applied (${scopeLabel}) — ${updated} updated from ${scanned} scanned. Dual-topic overlaps detected: ${dualTopicCount}.`)
-      if (updated > 0) {
-        window.setTimeout(() => { if (qbContextQ) openPaperContext(qbContextQ) }, 1200)
-      }
     } catch (err: any) {
       setTopicBackfillStatus('error')
       setTopicBackfillMessage(err?.message || 'Network error during regex topic backfill')
@@ -14117,9 +14114,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         ? ` Batch papers: ${scannedSourceIds.length}. ${hasMoreSourceBatches ? 'Click Apply topic AI again to continue to next papers.' : 'All queued papers processed.'}`
         : ''
       setTopicAiBackfillMessage(`AI topic scrub applied (${scopeLabel}) — ${updated} updated from ${scanned} root questions. Missing MMD roots: ${missingContextCount}.${sourceBatchSuffix}`)
-      if (updated > 0) {
-        window.setTimeout(() => { if (qbContextQ) openPaperContext(qbContextQ) }, 1200)
-      }
     } catch (err: any) {
       setTopicAiBackfillStatus('error')
       setTopicAiBackfillMessage(err?.message || 'Network error during AI topic backfill')

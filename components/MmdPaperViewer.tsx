@@ -326,11 +326,33 @@ function decorateMmdHtmlWithAnchors(html: string): string {
       const scopedMatch = text.match(/^Q?((?:\d+)(?:\.\d+){0,6})\b/)
       if (scopedMatch?.[1]) {
         const questionNumber = stripQuestionPrefix(scopedMatch[1])
+        if (element.tagName.toLowerCase() === 'p') {
+          element.classList.add('mmd-question-subpart')
+        }
         if (!assigned.has(questionNumber)) {
           element.id = buildAnchorId(questionNumber)
           assigned.add(questionNumber)
         }
       }
+    }
+
+    // Normalize table layout for small viewports and keep row-title cells readable.
+    const tables = Array.from(root.querySelectorAll('table'))
+    for (const table of tables) {
+      table.classList.add('mmd-compact-table')
+
+      const rows = Array.from(table.querySelectorAll('tr'))
+      for (const row of rows) {
+        const firstCell = row.querySelector('th,td')
+        if (firstCell) firstCell.classList.add('mmd-row-title')
+      }
+
+      const parent = table.parentElement
+      if (!parent || parent.classList.contains('mmd-table-wrap')) continue
+      const wrapper = doc.createElement('div')
+      wrapper.className = 'mmd-table-wrap'
+      parent.insertBefore(wrapper, table)
+      wrapper.appendChild(table)
     }
 
     return root.innerHTML
@@ -492,7 +514,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
             <section className="scroll-mt-24 rounded-2xl px-3 py-2">
               <div
                 id="mmd-paper-viewer-content"
-                className="text-[15px] leading-7 text-stone-900 [&_.katex]:text-stone-900 [&_table]:my-2 [&_table]:!border-collapse [&_table]:text-sm [&_table]:!border [&_table]:!border-solid [&_table]:!border-stone-500 [&_table]:!text-slate-900 [&_table]:!bg-white [&_.table_tabular]:!border [&_.table_tabular]:!border-solid [&_.table_tabular]:!border-stone-500 [&_.table_tabular]:!bg-white [&_tr]:!border-stone-500 [&_td]:!border [&_td]:!border-solid [&_td]:!border-stone-500 [&_td]:!bg-white [&_td]:!text-slate-900 [&_td]:px-3 [&_td]:py-1.5 [&_th]:!border [&_th]:!border-solid [&_th]:!border-stone-500 [&_th]:!bg-white [&_th]:!text-slate-900 [&_th]:px-3 [&_th]:py-1.5"
+                className="text-[15px] leading-6 text-stone-900 [&_.katex]:text-stone-900 [&_p]:my-2 [&_.mmd-question-subpart]:mt-4 [&_.mmd-table-wrap]:my-2 [&_.mmd-table-wrap]:max-w-full [&_.mmd-table-wrap]:overflow-x-auto [&_table]:!border-collapse [&_table]:text-[13px] [&_table]:!border [&_table]:!border-solid [&_table]:!border-stone-500 [&_table]:!text-slate-900 [&_table]:!bg-white [&_.mmd-compact-table]:w-max [&_.mmd-compact-table]:min-w-full [&_.table_tabular]:!border [&_.table_tabular]:!border-solid [&_.table_tabular]:!border-stone-500 [&_.table_tabular]:!bg-white [&_tr]:!border-stone-500 [&_td]:!border [&_td]:!border-solid [&_td]:!border-stone-500 [&_td]:!bg-white [&_td]:!text-slate-900 [&_td]:px-2 [&_td]:py-1 [&_td]:leading-tight [&_th]:!border [&_th]:!border-solid [&_th]:!border-stone-500 [&_th]:!bg-white [&_th]:!text-slate-900 [&_th]:px-2 [&_th]:py-1 [&_th]:leading-tight [&_.mmd-row-title]:whitespace-nowrap [&_.mmd-row-title]:font-medium"
                 dangerouslySetInnerHTML={{ __html: renderedHtml }}
               />
             </section>

@@ -16913,11 +16913,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               }
               return (
                 <div className="border-b border-slate-200 bg-amber-50 px-3 py-3 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-amber-700 flex-1">Q{rootItem.questionNumber} — Question context</span>
+                  <div className="flex flex-wrap items-start gap-2">
+                    <span className="min-w-0 flex-1 text-xs font-bold text-amber-700">Q{rootItem.questionNumber} — Question context</span>
                     {rootMarksLabel ? <span className="text-xs text-amber-600">{rootMarksLabel}</span> : null}
                     {isAdmin ? (
-                      <div className="flex items-center gap-2">
+                      <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
                         <button
                           onClick={() => openPreambleEditor(rootItem)}
                           className="rounded-md border border-amber-300 bg-white px-2 py-0.5 text-xs text-amber-700 font-medium shadow-sm">

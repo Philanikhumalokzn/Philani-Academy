@@ -14126,6 +14126,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }
 
+  const renderTopicAiBatchProgress = () => {
+    if (!topicBackfillAllPapers) return null
+    const progressLabel = topicAiSourceCursor
+      ? (topicAiHasMoreSourceBatches ? 'Batch checkpoint saved; more papers remaining.' : 'Batch checkpoint saved; final paper batch reached.')
+      : 'Ready to start from first paper batch.'
+    const cursorLabel = topicAiSourceCursor || 'START'
+
+    return (
+      <span className="text-xs text-fuchsia-700">
+        AI batch progress: {progressLabel} Batch size: {topicAiPaperBatchSize}. Cursor: {cursorLabel}
+      </span>
+    )
+  }
+
   const cancelPendingQbContextAutoScroll = () => {    qbContextAutoScrollCancelledRef.current = true
     if (qbContextAutoScrollTimerRef.current != null) {
       window.clearTimeout(qbContextAutoScrollTimerRef.current)
@@ -16742,6 +16756,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             {topicAiBackfillMessage}
                           </span>
                         ) : null}
+                        {renderTopicAiBatchProgress()}
                       </div>
                     ) : null}
                     {isAdmin && rawParseExpanded ? (
@@ -16969,6 +16984,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             {topicAiBackfillMessage}
                           </span>
                         ) : null}
+                        {renderTopicAiBatchProgress()}
                       </div>
                     ) : null}
                     {isAdmin && rawParseExpanded ? (
@@ -17114,6 +17130,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <p className={`whitespace-pre-wrap text-xs ${topicAiBackfillStatus === 'error' ? 'text-red-600' : topicAiBackfillStatus === 'done' ? 'text-fuchsia-700' : 'text-slate-500'}`}>
                       {topicAiBackfillMessage}
                     </p>
+                  ) : null}
+                  {isAdmin ? (
+                    <p className="text-xs text-fuchsia-700">{renderTopicAiBatchProgress()}</p>
                   ) : null}
                   {rootText ? (
                     <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">

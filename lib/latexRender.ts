@@ -44,6 +44,7 @@ export function renderKatexDisplayHtml(latex: unknown): string {
     return katex.renderToString(value, {
       displayMode: true,
       throwOnError: false,
+      errorColor: 'currentColor',
       strict: 'ignore',
       macros: {
         '\\because': '\\mathrel{\\text{∵}}',
@@ -63,6 +64,7 @@ export function renderKatexInlineHtml(latex: unknown): string {
     return katex.renderToString(value, {
       displayMode: false,
       throwOnError: false,
+      errorColor: 'currentColor',
       strict: 'ignore',
       macros: {
         '\\because': '\\mathrel{\\text{∵}}',

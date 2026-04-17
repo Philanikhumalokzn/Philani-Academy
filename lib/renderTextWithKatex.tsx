@@ -93,6 +93,7 @@ export function renderTextWithKatex(
       const html = katex.renderToString(normalizeMathSymbols(n.expr), {
         displayMode: n.display,
         throwOnError: false,
+        errorColor: 'currentColor',
         strict: 'ignore',
         macros: {
           '\\because': '\\mathrel{\\text{∵}}',

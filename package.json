@@ -39,6 +39,7 @@
     "jsonwebtoken": "^9.0.0",
     "katex": "^0.16.25",
     "mathlive": "^0.109.0",
+    "mathpix-markdown-it": "^2.0.38",
     "next": "16.0.7",
     "next-auth": "^4.22.0",
     "pdfjs-dist": "^5.4.530",

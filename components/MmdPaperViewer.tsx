@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { renderQuestionTextWithInlineLatex } from '../lib/renderQuestionText'
 import { renderKatexDisplayHtml } from '../lib/latexRender'
 
@@ -296,6 +296,49 @@ function stripQuestionPrefix(raw: string): string {
   return String(raw || '').trim().replace(/^Q+/i, '')
 }
 
+function decorateMmdHtmlWithAnchors(html: string): string {
+  if (typeof window === 'undefined') return html
+  if (!String(html || '').trim()) return ''
+
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<div id="mmd-root">${html}</div>`, 'text/html')
+    const root = doc.getElementById('mmd-root')
+    if (!root) return html
+
+    const assigned = new Set<string>()
+    const candidates = Array.from(root.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,div'))
+
+    for (const element of candidates) {
+      const text = String(element.textContent || '').replace(/\s+/g, ' ').trim()
+      if (!text) continue
+
+      const headingMatch = text.match(/^QUESTION\s+(\d+)\b/i)
+      if (headingMatch?.[1]) {
+        const questionNumber = headingMatch[1]
+        if (!assigned.has(questionNumber)) {
+          element.id = buildAnchorId(questionNumber)
+          assigned.add(questionNumber)
+        }
+        continue
+      }
+
+      const scopedMatch = text.match(/^Q?((?:\d+)(?:\.\d+){0,6})\b/)
+      if (scopedMatch?.[1]) {
+        const questionNumber = stripQuestionPrefix(scopedMatch[1])
+        if (!assigned.has(questionNumber)) {
+          element.id = buildAnchorId(questionNumber)
+          assigned.add(questionNumber)
+        }
+      }
+    }
+
+    return root.innerHTML
+  } catch {
+    return html
+  }
+}
+
 function looksLikeStandaloneLatex(line: string): boolean {
   const trimmed = String(line || '').trim()
   if (!trimmed) return false
@@ -344,8 +387,74 @@ function renderMmdText(raw: string) {
 
 export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaperViewerProps) {
   const blocks = useMemo(() => buildBlocks(mmd), [mmd])
+  const [renderedHtml, setRenderedHtml] = useState('')
+  const [useMathpixRenderer, setUseMathpixRenderer] = useState(false)
   const normalizedSelectedQuestionNumber = stripQuestionPrefix(String(selectedQuestionNumber || ''))
   const selectedRoot = normalizedSelectedQuestionNumber.split('.').filter(Boolean)[0] || ''
+
+  useEffect(() => {
+    let cancelled = false
+
+    const run = async () => {
+      const source = String(mmd || '')
+      if (!source.trim()) {
+        if (!cancelled) {
+          setRenderedHtml('')
+          setUseMathpixRenderer(false)
+        }
+        return
+      }
+
+      try {
+        const mod = await import('mathpix-markdown-it')
+        const MM = (mod as any)?.MathpixMarkdownModel
+        if (!MM || typeof MM.markdownToHTML !== 'function') throw new Error('Mathpix renderer unavailable')
+
+        if (typeof window !== 'undefined' && !document.getElementById('mathpix-mmd-viewer-style')) {
+          const styleEl = document.createElement('style')
+          styleEl.id = 'mathpix-mmd-viewer-style'
+          const fonts = typeof MM.getMathpixFontsStyle === 'function' ? MM.getMathpixFontsStyle() : ''
+          const styles = typeof MM.getMathpixStyleOnly === 'function' ? MM.getMathpixStyleOnly(false) : ''
+          styleEl.textContent = `${fonts}\n${styles}`
+          document.head.appendChild(styleEl)
+        }
+
+        const htmlRaw = MM.markdownToHTML(source, {
+          htmlTags: false,
+          breaks: true,
+          centerTables: false,
+          centerImages: false,
+          parserErrors: 'show_input',
+          outMath: {
+            include_svg: true,
+            include_latex: true,
+            include_error: false,
+          },
+          renderOptions: {
+            enable_markdown: true,
+            enable_latex: true,
+            enable_markdown_mmd_extensions: true,
+          },
+        } as any)
+
+        const html = decorateMmdHtmlWithAnchors(String(htmlRaw || ''))
+        if (!cancelled && html.trim()) {
+          setRenderedHtml(html)
+          setUseMathpixRenderer(true)
+        }
+      } catch {
+        if (!cancelled) {
+          setRenderedHtml('')
+          setUseMathpixRenderer(false)
+        }
+      }
+    }
+
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [mmd])
 
   useEffect(() => {
     const selected = normalizedSelectedQuestionNumber.trim()
@@ -364,7 +473,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
     }, 120)
 
     return () => window.clearTimeout(timer)
-  }, [normalizedSelectedQuestionNumber, selectedRoot, mmd])
+  }, [normalizedSelectedQuestionNumber, selectedRoot, mmd, renderedHtml, useMathpixRenderer])
 
   if (!String(mmd || '').trim()) {
     return <div className="px-4 py-6 text-sm text-slate-500">No MMD document is available for this paper.</div>
@@ -379,7 +488,15 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
         </div>
 
         <div className="space-y-4 px-4 py-5 sm:px-6">
-          {blocks.map((block) => {
+          {useMathpixRenderer && renderedHtml ? (
+            <section className="scroll-mt-24 rounded-2xl px-3 py-2">
+              <div
+                id="mmd-paper-viewer-content"
+                className="text-[15px] leading-7 text-stone-900 [&_.katex]:text-stone-900 [&_table]:my-2 [&_table]:border-collapse [&_table]:text-sm [&_td]:border [&_td]:border-stone-400 [&_td]:px-3 [&_td]:py-1.5 [&_th]:border [&_th]:border-stone-400 [&_th]:px-3 [&_th]:py-1.5"
+                dangerouslySetInnerHTML={{ __html: renderedHtml }}
+              />
+            </section>
+          ) : blocks.map((block) => {
             const isSelected = !!normalizedSelectedQuestionNumber && block.questionNumber === normalizedSelectedQuestionNumber
             const isSelectedRoot = !isSelected && !!selectedRoot && block.questionNumber === selectedRoot
             const anchorId = block.questionNumber ? buildAnchorId(block.questionNumber) : undefined

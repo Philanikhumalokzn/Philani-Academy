@@ -17193,6 +17193,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <MmdPaperViewer
                 mmd={qbContextDocumentMmd}
                 selectedQuestionNumber={String(qbContextQ?.questionNumber || '') || null}
+                questionMarksByNumber={Object.fromEntries(
+                  qbContextItems
+                    .filter((item: any) => Number.isFinite(Number(item?.marks)))
+                    .map((item: any) => [String(item?.questionNumber || '').trim(), Math.max(0, Math.round(Number(item?.marks)))]),
+                )}
               />
             ) : (
             <ul className="divide-y divide-slate-200">

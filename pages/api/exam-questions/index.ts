@@ -385,6 +385,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const mmd = typeof parsed?.raw?.mmd === 'string' ? parsed.raw.mmd : ''
+    const rawText = typeof parsed?.text === 'string' ? parsed.text : ''
     const fromMmd = buildQuestionImageMapFromMmd(mmd)
     for (const [qNum, urls] of fromMmd.entries()) {
       const existing = combined.get(qNum) || []
@@ -396,7 +397,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     sourceImageMap.set(source.id, combined)
-    sourceMarksMap.set(source.id, buildQuestionMarksMapFromMmd(mmd))
+    const mergedMarks = new Map<string, number>()
+    const mmdMarks = buildQuestionMarksMapFromMmd(mmd)
+    const textMarks = buildQuestionMarksMapFromMmd(rawText)
+    for (const [qNum, value] of mmdMarks.entries()) {
+      if (!mergedMarks.has(qNum)) mergedMarks.set(qNum, value)
+    }
+    for (const [qNum, value] of textMarks.entries()) {
+      if (!mergedMarks.has(qNum)) mergedMarks.set(qNum, value)
+    }
+    sourceMarksMap.set(source.id, mergedMarks)
   }
 
   const enrichedItems = items.map((item) => {

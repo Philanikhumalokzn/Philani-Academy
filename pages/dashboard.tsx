@@ -22,6 +22,7 @@ import PostComposerOverlay from '../components/PostComposerOverlay'
 import { PublicSolveCanvasViewer, PublicSolvePlainExcalidrawViewer, PublicSolveComposer, PublicSolveOpacityWorkspace, normalizePublicSolveScene, preparePublicSolveSceneForPlainPreview, type PublicSolveScene } from '../components/PublicSolveCanvas'
 import TaskManageMenu from '../components/TaskManageMenu'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
+import MmdPaperViewer from '../components/MmdPaperViewer'
 import ZoomableCanvasOverlay from '../components/ZoomableCanvasOverlay'
 import ZoomableImageOverlay from '../components/ZoomableImageOverlay'
 import ScriptPhotosEditor from '../components/ScriptPhotosEditor'
@@ -1861,6 +1862,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [qbContextQ, setQbContextQ] = useState<any>(null)
   const [qbContextItems, setQbContextItems] = useState<any[]>([])
   const [qbContextRoot, setQbContextRoot] = useState<string>('')
+  const [qbContextDocumentMmd, setQbContextDocumentMmd] = useState<string | null>(null)
+  const [qbContextViewMode, setQbContextViewMode] = useState<'document' | 'extracted'>('document')
   const [qbContextLoading, setQbContextLoading] = useState(false)
   const [qbContextError, setQbContextError] = useState<string | null>(null)
   // Re-extract context state (admin)
@@ -13641,6 +13644,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setQbContextQ(q)
     setQbContextItems([])
     setQbContextRoot('')
+    setQbContextDocumentMmd(null)
+    setQbContextViewMode('document')
     setQbContextError(null)
     setQbContextLoading(true)
     setQbContextOpen(true)
@@ -13662,20 +13667,40 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setBackfillMessage(null)
     try {
       const params = new URLSearchParams()
+      const paperDocParams = new URLSearchParams()
       if (q.sourceId) {
         params.set('sourceId', String(q.sourceId))
+        paperDocParams.set('sourceId', String(q.sourceId))
       } else {
         params.set('grade', q.grade)
         params.set('year', String(q.year))
         params.set('month', q.month)
         params.set('paper', String(q.paper))
+        paperDocParams.set('grade', q.grade)
+        paperDocParams.set('year', String(q.year))
+        paperDocParams.set('month', q.month)
+        paperDocParams.set('paper', String(q.paper))
       }
       params.set('take', '200')
-      const res = await fetch(`/api/exam-questions?${params.toString()}`, { credentials: 'same-origin' })
+      const [res, paperDocResult] = await Promise.all([
+        fetch(`/api/exam-questions?${params.toString()}`, { credentials: 'same-origin' }),
+        fetch(`/api/exam-questions/paper-document?${paperDocParams.toString()}`, { credentials: 'same-origin' })
+          .then(async (paperRes) => ({ ok: paperRes.ok, data: await paperRes.json().catch(() => ({})) }))
+          .catch(() => ({ ok: false, data: {} })),
+      ])
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.message || `Unable to load paper context (${res.status})`)
       const items: any[] = Array.isArray(data?.items) ? data.items : []
       items.sort((a, b) => compareQNum(String(a.questionNumber), String(b.questionNumber)))
+
+      const rawMmd = typeof (paperDocResult as any)?.data?.mmd === 'string' ? String((paperDocResult as any).data.mmd) : ''
+      if ((paperDocResult as any)?.ok && rawMmd.trim()) {
+        setQbContextDocumentMmd(rawMmd)
+        setQbContextViewMode('document')
+      } else {
+        setQbContextDocumentMmd(null)
+        setQbContextViewMode('extracted')
+      }
 
       const selectedQNum = String(q?.questionNumber || '').trim()
       const selectedRoot = getQNumRoot(selectedQNum)
@@ -13698,6 +13723,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } catch (err: any) {
       setQbContextItems([])
       setQbContextRoot('')
+      setQbContextDocumentMmd(null)
+      setQbContextViewMode('extracted')
       setQbContextError(err?.message || 'Unable to load paper context')
     } finally {
       setQbContextLoading(false)
@@ -13911,6 +13938,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }
 
   useEffect(() => {
+    if (qbContextDocumentMmd?.trim()) return
     if (!qbContextOpen || !qbContextQ?.id || qbContextItems.length === 0) return
     if (qbContextAutoScrollDoneRef.current || qbContextAutoScrollCancelledRef.current) return
     qbContextAutoScrollTimerRef.current = window.setTimeout(() => {
@@ -13928,7 +13956,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         qbContextAutoScrollTimerRef.current = null
       }
     }
-  }, [qbContextOpen, qbContextQ?.id, qbContextItems.length])
+  }, [qbContextDocumentMmd, qbContextOpen, qbContextQ?.id, qbContextItems.length])
 
   const openPreambleEditor = (rootItem: any | null) => {
     const ref = rootItem || qbContextItems[0] || qbContextQ
@@ -16268,6 +16296,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           setQbContextQ(null)
           setQbContextItems([])
           setQbContextRoot('')
+          setQbContextDocumentMmd(null)
+          setQbContextViewMode('document')
           setQbContextLoading(false)
           setQbContextError(null)
           setReextractPreviewOpen(false)
@@ -16287,16 +16317,36 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         contentClassName="p-0 overflow-hidden"
         zIndexClassName="z-[80]"
       >
-        <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          {qbContextQ
-            ? (qbContextQ.sourceId
-              ? (qbContextRoot
-                ? `Showing Question ${qbContextRoot} in original sequence. Selected: Q${qbContextQ.questionNumber}`
-                : `Showing the original extracted source for Q${qbContextQ.questionNumber}`)
-              : (qbContextRoot
-                ? `Showing Question ${qbContextRoot} in paper sequence. Selected: Q${qbContextQ.questionNumber}`
-                : `Showing paper metadata context around Q${qbContextQ.questionNumber}`))
-            : 'Loading paper context'}
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <div className="min-w-0">
+            {qbContextQ
+              ? (qbContextQ.sourceId
+                ? (qbContextRoot
+                  ? `Showing Question ${qbContextRoot} in original sequence. Selected: Q${qbContextQ.questionNumber}`
+                  : `Showing the original extracted source for Q${qbContextQ.questionNumber}`)
+                : (qbContextRoot
+                  ? `Showing Question ${qbContextRoot} in paper sequence. Selected: Q${qbContextQ.questionNumber}`
+                  : `Showing paper metadata context around Q${qbContextQ.questionNumber}`))
+              : 'Loading paper context'}
+          </div>
+          {qbContextDocumentMmd?.trim() ? (
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setQbContextViewMode('document')}
+                className={`rounded-full px-2.5 py-1 font-medium ${qbContextViewMode === 'document' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 border border-slate-300'}`}
+              >
+                Document
+              </button>
+              <button
+                type="button"
+                onClick={() => setQbContextViewMode('extracted')}
+                className={`rounded-full px-2.5 py-1 font-medium ${qbContextViewMode === 'extracted' ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 border border-slate-300'}`}
+              >
+                Extracted
+              </button>
+            </div>
+          ) : null}
         </div>
 
         <div
@@ -16313,7 +16363,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div className="p-4 text-sm text-slate-600">Loading paper context...</div>
           ) : qbContextError ? (
             <div className="p-4 text-sm text-red-600">{qbContextError}</div>
-          ) : qbContextItems.length === 0 ? (
+          ) : qbContextItems.length === 0 && !qbContextDocumentMmd?.trim() ? (
             <div className="p-4 text-sm text-slate-600">No questions found for this paper.</div>
           ) : (
             <>
@@ -16725,6 +16775,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </div>
               )
             })()}
+            {qbContextViewMode === 'document' && qbContextDocumentMmd?.trim() ? (
+              <MmdPaperViewer
+                mmd={qbContextDocumentMmd}
+                selectedQuestionNumber={String(qbContextQ?.questionNumber || '') || null}
+              />
+            ) : (
             <ul className="divide-y divide-slate-200">
             {qbContextItems.filter((item) => {
               if (!qbContextRoot) return true
@@ -16806,6 +16862,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               )
             })}
             </ul>
+            )}
             </>
           )}
         </div>

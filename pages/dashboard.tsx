@@ -1882,6 +1882,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [backfillStatus, setBackfillStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [backfillMessage, setBackfillMessage] = useState<string | null>(null)
   const [backfillOnlyMissing, setBackfillOnlyMissing] = useState(true)
+  const [topicBackfillStatus, setTopicBackfillStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [topicBackfillMessage, setTopicBackfillMessage] = useState<string | null>(null)
+  const [topicBackfillDryRun, setTopicBackfillDryRun] = useState<any[]>([])
   const qbContextScrollRef = useRef<HTMLDivElement | null>(null)
   const qbContextAutoScrollDoneRef = useRef(false)
   const qbContextAutoScrollCancelledRef = useRef(false)
@@ -13669,6 +13672,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setReextractUndo(null)
     setBackfillStatus('idle')
     setBackfillMessage(null)
+    setTopicBackfillStatus('idle')
+    setTopicBackfillMessage(null)
+    setTopicBackfillDryRun([])
     try {
       const params = new URLSearchParams()
       const paperDocParams = new URLSearchParams()
@@ -13931,6 +13937,58 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } catch (err: any) {
       setBackfillStatus('error')
       setBackfillMessage(err?.message || 'Network error during backfill')
+    }
+  }
+
+  const triggerRegexTopicBackfill = async (sid: string, dryRun: boolean) => {
+    setTopicBackfillStatus('loading')
+    setTopicBackfillMessage(null)
+    if (dryRun) setTopicBackfillDryRun([])
+    try {
+      const res = await fetch('/api/exam-questions/backfill-topics-regex', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ sourceId: sid, onlyMissing: backfillOnlyMissing, dryRun }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setTopicBackfillStatus('error')
+        setTopicBackfillMessage((data as any)?.message || 'Regex topic backfill failed')
+        return
+      }
+
+      const scanned = Number((data as any)?.scanned ?? 0)
+      const updated = Number((data as any)?.updated ?? 0)
+      const dualTopicCount = Number((data as any)?.dualTopicCount ?? 0)
+      const previews = Array.isArray((data as any)?.previews) ? (data as any).previews : []
+
+      setTopicBackfillStatus('done')
+      if (dryRun) {
+        setTopicBackfillDryRun(previews)
+        const previewList = previews
+          .slice(0, 5)
+          .map((p: any) => {
+            const qLabel = String(p?.questionNumber || '?')
+            const primary = String(p?.primaryTopic || 'Other')
+            const pShare = typeof p?.primaryShare === 'number' ? ` ${(p.primaryShare * 100).toFixed(0)}%` : ''
+            const secondary = p?.secondaryTopic
+              ? ` | ${String(p.secondaryTopic)} ${typeof p?.secondaryShare === 'number' ? `${(p.secondaryShare * 100).toFixed(0)}%` : ''}`
+              : ''
+            return `Q${qLabel}: ${primary}${pShare}${secondary}`
+          })
+        const sampleSuffix = previewList.length > 0 ? `\n${previewList.join('\n')}` : ''
+        setTopicBackfillMessage(`Regex preview ready — ${scanned} scanned, ${dualTopicCount} dual-topic overlaps.${sampleSuffix}`)
+        return
+      }
+
+      setTopicBackfillMessage(`Regex topic backfill applied — ${updated} updated from ${scanned} scanned. Dual-topic overlaps detected: ${dualTopicCount}.`)
+      if (updated > 0) {
+        window.setTimeout(() => { if (qbContextQ) openPaperContext(qbContextQ) }, 1200)
+      }
+    } catch (err: any) {
+      setTopicBackfillStatus('error')
+      setTopicBackfillMessage(err?.message || 'Network error during regex topic backfill')
     }
   }
 
@@ -16310,6 +16368,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           setReextractApplying(false)
           setReextractWarningAcknowledge(false)
           setReextractUndo(null)
+          setTopicBackfillStatus('idle')
+          setTopicBackfillMessage(null)
+          setTopicBackfillDryRun([])
         }}
         backdrop
         closeOnBackdrop
@@ -16470,9 +16531,26 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           />
                           <span className="text-xs text-slate-600">Only questions without preamble</span>
                         </label>
+                        <button
+                          onClick={() => triggerRegexTopicBackfill(qbContextQ.sourceId, true)}
+                          disabled={topicBackfillStatus === 'loading'}
+                          className="inline-flex items-center gap-1 rounded-md border border-indigo-300 bg-white px-2.5 py-1 text-xs font-medium text-indigo-700 shadow-sm disabled:opacity-50">
+                          {topicBackfillStatus === 'loading' ? 'Running…' : 'Preview topic regex'}
+                        </button>
+                        <button
+                          onClick={() => triggerRegexTopicBackfill(qbContextQ.sourceId, false)}
+                          disabled={topicBackfillStatus === 'loading' || topicBackfillDryRun.length === 0}
+                          className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                          {topicBackfillStatus === 'loading' ? 'Running…' : 'Apply topic regex'}
+                        </button>
                         {backfillStatus !== 'idle' && backfillMessage ? (
                           <span className={`text-xs ${backfillStatus === 'error' ? 'text-red-600' : backfillStatus === 'done' ? 'text-green-700' : 'text-slate-500'}`}>
                             {backfillMessage}
+                          </span>
+                        ) : null}
+                        {topicBackfillStatus !== 'idle' && topicBackfillMessage ? (
+                          <span className={`whitespace-pre-wrap text-xs ${topicBackfillStatus === 'error' ? 'text-red-600' : topicBackfillStatus === 'done' ? 'text-indigo-700' : 'text-slate-500'}`}>
+                            {topicBackfillMessage}
                           </span>
                         ) : null}
                       </div>
@@ -16631,9 +16709,26 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           />
                           <span className="text-xs text-slate-600">Only questions without preamble</span>
                         </label>
+                        <button
+                          onClick={() => triggerRegexTopicBackfill(qbContextQ.sourceId, true)}
+                          disabled={topicBackfillStatus === 'loading'}
+                          className="inline-flex items-center gap-1 rounded-md border border-indigo-300 bg-white px-2.5 py-1 text-xs font-medium text-indigo-700 shadow-sm disabled:opacity-50">
+                          {topicBackfillStatus === 'loading' ? 'Running…' : 'Preview topic regex'}
+                        </button>
+                        <button
+                          onClick={() => triggerRegexTopicBackfill(qbContextQ.sourceId, false)}
+                          disabled={topicBackfillStatus === 'loading' || topicBackfillDryRun.length === 0}
+                          className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                          {topicBackfillStatus === 'loading' ? 'Running…' : 'Apply topic regex'}
+                        </button>
                         {backfillStatus !== 'idle' && backfillMessage ? (
                           <span className={`text-xs ${backfillStatus === 'error' ? 'text-red-600' : backfillStatus === 'done' ? 'text-green-700' : 'text-slate-500'}`}>
                             {backfillMessage}
+                          </span>
+                        ) : null}
+                        {topicBackfillStatus !== 'idle' && topicBackfillMessage ? (
+                          <span className={`whitespace-pre-wrap text-xs ${topicBackfillStatus === 'error' ? 'text-red-600' : topicBackfillStatus === 'done' ? 'text-indigo-700' : 'text-slate-500'}`}>
+                            {topicBackfillMessage}
                           </span>
                         ) : null}
                       </div>
@@ -16699,6 +16794,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               className="rounded-md bg-teal-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
                               {backfillStatus === 'loading' ? 'Running…' : '⚙ Backfill'}
                             </button>
+                            <button
+                              onClick={() => triggerRegexTopicBackfill(qbContextQ.sourceId, true)}
+                              disabled={topicBackfillStatus === 'loading'}
+                              className="rounded-md border border-indigo-300 bg-white px-2 py-0.5 text-xs font-medium text-indigo-700 shadow-sm disabled:opacity-50">
+                              {topicBackfillStatus === 'loading' ? 'Running…' : 'Preview topic regex'}
+                            </button>
+                            <button
+                              onClick={() => triggerRegexTopicBackfill(qbContextQ.sourceId, false)}
+                              disabled={topicBackfillStatus === 'loading' || topicBackfillDryRun.length === 0}
+                              className="rounded-md bg-indigo-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                              {topicBackfillStatus === 'loading' ? 'Running…' : 'Apply topic regex'}
+                            </button>
                             <label className="flex items-center gap-1 cursor-pointer select-none">
                               <input
                                 type="checkbox"
@@ -16716,6 +16823,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   {isAdmin && backfillStatus !== 'idle' && backfillMessage ? (
                     <p className={`text-xs ${backfillStatus === 'error' ? 'text-red-600' : backfillStatus === 'done' ? 'text-green-700' : 'text-slate-500'}`}>
                       {backfillMessage}
+                    </p>
+                  ) : null}
+                  {isAdmin && topicBackfillStatus !== 'idle' && topicBackfillMessage ? (
+                    <p className={`whitespace-pre-wrap text-xs ${topicBackfillStatus === 'error' ? 'text-red-600' : topicBackfillStatus === 'done' ? 'text-indigo-700' : 'text-slate-500'}`}>
+                      {topicBackfillMessage}
                     </p>
                   ) : null}
                   {rootText ? (

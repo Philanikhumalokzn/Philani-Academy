@@ -1885,6 +1885,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [topicBackfillStatus, setTopicBackfillStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [topicBackfillMessage, setTopicBackfillMessage] = useState<string | null>(null)
   const [topicBackfillDryRun, setTopicBackfillDryRun] = useState<any[]>([])
+  const [topicBackfillAllPapers, setTopicBackfillAllPapers] = useState(false)
   const qbContextScrollRef = useRef<HTMLDivElement | null>(null)
   const qbContextAutoScrollDoneRef = useRef(false)
   const qbContextAutoScrollCancelledRef = useRef(false)
@@ -13675,6 +13676,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setTopicBackfillStatus('idle')
     setTopicBackfillMessage(null)
     setTopicBackfillDryRun([])
+    setTopicBackfillAllPapers(false)
     try {
       const params = new URLSearchParams()
       const paperDocParams = new URLSearchParams()
@@ -13940,16 +13942,29 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }
 
-  const triggerRegexTopicBackfill = async (sid: string, dryRun: boolean) => {
+  const triggerRegexTopicBackfill = async (sid: string | undefined, dryRun: boolean) => {
+    if (!topicBackfillAllPapers && !sid) {
+      setTopicBackfillStatus('error')
+      setTopicBackfillMessage('No source selected for scoped regex topic backfill.')
+      return
+    }
+
     setTopicBackfillStatus('loading')
     setTopicBackfillMessage(null)
     if (dryRun) setTopicBackfillDryRun([])
     try {
+      const payload: Record<string, unknown> = {
+        onlyMissing: backfillOnlyMissing,
+        dryRun,
+        processAll: topicBackfillAllPapers,
+      }
+      if (!topicBackfillAllPapers && sid) payload.sourceId = sid
+
       const res = await fetch('/api/exam-questions/backfill-topics-regex', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ sourceId: sid, onlyMissing: backfillOnlyMissing, dryRun }),
+        body: JSON.stringify(payload),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -13978,11 +13993,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             return `Q${qLabel}: ${primary}${pShare}${secondary}`
           })
         const sampleSuffix = previewList.length > 0 ? `\n${previewList.join('\n')}` : ''
-        setTopicBackfillMessage(`Regex preview ready — ${scanned} scanned, ${dualTopicCount} dual-topic overlaps.${sampleSuffix}`)
+        const scopeLabel = topicBackfillAllPapers ? 'ALL papers' : 'selected paper'
+        setTopicBackfillMessage(`Regex preview ready (${scopeLabel}) — ${scanned} scanned, ${dualTopicCount} dual-topic overlaps.${sampleSuffix}`)
         return
       }
 
-      setTopicBackfillMessage(`Regex topic backfill applied — ${updated} updated from ${scanned} scanned. Dual-topic overlaps detected: ${dualTopicCount}.`)
+      const scopeLabel = topicBackfillAllPapers ? 'ALL papers' : 'selected paper'
+      setTopicBackfillMessage(`Regex topic backfill applied (${scopeLabel}) — ${updated} updated from ${scanned} scanned. Dual-topic overlaps detected: ${dualTopicCount}.`)
       if (updated > 0) {
         window.setTimeout(() => { if (qbContextQ) openPaperContext(qbContextQ) }, 1200)
       }
@@ -16371,6 +16388,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           setTopicBackfillStatus('idle')
           setTopicBackfillMessage(null)
           setTopicBackfillDryRun([])
+          setTopicBackfillAllPapers(false)
         }}
         backdrop
         closeOnBackdrop
@@ -16530,6 +16548,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             className="h-3.5 w-3.5 rounded border-slate-300 text-teal-600"
                           />
                           <span className="text-xs text-slate-600">Only questions without preamble</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={topicBackfillAllPapers}
+                            onChange={(e) => setTopicBackfillAllPapers(e.target.checked)}
+                            className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600"
+                          />
+                          <span className="text-xs text-slate-600">Topic regex across all papers</span>
                         </label>
                         <button
                           onClick={() => triggerRegexTopicBackfill(qbContextQ.sourceId, true)}
@@ -16709,6 +16736,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           />
                           <span className="text-xs text-slate-600">Only questions without preamble</span>
                         </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={topicBackfillAllPapers}
+                            onChange={(e) => setTopicBackfillAllPapers(e.target.checked)}
+                            className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600"
+                          />
+                          <span className="text-xs text-slate-600">Topic regex across all papers</span>
+                        </label>
                         <button
                           onClick={() => triggerRegexTopicBackfill(qbContextQ.sourceId, true)}
                           disabled={topicBackfillStatus === 'loading'}
@@ -16814,6 +16850,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 className="h-3 w-3 rounded border-slate-300 text-teal-600"
                               />
                               <span className="text-xs text-slate-500">Only missing</span>
+                            </label>
+                            <label className="flex items-center gap-1 cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={topicBackfillAllPapers}
+                                onChange={(e) => setTopicBackfillAllPapers(e.target.checked)}
+                                className="h-3 w-3 rounded border-slate-300 text-indigo-600"
+                              />
+                              <span className="text-xs text-slate-500">All papers</span>
                             </label>
                           </>
                         ) : null}

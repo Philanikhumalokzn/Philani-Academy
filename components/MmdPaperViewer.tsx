@@ -492,7 +492,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
             <section className="scroll-mt-24 rounded-2xl px-3 py-2">
               <div
                 id="mmd-paper-viewer-content"
-                className="text-[15px] leading-7 text-stone-900 [&_.katex]:text-stone-900 [&_table]:my-2 [&_table]:border-collapse [&_table]:text-sm [&_td]:border [&_td]:border-stone-400 [&_td]:px-3 [&_td]:py-1.5 [&_th]:border [&_th]:border-stone-400 [&_th]:px-3 [&_th]:py-1.5"
+                className="text-[15px] leading-7 text-stone-900 [&_.katex]:text-stone-900 [&_table]:my-2 [&_table]:!border-collapse [&_table]:text-sm [&_table]:!border [&_table]:!border-solid [&_table]:!border-stone-500 [&_table]:!text-slate-900 [&_table]:!bg-white [&_.table_tabular]:!border [&_.table_tabular]:!border-solid [&_.table_tabular]:!border-stone-500 [&_.table_tabular]:!bg-white [&_tr]:!border-stone-500 [&_td]:!border [&_td]:!border-solid [&_td]:!border-stone-500 [&_td]:!bg-white [&_td]:!text-slate-900 [&_td]:px-3 [&_td]:py-1.5 [&_th]:!border [&_th]:!border-solid [&_th]:!border-stone-500 [&_th]:!bg-white [&_th]:!text-slate-900 [&_th]:px-3 [&_th]:py-1.5"
                 dangerouslySetInnerHTML={{ __html: renderedHtml }}
               />
             </section>

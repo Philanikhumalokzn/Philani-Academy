@@ -1880,6 +1880,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const qbContextAutoScrollDoneRef = useRef(false)
   const qbContextAutoScrollCancelledRef = useRef(false)
   const qbContextAutoScrollTimerRef = useRef<number | null>(null)
+  const enableQbContextAutoScroll = false
   // QB admin CRUD state
   const [qbSelectedIds, setQbSelectedIds] = useState<Set<string>>(new Set())
   const [qbEditingQ, setQbEditingQ] = useState<any>(null)
@@ -13868,6 +13869,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }
 
   const cancelPendingQbContextAutoScroll = () => {
+    if (!enableQbContextAutoScroll) return
     qbContextAutoScrollCancelledRef.current = true
     if (qbContextAutoScrollTimerRef.current != null) {
       window.clearTimeout(qbContextAutoScrollTimerRef.current)
@@ -13876,6 +13878,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }
 
   useEffect(() => {
+    if (!enableQbContextAutoScroll) return
     if (!qbContextOpen || !qbContextQ?.id || qbContextItems.length === 0) return
     if (qbContextAutoScrollDoneRef.current || qbContextAutoScrollCancelledRef.current) return
     qbContextAutoScrollTimerRef.current = window.setTimeout(() => {
@@ -13893,7 +13896,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         qbContextAutoScrollTimerRef.current = null
       }
     }
-  }, [qbContextOpen, qbContextQ?.id, qbContextItems.length])
+  }, [enableQbContextAutoScroll, qbContextOpen, qbContextQ?.id, qbContextItems.length])
 
   const openPreambleEditor = (rootItem: any | null) => {
     const ref = rootItem || qbContextItems[0] || qbContextQ
@@ -16270,10 +16273,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             overscrollBehaviorY: 'contain',
             scrollPaddingTop: '1rem',
             scrollPaddingBottom: 'calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 7rem)',
-          }}
-          onWheel={cancelPendingQbContextAutoScroll}
-          onTouchStart={cancelPendingQbContextAutoScroll}
-          onPointerDown={cancelPendingQbContextAutoScroll}>
+          }}>
           {qbContextLoading ? (
             <div className="p-4 text-sm text-slate-600">Loading paper context...</div>
           ) : qbContextError ? (

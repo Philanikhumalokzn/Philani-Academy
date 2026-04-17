@@ -16271,6 +16271,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           }}
           onWheel={cancelPendingQbContextAutoScroll}
           onTouchStart={cancelPendingQbContextAutoScroll}
+          onTouchMove={(e) => e.stopPropagation()}
           onPointerDown={cancelPendingQbContextAutoScroll}>
           {qbContextLoading ? (
             <div className="p-4 text-sm text-slate-600">Loading paper context...</div>
@@ -18361,4 +18362,5 @@ export async function getServerSideProps(context: any) {
       : /Android|iPhone|iPad|iPod|Mobile|Windows Phone|Opera Mini|IEMobile/i.test(ua)
   return { props: { session, initialIsMobile } }
 }
+
 

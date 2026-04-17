@@ -21,6 +21,7 @@ import {
   extractQuestionsWithGeminiApi,
   extractQuestionsWithOpenAI,
   VALID_TOPICS,
+  normalizeTopicLabel,
 } from '../resources/extract-questions'
 
 export const config = {
@@ -37,6 +38,8 @@ type RootContextSnapshot = {
   imageUrl: string | null
   tableMarkdown: string | null
   marks: number | null
+  topic: string | null
+  cognitiveLevel: number | null
 }
 
 type UndoPayload =
@@ -61,6 +64,8 @@ function buildSnapshot(row: {
   imageUrl?: string | null
   tableMarkdown?: string | null
   marks?: number | null
+  topic?: string | null
+  cognitiveLevel?: number | null
 } | null | undefined): RootContextSnapshot {
   return {
     questionText: normalizeTextValue(row?.questionText),
@@ -68,6 +73,10 @@ function buildSnapshot(row: {
     imageUrl: normalizeTextValue(row?.imageUrl),
     tableMarkdown: normalizeTextValue(row?.tableMarkdown),
     marks: typeof row?.marks === 'number' && Number.isFinite(row.marks) ? row.marks : null,
+    topic: normalizeTopicLabel(row?.topic) || null,
+    cognitiveLevel: typeof row?.cognitiveLevel === 'number' && Number.isFinite(row.cognitiveLevel)
+      ? Math.min(4, Math.max(1, Math.round(row.cognitiveLevel)))
+      : null,
   }
 }
 
@@ -90,6 +99,8 @@ function hasSnapshotChanges(before: RootContextSnapshot, proposed: RootContextSn
     && sameNullableText(before.imageUrl, proposed.imageUrl)
     && sameNullableText(before.tableMarkdown, proposed.tableMarkdown)
     && before.marks === proposed.marks
+    && before.topic === proposed.topic
+    && before.cognitiveLevel === proposed.cognitiveLevel
   )
 }
 
@@ -471,6 +482,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     normalizeMarksValue(contextObj.marks) ??
     extractMarksFromText(aiText) ??
     pickQuestionMarks(rootNumber, marksMap)
+  const aiTopic = normalizeTopicLabel(contextObj.topic) || 'Other'
+  const aiCognitiveLevel = typeof contextObj.cognitiveLevel === 'number'
+    ? Math.min(4, Math.max(1, Math.round(contextObj.cognitiveLevel)))
+    : null
 
   // Find existing root record
   const existingRoot = await prisma.examQuestion.findFirst({
@@ -482,7 +497,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       paper: question.paper,
       questionNumber: rootNumber,
     },
-    select: { id: true, questionText: true, latex: true, imageUrl: true, tableMarkdown: true, marks: true },
+    select: { id: true, questionText: true, latex: true, imageUrl: true, tableMarkdown: true, marks: true, topic: true, cognitiveLevel: true },
   })
 
   const beforeSnapshot = buildSnapshot(existingRoot)
@@ -496,6 +511,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? aiTableMarkdown
       : beforeSnapshot.tableMarkdown,
     marks: beforeSnapshot.marks == null && aiMarks != null ? aiMarks : beforeSnapshot.marks,
+    topic: beforeSnapshot.topic || aiTopic,
+    cognitiveLevel: beforeSnapshot.cognitiveLevel ?? aiCognitiveLevel,
   }
 
   const hasChanges = hasSnapshotChanges(beforeSnapshot, proposedSnapshot)
@@ -522,6 +539,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (proposedSnapshot.imageUrl !== beforeSnapshot.imageUrl) patch.imageUrl = proposedSnapshot.imageUrl
     if (proposedSnapshot.tableMarkdown !== beforeSnapshot.tableMarkdown) patch.tableMarkdown = proposedSnapshot.tableMarkdown
     if (proposedSnapshot.marks !== beforeSnapshot.marks) patch.marks = proposedSnapshot.marks
+    if (proposedSnapshot.topic !== beforeSnapshot.topic) patch.topic = proposedSnapshot.topic
+    if (proposedSnapshot.cognitiveLevel !== beforeSnapshot.cognitiveLevel) patch.cognitiveLevel = proposedSnapshot.cognitiveLevel
 
     if (Object.keys(patch).length > 0) {
       await prisma.examQuestion.update({ where: { id: existingRoot.id }, data: patch })
@@ -551,8 +570,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         paper: question.paper,
         questionNumber: rootNumber,
         questionDepth: questionDepthFromNumber(rootNumber),
-        topic: null,
-        cognitiveLevel: null,
+        topic: proposedSnapshot.topic,
+        cognitiveLevel: proposedSnapshot.cognitiveLevel,
         marks: proposedSnapshot.marks,
         questionText: proposedSnapshot.questionText,
         latex: proposedSnapshot.latex,

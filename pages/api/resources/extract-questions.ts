@@ -21,7 +21,7 @@ export const VALID_TOPICS = [
   'Calculus', 'Sequences and Series', 'Polynomials', 'Other',
 ]
 
-function normalizeTopicLabel(value: unknown): string | null {
+export function normalizeTopicLabel(value: unknown): string | null {
   const raw = typeof value === 'string' ? value.trim() : ''
   if (!raw) return null
 
@@ -1432,7 +1432,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ?? extractMarksFromText(qText)
       ?? pickQuestionMarks(qNum, questionMarksMap)
     const root = questionRootFromNumber(qNum)
-    const topic = (root ? rootTopicByRoot.get(root) : null) || normalizeTopicLabel(item.topic)
+    const topic = (root ? rootTopicByRoot.get(root) : null) || normalizeTopicLabel(item.topic) || 'Other'
     const cl = typeof item.cognitiveLevel === 'number' ? Math.min(4, Math.max(1, Math.round(item.cognitiveLevel))) : null
     const depth = questionDepthFromNumber(qNum)
     const imageUrl = pickQuestionImageUrl(qNum, questionImageMap)

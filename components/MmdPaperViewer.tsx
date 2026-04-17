@@ -543,14 +543,14 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
   }
 
   return (
-    <div className="px-0 pb-6 pt-2" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
-      <div className="mx-auto max-w-6xl rounded-[22px] border border-stone-300 bg-[#fffdf7] shadow-[0_18px_54px_rgba(15,23,42,0.08)]">
-        <div className="border-b border-stone-200 bg-[linear-gradient(180deg,rgba(255,250,240,0.95),rgba(255,253,247,0.92))] px-5 py-4">
+    <div className="px-0 pb-0 pt-0 h-full" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+      <div className="w-full h-full bg-[#fffdf7] shadow-none">
+        <div className="border-b border-stone-200 bg-[linear-gradient(180deg,rgba(255,250,240,0.95),rgba(255,253,247,0.92))] px-4 py-3">
           <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-stone-500">Paper View</div>
           <div className="mt-1 text-sm text-stone-600">Continuous MMD rendering of the source paper, with math, tables, images, and question anchors.</div>
         </div>
 
-        <div className="space-y-3 px-1 py-3 sm:px-1">
+        <div className="space-y-2 px-2 py-2 sm:px-2">
           {useMathpixRenderer && renderedHtml ? (
             <section className="scroll-mt-24 rounded-xl px-0 py-1">
               <div

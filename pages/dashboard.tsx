@@ -16355,7 +16355,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
         <div
           ref={qbContextScrollRef}
-          className="min-h-0 max-h-[74dvh] overflow-y-auto overscroll-contain [touch-action:pan-y] pt-2 pb-24 sm:pb-10"
+          className="min-h-0 max-h-[74dvh] overflow-y-auto overscroll-contain [touch-action:pan-y] pt-0 pb-24 sm:pb-10"
           style={{
             WebkitOverflowScrolling: 'touch',
             overscrollBehaviorY: 'contain',

@@ -16246,7 +16246,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         closeOnBackdrop
         closeOnEscape
         className="bottom-0"
-        contentClassName="p-0 flex flex-col overflow-hidden"
+        contentClassName="p-0 overflow-hidden"
         zIndexClassName="z-[80]"
       >
         <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -16263,7 +16263,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
         <div
           ref={qbContextScrollRef}
-          className="flex-1 min-h-0 overflow-y-auto overscroll-contain [touch-action:pan-y] pt-2 pb-24 sm:pb-10"
+          className="min-h-0 max-h-[74dvh] overflow-y-auto overscroll-contain [touch-action:pan-y] pt-2 pb-24 sm:pb-10"
           style={{
             WebkitOverflowScrolling: 'touch',
             overscrollBehaviorY: 'contain',

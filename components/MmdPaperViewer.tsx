@@ -296,6 +296,35 @@ function stripQuestionPrefix(raw: string): string {
   return String(raw || '').trim().replace(/^Q+/i, '')
 }
 
+function normalizeMmdQuestionSpacing(raw: string): string {
+  const lines = String(raw || '').split(/\r?\n/)
+  const out: string[] = []
+  let inTabular = false
+  let inCodeFence = false
+
+  for (const line of lines) {
+    const trimmed = String(line || '').trim()
+    if (/^```/.test(trimmed)) inCodeFence = !inCodeFence
+    if (/\\begin\{tabular\}/.test(trimmed)) inTabular = true
+
+    const isScopedQuestionLine = /^\s*Q?(?:\d+)(?:\.\d+){1,6}\b(?:\s|$)/.test(line)
+    const isPipeTableLine = /^\s*\|.*\|\s*$/.test(line)
+
+    if (!inTabular && !inCodeFence && isScopedQuestionLine && !isPipeTableLine) {
+      // Ensure a visual break between question parts (1.1, 1.2, 1.1.2, ...).
+      if (out.length > 0 && String(out[out.length - 1] || '').trim() !== '') {
+        out.push('')
+      }
+    }
+
+    out.push(line)
+
+    if (/\\end\{tabular\}/.test(trimmed)) inTabular = false
+  }
+
+  return out.join('\n')
+}
+
 function decorateMmdHtmlWithAnchors(html: string): string {
   if (typeof window === 'undefined') return html
   if (!String(html || '').trim()) return ''
@@ -443,7 +472,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
           document.head.appendChild(styleEl)
         }
 
-        const htmlRaw = MM.markdownToHTML(source, {
+        const htmlRaw = MM.markdownToHTML(normalizeMmdQuestionSpacing(source), {
           htmlTags: false,
           breaks: true,
           centerTables: false,

@@ -365,10 +365,10 @@ function decorateMmdHtmlWithAnchors(html: string): string {
         if (element instanceof HTMLElement) {
           element.style.setProperty('margin-top', '0.9rem', 'important')
           const depth = questionNumber.split('.').filter(Boolean).length
-          const indentRem = Math.max(0, Math.min(depth - 2, 2) * 0.55)
-          if (indentRem > 0) {
-            element.style.setProperty('padding-left', `${indentRem}rem`)
-          }
+          const depthIndentRem = Math.max(0, Math.min(depth - 2, 2) * 0.55)
+          const hangingIndentRem = Math.max(1.35, Math.min(2.25, questionNumber.length * 0.26 + 0.55))
+          element.style.setProperty('padding-left', `${depthIndentRem + hangingIndentRem}rem`)
+          element.style.setProperty('text-indent', `-${hangingIndentRem}rem`)
         }
         if (!assigned.has(questionNumber)) {
           element.id = buildAnchorId(questionNumber)

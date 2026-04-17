@@ -16532,14 +16532,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         {reextractMessage}
                       </p>
                     ) : null}
-                    {isAdmin && qbContextQ?.sourceId ? (
+                    {isAdmin ? (
                       <div className="flex flex-wrap items-center gap-2 pt-0.5 border-t border-slate-200">
-                        <button
-                          onClick={() => triggerBackfill(qbContextQ.sourceId)}
-                          disabled={backfillStatus === 'loading'}
-                          className="inline-flex items-center gap-1 rounded-md bg-teal-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
-                          {backfillStatus === 'loading' ? 'Running…' : '⚙ Backfill preambles'}
-                        </button>
+                        {qbContextQ?.sourceId ? (
+                          <button
+                            onClick={() => triggerBackfill(qbContextQ.sourceId)}
+                            disabled={backfillStatus === 'loading'}
+                            className="inline-flex items-center gap-1 rounded-md bg-teal-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                            {backfillStatus === 'loading' ? 'Running…' : '⚙ Backfill preambles'}
+                          </button>
+                        ) : null}
                         <label className="flex items-center gap-1.5 cursor-pointer select-none">
                           <input
                             type="checkbox"
@@ -16559,13 +16561,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           <span className="text-xs text-slate-600">Topic regex across all papers</span>
                         </label>
                         <button
-                          onClick={() => triggerRegexTopicBackfill(qbContextQ.sourceId, true)}
+                          onClick={() => triggerRegexTopicBackfill(qbContextQ?.sourceId, true)}
                           disabled={topicBackfillStatus === 'loading'}
                           className="inline-flex items-center gap-1 rounded-md border border-indigo-300 bg-white px-2.5 py-1 text-xs font-medium text-indigo-700 shadow-sm disabled:opacity-50">
                           {topicBackfillStatus === 'loading' ? 'Running…' : 'Preview topic regex'}
                         </button>
                         <button
-                          onClick={() => triggerRegexTopicBackfill(qbContextQ.sourceId, false)}
+                          onClick={() => triggerRegexTopicBackfill(qbContextQ?.sourceId, false)}
                           disabled={topicBackfillStatus === 'loading' || topicBackfillDryRun.length === 0}
                           className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
                           {topicBackfillStatus === 'loading' ? 'Running…' : 'Apply topic regex'}
@@ -16719,14 +16721,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         {reextractMessage}
                       </p>
                     ) : null}
-                    {isAdmin && qbContextQ?.sourceId ? (
+                    {isAdmin ? (
                       <div className="flex flex-wrap items-center gap-2 pt-0.5 border-t border-slate-200">
-                        <button
-                          onClick={() => triggerBackfill(qbContextQ.sourceId)}
-                          disabled={backfillStatus === 'loading'}
-                          className="inline-flex items-center gap-1 rounded-md bg-teal-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
-                          {backfillStatus === 'loading' ? 'Running…' : '⚙ Backfill preambles'}
-                        </button>
+                        {qbContextQ?.sourceId ? (
+                          <button
+                            onClick={() => triggerBackfill(qbContextQ.sourceId)}
+                            disabled={backfillStatus === 'loading'}
+                            className="inline-flex items-center gap-1 rounded-md bg-teal-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                            {backfillStatus === 'loading' ? 'Running…' : '⚙ Backfill preambles'}
+                          </button>
+                        ) : null}
                         <label className="flex items-center gap-1.5 cursor-pointer select-none">
                           <input
                             type="checkbox"
@@ -16746,13 +16750,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           <span className="text-xs text-slate-600">Topic regex across all papers</span>
                         </label>
                         <button
-                          onClick={() => triggerRegexTopicBackfill(qbContextQ.sourceId, true)}
+                          onClick={() => triggerRegexTopicBackfill(qbContextQ?.sourceId, true)}
                           disabled={topicBackfillStatus === 'loading'}
                           className="inline-flex items-center gap-1 rounded-md border border-indigo-300 bg-white px-2.5 py-1 text-xs font-medium text-indigo-700 shadow-sm disabled:opacity-50">
                           {topicBackfillStatus === 'loading' ? 'Running…' : 'Preview topic regex'}
                         </button>
                         <button
-                          onClick={() => triggerRegexTopicBackfill(qbContextQ.sourceId, false)}
+                          onClick={() => triggerRegexTopicBackfill(qbContextQ?.sourceId, false)}
                           disabled={topicBackfillStatus === 'loading' || topicBackfillDryRun.length === 0}
                           className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
                           {topicBackfillStatus === 'loading' ? 'Running…' : 'Apply topic regex'}
@@ -16822,22 +16826,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           className="rounded-md border border-red-300 bg-white px-2 py-0.5 text-xs text-red-700 font-medium shadow-sm disabled:opacity-50">
                           Delete context
                         </button>
-                        {qbContextQ?.sourceId ? (
-                          <>
+                        <>
+                          {qbContextQ?.sourceId ? (
                             <button
                               onClick={() => triggerBackfill(qbContextQ.sourceId)}
                               disabled={backfillStatus === 'loading'}
                               className="rounded-md bg-teal-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
                               {backfillStatus === 'loading' ? 'Running…' : '⚙ Backfill'}
                             </button>
+                          ) : null}
                             <button
-                              onClick={() => triggerRegexTopicBackfill(qbContextQ.sourceId, true)}
+                              onClick={() => triggerRegexTopicBackfill(qbContextQ?.sourceId, true)}
                               disabled={topicBackfillStatus === 'loading'}
                               className="rounded-md border border-indigo-300 bg-white px-2 py-0.5 text-xs font-medium text-indigo-700 shadow-sm disabled:opacity-50">
                               {topicBackfillStatus === 'loading' ? 'Running…' : 'Preview topic regex'}
                             </button>
                             <button
-                              onClick={() => triggerRegexTopicBackfill(qbContextQ.sourceId, false)}
+                              onClick={() => triggerRegexTopicBackfill(qbContextQ?.sourceId, false)}
                               disabled={topicBackfillStatus === 'loading' || topicBackfillDryRun.length === 0}
                               className="rounded-md bg-indigo-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
                               {topicBackfillStatus === 'loading' ? 'Running…' : 'Apply topic regex'}
@@ -16860,8 +16865,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               />
                               <span className="text-xs text-slate-500">All papers</span>
                             </label>
-                          </>
-                        ) : null}
+                        </>
                       </div>
                     ) : null}
                   </div>

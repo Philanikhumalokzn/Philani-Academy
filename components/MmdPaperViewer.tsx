@@ -533,19 +533,19 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
   }
 
   return (
-    <div className="px-3 pb-8 pt-3 sm:px-4" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
-      <div className="mx-auto max-w-4xl rounded-[28px] border border-stone-300 bg-[#fffdf7] shadow-[0_18px_54px_rgba(15,23,42,0.08)]">
+    <div className="px-1 pb-6 pt-2 sm:px-2" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+      <div className="mx-auto max-w-6xl rounded-[22px] border border-stone-300 bg-[#fffdf7] shadow-[0_18px_54px_rgba(15,23,42,0.08)]">
         <div className="border-b border-stone-200 bg-[linear-gradient(180deg,rgba(255,250,240,0.95),rgba(255,253,247,0.92))] px-5 py-4">
           <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-stone-500">Paper View</div>
           <div className="mt-1 text-sm text-stone-600">Continuous MMD rendering of the source paper, with math, tables, images, and question anchors.</div>
         </div>
 
-        <div className="space-y-4 px-4 py-5 sm:px-6">
+        <div className="space-y-3 px-2 py-3 sm:px-3">
           {useMathpixRenderer && renderedHtml ? (
-            <section className="scroll-mt-24 rounded-2xl px-3 py-2">
+            <section className="scroll-mt-24 rounded-xl px-1 py-1">
               <div
                 id="mmd-paper-viewer-content"
-                className="text-[15px] leading-6 text-stone-900 [&_.katex]:text-stone-900 [&_p]:my-2 [&_.mmd-question-subpart]:mt-4 [&_.mmd-table-wrap]:my-2 [&_.mmd-table-wrap]:max-w-full [&_.mmd-table-wrap]:overflow-x-auto [&_table]:!border-collapse [&_table]:text-[13px] [&_table]:!border [&_table]:!border-solid [&_table]:!border-stone-500 [&_table]:!text-slate-900 [&_table]:!bg-white [&_.mmd-compact-table]:w-max [&_.mmd-compact-table]:min-w-full [&_.table_tabular]:!border [&_.table_tabular]:!border-solid [&_.table_tabular]:!border-stone-500 [&_.table_tabular]:!bg-white [&_tr]:!border-stone-500 [&_td]:!border [&_td]:!border-solid [&_td]:!border-stone-500 [&_td]:!bg-white [&_td]:!text-slate-900 [&_td]:px-2 [&_td]:py-1 [&_td]:leading-tight [&_th]:!border [&_th]:!border-solid [&_th]:!border-stone-500 [&_th]:!bg-white [&_th]:!text-slate-900 [&_th]:px-2 [&_th]:py-1 [&_th]:leading-tight [&_.mmd-row-title]:whitespace-nowrap [&_.mmd-row-title]:font-medium"
+                className="text-[13px] leading-[1.35] text-stone-900 [&_.katex]:text-stone-900 [&_p]:my-1.5 [&_.mmd-question-subpart]:mt-3 [&_.mmd-table-wrap]:my-1.5 [&_.mmd-table-wrap]:max-w-full [&_.mmd-table-wrap]:overflow-x-auto [&_table]:!border-collapse [&_table]:text-[12px] [&_table]:!border [&_table]:!border-solid [&_table]:!border-stone-500 [&_table]:!text-slate-900 [&_table]:!bg-white [&_.mmd-compact-table]:w-max [&_.mmd-compact-table]:min-w-full [&_.table_tabular]:!border [&_.table_tabular]:!border-solid [&_.table_tabular]:!border-stone-500 [&_.table_tabular]:!bg-white [&_tr]:!border-stone-500 [&_td]:!border [&_td]:!border-solid [&_td]:!border-stone-500 [&_td]:!bg-white [&_td]:!text-slate-900 [&_td]:px-1.5 [&_td]:py-0.5 [&_td]:leading-tight [&_th]:!border [&_th]:!border-solid [&_th]:!border-stone-500 [&_th]:!bg-white [&_th]:!text-slate-900 [&_th]:px-1.5 [&_th]:py-0.5 [&_th]:leading-tight [&_.mmd-row-title]:whitespace-nowrap [&_.mmd-row-title]:font-medium"
                 dangerouslySetInnerHTML={{ __html: renderedHtml }}
               />
             </section>
@@ -586,7 +586,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
                     <div className="min-w-[3.25rem] rounded-full bg-stone-900 px-2.5 py-1 text-center text-xs font-semibold text-white">
                       {block.label}
                     </div>
-                    <div className="min-w-0 flex-1 text-[15px] leading-7 text-stone-900 whitespace-pre-wrap break-words">
+                    <div className="min-w-0 flex-1 text-[13px] leading-[1.4] text-stone-900 whitespace-pre-wrap break-words">
                       {block.body ? renderMmdText(block.body) : <span className="text-stone-400">Question heading</span>}
                     </div>
                   </div>
@@ -601,7 +601,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
                   id={anchorId}
                   className={`scroll-mt-24 rounded-2xl px-3 py-1 ${selectedClass}`.trim()}
                 >
-                  <div className="text-[15px] leading-7 text-stone-900 whitespace-pre-wrap break-words">
+                  <div className="text-[13px] leading-[1.4] text-stone-900 whitespace-pre-wrap break-words">
                     {renderMmdText(block.text)}
                   </div>
                 </section>

@@ -16720,7 +16720,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         contentClassName="p-0 flex flex-col overflow-hidden"
         zIndexClassName="z-[88]"
       >
-        <div className="max-h-[72dvh] overflow-y-auto px-4 py-3 space-y-3">
+        <div
+          className="min-h-0 max-h-[72dvh] overflow-y-auto overscroll-contain [touch-action:pan-y] px-4 py-3 space-y-3"
+          style={{
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehaviorY: 'contain',
+          }}
+          onTouchMove={(e) => e.stopPropagation()}
+        >
           {!reextractPreviewData ? (
             <p className="text-sm text-slate-600">No preview data available.</p>
           ) : (

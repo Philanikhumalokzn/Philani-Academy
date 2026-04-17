@@ -170,6 +170,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     processAll,
     onlyMissing,
     dryRun,
+    sourceCursor,
+    paperBatchSize,
   } = (req.body || {}) as {
     sourceId?: string
     grade?: string
@@ -180,11 +182,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     processAll?: boolean
     onlyMissing?: boolean
     dryRun?: boolean
+    sourceCursor?: string
+    paperBatchSize?: number
   }
 
   const useProcessAll = Boolean(processAll)
   const useOnlyMissing = onlyMissing !== false
   const effectiveLimit = Number.isFinite(limit) ? Math.max(1, Math.min(3000, Number(limit))) : 1000
+  const effectivePaperBatchSize = Number.isFinite(paperBatchSize)
+    ? Math.max(1, Math.min(50, Number(paperBatchSize)))
+    : 5
+  const normalizedSourceCursor = typeof sourceCursor === 'string' && sourceCursor.trim() ? sourceCursor.trim() : null
 
   const provider = getExtractProvider()
   const openAiApiKey = (process.env.OPENAI_API_KEY || '').trim()
@@ -196,7 +204,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ message: 'No AI provider API key configured for topic backfill.' })
   }
 
-  const where: Record<string, unknown> = { questionDepth: 0 }
+  const where: any = { questionDepth: 0 }
   if (typeof sourceId === 'string' && sourceId.trim()) where.sourceId = sourceId.trim()
   const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : undefined)
   if (normalizedGrade) where.grade = normalizedGrade
@@ -204,6 +212,52 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (typeof month === 'string' && month.trim()) where.month = month.trim()
   if (Number.isFinite(paper)) where.paper = Number(paper)
   if (useOnlyMissing) where.OR = [{ topic: null }, { topic: '' }]
+
+  let selectedSourceIds: string[] = []
+  let nextSourceCursor: string | null = null
+  let hasMoreSourceBatches = false
+
+  if (useProcessAll && !where.sourceId) {
+    const sourceWhere: any = {
+      ...where,
+      sourceId: normalizedSourceCursor
+        ? { gt: normalizedSourceCursor }
+        : { not: null },
+    }
+
+    const sourceIdRows = await prisma.examQuestion.findMany({
+      where: sourceWhere,
+      distinct: ['sourceId'],
+      select: { sourceId: true },
+      orderBy: { sourceId: 'asc' },
+      take: effectivePaperBatchSize,
+    })
+
+    selectedSourceIds = sourceIdRows
+      .map((row) => (typeof row.sourceId === 'string' ? row.sourceId : ''))
+      .filter((v) => Boolean(v))
+
+    if (!selectedSourceIds.length) {
+      return res.status(200).json({
+        message: normalizedSourceCursor
+          ? 'No additional MMD papers remain after the current AI cursor.'
+          : 'No root questions matched AI topic backfill criteria.',
+        scanned: 0,
+        updated: 0,
+        skipped: 0,
+        dryRun: Boolean(dryRun),
+        processAll: useProcessAll,
+        onlyMissing: useOnlyMissing,
+        sourceBatchSize: effectivePaperBatchSize,
+        nextSourceCursor: null,
+        hasMoreSourceBatches: false,
+        scannedSourceIds: [] as string[],
+        previews: [] as PreviewItem[],
+      })
+    }
+
+    where.sourceId = { in: selectedSourceIds }
+  }
 
   const queryArgs: Record<string, unknown> = {
     where,
@@ -231,8 +285,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       dryRun: Boolean(dryRun),
       processAll: useProcessAll,
       onlyMissing: useOnlyMissing,
+      sourceBatchSize: useProcessAll ? effectivePaperBatchSize : null,
+      nextSourceCursor: null,
+      hasMoreSourceBatches: false,
+      scannedSourceIds: selectedSourceIds,
       previews: [] as PreviewItem[],
     })
+  }
+
+  if (useProcessAll && selectedSourceIds.length > 0) {
+    nextSourceCursor = selectedSourceIds[selectedSourceIds.length - 1] || null
+    if (nextSourceCursor) {
+      const nextRows = await prisma.examQuestion.findMany({
+        where: {
+          ...where,
+          sourceId: { gt: nextSourceCursor },
+        },
+        distinct: ['sourceId'],
+        select: { sourceId: true },
+        orderBy: { sourceId: 'asc' },
+        take: 1,
+      })
+      hasMoreSourceBatches = nextRows.length > 0
+    }
   }
 
   const sourceIds = Array.from(new Set(roots.map((r) => r.sourceId).filter((v): v is string => Boolean(v))))
@@ -340,6 +415,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     dryRun: Boolean(dryRun),
     processAll: useProcessAll,
     onlyMissing: useOnlyMissing,
+    sourceBatchSize: useProcessAll ? effectivePaperBatchSize : null,
+    nextSourceCursor: useProcessAll ? nextSourceCursor : null,
+    hasMoreSourceBatches: useProcessAll ? hasMoreSourceBatches : false,
+    scannedSourceIds: useProcessAll ? selectedSourceIds : (sourceIds.length ? sourceIds : []),
     missingContextCount,
     previews: previews.slice(0, 120),
     notes: [

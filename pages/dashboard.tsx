@@ -1889,6 +1889,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [topicAiBackfillStatus, setTopicAiBackfillStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [topicAiBackfillMessage, setTopicAiBackfillMessage] = useState<string | null>(null)
   const [topicAiBackfillDryRun, setTopicAiBackfillDryRun] = useState<any[]>([])
+  const [topicAiPaperBatchSize, setTopicAiPaperBatchSize] = useState(5)
+  const [topicAiSourceCursor, setTopicAiSourceCursor] = useState<string | null>(null)
+  const [topicAiHasMoreSourceBatches, setTopicAiHasMoreSourceBatches] = useState(false)
   const qbContextScrollRef = useRef<HTMLDivElement | null>(null)
   const qbContextAutoScrollDoneRef = useRef(false)
   const qbContextAutoScrollCancelledRef = useRef(false)
@@ -13683,6 +13686,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setTopicAiBackfillStatus('idle')
     setTopicAiBackfillMessage(null)
     setTopicAiBackfillDryRun([])
+    setTopicAiSourceCursor(null)
+    setTopicAiHasMoreSourceBatches(false)
     try {
       const params = new URLSearchParams()
       const paperDocParams = new URLSearchParams()
@@ -14015,6 +14020,28 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }
 
+  const resetTopicAiBatchProgress = () => {
+    setTopicAiSourceCursor(null)
+    setTopicAiHasMoreSourceBatches(false)
+  }
+
+  const handleBackfillOnlyMissingToggle = (checked: boolean) => {
+    setBackfillOnlyMissing(checked)
+    resetTopicAiBatchProgress()
+  }
+
+  const handleTopicBackfillAllPapersToggle = (checked: boolean) => {
+    setTopicBackfillAllPapers(checked)
+    resetTopicAiBatchProgress()
+  }
+
+  const handleTopicAiPaperBatchSizeChange = (rawValue: string) => {
+    const parsed = Number(rawValue)
+    const next = Number.isFinite(parsed) ? Math.max(1, Math.min(50, Math.round(parsed))) : 1
+    setTopicAiPaperBatchSize(next)
+    resetTopicAiBatchProgress()
+  }
+
   const triggerAiTopicBackfill = async (sid: string | undefined, dryRun: boolean) => {
     if (!topicBackfillAllPapers && !sid) {
       setTopicAiBackfillStatus('error')
@@ -14033,6 +14060,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         processAll: topicBackfillAllPapers,
       }
       if (!topicBackfillAllPapers && sid) payload.sourceId = sid
+      if (topicBackfillAllPapers) {
+        payload.paperBatchSize = topicAiPaperBatchSize
+        if (topicAiSourceCursor) payload.sourceCursor = topicAiSourceCursor
+      }
 
       const res = await fetch('/api/exam-questions/backfill-topics-ai', {
         method: 'POST',
@@ -14051,6 +14082,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       const updated = Number((data as any)?.updated ?? 0)
       const missingContextCount = Number((data as any)?.missingContextCount ?? 0)
       const previews = Array.isArray((data as any)?.previews) ? (data as any).previews : []
+      const scannedSourceIds = Array.isArray((data as any)?.scannedSourceIds)
+        ? (data as any).scannedSourceIds.filter((v: unknown) => typeof v === 'string' && v.trim())
+        : []
+      const nextSourceCursor = typeof (data as any)?.nextSourceCursor === 'string' && String((data as any).nextSourceCursor).trim()
+        ? String((data as any).nextSourceCursor).trim()
+        : null
+      const hasMoreSourceBatches = Boolean((data as any)?.hasMoreSourceBatches)
+
+      if (topicBackfillAllPapers) {
+        setTopicAiSourceCursor(nextSourceCursor)
+        setTopicAiHasMoreSourceBatches(hasMoreSourceBatches)
+      } else {
+        resetTopicAiBatchProgress()
+      }
 
       setTopicAiBackfillStatus('done')
       if (dryRun) {
@@ -14060,12 +14105,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           .map((p: any) => `Q${String(p?.questionNumber || '?')}: ${String(p?.proposedTopic || 'Other')}`)
         const sampleSuffix = previewList.length > 0 ? `\n${previewList.join('\n')}` : ''
         const scopeLabel = topicBackfillAllPapers ? 'ALL papers' : 'selected paper'
-        setTopicAiBackfillMessage(`AI preview ready (${scopeLabel}) — ${scanned} roots scanned, missing MMD roots: ${missingContextCount}.${sampleSuffix}`)
+        const sourceBatchSuffix = topicBackfillAllPapers
+          ? ` Papers in this batch: ${scannedSourceIds.length}. ${hasMoreSourceBatches ? 'More paper batches remain.' : 'Reached final paper batch.'}`
+          : ''
+        setTopicAiBackfillMessage(`AI preview ready (${scopeLabel}) — ${scanned} roots scanned, missing MMD roots: ${missingContextCount}.${sourceBatchSuffix}${sampleSuffix}`)
         return
       }
 
       const scopeLabel = topicBackfillAllPapers ? 'ALL papers' : 'selected paper'
-      setTopicAiBackfillMessage(`AI topic scrub applied (${scopeLabel}) — ${updated} updated from ${scanned} root questions. Missing MMD roots: ${missingContextCount}.`)
+      const sourceBatchSuffix = topicBackfillAllPapers
+        ? ` Batch papers: ${scannedSourceIds.length}. ${hasMoreSourceBatches ? 'Click Apply topic AI again to continue to next papers.' : 'All queued papers processed.'}`
+        : ''
+      setTopicAiBackfillMessage(`AI topic scrub applied (${scopeLabel}) — ${updated} updated from ${scanned} root questions. Missing MMD roots: ${missingContextCount}.${sourceBatchSuffix}`)
       if (updated > 0) {
         window.setTimeout(() => { if (qbContextQ) openPaperContext(qbContextQ) }, 1200)
       }
@@ -16458,6 +16509,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           setTopicAiBackfillStatus('idle')
           setTopicAiBackfillMessage(null)
           setTopicAiBackfillDryRun([])
+          setTopicAiSourceCursor(null)
+          setTopicAiHasMoreSourceBatches(false)
         }}
         backdrop
         closeOnBackdrop
@@ -16615,7 +16668,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           <input
                             type="checkbox"
                             checked={backfillOnlyMissing}
-                            onChange={(e) => setBackfillOnlyMissing(e.target.checked)}
+                            onChange={(e) => handleBackfillOnlyMissingToggle(e.target.checked)}
                             className="h-3.5 w-3.5 rounded border-slate-300 text-teal-600"
                           />
                           <span className="text-xs text-slate-600">Only questions without preamble</span>
@@ -16624,11 +16677,24 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           <input
                             type="checkbox"
                             checked={topicBackfillAllPapers}
-                            onChange={(e) => setTopicBackfillAllPapers(e.target.checked)}
+                            onChange={(e) => handleTopicBackfillAllPapersToggle(e.target.checked)}
                             className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600"
                           />
                           <span className="text-xs text-slate-600">Topic regex across all papers</span>
                         </label>
+                        {topicBackfillAllPapers ? (
+                          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                            <span className="text-xs text-slate-600">AI papers/run</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={50}
+                              value={topicAiPaperBatchSize}
+                              onChange={(e) => handleTopicAiPaperBatchSizeChange(e.target.value)}
+                              className="h-7 w-16 rounded border border-slate-300 bg-white px-1.5 text-xs text-slate-700"
+                            />
+                          </label>
+                        ) : null}
                         <button
                           onClick={() => triggerRegexTopicBackfill(qbContextQ?.sourceId, true)}
                           disabled={topicBackfillStatus === 'loading'}
@@ -16649,10 +16715,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         </button>
                         <button
                           onClick={() => triggerAiTopicBackfill(qbContextQ?.sourceId, false)}
-                          disabled={topicAiBackfillStatus === 'loading' || topicAiBackfillDryRun.length === 0}
+                          disabled={topicAiBackfillStatus === 'loading' || (!topicBackfillAllPapers && topicAiBackfillDryRun.length === 0)}
                           className="inline-flex items-center gap-1 rounded-md bg-fuchsia-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
-                          {topicAiBackfillStatus === 'loading' ? 'Running…' : 'Apply topic AI'}
+                          {topicAiBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers && topicAiSourceCursor ? 'Continue topic AI' : 'Apply topic AI'}
                         </button>
+                        {topicBackfillAllPapers ? (
+                          <button
+                            onClick={resetTopicAiBatchProgress}
+                            disabled={topicAiBackfillStatus === 'loading'}
+                            className="inline-flex items-center gap-1 rounded-md border border-fuchsia-300 bg-white px-2.5 py-1 text-xs font-medium text-fuchsia-700 shadow-sm disabled:opacity-50">
+                            Restart AI batching
+                          </button>
+                        ) : null}
                         {backfillStatus !== 'idle' && backfillMessage ? (
                           <span className={`text-xs ${backfillStatus === 'error' ? 'text-red-600' : backfillStatus === 'done' ? 'text-green-700' : 'text-slate-500'}`}>
                             {backfillMessage}
@@ -16821,7 +16895,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           <input
                             type="checkbox"
                             checked={backfillOnlyMissing}
-                            onChange={(e) => setBackfillOnlyMissing(e.target.checked)}
+                            onChange={(e) => handleBackfillOnlyMissingToggle(e.target.checked)}
                             className="h-3.5 w-3.5 rounded border-slate-300 text-teal-600"
                           />
                           <span className="text-xs text-slate-600">Only questions without preamble</span>
@@ -16830,11 +16904,24 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           <input
                             type="checkbox"
                             checked={topicBackfillAllPapers}
-                            onChange={(e) => setTopicBackfillAllPapers(e.target.checked)}
+                            onChange={(e) => handleTopicBackfillAllPapersToggle(e.target.checked)}
                             className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600"
                           />
                           <span className="text-xs text-slate-600">Topic regex across all papers</span>
                         </label>
+                        {topicBackfillAllPapers ? (
+                          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                            <span className="text-xs text-slate-600">AI papers/run</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={50}
+                              value={topicAiPaperBatchSize}
+                              onChange={(e) => handleTopicAiPaperBatchSizeChange(e.target.value)}
+                              className="h-7 w-16 rounded border border-slate-300 bg-white px-1.5 text-xs text-slate-700"
+                            />
+                          </label>
+                        ) : null}
                         <button
                           onClick={() => triggerRegexTopicBackfill(qbContextQ?.sourceId, true)}
                           disabled={topicBackfillStatus === 'loading'}
@@ -16855,10 +16942,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         </button>
                         <button
                           onClick={() => triggerAiTopicBackfill(qbContextQ?.sourceId, false)}
-                          disabled={topicAiBackfillStatus === 'loading' || topicAiBackfillDryRun.length === 0}
+                          disabled={topicAiBackfillStatus === 'loading' || (!topicBackfillAllPapers && topicAiBackfillDryRun.length === 0)}
                           className="inline-flex items-center gap-1 rounded-md bg-fuchsia-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
-                          {topicAiBackfillStatus === 'loading' ? 'Running…' : 'Apply topic AI'}
+                          {topicAiBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers && topicAiSourceCursor ? 'Continue topic AI' : 'Apply topic AI'}
                         </button>
+                        {topicBackfillAllPapers ? (
+                          <button
+                            onClick={resetTopicAiBatchProgress}
+                            disabled={topicAiBackfillStatus === 'loading'}
+                            className="inline-flex items-center gap-1 rounded-md border border-fuchsia-300 bg-white px-2.5 py-1 text-xs font-medium text-fuchsia-700 shadow-sm disabled:opacity-50">
+                            Restart AI batching
+                          </button>
+                        ) : null}
                         {backfillStatus !== 'idle' && backfillMessage ? (
                           <span className={`text-xs ${backfillStatus === 'error' ? 'text-red-600' : backfillStatus === 'done' ? 'text-green-700' : 'text-slate-500'}`}>
                             {backfillMessage}
@@ -16958,15 +17053,36 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             </button>
                             <button
                               onClick={() => triggerAiTopicBackfill(qbContextQ?.sourceId, false)}
-                              disabled={topicAiBackfillStatus === 'loading' || topicAiBackfillDryRun.length === 0}
+                              disabled={topicAiBackfillStatus === 'loading' || (!topicBackfillAllPapers && topicAiBackfillDryRun.length === 0)}
                               className="rounded-md bg-fuchsia-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
-                              {topicAiBackfillStatus === 'loading' ? 'Running…' : 'Apply topic AI'}
+                              {topicAiBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers && topicAiSourceCursor ? 'Continue topic AI' : 'Apply topic AI'}
                             </button>
+                            {topicBackfillAllPapers ? (
+                              <label className="flex items-center gap-1 cursor-pointer select-none">
+                                <span className="text-xs text-slate-500">AI papers/run</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={50}
+                                  value={topicAiPaperBatchSize}
+                                  onChange={(e) => handleTopicAiPaperBatchSizeChange(e.target.value)}
+                                  className="h-6 w-14 rounded border border-slate-300 bg-white px-1 text-xs text-slate-700"
+                                />
+                              </label>
+                            ) : null}
+                            {topicBackfillAllPapers ? (
+                              <button
+                                onClick={resetTopicAiBatchProgress}
+                                disabled={topicAiBackfillStatus === 'loading'}
+                                className="rounded-md border border-fuchsia-300 bg-white px-2 py-0.5 text-xs font-medium text-fuchsia-700 shadow-sm disabled:opacity-50">
+                                Restart AI batching
+                              </button>
+                            ) : null}
                             <label className="flex items-center gap-1 cursor-pointer select-none">
                               <input
                                 type="checkbox"
                                 checked={backfillOnlyMissing}
-                                onChange={(e) => setBackfillOnlyMissing(e.target.checked)}
+                                onChange={(e) => handleBackfillOnlyMissingToggle(e.target.checked)}
                                 className="h-3 w-3 rounded border-slate-300 text-teal-600"
                               />
                               <span className="text-xs text-slate-500">Only missing</span>
@@ -16975,7 +17091,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               <input
                                 type="checkbox"
                                 checked={topicBackfillAllPapers}
-                                onChange={(e) => setTopicBackfillAllPapers(e.target.checked)}
+                                onChange={(e) => handleTopicBackfillAllPapersToggle(e.target.checked)}
                                 className="h-3 w-3 rounded border-slate-300 text-indigo-600"
                               />
                               <span className="text-xs text-slate-500">All papers</span>

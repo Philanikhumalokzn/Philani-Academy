@@ -8686,6 +8686,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     openCreateChallengeComposer()
     setChallengeTitleDraft(String(draft.title || ''))
     setChallengePromptDraft(String(draft.prompt || ''))
+    setPostSolveBlocks([])
+    setPostSolveText(String(draft.prompt || ''))
     setChallengeImageUrl(typeof draft.imageUrl === 'string' ? draft.imageUrl : null)
     setChallengeAudienceDraft('public')
     setChallengeMaxAttempts('unlimited')

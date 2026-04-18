@@ -649,8 +649,8 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
 
   return (
     <div className="px-0 pb-0 pt-0 h-full" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
-      <div className="w-full h-full bg-white shadow-none">
-        <div className="border-b border-slate-200 bg-white px-4 py-3">
+      <div className="w-full h-full bg-[#fffdf7] shadow-none">
+        <div className="border-b border-stone-200 bg-[linear-gradient(180deg,rgba(255,250,240,0.95),rgba(255,253,247,0.92))] px-4 py-3">
           <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-stone-500">Paper View</div>
           <div className="mt-1 text-sm text-stone-600">Continuous MMD rendering of the source paper, with math, tables, images, and question anchors.</div>
         </div>
@@ -669,9 +669,9 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
             const isSelectedRoot = !isSelected && !!selectedRoot && block.questionNumber === selectedRoot
             const anchorId = block.questionNumber ? buildAnchorId(block.questionNumber) : undefined
             const selectedClass = isSelected
-              ? 'ring-2 ring-sky-300 bg-white'
+              ? 'ring-2 ring-sky-300 bg-sky-50/70'
               : isSelectedRoot
-                ? 'ring-1 ring-slate-300 bg-white'
+                ? 'ring-1 ring-amber-300 bg-amber-50/70'
                 : ''
 
             if (block.type === 'heading') {

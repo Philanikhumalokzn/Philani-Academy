@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../lib/prisma'
 import { getUserGrade, getUserIdFromReq, getUserRole } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
-import { buildSocialPostComposerFields } from '../../../lib/postComposerContent'
+import { buildSocialPostComposerFields, decodeSocialPostContent, type SocialPostComposerMeta } from '../../../lib/postComposerContent'
 import { normalizePostReplyBlocks } from '../../../lib/postReplyComposer'
 
 const MAX_TITLE_LENGTH = 120
@@ -24,6 +24,22 @@ function clampAudience(audience: unknown) {
 function isMissingSocialPostsTableError(err: unknown) {
   const message = err instanceof Error ? err.message : String(err || '')
   return /socialpost/i.test(message) && /(does not exist|not exist|no such table|relation)/i.test(message)
+}
+
+function parseComposerMeta(value: unknown): SocialPostComposerMeta | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Record<string, unknown>
+  const origin = typeof raw.origin === 'string' ? raw.origin.trim() : ''
+  const sourceId = typeof raw.sourceId === 'string' ? raw.sourceId.trim() : ''
+  const questionId = typeof raw.questionId === 'string' ? raw.questionId.trim() : ''
+  const questionNumber = typeof raw.questionNumber === 'string' ? raw.questionNumber.trim() : ''
+  if (!origin && !sourceId && !questionId && !questionNumber) return null
+  return {
+    ...(origin ? { origin } : {}),
+    ...(sourceId ? { sourceId } : {}),
+    ...(questionId ? { questionId } : {}),
+    ...(questionNumber ? { questionNumber } : {}),
+  }
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -124,7 +140,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let nextPrompt = post.prompt
     const nextBlocks = normalizePostReplyBlocks({ studentText: hasPrompt ? body.prompt : post.prompt, imageUrl: hasImageUrl ? body.imageUrl : post.imageUrl })
     const hasStructuredComposer = hasPrompt || hasImageUrl
-    const structuredFields = hasStructuredComposer ? buildSocialPostComposerFields(nextBlocks) : null
+    const requestedComposerMeta = parseComposerMeta(body.composerMeta)
+    const existingComposerMeta = decodeSocialPostContent(post.prompt, post.imageUrl).composerMeta
+    const structuredFields = hasStructuredComposer
+      ? buildSocialPostComposerFields(nextBlocks, requestedComposerMeta || existingComposerMeta)
+      : null
     if (hasPrompt) nextPrompt = (typeof body.prompt === 'string' ? body.prompt.trim() : '').slice(0, MAX_PROMPT_LENGTH)
 
     let nextImageUrl: string | null = post.imageUrl ?? null

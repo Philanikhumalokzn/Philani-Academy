@@ -6,6 +6,7 @@ import OverlayPortal from './OverlayPortal'
 import PostComposerBlocksPreview from './PostComposerBlocksPreview'
 import UserLink from './UserLink'
 import ZoomableImageOverlay from './ZoomableImageOverlay'
+import MmdPaperViewer from './MmdPaperViewer'
 
 type PublicFeedPostAction = {
   label: string
@@ -29,6 +30,12 @@ export type PublicFeedPostCardProps = {
   prompt?: string | null
   imageUrl?: string | null
   contentBlocks?: PostReplyBlock[] | null
+  composerMeta?: {
+    origin?: string
+    sourceId?: string | null
+    questionId?: string | null
+    questionNumber?: string | null
+  } | null
   expanded?: boolean
   onOpen?: () => void
   onOpenImage?: (url: string, title: string) => void
@@ -50,6 +57,7 @@ export default function PublicFeedPostCard({
   prompt,
   imageUrl,
   contentBlocks,
+  composerMeta,
   expanded = false,
   onOpen,
   onOpenImage,
@@ -71,12 +79,32 @@ export default function PublicFeedPostCard({
   const showAuthorAvatarTick = authorVerified && hasAvatar
   const showAuthorNameTick = authorVerified && !hasAvatar
   const normalizedBlocks = Array.isArray(contentBlocks) && contentBlocks.length > 0 ? normalizePostReplyBlocks(contentBlocks) : []
+  const enableMmdBodyViewer = String(composerMeta?.origin || '') === 'qb-question-post'
   const contentRows = normalizedBlocks.length > 0
     ? normalizedBlocks
     : [
         ...(safePrompt ? [{ id: '__legacy_text__', type: 'text', text: safePrompt } as PostReplyBlock] : []),
         ...(safeImageUrl ? [{ id: '__legacy_image__', type: 'image', imageUrl: safeImageUrl } as PostReplyBlock] : []),
       ]
+  const mmdBodyContent = enableMmdBodyViewer
+    ? contentRows
+        .map((block) => {
+          if (block.type === 'text') return String(block.text || '').trim()
+          if (block.type === 'latex') {
+            const latex = String(block.latex || '').trim()
+            if (!latex) return ''
+            return `$$\n${latex}\n$$`
+          }
+          if (block.type === 'image') {
+            const image = String(block.imageUrl || '').trim()
+            if (!image) return ''
+            return `![${safeTitle} image](${image})`
+          }
+          return ''
+        })
+        .filter(Boolean)
+        .join('\n\n')
+    : ''
 
   const renderSocialActionButton = (opts: PublicFeedPostAction) => (
     <div key={opts.label} className="flex min-w-0 flex-1 flex-col items-center justify-center">
@@ -159,7 +187,11 @@ export default function PublicFeedPostCard({
       <div className="px-4">
         <div className="text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{safeTitle}</div>
       </div>
-      {contentRows.map((block, index) => {
+      {enableMmdBodyViewer && mmdBodyContent ? (
+        <div className="mt-2 px-3">
+          <MmdPaperViewer mmd={mmdBodyContent} compact />
+        </div>
+      ) : contentRows.map((block, index) => {
         const spacingClassName = index === 0 ? 'mt-1.5' : 'mt-3'
         if (block.type === 'image') {
           const imageNode = <img src={block.imageUrl} alt={`${safeTitle} image`} className="block h-auto w-full" />

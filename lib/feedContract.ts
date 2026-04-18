@@ -10,6 +10,13 @@ export type FeedPost = {
   prompt?: string | null
   imageUrl?: string | null
   contentBlocks?: PostReplyBlock[] | null
+  composerMeta?: {
+    origin?: string
+    sourceId?: string | null
+    questionId?: string | null
+    questionNumber?: string | null
+  } | null
+  hasStructuredContent?: boolean
   grade?: string | null
   audience?: string | null
   attemptsOpen?: boolean | null

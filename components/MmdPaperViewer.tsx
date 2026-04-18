@@ -5,6 +5,7 @@ import { renderKatexDisplayHtml } from '../lib/latexRender'
 type MmdPaperViewerProps = {
   mmd: string
   selectedQuestionNumber?: string | null
+  compact?: boolean
 }
 
 type Block =
@@ -522,7 +523,7 @@ function renderMmdText(raw: string) {
   })
 }
 
-export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaperViewerProps) {
+export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = false }: MmdPaperViewerProps) {
   const blocks = useMemo(() => buildBlocks(mmd), [mmd])
   const marksMap = useMemo(() => buildQuestionMarksMapFromMmd(mmd), [mmd])
   const [renderedHtml, setRenderedHtml] = useState('')
@@ -645,6 +646,121 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber }: MmdPaper
 
   if (!String(mmd || '').trim()) {
     return <div className="px-4 py-6 text-sm text-slate-500">No MMD document is available for this paper.</div>
+  }
+
+  if (compact) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white px-2 py-2" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+        <div className="space-y-1">
+          {useMathpixRenderer && renderedHtml ? (
+            <section className="rounded-md px-0 py-0">
+              <div
+                id="mmd-paper-viewer-content"
+                className="text-[13px] leading-[1.35] text-stone-900 [&_.katex]:text-stone-900 [&_.preview]:!max-w-none [&_.preview]:!mx-0 [&_.preview]:!px-0 [&_.preview-content]:!max-w-none [&_.preview-content]:!mx-0 [&_.preview-content]:!px-0 [&_p]:my-1.5 [&_.mmd-question-subpart]:mt-3 [&_.mmd-table-wrap]:my-1.5 [&_.mmd-table-wrap]:max-w-full [&_.mmd-table-wrap]:overflow-x-auto [&_table]:!border-collapse [&_table]:text-[12px] [&_table]:!border [&_table]:!border-solid [&_table]:!border-stone-500 [&_table]:!text-slate-900 [&_table]:!bg-white [&_.mmd-compact-table]:w-max [&_.mmd-compact-table]:min-w-full [&_.table_tabular]:!border [&_.table_tabular]:!border-solid [&_.table_tabular]:!border-stone-500 [&_.table_tabular]:!bg-white [&_tr]:!border-stone-500 [&_td]:!border [&_td]:!border-solid [&_td]:!border-stone-500 [&_td]:!bg-white [&_td]:!text-slate-900 [&_td]:px-1.5 [&_td]:py-0.5 [&_td]:leading-tight [&_th]:!border [&_th]:!border-solid [&_th]:!border-stone-500 [&_th]:!bg-white [&_th]:!text-slate-900 [&_th]:px-1.5 [&_th]:py-0.5 [&_th]:leading-tight [&_.mmd-row-title]:whitespace-nowrap [&_.mmd-row-title]:font-medium"
+                dangerouslySetInnerHTML={{ __html: renderedHtml }}
+              />
+            </section>
+          ) : blocks.map((block) => {
+            const isSelected = !!normalizedSelectedQuestionNumber && block.questionNumber === normalizedSelectedQuestionNumber
+            const isSelectedRoot = !isSelected && !!selectedRoot && block.questionNumber === selectedRoot
+            const anchorId = block.questionNumber ? buildAnchorId(block.questionNumber) : undefined
+            const selectedClass = isSelected
+              ? 'ring-2 ring-sky-300 bg-sky-50/70'
+              : isSelectedRoot
+                ? 'ring-1 ring-amber-300 bg-amber-50/70'
+                : ''
+
+            if (block.type === 'heading') {
+              return (
+                <section
+                  key={block.key}
+                  id={anchorId}
+                  className={`scroll-mt-24 rounded-2xl px-3 py-3 ${selectedClass}`.trim()}
+                >
+                  <div className={block.level === 1
+                    ? 'text-xl font-bold tracking-[0.06em] text-stone-900'
+                    : 'text-sm font-semibold uppercase tracking-[0.18em] text-stone-500'}>
+                    {block.text}
+                  </div>
+                </section>
+              )
+            }
+
+            if (block.type === 'question-line') {
+              const marksLabel = toMarksLabel(pickQuestionMarks(block.questionNumber, marksMap))
+              return (
+                <section
+                  key={block.key}
+                  id={anchorId}
+                  className={`scroll-mt-24 rounded-2xl border border-transparent px-3 py-3 ${selectedClass}`.trim()}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="min-w-[3.25rem] rounded-full bg-stone-900 px-2.5 py-1 text-center text-xs font-semibold text-white">
+                      {block.label}
+                    </div>
+                    <div className="min-w-0 flex-1 text-[13px] leading-[1.4] text-stone-900 whitespace-pre-wrap break-words">
+                      {marksLabel ? (
+                        <div className="mb-1 inline-flex rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                          {marksLabel}
+                        </div>
+                      ) : null}
+                      {block.body ? renderMmdText(block.body) : <span className="text-stone-400">Question heading</span>}
+                    </div>
+                  </div>
+                </section>
+              )
+            }
+
+            if (block.type === 'paragraph') {
+              return (
+                <section
+                  key={block.key}
+                  id={anchorId}
+                  className={`scroll-mt-24 rounded-2xl px-3 py-1 ${selectedClass}`.trim()}
+                >
+                  <div className="text-[13px] leading-[1.4] text-stone-900 whitespace-pre-wrap break-words">
+                    {renderMmdText(block.text)}
+                  </div>
+                </section>
+              )
+            }
+
+            if (block.type === 'image') {
+              return (
+                <section
+                  key={block.key}
+                  id={anchorId}
+                  className={`scroll-mt-24 rounded-2xl px-3 py-2 ${selectedClass}`.trim()}
+                >
+                  <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white p-2 shadow-sm">
+                    <img
+                      src={block.url}
+                      alt={block.alt || 'Exam figure'}
+                      className="max-h-[520px] w-full object-contain"
+                      loading="lazy"
+                    />
+                  </div>
+                </section>
+              )
+            }
+
+            return (
+              <section
+                key={block.key}
+                id={anchorId}
+                className={`scroll-mt-24 rounded-2xl px-3 py-2 ${selectedClass}`.trim()}
+              >
+                <div className="rounded-2xl border border-stone-200 bg-white p-3 shadow-sm">
+                  {block.tableKind === 'pipe'
+                    ? renderPipeTable(block.lines)
+                    : renderLatexTabular(block.lines)}
+                </div>
+              </section>
+            )
+          })}
+        </div>
+      </div>
+    )
   }
 
   return (

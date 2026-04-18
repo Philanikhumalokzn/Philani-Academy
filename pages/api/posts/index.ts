@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../lib/prisma'
 import { getUserGrade, getUserIdFromReq } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
-import { buildSocialPostComposerFields } from '../../../lib/postComposerContent'
+import { buildSocialPostComposerFields, type SocialPostComposerMeta } from '../../../lib/postComposerContent'
 import { normalizePostReplyBlocks } from '../../../lib/postReplyComposer'
 
 const MAX_TITLE_LENGTH = 120
@@ -10,6 +10,22 @@ const MAX_PROMPT_LENGTH = 5000
 const MAX_IMAGE_URL_LENGTH = 2000
 
 const AUDIENCES = new Set(['public', 'grade', 'private'])
+
+function parseComposerMeta(value: unknown): SocialPostComposerMeta | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Record<string, unknown>
+  const origin = typeof raw.origin === 'string' ? raw.origin.trim() : ''
+  const sourceId = typeof raw.sourceId === 'string' ? raw.sourceId.trim() : ''
+  const questionId = typeof raw.questionId === 'string' ? raw.questionId.trim() : ''
+  const questionNumber = typeof raw.questionNumber === 'string' ? raw.questionNumber.trim() : ''
+  if (!origin && !sourceId && !questionId && !questionNumber) return null
+  return {
+    ...(origin ? { origin } : {}),
+    ...(sourceId ? { sourceId } : {}),
+    ...(questionId ? { questionId } : {}),
+    ...(questionNumber ? { questionNumber } : {}),
+  }
+}
 
 function parseMaxAttempts(value: unknown) {
   if (value == null || value === '' || value === 'unlimited') return null
@@ -36,7 +52,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const requestedPrompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
     const prompt = hasStructuredComposer ? requestedPrompt : requestedPrompt.slice(0, MAX_PROMPT_LENGTH)
     const explicitImageUrl = (typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '').slice(0, MAX_IMAGE_URL_LENGTH) || null
-    const structuredFields = buildSocialPostComposerFields(composerBlocks)
+    const structuredFields = buildSocialPostComposerFields(composerBlocks, parseComposerMeta(body.composerMeta))
     const storedPrompt = hasStructuredComposer ? structuredFields.storedPrompt : prompt
     const imageUrl = hasStructuredComposer ? structuredFields.primaryImageUrl : explicitImageUrl
     const audienceRaw = typeof body.audience === 'string' ? body.audience.trim().toLowerCase() : 'public'

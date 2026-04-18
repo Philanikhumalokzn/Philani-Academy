@@ -994,6 +994,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [challengeAudienceDraft, setChallengeAudienceDraft] = useState<'public' | 'grade' | 'private'>('public')
   const [challengeMaxAttempts, setChallengeMaxAttempts] = useState<string>('unlimited')
   const [challengeImageUrl, setChallengeImageUrl] = useState<string | null>(null)
+  const [postComposerMetaDraft, setPostComposerMetaDraft] = useState<{ origin?: string; sourceId?: string | null; questionId?: string | null; questionNumber?: string | null } | null>(null)
   const [challengeParseOnUpload, setChallengeParseOnUpload] = useState(false)
   const [challengeParsedJsonText, setChallengeParsedJsonText] = useState<string | null>(null)
   const [challengeParsedOpen, setChallengeParsedOpen] = useState(false)
@@ -1017,6 +1018,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setPostReplyImageSourceSheetOpen(false)
     setPostReplyImageEditOpen(false)
     setPostReplyImageEditFile(null)
+    setPostComposerMetaDraft(null)
     setChallengeParsedJsonText(null)
     setChallengeParsedOpen(false)
     setCreateOverlayOpen(true)
@@ -1037,6 +1039,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setPostReplyImageSourceSheetOpen(true)
     setPostReplyImageEditOpen(false)
     setPostReplyImageEditFile(null)
+    setPostComposerMetaDraft(null)
     setChallengeParsedJsonText(null)
     setChallengeParsedOpen(false)
     setCreateOverlayOpen(true)
@@ -2950,7 +2953,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           title,
           prompt,
           imageUrl,
-          ...(isQuiz ? {} : { contentBlocks: structuredFields?.contentBlocks || [] }),
+          ...(isQuiz ? {} : { contentBlocks: structuredFields?.contentBlocks || [], composerMeta: postComposerMetaDraft }),
           audience,
           maxAttempts,
           ...(isEditing ? {} : { grade }),
@@ -3009,6 +3012,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setChallengeAudienceDraft('public')
       setChallengeMaxAttempts('unlimited')
       setChallengeImageUrl(null)
+      setPostComposerMetaDraft(null)
       setChallengeImageSourceFile(null)
       setPostSolveBlocks([])
       setPostSolveText('')
@@ -4983,6 +4987,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setChallengeAudienceDraft(audience)
     setChallengeMaxAttempts(typeof c?.maxAttempts === 'number' ? String(c.maxAttempts) : 'unlimited')
     setChallengeImageUrl(typeof c?.imageUrl === 'string' ? c.imageUrl : null)
+    setPostComposerMetaDraft(null)
     setChallengeParsedJsonText(null)
     setChallengeParsedOpen(false)
 
@@ -5006,6 +5011,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setChallengeAudienceDraft(audience)
     setChallengeMaxAttempts(typeof post?.maxAttempts === 'number' ? String(post.maxAttempts) : 'unlimited')
     setPostSolveBlocks(normalizePostReplyBlocks(post?.contentBlocks || { studentText: post?.prompt, imageUrl: post?.imageUrl }))
+    setPostComposerMetaDraft(post?.composerMeta && typeof post.composerMeta === 'object' ? post.composerMeta : null)
     setPostSolveText('')
     setPostTypedSolveLatex('')
     setPostSolveEditingTarget(null)
@@ -6368,6 +6374,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         prompt={prompt}
                         imageUrl={imageUrl}
                         contentBlocks={Array.isArray((p as any)?.contentBlocks) ? (p as any).contentBlocks : null}
+                        composerMeta={(p as any)?.composerMeta || null}
                         expanded={expandedSolutionThreadKey === itemKey && expandedSolutionThreadKind === 'post'}
                         onOpen={() => {
                           if (consumePostLongPressForPost(p)) return
@@ -8689,6 +8696,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setPostSolveBlocks([])
     setPostSolveText(String(draft.prompt || ''))
     setChallengeImageUrl(typeof draft.imageUrl === 'string' ? draft.imageUrl : null)
+    setPostComposerMetaDraft({
+      origin: 'qb-question-post',
+      sourceId: draft.sourceId || null,
+      questionId: draft.questionId || null,
+      questionNumber: draft.questionNumber || null,
+    })
     setChallengeAudienceDraft('public')
     setChallengeMaxAttempts('unlimited')
   }, [buildQbQuestionPostDraft, openCreateChallengeComposer])

@@ -13657,6 +13657,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return 0
   }
 
+  const qbDocumentTopicByNumber = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const item of qbContextItems) {
+      const questionNumber = String(item?.questionNumber || '').trim()
+      const topic = String(item?.topic || '').trim()
+      if (!questionNumber || !topic) continue
+      map[questionNumber] = topic
+    }
+    return map
+  }, [qbContextItems])
+
   const getQuestionMarksLabel = (marksValue: unknown, questionTextValue?: unknown): string | null => {
     const toLabel = (n: number): string => `${n} mark${n === 1 ? '' : 's'}`
 
@@ -17279,6 +17290,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <MmdPaperViewer
                 mmd={qbContextDocumentMmd}
                 selectedQuestionNumber={String(qbContextQ?.questionNumber || '') || null}
+                questionTopicByNumber={qbDocumentTopicByNumber}
               />
             ) : (
             <ul className="divide-y divide-slate-200">

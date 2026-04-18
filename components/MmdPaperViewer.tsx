@@ -6,6 +6,7 @@ type MmdPaperViewerProps = {
   mmd: string
   selectedQuestionNumber?: string | null
   compact?: boolean
+  questionTopicByNumber?: Record<string, string>
 }
 
 type Block =
@@ -384,6 +385,13 @@ function stripQuestionPrefix(raw: string): string {
   return String(raw || '').trim().replace(/^Q+/i, '')
 }
 
+function resolveQuestionTopic(questionNumber: string, questionTopicByNumber?: Record<string, string>): string | null {
+  if (!questionTopicByNumber) return null
+  const key = stripQuestionPrefix(String(questionNumber || ''))
+  const topic = typeof questionTopicByNumber[key] === 'string' ? questionTopicByNumber[key].trim() : ''
+  return topic || null
+}
+
 function normalizeMmdQuestionSpacing(raw: string): string {
   const lines = String(raw || '').split(/\r?\n/)
   const out: string[] = []
@@ -536,7 +544,7 @@ function renderMmdText(raw: string) {
   })
 }
 
-export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = false }: MmdPaperViewerProps) {
+export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = false, questionTopicByNumber }: MmdPaperViewerProps) {
   const sanitizedMmd = useMemo(() => sanitizeMmdForDisplay(mmd), [mmd])
   const blocks = useMemo(() => buildBlocks(sanitizedMmd), [sanitizedMmd])
   const marksMap = useMemo(() => buildQuestionMarksMapFromMmd(sanitizedMmd), [sanitizedMmd])
@@ -694,6 +702,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
 
             if (block.type === 'question-line') {
               const marksLabel = toMarksLabel(pickQuestionMarks(block.questionNumber, marksMap))
+              const topicLabel = resolveQuestionTopic(block.questionNumber, questionTopicByNumber)
               return (
                 <section
                   key={block.key}
@@ -705,6 +714,11 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
                       {block.label}
                     </div>
                     <div className="min-w-0 flex-1 text-[13px] leading-[1.4] text-stone-900 whitespace-pre-wrap break-words">
+                      {topicLabel ? (
+                        <div className="mb-1 inline-flex rounded-full bg-[#e8f4fd] px-2 py-0.5 text-xs text-[#1877f2]">
+                          {topicLabel}
+                        </div>
+                      ) : null}
                       {marksLabel ? (
                         <div className="mb-1 inline-flex rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
                           {marksLabel}
@@ -814,6 +828,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
 
             if (block.type === 'question-line') {
               const marksLabel = toMarksLabel(pickQuestionMarks(block.questionNumber, marksMap))
+              const topicLabel = resolveQuestionTopic(block.questionNumber, questionTopicByNumber)
               return (
                 <section
                   key={block.key}
@@ -825,6 +840,11 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
                       {block.label}
                     </div>
                     <div className="min-w-0 flex-1 text-[13px] leading-[1.4] text-stone-900 whitespace-pre-wrap break-words">
+                      {topicLabel ? (
+                        <div className="mb-1 inline-flex rounded-full bg-[#e8f4fd] px-2 py-0.5 text-xs text-[#1877f2]">
+                          {topicLabel}
+                        </div>
+                      ) : null}
                       {marksLabel ? (
                         <div className="mb-1 inline-flex rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
                           {marksLabel}

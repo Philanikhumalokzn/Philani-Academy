@@ -548,6 +548,10 @@ function renderMmdText(raw: string) {
 export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = false, questionMetaByNumber = null }: MmdPaperViewerProps) {
   const blocks = useMemo(() => buildBlocks(mmd), [mmd])
   const marksMap = useMemo(() => buildQuestionMarksMapFromMmd(mmd), [mmd])
+  const hasQuestionMeta = useMemo(() => {
+    if (!questionMetaByNumber) return false
+    return Object.keys(questionMetaByNumber).length > 0
+  }, [questionMetaByNumber])
   const [renderedHtml, setRenderedHtml] = useState('')
   const [useMathpixRenderer, setUseMathpixRenderer] = useState(false)
   const normalizedSelectedQuestionNumber = stripQuestionPrefix(String(selectedQuestionNumber || ''))
@@ -790,7 +794,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
         </div>
 
         <div className="space-y-2 px-2 py-2 sm:px-2">
-          {useMathpixRenderer && renderedHtml ? (
+          {useMathpixRenderer && renderedHtml && !hasQuestionMeta ? (
             <section className="scroll-mt-24 rounded-xl px-0 py-1">
               <div
                 id="mmd-paper-viewer-content"

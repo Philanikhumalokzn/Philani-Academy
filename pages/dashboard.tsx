@@ -14202,10 +14202,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }
 
-  const triggerAiLevelsBackfill = async (sid: string | undefined, dryRun: boolean) => {
+  const triggerAiLevelsBackfill = async (sid: string | undefined, dryRun: boolean, options?: { repairSuspiciousLevel1?: boolean }) => {
+    const repairSuspiciousLevel1 = Boolean(options?.repairSuspiciousLevel1)
+    const operationLabel = repairSuspiciousLevel1 ? 'Level 1 repair' : 'AI levels'
     if (!topicBackfillAllPapers && !sid) {
       setLevelAiBackfillStatus('error')
-      setLevelAiBackfillMessage('No source selected for scoped AI levels backfill.')
+      setLevelAiBackfillMessage(`No source selected for scoped ${repairSuspiciousLevel1 ? 'suspicious Level 1 repair' : 'AI levels backfill'}.`)
       return
     }
 
@@ -14227,13 +14229,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       do {
         batchIndex += 1
         if (topicBackfillAllPapers && !dryRun) {
-          setLevelAiBackfillMessage(`Applying AI levels across all papers... batch ${batchIndex} (batch size ${topicAiPaperBatchSize}).`)
+          setLevelAiBackfillMessage(`Applying ${operationLabel.toLowerCase()} across all papers... batch ${batchIndex} (batch size ${topicAiPaperBatchSize}).`)
         }
 
         const payload: Record<string, unknown> = {
           onlyMissing: backfillOnlyMissing,
           dryRun,
           processAll: topicBackfillAllPapers,
+          repairSuspiciousLevel1,
         }
         if (!topicBackfillAllPapers && sid) payload.sourceId = sid
         if (topicBackfillAllPapers) {
@@ -14250,7 +14253,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         const data = await res.json().catch(() => ({}))
         if (!res.ok) {
           setLevelAiBackfillStatus('error')
-          setLevelAiBackfillMessage((data as any)?.message || 'AI levels backfill failed')
+          setLevelAiBackfillMessage((data as any)?.message || `${operationLabel} failed`)
           return
         }
 
@@ -14296,7 +14299,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         const sourceBatchSuffix = topicBackfillAllPapers
           ? ` Papers in this batch: ${aggregatedSourceIds.size}. ${hasMoreSourceBatches ? 'More paper batches remain.' : 'Reached final paper batch.'}`
           : ''
-        setLevelAiBackfillMessage(`AI levels preview ready (${scopeLabel}) — ${aggregatedScanned} questions scanned, missing MMD papers: ${aggregatedMissingContextCount}, missing predictions: ${aggregatedMissingPredictionCount}.${sourceBatchSuffix}${sampleSuffix}`)
+        setLevelAiBackfillMessage(`${operationLabel} preview ready (${scopeLabel}) — ${aggregatedScanned} questions scanned, missing MMD papers: ${aggregatedMissingContextCount}, missing predictions: ${aggregatedMissingPredictionCount}.${sourceBatchSuffix}${sampleSuffix}`)
         return
       }
 
@@ -14307,10 +14310,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       const sourceBatchSuffix = topicBackfillAllPapers
         ? ` Batch papers processed: ${aggregatedSourceIds.size}. All queued papers processed automatically in ${batchIndex} batch${batchIndex === 1 ? '' : 'es'}.`
         : ''
-      setLevelAiBackfillMessage(`AI levels applied (${scopeLabel}) — ${aggregatedUpdated} updated from ${aggregatedScanned} questions. Missing MMD papers: ${aggregatedMissingContextCount}. Missing predictions: ${aggregatedMissingPredictionCount}.${sourceBatchSuffix}`)
+      setLevelAiBackfillMessage(`${operationLabel} applied (${scopeLabel}) — ${aggregatedUpdated} updated from ${aggregatedScanned} questions. Missing MMD papers: ${aggregatedMissingContextCount}. Missing predictions: ${aggregatedMissingPredictionCount}.${sourceBatchSuffix}`)
     } catch (err: any) {
       setLevelAiBackfillStatus('error')
-      setLevelAiBackfillMessage(err?.message || 'Network error during AI levels backfill')
+      setLevelAiBackfillMessage(err?.message || `Network error during ${operationLabel.toLowerCase()}`)
     }
   }
 
@@ -16964,6 +16967,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
                           {levelAiBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers && levelAiSourceCursor ? 'Continue Apply Levels' : 'Apply Levels'}
                         </button>
+                        <button
+                          onClick={() => triggerAiLevelsBackfill(qbContextQ?.sourceId, true, { repairSuspiciousLevel1: true })}
+                          disabled={levelAiBackfillStatus === 'loading'}
+                          className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-700 shadow-sm disabled:opacity-50">
+                          {levelAiBackfillStatus === 'loading' ? 'Running…' : 'Preview L1 Repair'}
+                        </button>
+                        <button
+                          onClick={() => triggerAiLevelsBackfill(qbContextQ?.sourceId, false, { repairSuspiciousLevel1: true })}
+                          disabled={levelAiBackfillStatus === 'loading' || (!topicBackfillAllPapers && levelAiBackfillDryRun.length === 0)}
+                          className="inline-flex items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                          {levelAiBackfillStatus === 'loading' ? 'Running…' : 'Apply L1 Repair'}
+                        </button>
                         {topicBackfillAllPapers ? (
                           <button
                             onClick={resetTopicAiBatchProgress}
@@ -17218,6 +17233,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
                           {levelAiBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers && levelAiSourceCursor ? 'Continue Apply Levels' : 'Apply Levels'}
                         </button>
+                        <button
+                          onClick={() => triggerAiLevelsBackfill(qbContextQ?.sourceId, true, { repairSuspiciousLevel1: true })}
+                          disabled={levelAiBackfillStatus === 'loading'}
+                          className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-700 shadow-sm disabled:opacity-50">
+                          {levelAiBackfillStatus === 'loading' ? 'Running…' : 'Preview L1 Repair'}
+                        </button>
+                        <button
+                          onClick={() => triggerAiLevelsBackfill(qbContextQ?.sourceId, false, { repairSuspiciousLevel1: true })}
+                          disabled={levelAiBackfillStatus === 'loading' || (!topicBackfillAllPapers && levelAiBackfillDryRun.length === 0)}
+                          className="inline-flex items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                          {levelAiBackfillStatus === 'loading' ? 'Running…' : 'Apply L1 Repair'}
+                        </button>
                         {topicBackfillAllPapers ? (
                           <button
                             onClick={resetTopicAiBatchProgress}
@@ -17355,6 +17382,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               disabled={levelAiBackfillStatus === 'loading' || (!topicBackfillAllPapers && levelAiBackfillDryRun.length === 0)}
                               className="rounded-md bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
                               {levelAiBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers && levelAiSourceCursor ? 'Continue Apply Levels' : 'Apply Levels'}
+                            </button>
+                            <button
+                              onClick={() => triggerAiLevelsBackfill(qbContextQ?.sourceId, true, { repairSuspiciousLevel1: true })}
+                              disabled={levelAiBackfillStatus === 'loading'}
+                              className="rounded-md border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-700 shadow-sm disabled:opacity-50">
+                              {levelAiBackfillStatus === 'loading' ? 'Running…' : 'Preview L1 Repair'}
+                            </button>
+                            <button
+                              onClick={() => triggerAiLevelsBackfill(qbContextQ?.sourceId, false, { repairSuspiciousLevel1: true })}
+                              disabled={levelAiBackfillStatus === 'loading' || (!topicBackfillAllPapers && levelAiBackfillDryRun.length === 0)}
+                              className="rounded-md bg-amber-500 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                              {levelAiBackfillStatus === 'loading' ? 'Running…' : 'Apply L1 Repair'}
                             </button>
                             {topicBackfillAllPapers ? (
                               <label className="flex items-center gap-1 cursor-pointer select-none">

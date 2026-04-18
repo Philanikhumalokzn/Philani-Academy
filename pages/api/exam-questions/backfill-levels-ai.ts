@@ -31,12 +31,18 @@ type PreviewItem = {
   proposedCognitiveLevel: number | null
 }
 
+type ProposedLevelMapOptions = {
+  coerceUnknownToOne?: boolean
+  defaultUnresolvedLevel?: number | null
+}
+
 function clampCognitiveLevel(value: number): number {
   if (!Number.isFinite(value)) return 1
   return Math.min(4, Math.max(1, Math.round(value)))
 }
 
-function normalizeCognitiveLevel(value: unknown): number | null {
+function normalizeCognitiveLevel(value: unknown, options?: { coerceUnknownToOne?: boolean }): number | null {
+  const coerceUnknownToOne = options?.coerceUnknownToOne !== false
   if (value == null) return null
   if (typeof value === 'number') return clampCognitiveLevel(value)
 
@@ -55,7 +61,7 @@ function normalizeCognitiveLevel(value: unknown): number | null {
   if (/\bcomplex\b|\bnon routine\b|\bnonroutine\b|\bthree\b|\blevel\s*three\b|\biii\b/.test(normalized)) return 3
   if (/\bproblem\s*solving\b|\bproblem-solving\b|\bfour\b|\blevel\s*four\b|\biv\b/.test(normalized)) return 4
 
-  return 1
+  return coerceUnknownToOne ? 1 : null
 }
 
 function normalizeQuestionNumber(value: unknown): string | null {
@@ -97,6 +103,22 @@ function buildQuestionPromptLine(row: QuestionRow): string {
   return `${parts.join(' | ')}\n${body}`
 }
 
+function isSuspiciousLevelOneRow(row: QuestionRow): boolean {
+  if (row.cognitiveLevel !== 1) return false
+
+  const normalized = normalizeExamQuestionContent(row.questionText, row.latex)
+  const text = `${row.topic || ''} ${normalized.questionText || ''} ${normalized.latex || ''}`
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!text) return false
+  if (text.length >= 180) return true
+  if (row.questionDepth >= 1 && /\bsolve|simplify|calculate|determine|find|sketch|prove|show|differentiate|integrate|factori|expand|derive|simultaneous|inequalit|turning point|for which values|investigate|compare\b/.test(text)) return true
+  if (/\bsolve\b|\bsimplify\b|\bcalculate\b|\bdetermine\b|\bfind\b|\bsketch\b|\bprove\b|\bshow that\b|\bhence\b|\bdifferentiate\b|\bintegrate\b|\bfactori\b|\bexpand\b|\bderive\b|\bsimultaneously\b|\binequalit\b|\bturning points?\b|\bfor which values\b|\binvestigate\b|\binterpret\b|\bcompare\b|\bmaximum\b|\bminimum\b|\bconstraints\b|\bmodel\b|\bgradient\b|\binverse function\b/.test(text)) return true
+  return false
+}
+
 function buildCognitivePrompt(input: {
   grade: string
   year: number
@@ -104,9 +126,18 @@ function buildCognitivePrompt(input: {
   paper: number
   paperMmd: string
   questions: QuestionRow[]
+  repairSuspiciousLevel1?: boolean
 }): string {
   const gradeLabel = String(input.grade || '').replace('_', ' ').replace(/^GRADE /i, 'Grade ')
   const questionLines = input.questions.map((row) => buildQuestionPromptLine(row)).join('\n\n')
+  const repairInstructions = input.repairSuspiciousLevel1
+    ? [
+        'These questions are being REPAIRED because they were previously labelled Level 1 and that label is suspicious.',
+        'Use a safer rule set: Level 1 should be rare and must only be used for direct recall, direct read-off, identification, or plainly obvious one-step substitution.',
+        'If a learner must perform procedure selection, algebraic manipulation, solve, calculate across steps, sketch from derived features, justify, interpret, compare, model, or reason through multiple steps, it is NOT Level 1.',
+        'Be especially careful not to keep an item at Level 1 unless it is clearly pure recall/read-off.',
+      ]
+    : []
 
   return [
     'Assign a DB cognitive level to EVERY listed question and subquestion in this paper.',
@@ -127,6 +158,7 @@ function buildCognitivePrompt(input: {
     '- cognitiveLevel must be an integer 1, 2, 3, or 4 only.',
     '- Do not omit items. Do not add extra items. Do not output commentary.',
     '- Return ONLY valid JSON in this exact shape: {"items":[{"questionNumber":"1.1","cognitiveLevel":2}]}.',
+    ...repairInstructions,
     'Paper MMD context:',
     input.paperMmd.slice(0, 24000),
     'Extracted questions to classify:',
@@ -236,7 +268,9 @@ function extractItemsFromRawText(aiRaw: string): any[] {
   return items
 }
 
-function buildProposedLevelMap(rows: QuestionRow[], aiRaw: string): Map<string, number> {
+function buildProposedLevelMap(rows: QuestionRow[], aiRaw: string, options?: ProposedLevelMapOptions): Map<string, number> {
+  const coerceUnknownToOne = options?.coerceUnknownToOne !== false
+  const defaultUnresolvedLevel = options?.defaultUnresolvedLevel === undefined ? 1 : options.defaultUnresolvedLevel
   const parsed = tryParseJsonLoose(aiRaw)
   const items = extractItemsArray(parsed)
   const fallbackItems = items.length > 0 ? [] : extractItemsFromRawText(aiRaw)
@@ -261,7 +295,8 @@ function buildProposedLevelMap(rows: QuestionRow[], aiRaw: string): Map<string, 
       ?? item?.cognitive_level
       ?? item?.value
       ?? item?.answer
-      ?? item
+      ?? item,
+      { coerceUnknownToOne }
     )
 
     if (cognitiveLevel == null) continue
@@ -279,9 +314,11 @@ function buildProposedLevelMap(rows: QuestionRow[], aiRaw: string): Map<string, 
     }
   }
 
-  for (const row of rows) {
-    if (!proposedByNumber.has(row.questionNumber)) {
-      proposedByNumber.set(row.questionNumber, 1)
+  if (defaultUnresolvedLevel != null) {
+    for (const row of rows) {
+      if (!proposedByNumber.has(row.questionNumber)) {
+        proposedByNumber.set(row.questionNumber, defaultUnresolvedLevel)
+      }
     }
   }
 
@@ -308,6 +345,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     limit,
     processAll,
     onlyMissing,
+    repairSuspiciousLevel1,
     dryRun,
     sourceCursor,
     paperBatchSize,
@@ -320,12 +358,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     limit?: number
     processAll?: boolean
     onlyMissing?: boolean
+    repairSuspiciousLevel1?: boolean
     dryRun?: boolean
     sourceCursor?: string
     paperBatchSize?: number
   }
 
   const useProcessAll = Boolean(processAll)
+  const useRepairSuspiciousLevel1 = Boolean(repairSuspiciousLevel1)
   const useOnlyMissing = onlyMissing !== false
   const effectiveLimit = Number.isFinite(limit) ? Math.max(1, Math.min(3000, Number(limit))) : 1000
   const effectivePaperBatchSize = Number.isFinite(paperBatchSize)
@@ -352,7 +392,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (Number.isFinite(paper)) baseWhere.paper = Number(paper)
 
   const targetWhere: any = { ...baseWhere }
-  if (useOnlyMissing) targetWhere.cognitiveLevel = null
+  if (useRepairSuspiciousLevel1) targetWhere.cognitiveLevel = 1
+  else if (useOnlyMissing) targetWhere.cognitiveLevel = null
 
   let selectedSourceIds: string[] = []
   let nextSourceCursor: string | null = null
@@ -424,10 +465,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   if (!useProcessAll) targetQueryArgs.take = effectiveLimit
 
-  const targetRows = await prisma.examQuestion.findMany(targetQueryArgs as any) as QuestionRow[]
+  const rawTargetRows = await prisma.examQuestion.findMany(targetQueryArgs as any) as QuestionRow[]
+  const targetRows = useRepairSuspiciousLevel1
+    ? rawTargetRows.filter((row) => isSuspiciousLevelOneRow(row))
+    : rawTargetRows
+
   if (!targetRows.length) {
     return res.status(200).json({
-      message: 'No questions matched AI cognitive-level backfill criteria.',
+      message: useRepairSuspiciousLevel1
+        ? 'No suspicious Level 1 questions matched repair criteria.'
+        : 'No questions matched AI cognitive-level backfill criteria.',
       scanned: 0,
       updated: 0,
       skipped: 0,
@@ -531,7 +578,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       month: first.month,
       paper: first.paper,
       paperMmd,
-      questions: paperRows,
+      questions: useRepairSuspiciousLevel1 ? paperTargetRows : paperRows,
+      repairSuspiciousLevel1: useRepairSuspiciousLevel1,
     })
 
     let aiRaw = ''
@@ -559,7 +607,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       aiRaw = ''
     }
 
-    const proposedByNumber = buildProposedLevelMap(paperRows, aiRaw)
+    const proposedByNumber = buildProposedLevelMap(
+      useRepairSuspiciousLevel1 ? paperTargetRows : paperRows,
+      aiRaw,
+      useRepairSuspiciousLevel1
+        ? { coerceUnknownToOne: false, defaultUnresolvedLevel: null }
+        : undefined,
+    )
 
     for (const row of paperTargetRows) {
       const proposedCognitiveLevel = proposedByNumber.get(normalizeQuestionNumber(row.questionNumber) || row.questionNumber) ?? null
@@ -589,7 +643,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   return res.status(200).json({
-    message: `AI cognitive-level backfill complete for ${targetRows.length} question(s).`,
+    message: useRepairSuspiciousLevel1
+      ? `AI suspicious-Level-1 repair complete for ${targetRows.length} question(s).`
+      : `AI cognitive-level backfill complete for ${targetRows.length} question(s).`,
     scanned: targetRows.length,
     updated,
     skipped,
@@ -606,7 +662,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     notes: [
       'AI classification is performed per paper and targets all listed questions and subquestions in that paper.',
       'The model is instructed to use only DB cognitive levels 1-4: Knowledge, Routine procedures, Complex procedures, Problem-solving.',
-      'Parser is permissive: arbitrary AI outputs are coerced into DB levels and missing items fall back by order/default.',
+      useRepairSuspiciousLevel1
+        ? 'Repair mode targets only suspicious rows already labelled Level 1 and does not silently default unresolved outputs back to Level 1.'
+        : 'Parser is permissive: arbitrary AI outputs are coerced into DB levels and missing items fall back by order/default.',
     ],
   })
 }

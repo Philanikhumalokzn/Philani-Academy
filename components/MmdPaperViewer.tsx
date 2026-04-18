@@ -15,6 +15,19 @@ type Block =
   | { type: 'image'; key: string; url: string; alt: string; questionNumber?: string }
   | { type: 'table'; key: string; lines: string[]; tableKind: 'pipe' | 'latex'; questionNumber?: string }
 
+function stripMetaMarkers(value: string): string {
+  return String(value || '')
+    .replace(/\s*\[Meta(?:[^\]]*)\]\s*/gi, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
+}
+
+function sanitizeMmdForDisplay(value: string): string {
+  return String(value || '')
+    .split(/\r?\n/)
+    .map((line) => stripMetaMarkers(line).replace(/[ \t]+$/g, ''))
+    .join('\n')
+}
+
 function normalizeQuestionHeadingNumber(line: string): string | null {
   const match = String(line || '').trim().match(/(?:\\section\*\{\s*QUESTION\s+(\d+)\s*\}|^QUESTION\s+(\d+)\b)/i)
   return match?.[1] || match?.[2] || null
@@ -524,8 +537,9 @@ function renderMmdText(raw: string) {
 }
 
 export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = false }: MmdPaperViewerProps) {
-  const blocks = useMemo(() => buildBlocks(mmd), [mmd])
-  const marksMap = useMemo(() => buildQuestionMarksMapFromMmd(mmd), [mmd])
+  const sanitizedMmd = useMemo(() => sanitizeMmdForDisplay(mmd), [mmd])
+  const blocks = useMemo(() => buildBlocks(sanitizedMmd), [sanitizedMmd])
+  const marksMap = useMemo(() => buildQuestionMarksMapFromMmd(sanitizedMmd), [sanitizedMmd])
   const [renderedHtml, setRenderedHtml] = useState('')
   const [useMathpixRenderer, setUseMathpixRenderer] = useState(false)
   const normalizedSelectedQuestionNumber = stripQuestionPrefix(String(selectedQuestionNumber || ''))
@@ -535,7 +549,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
     let cancelled = false
 
     const run = async () => {
-      const source = String(mmd || '')
+      const source = String(sanitizedMmd || '')
       if (!source.trim()) {
         if (!cancelled) {
           setRenderedHtml('')
@@ -593,7 +607,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
     return () => {
       cancelled = true
     }
-  }, [mmd])
+  }, [sanitizedMmd])
 
   useEffect(() => {
     const selected = normalizedSelectedQuestionNumber.trim()

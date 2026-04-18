@@ -650,13 +650,12 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
 
   if (compact) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white px-2 py-2" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+      <div className="w-full bg-transparent" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
         <div className="space-y-1">
           {useMathpixRenderer && renderedHtml ? (
-            <section className="rounded-md px-0 py-0">
+            <section className="px-0 py-0">
               <div
-                id="mmd-paper-viewer-content"
-                className="text-[13px] leading-[1.35] text-stone-900 [&_.katex]:text-stone-900 [&_.preview]:!max-w-none [&_.preview]:!mx-0 [&_.preview]:!px-0 [&_.preview-content]:!max-w-none [&_.preview-content]:!mx-0 [&_.preview-content]:!px-0 [&_p]:my-1.5 [&_.mmd-question-subpart]:mt-3 [&_.mmd-table-wrap]:my-1.5 [&_.mmd-table-wrap]:max-w-full [&_.mmd-table-wrap]:overflow-x-auto [&_table]:!border-collapse [&_table]:text-[12px] [&_table]:!border [&_table]:!border-solid [&_table]:!border-stone-500 [&_table]:!text-slate-900 [&_table]:!bg-white [&_.mmd-compact-table]:w-max [&_.mmd-compact-table]:min-w-full [&_.table_tabular]:!border [&_.table_tabular]:!border-solid [&_.table_tabular]:!border-stone-500 [&_.table_tabular]:!bg-white [&_tr]:!border-stone-500 [&_td]:!border [&_td]:!border-solid [&_td]:!border-stone-500 [&_td]:!bg-white [&_td]:!text-slate-900 [&_td]:px-1.5 [&_td]:py-0.5 [&_td]:leading-tight [&_th]:!border [&_th]:!border-solid [&_th]:!border-stone-500 [&_th]:!bg-white [&_th]:!text-slate-900 [&_th]:px-1.5 [&_th]:py-0.5 [&_th]:leading-tight [&_.mmd-row-title]:whitespace-nowrap [&_.mmd-row-title]:font-medium"
+                className="text-[16px] leading-[1.45] text-[#1c1e21] [&_.katex]:!text-[#1c1e21] [&_.preview]:!max-w-full [&_.preview]:!mx-0 [&_.preview]:!px-0 [&_.preview-content]:!max-w-full [&_.preview-content]:!mx-0 [&_.preview-content]:!px-0 [&_a]:!text-[#1c1e21] [&_p]:my-1.5 [&_.mmd-question-subpart]:mt-3 [&_.mmd-table-wrap]:my-1.5 [&_.mmd-table-wrap]:max-w-full [&_.mmd-table-wrap]:overflow-x-auto [&_table]:!border-collapse [&_table]:text-[13px] [&_table]:!border [&_table]:!border-solid [&_table]:!border-stone-400 [&_table]:!text-slate-900 [&_table]:!bg-white [&_.mmd-compact-table]:w-max [&_.mmd-compact-table]:min-w-full [&_.table_tabular]:!border [&_.table_tabular]:!border-solid [&_.table_tabular]:!border-stone-400 [&_.table_tabular]:!bg-white [&_tr]:!border-stone-400 [&_td]:!border [&_td]:!border-solid [&_td]:!border-stone-400 [&_td]:!bg-white [&_td]:!text-slate-900 [&_td]:px-1.5 [&_td]:py-0.5 [&_td]:leading-tight [&_th]:!border [&_th]:!border-solid [&_th]:!border-stone-400 [&_th]:!bg-white [&_th]:!text-slate-900 [&_th]:px-1.5 [&_th]:py-0.5 [&_th]:leading-tight [&_.mmd-row-title]:whitespace-nowrap [&_.mmd-row-title]:font-medium"
                 dangerouslySetInnerHTML={{ __html: renderedHtml }}
               />
             </section>

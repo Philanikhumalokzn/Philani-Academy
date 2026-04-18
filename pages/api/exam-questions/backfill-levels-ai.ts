@@ -562,7 +562,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const proposedByNumber = buildProposedLevelMap(paperRows, aiRaw)
 
     for (const row of paperTargetRows) {
-      const proposedCognitiveLevel = proposedByNumber.get(row.questionNumber) ?? null
+      const proposedCognitiveLevel = proposedByNumber.get(normalizeQuestionNumber(row.questionNumber) || row.questionNumber) ?? null
       previews.push({
         id: row.id,
         questionNumber: row.questionNumber,

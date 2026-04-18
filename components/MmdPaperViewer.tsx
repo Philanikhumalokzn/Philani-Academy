@@ -114,19 +114,9 @@ function resolveQuestionMeta(
   questionMetaByNumber?: Record<string, { topic?: string | null; cognitiveLevel?: string | number | null; marksLabel?: string | null; isFocus?: boolean }> | null,
 ) {
   if (!questionMetaByNumber) return null
-  const raw = String(questionNumber || '').trim()
-  if (!raw) return null
-  const cleaned = raw.replace(/^q\s*/i, '').trim()
-  const trimmedPunctuation = cleaned.replace(/[\s:;.,)\]]+$/g, '').trim()
-  const numericPrefix = (trimmedPunctuation.match(/^(\d+(?:\.\d+){0,6})/)?.[1] || '').trim()
-  const directKeys = Array.from(new Set([raw, cleaned, trimmedPunctuation, numericPrefix].filter(Boolean)))
-
-  for (const key of directKeys) {
-    const hit = questionMetaByNumber[key]
-    if (hit) return hit
-  }
-
-  const parts = (numericPrefix || trimmedPunctuation || cleaned || raw).split('.').filter(Boolean)
+  const safe = String(questionNumber || '').trim()
+  if (!safe) return null
+  const parts = safe.split('.').filter(Boolean)
   for (let i = parts.length; i > 0; i -= 1) {
     const key = parts.slice(0, i).join('.')
     const hit = questionMetaByNumber[key]

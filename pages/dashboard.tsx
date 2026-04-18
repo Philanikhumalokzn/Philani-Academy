@@ -1895,11 +1895,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [topicAiPaperBatchSize, setTopicAiPaperBatchSize] = useState(5)
   const [topicAiSourceCursor, setTopicAiSourceCursor] = useState<string | null>(null)
   const [topicAiHasMoreSourceBatches, setTopicAiHasMoreSourceBatches] = useState(false)
-  const [mmdMetaBackfillStatus, setMmdMetaBackfillStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
-  const [mmdMetaBackfillMessage, setMmdMetaBackfillMessage] = useState<string | null>(null)
-  const [mmdMetaBackfillDryRun, setMmdMetaBackfillDryRun] = useState<any[]>([])
-  const [mmdMetaSourceCursor, setMmdMetaSourceCursor] = useState<string | null>(null)
-  const [mmdMetaHasMoreSourceBatches, setMmdMetaHasMoreSourceBatches] = useState(false)
   const qbContextScrollRef = useRef<HTMLDivElement | null>(null)
   const qbContextAutoScrollDoneRef = useRef(false)
   const qbContextAutoScrollCancelledRef = useRef(false)
@@ -13746,11 +13741,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setTopicAiBackfillDryRun([])
     setTopicAiSourceCursor(null)
     setTopicAiHasMoreSourceBatches(false)
-    setMmdMetaBackfillStatus('idle')
-    setMmdMetaBackfillMessage(null)
-    setMmdMetaBackfillDryRun([])
-    setMmdMetaSourceCursor(null)
-    setMmdMetaHasMoreSourceBatches(false)
     try {
       const params = new URLSearchParams()
       const paperDocParams = new URLSearchParams()
@@ -14085,21 +14075,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setTopicAiHasMoreSourceBatches(false)
   }
 
-  const resetMmdMetaBatchProgress = () => {
-    setMmdMetaSourceCursor(null)
-    setMmdMetaHasMoreSourceBatches(false)
-  }
-
   const handleBackfillOnlyMissingToggle = (checked: boolean) => {
     setBackfillOnlyMissing(checked)
     resetTopicAiBatchProgress()
-    resetMmdMetaBatchProgress()
   }
 
   const handleTopicBackfillAllPapersToggle = (checked: boolean) => {
     setTopicBackfillAllPapers(checked)
     resetTopicAiBatchProgress()
-    resetMmdMetaBatchProgress()
   }
 
   const handleTopicAiPaperBatchSizeChange = (rawValue: string) => {
@@ -14107,7 +14090,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const next = Number.isFinite(parsed) ? Math.max(1, Math.min(50, Math.round(parsed))) : 1
     setTopicAiPaperBatchSize(next)
     resetTopicAiBatchProgress()
-    resetMmdMetaBatchProgress()
   }
 
   const triggerAiTopicBackfill = async (sid: string | undefined, dryRun: boolean) => {
@@ -14205,171 +14187,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     )
   }
 
-  const refreshCurrentQbDocumentMmd = async () => {
-    if (!qbContextQ) return
-    try {
-      const params = new URLSearchParams()
-      if (qbContextQ.sourceId) {
-        params.set('sourceId', String(qbContextQ.sourceId))
-      } else {
-        params.set('grade', String(qbContextQ.grade || ''))
-        params.set('year', String(qbContextQ.year || ''))
-        params.set('month', String(qbContextQ.month || ''))
-        params.set('paper', String(qbContextQ.paper || ''))
-      }
-      const res = await fetch(`/api/exam-questions/paper-document?${params.toString()}`, { credentials: 'same-origin' })
-      const data = await res.json().catch(() => ({}))
-      if (res.ok) {
-        const rawMmd = typeof (data as any)?.mmd === 'string' ? String((data as any).mmd) : ''
-        setQbContextDocumentMmd(rawMmd.trim() ? rawMmd : null)
-      }
-    } catch {
-      // ignore refresh errors
-    }
-  }
-
-  const triggerMmdMetadataBackfill = async (sid: string | undefined, dryRun: boolean) => {
-    if (!topicBackfillAllPapers && !sid) {
-      setMmdMetaBackfillStatus('error')
-      setMmdMetaBackfillMessage('No source selected for scoped MMD metadata backfill.')
-      return
-    }
-
-    setMmdMetaBackfillStatus('loading')
-    setMmdMetaBackfillMessage(null)
-    if (dryRun) setMmdMetaBackfillDryRun([])
-
-    try {
-      const runSingleBatch = async (cursorOverride?: string | null) => {
-        const payload: Record<string, unknown> = {
-          dryRun,
-          processAll: topicBackfillAllPapers,
-        }
-        if (!topicBackfillAllPapers && sid) payload.sourceId = sid
-        if (topicBackfillAllPapers) {
-          payload.paperBatchSize = topicAiPaperBatchSize
-          const effectiveCursor = cursorOverride ?? mmdMetaSourceCursor
-          if (effectiveCursor) payload.sourceCursor = effectiveCursor
-        }
-
-        const res = await fetch('/api/exam-questions/backfill-mmd-metadata', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify(payload),
-        })
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error((data as any)?.message || 'MMD metadata backfill failed')
-        return data as any
-      }
-
-      // One-click all-papers apply: auto-continue across all source batches until complete.
-      if (topicBackfillAllPapers && !dryRun) {
-        let cursor = mmdMetaSourceCursor
-        let hasMore = true
-        let iterations = 0
-        let totalScanned = 0
-        let totalUpdated = 0
-        let totalPatchedLines = 0
-        let totalSourceCount = 0
-
-        while (hasMore && iterations < 500) {
-          const data = await runSingleBatch(cursor)
-          iterations += 1
-
-          const scanned = Number((data as any)?.scanned ?? 0)
-          const updated = Number((data as any)?.updated ?? 0)
-          const patchedLines = Number((data as any)?.patchedLines ?? 0)
-          const scannedSourceIds = Array.isArray((data as any)?.scannedSourceIds)
-            ? (data as any).scannedSourceIds.filter((v: unknown) => typeof v === 'string' && v.trim())
-            : []
-          const nextSourceCursor = typeof (data as any)?.nextSourceCursor === 'string' && String((data as any).nextSourceCursor).trim()
-            ? String((data as any).nextSourceCursor).trim()
-            : null
-          hasMore = Boolean((data as any)?.hasMoreSourceBatches)
-
-          totalScanned += scanned
-          totalUpdated += updated
-          totalPatchedLines += patchedLines
-          totalSourceCount += scannedSourceIds.length
-
-          setMmdMetaSourceCursor(nextSourceCursor)
-          setMmdMetaHasMoreSourceBatches(hasMore)
-          setMmdMetaBackfillMessage(`Running one-click MMD backfill… batch ${iterations} complete (${patchedLines} lines patched). ${hasMore ? 'Continuing…' : 'Final batch complete.'}`)
-
-          cursor = nextSourceCursor
-        }
-
-        setMmdMetaBackfillStatus('done')
-        setMmdMetaBackfillMessage(`MMD metadata applied (ALL papers) — ${totalPatchedLines} lines patched from ${totalScanned} extracted rows across ${totalUpdated} source(s). Papers processed: ${totalSourceCount}.`)
-        if (totalUpdated > 0) await refreshCurrentQbDocumentMmd()
-        return
-      }
-
-      const data = await runSingleBatch()
-      const scanned = Number((data as any)?.scanned ?? 0)
-      const updated = Number((data as any)?.updated ?? 0)
-      const patchedLines = Number((data as any)?.patchedLines ?? 0)
-      const previews = Array.isArray((data as any)?.previews) ? (data as any).previews : []
-      const scannedSourceIds = Array.isArray((data as any)?.scannedSourceIds)
-        ? (data as any).scannedSourceIds.filter((v: unknown) => typeof v === 'string' && v.trim())
-        : []
-      const nextSourceCursor = typeof (data as any)?.nextSourceCursor === 'string' && String((data as any).nextSourceCursor).trim()
-        ? String((data as any).nextSourceCursor).trim()
-        : null
-      const hasMoreSourceBatches = Boolean((data as any)?.hasMoreSourceBatches)
-
-      if (topicBackfillAllPapers) {
-        setMmdMetaSourceCursor(nextSourceCursor)
-        setMmdMetaHasMoreSourceBatches(hasMoreSourceBatches)
-      } else {
-        resetMmdMetaBatchProgress()
-      }
-
-      setMmdMetaBackfillStatus('done')
-      if (dryRun) {
-        setMmdMetaBackfillDryRun(previews)
-        const previewList = previews
-          .slice(0, 5)
-          .map((p: any) => `Q${String(p?.questionNumber || '?')}: ${String(p?.metadataLabel || 'Meta')}`)
-        const sampleSuffix = previewList.length > 0 ? `\n${previewList.join('\n')}` : ''
-        const scopeLabel = topicBackfillAllPapers ? 'ALL papers' : 'selected paper'
-        const sourceBatchSuffix = topicBackfillAllPapers
-          ? ` Papers in this batch: ${scannedSourceIds.length}. ${hasMoreSourceBatches ? 'More paper batches remain.' : 'Reached final paper batch.'}`
-          : ''
-        setMmdMetaBackfillMessage(`MMD metadata preview ready (${scopeLabel}) — ${patchedLines} lines will be patched from ${scanned} extracted rows.${sourceBatchSuffix}${sampleSuffix}`)
-        return
-      }
-
-      const scopeLabel = topicBackfillAllPapers ? 'ALL papers' : 'selected paper'
-      const sourceBatchSuffix = topicBackfillAllPapers
-        ? ` Batch papers: ${scannedSourceIds.length}. ${hasMoreSourceBatches ? 'More paper batches remain.' : 'Final paper batch reached.'}`
-        : ''
-      setMmdMetaBackfillMessage(`MMD metadata applied (${scopeLabel}) — ${patchedLines} lines patched from ${scanned} extracted rows across ${updated} source(s).${sourceBatchSuffix}`)
-
-      if (updated > 0 && !topicBackfillAllPapers) {
-        await refreshCurrentQbDocumentMmd()
-      }
-    } catch (err: any) {
-      setMmdMetaBackfillStatus('error')
-      setMmdMetaBackfillMessage(err?.message || 'Network error during MMD metadata backfill')
-    }
-  }
-
-  const renderMmdMetaBatchProgress = () => {
-    if (!topicBackfillAllPapers) return null
-    const progressLabel = mmdMetaSourceCursor
-      ? (mmdMetaHasMoreSourceBatches ? 'Batch checkpoint saved; more papers remaining.' : 'Batch checkpoint saved; final paper batch reached.')
-      : 'Ready to start from first paper batch.'
-    const cursorLabel = mmdMetaSourceCursor || 'START'
-
-    return (
-      <span className="text-xs text-sky-700">
-        MMD batch progress: {progressLabel} Batch size: {topicAiPaperBatchSize}. Cursor: {cursorLabel}
-      </span>
-    )
-  }
-
   const cancelPendingQbContextAutoScroll = () => {    qbContextAutoScrollCancelledRef.current = true
     if (qbContextAutoScrollTimerRef.current != null) {
       window.clearTimeout(qbContextAutoScrollTimerRef.current)
@@ -14397,47 +14214,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       }
     }
   }, [qbContextDocumentMmd, qbContextOpen, qbContextQ?.id, qbContextItems.length])
-
-  const qbDocumentQuestionMetaByNumber = useMemo(() => {
-    const map: Record<string, { topic?: string | null; cognitiveLevel?: string | number | null; marksLabel?: string | null; isFocus?: boolean }> = {}
-
-    const buildQuestionNumberKeys = (value: unknown) => {
-      const raw = String(value || '').trim()
-      if (!raw) return [] as string[]
-      const cleaned = raw.replace(/^q\s*/i, '').trim()
-      const trimmedPunctuation = cleaned.replace(/[\s:;.,)\]]+$/g, '').trim()
-      const numericPrefix = (trimmedPunctuation.match(/^(\d+(?:\.\d+){0,6})/)?.[1] || '').trim()
-      return Array.from(new Set([raw, cleaned, trimmedPunctuation, numericPrefix].filter(Boolean)))
-    }
-
-    const upsert = (item: any) => {
-      const qNum = String(item?.questionNumber || '').trim()
-      if (!qNum) return
-      const normalized = normalizeExamQuestionContent(
-        unwrapQuestionField(item?.questionText, ['questionText', 'text', 'prompt']),
-        unwrapQuestionField(item?.latex, ['latex', 'equation', 'math']),
-      )
-      const marksLabel = getQuestionMarksLabel(item?.marks, normalized.questionText)
-      const cognitiveLevel = item?.cognitiveLevel ?? item?.cognitive_level ?? item?.cognitive ?? item?.bloomLevel ?? item?.bloom_level ?? null
-      const keys = buildQuestionNumberKeys(qNum)
-      for (const key of keys) {
-        const existing = map[key] || {}
-        map[key] = {
-          topic: item?.topic || item?.topicLabel || existing.topic || null,
-          cognitiveLevel: cognitiveLevel ?? existing.cognitiveLevel ?? null,
-          marksLabel: marksLabel || existing.marksLabel || null,
-          isFocus: Boolean(existing.isFocus || String(item?.id || '') === String(qbContextQ?.id || '')),
-        }
-      }
-    }
-
-    if (Array.isArray(qbContextItems)) {
-      for (const item of qbContextItems) upsert(item)
-    }
-    if (qbContextQ) upsert(qbContextQ)
-
-    return map
-  }, [qbContextItems, qbContextQ])
 
   const openPreambleEditor = (rootItem: any | null) => {
     const ref = rootItem || qbContextItems[0] || qbContextQ
@@ -17021,18 +16797,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           className="inline-flex items-center gap-1 rounded-md bg-fuchsia-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
                           {topicAiBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers && topicAiSourceCursor ? 'Continue topic AI' : 'Apply topic AI'}
                         </button>
-                        <button
-                          onClick={() => triggerMmdMetadataBackfill(qbContextQ?.sourceId, true)}
-                          disabled={mmdMetaBackfillStatus === 'loading'}
-                          className="inline-flex items-center gap-1 rounded-md border border-sky-300 bg-white px-2.5 py-1 text-xs font-medium text-sky-700 shadow-sm disabled:opacity-50">
-                          {mmdMetaBackfillStatus === 'loading' ? 'Running…' : 'Preview MMD metadata'}
-                        </button>
-                        <button
-                          onClick={() => triggerMmdMetadataBackfill(qbContextQ?.sourceId, false)}
-                          disabled={mmdMetaBackfillStatus === 'loading' || (!topicBackfillAllPapers && mmdMetaBackfillDryRun.length === 0)}
-                          className="inline-flex items-center gap-1 rounded-md bg-sky-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
-                          {mmdMetaBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers ? 'Backfill MMD all papers' : 'Apply MMD metadata'}
-                        </button>
                         {topicBackfillAllPapers ? (
                           <button
                             onClick={resetTopicAiBatchProgress}
@@ -17056,13 +16820,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             {topicAiBackfillMessage}
                           </span>
                         ) : null}
-                        {mmdMetaBackfillStatus !== 'idle' && mmdMetaBackfillMessage ? (
-                          <span className={`whitespace-pre-wrap text-xs ${mmdMetaBackfillStatus === 'error' ? 'text-red-600' : mmdMetaBackfillStatus === 'done' ? 'text-sky-700' : 'text-slate-500'}`}>
-                            {mmdMetaBackfillMessage}
-                          </span>
-                        ) : null}
                         {renderTopicAiBatchProgress()}
-                        {renderMmdMetaBatchProgress()}
                       </div>
                     ) : null}
                     {isAdmin && rawParseExpanded ? (
@@ -17267,18 +17025,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           className="inline-flex items-center gap-1 rounded-md bg-fuchsia-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
                           {topicAiBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers && topicAiSourceCursor ? 'Continue topic AI' : 'Apply topic AI'}
                         </button>
-                        <button
-                          onClick={() => triggerMmdMetadataBackfill(qbContextQ?.sourceId, true)}
-                          disabled={mmdMetaBackfillStatus === 'loading'}
-                          className="inline-flex items-center gap-1 rounded-md border border-sky-300 bg-white px-2.5 py-1 text-xs font-medium text-sky-700 shadow-sm disabled:opacity-50">
-                          {mmdMetaBackfillStatus === 'loading' ? 'Running…' : 'Preview MMD metadata'}
-                        </button>
-                        <button
-                          onClick={() => triggerMmdMetadataBackfill(qbContextQ?.sourceId, false)}
-                          disabled={mmdMetaBackfillStatus === 'loading' || (!topicBackfillAllPapers && mmdMetaBackfillDryRun.length === 0)}
-                          className="inline-flex items-center gap-1 rounded-md bg-sky-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
-                          {mmdMetaBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers ? 'Backfill MMD all papers' : 'Apply MMD metadata'}
-                        </button>
                         {topicBackfillAllPapers ? (
                           <button
                             onClick={resetTopicAiBatchProgress}
@@ -17303,12 +17049,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           </span>
                         ) : null}
                         {renderTopicAiBatchProgress()}
-                        {mmdMetaBackfillStatus !== 'idle' && mmdMetaBackfillMessage ? (
-                          <span className={`whitespace-pre-wrap text-xs ${mmdMetaBackfillStatus === 'error' ? 'text-red-600' : mmdMetaBackfillStatus === 'done' ? 'text-sky-700' : 'text-slate-500'}`}>
-                            {mmdMetaBackfillMessage}
-                          </span>
-                        ) : null}
-                        {renderMmdMetaBatchProgress()}
                       </div>
                     ) : null}
                     {isAdmin && rawParseExpanded ? (
@@ -17397,18 +17137,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               className="rounded-md bg-fuchsia-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
                               {topicAiBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers && topicAiSourceCursor ? 'Continue topic AI' : 'Apply topic AI'}
                             </button>
-                            <button
-                              onClick={() => triggerMmdMetadataBackfill(qbContextQ?.sourceId, true)}
-                              disabled={mmdMetaBackfillStatus === 'loading'}
-                              className="rounded-md border border-sky-300 bg-white px-2 py-0.5 text-xs font-medium text-sky-700 shadow-sm disabled:opacity-50">
-                              {mmdMetaBackfillStatus === 'loading' ? 'Running…' : 'Preview MMD metadata'}
-                            </button>
-                            <button
-                              onClick={() => triggerMmdMetadataBackfill(qbContextQ?.sourceId, false)}
-                              disabled={mmdMetaBackfillStatus === 'loading' || (!topicBackfillAllPapers && mmdMetaBackfillDryRun.length === 0)}
-                              className="rounded-md bg-sky-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
-                              {mmdMetaBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers ? 'Backfill MMD all papers' : 'Apply MMD metadata'}
-                            </button>
                             {topicBackfillAllPapers ? (
                               <label className="flex items-center gap-1 cursor-pointer select-none">
                                 <span className="text-xs text-slate-500">AI papers/run</span>
@@ -17467,16 +17195,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       {topicAiBackfillMessage}
                     </p>
                   ) : null}
-                  {isAdmin && mmdMetaBackfillStatus !== 'idle' && mmdMetaBackfillMessage ? (
-                    <p className={`whitespace-pre-wrap text-xs ${mmdMetaBackfillStatus === 'error' ? 'text-red-600' : mmdMetaBackfillStatus === 'done' ? 'text-sky-700' : 'text-slate-500'}`}>
-                      {mmdMetaBackfillMessage}
-                    </p>
-                  ) : null}
                   {isAdmin ? (
-                    <>
-                      <p className="text-xs text-fuchsia-700">{renderTopicAiBatchProgress()}</p>
-                      <p className="text-xs text-sky-700">{renderMmdMetaBatchProgress()}</p>
-                    </>
+                    <p className="text-xs text-fuchsia-700">{renderTopicAiBatchProgress()}</p>
                   ) : null}
                   {rootText ? (
                     <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
@@ -17559,7 +17279,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <MmdPaperViewer
                 mmd={qbContextDocumentMmd}
                 selectedQuestionNumber={String(qbContextQ?.questionNumber || '') || null}
-                questionMetaByNumber={qbDocumentQuestionMetaByNumber}
               />
             ) : (
             <ul className="divide-y divide-slate-200">

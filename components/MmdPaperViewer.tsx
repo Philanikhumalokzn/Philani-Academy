@@ -6,12 +6,6 @@ type MmdPaperViewerProps = {
   mmd: string
   selectedQuestionNumber?: string | null
   compact?: boolean
-  questionMetaByNumber?: Record<string, {
-    topic?: string | null
-    cognitiveLevel?: string | number | null
-    marksLabel?: string | null
-    isFocus?: boolean
-  }> | null
 }
 
 type Block =
@@ -107,22 +101,6 @@ function toMarksLabel(value: number | null): string | null {
 
 function buildAnchorId(questionNumber: string): string {
   return `mmd-paper-anchor-${String(questionNumber || '').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase()}`
-}
-
-function resolveQuestionMeta(
-  questionNumber: string,
-  questionMetaByNumber?: Record<string, { topic?: string | null; cognitiveLevel?: string | number | null; marksLabel?: string | null; isFocus?: boolean }> | null,
-) {
-  if (!questionMetaByNumber) return null
-  const safe = String(questionNumber || '').trim()
-  if (!safe) return null
-  const parts = safe.split('.').filter(Boolean)
-  for (let i = parts.length; i > 0; i -= 1) {
-    const key = parts.slice(0, i).join('.')
-    const hit = questionMetaByNumber[key]
-    if (hit) return hit
-  }
-  return null
 }
 
 function isPipeTableLine(line: string): boolean {
@@ -545,13 +523,9 @@ function renderMmdText(raw: string) {
   })
 }
 
-export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = false, questionMetaByNumber = null }: MmdPaperViewerProps) {
+export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = false }: MmdPaperViewerProps) {
   const blocks = useMemo(() => buildBlocks(mmd), [mmd])
   const marksMap = useMemo(() => buildQuestionMarksMapFromMmd(mmd), [mmd])
-  const hasQuestionMeta = useMemo(() => {
-    if (!questionMetaByNumber) return false
-    return Object.keys(questionMetaByNumber).length > 0
-  }, [questionMetaByNumber])
   const [renderedHtml, setRenderedHtml] = useState('')
   const [useMathpixRenderer, setUseMathpixRenderer] = useState(false)
   const normalizedSelectedQuestionNumber = stripQuestionPrefix(String(selectedQuestionNumber || ''))
@@ -705,29 +679,25 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
             }
 
             if (block.type === 'question-line') {
-              const questionMeta = resolveQuestionMeta(block.questionNumber, questionMetaByNumber)
-              const marksLabel = questionMeta?.marksLabel || toMarksLabel(pickQuestionMarks(block.questionNumber, marksMap))
-              const topicLabel = typeof questionMeta?.topic === 'string' ? questionMeta.topic.trim() : ''
-              const cognitiveValue = questionMeta?.cognitiveLevel
-              const cognitiveLabel = cognitiveValue === null || cognitiveValue === undefined || String(cognitiveValue).trim() === ''
-                ? ''
-                : `Level ${String(cognitiveValue).trim()}`
-              const selectedBadge = Boolean(questionMeta?.isFocus || isSelected)
+              const marksLabel = toMarksLabel(pickQuestionMarks(block.questionNumber, marksMap))
               return (
                 <section
                   key={block.key}
                   id={anchorId}
-                  className={`scroll-mt-24 rounded-2xl border border-[#dbe4f3] bg-white px-3 py-3 ${selectedClass}`.trim()}
+                  className={`scroll-mt-24 rounded-2xl border border-transparent px-3 py-3 ${selectedClass}`.trim()}
                 >
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <span className="text-xs font-bold text-[#65676b]">Q{block.label}</span>
-                    {topicLabel ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{topicLabel}</span> : null}
-                    {cognitiveLabel ? <span className="text-xs rounded-full bg-[#fff3cd] px-2 py-0.5 text-[#856404]">{cognitiveLabel}</span> : null}
-                    {marksLabel ? <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{marksLabel}</span> : null}
-                    {selectedBadge ? <span className="text-xs rounded-full bg-[#dce9ff] px-2 py-0.5 text-[#1d4ed8]">Selected result</span> : null}
-                  </div>
-                  <div className="min-w-0 text-[13px] leading-[1.4] text-stone-900 whitespace-pre-wrap break-words">
-                    {block.body ? renderMmdText(block.body) : <span className="text-stone-400">Question heading</span>}
+                  <div className="flex items-start gap-3">
+                    <div className="min-w-[3.25rem] rounded-full bg-stone-900 px-2.5 py-1 text-center text-xs font-semibold text-white">
+                      {block.label}
+                    </div>
+                    <div className="min-w-0 flex-1 text-[13px] leading-[1.4] text-stone-900 whitespace-pre-wrap break-words">
+                      {marksLabel ? (
+                        <div className="mb-1 inline-flex rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                          {marksLabel}
+                        </div>
+                      ) : null}
+                      {block.body ? renderMmdText(block.body) : <span className="text-stone-400">Question heading</span>}
+                    </div>
                   </div>
                 </section>
               )
@@ -794,7 +764,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
         </div>
 
         <div className="space-y-2 px-2 py-2 sm:px-2">
-          {useMathpixRenderer && renderedHtml && !hasQuestionMeta ? (
+          {useMathpixRenderer && renderedHtml ? (
             <section className="scroll-mt-24 rounded-xl px-0 py-1">
               <div
                 id="mmd-paper-viewer-content"
@@ -829,30 +799,26 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
             }
 
             if (block.type === 'question-line') {
-              const questionMeta = resolveQuestionMeta(block.questionNumber, questionMetaByNumber)
-              const marksLabel = questionMeta?.marksLabel || toMarksLabel(pickQuestionMarks(block.questionNumber, marksMap))
-              const topicLabel = typeof questionMeta?.topic === 'string' ? questionMeta.topic.trim() : ''
-              const cognitiveValue = questionMeta?.cognitiveLevel
-              const cognitiveLabel = cognitiveValue === null || cognitiveValue === undefined || String(cognitiveValue).trim() === ''
-                ? ''
-                : `Level ${String(cognitiveValue).trim()}`
-              const selectedBadge = Boolean(questionMeta?.isFocus || isSelected)
+              const marksLabel = toMarksLabel(pickQuestionMarks(block.questionNumber, marksMap))
               return (
                 <section
                   key={block.key}
                   id={anchorId}
-                  className={`scroll-mt-24 rounded-2xl border border-[#dbe4f3] bg-white px-3 py-3 shadow-sm ${selectedClass}`.trim()}
+                  className={`scroll-mt-24 rounded-2xl border border-transparent px-3 py-3 ${selectedClass}`.trim()}
                 >
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <span className="text-xs font-bold text-[#65676b]">Q{block.label}</span>
-                    {topicLabel ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{topicLabel}</span> : null}
-                    {cognitiveLabel ? <span className="text-xs rounded-full bg-[#fff3cd] px-2 py-0.5 text-[#856404]">{cognitiveLabel}</span> : null}
-                    {marksLabel ? <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{marksLabel}</span> : null}
-                    {selectedBadge ? <span className="text-xs rounded-full bg-[#dce9ff] px-2 py-0.5 text-[#1d4ed8]">Selected result</span> : null}
-                  </div>
-                  <div className="min-w-0 text-[13px] leading-[1.4] text-stone-900 whitespace-pre-wrap break-words">
-                    {block.body ? renderMmdText(block.body) : <span className="text-stone-400">Question heading</span>}
+                  <div className="flex items-start gap-3">
+                    <div className="min-w-[3.25rem] rounded-full bg-stone-900 px-2.5 py-1 text-center text-xs font-semibold text-white">
+                      {block.label}
                     </div>
+                    <div className="min-w-0 flex-1 text-[13px] leading-[1.4] text-stone-900 whitespace-pre-wrap break-words">
+                      {marksLabel ? (
+                        <div className="mb-1 inline-flex rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                          {marksLabel}
+                        </div>
+                      ) : null}
+                      {block.body ? renderMmdText(block.body) : <span className="text-stone-400">Question heading</span>}
+                    </div>
+                  </div>
                 </section>
               )
             }

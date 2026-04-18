@@ -31,11 +31,38 @@ type PreviewItem = {
   proposedCognitiveLevel: number | null
 }
 
+function clampCognitiveLevel(value: number): number {
+  if (!Number.isFinite(value)) return 1
+  return Math.min(4, Math.max(1, Math.round(value)))
+}
+
 function normalizeCognitiveLevel(value: unknown): number | null {
-  const raw = typeof value === 'number' ? value : parseInt(String(value ?? '').trim(), 10)
-  if (!Number.isFinite(raw)) return null
-  const next = Math.round(raw)
-  return next >= 1 && next <= 4 ? next : null
+  if (value == null) return null
+  if (typeof value === 'number') return clampCognitiveLevel(value)
+
+  const text = String(value ?? '').trim()
+  if (!text) return null
+  const normalized = text.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+
+  const exactNumber = normalized.match(/\b([1-4])\b/)
+  if (exactNumber?.[1]) return clampCognitiveLevel(Number(exactNumber[1]))
+
+  const anyNumber = normalized.match(/-?\d+(?:\.\d+)?/)
+  if (anyNumber?.[0]) return clampCognitiveLevel(Number(anyNumber[0]))
+
+  if (/\bknowledge\b|\brecall\b|\bone\b|\blevel\s*one\b|\bi\b/.test(normalized)) return 1
+  if (/\broutine\b|\bprocedures?\b|\btwo\b|\blevel\s*two\b|\bii\b/.test(normalized)) return 2
+  if (/\bcomplex\b|\bnon routine\b|\bnonroutine\b|\bthree\b|\blevel\s*three\b|\biii\b/.test(normalized)) return 3
+  if (/\bproblem\s*solving\b|\bproblem-solving\b|\bfour\b|\blevel\s*four\b|\biv\b/.test(normalized)) return 4
+
+  return 1
+}
+
+function normalizeQuestionNumber(value: unknown): string | null {
+  const text = String(value ?? '').trim()
+  if (!text) return null
+  const match = text.match(/(\d+(?:\.\d+)*)/)
+  return match?.[1] ? match[1] : null
 }
 
 function questionSortParts(qNum: string): number[] {
@@ -181,7 +208,84 @@ function extractItemsArray(value: unknown): any[] {
   for (const candidate of candidates) {
     if (Array.isArray(candidate)) return candidate
   }
+
+  const objectEntries = Object.entries(record)
+    .filter(([key]) => Boolean(normalizeQuestionNumber(key)))
+    .map(([questionNumber, cognitiveLevel]) => ({ questionNumber, cognitiveLevel }))
+  if (objectEntries.length > 0) return objectEntries
+
   return []
+}
+
+function extractItemsFromRawText(aiRaw: string): any[] {
+  const text = String(aiRaw || '').trim()
+  if (!text) return []
+
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const items: any[] = []
+  for (const line of lines) {
+    const questionNumberMatch = line.match(/(?:^|\b)Q?\s*(\d+(?:\.\d+)*)/i)
+    if (!questionNumberMatch?.[1]) continue
+    const tail = line.slice(questionNumberMatch.index != null ? questionNumberMatch.index + questionNumberMatch[0].length : 0).trim()
+    items.push({ questionNumber: questionNumberMatch[1], cognitiveLevel: tail || line })
+  }
+  return items
+}
+
+function buildProposedLevelMap(rows: QuestionRow[], aiRaw: string): Map<string, number> {
+  const parsed = tryParseJsonLoose(aiRaw)
+  const items = extractItemsArray(parsed)
+  const fallbackItems = items.length > 0 ? [] : extractItemsFromRawText(aiRaw)
+  const candidateItems = items.length > 0 ? items : fallbackItems
+  const proposedByNumber = new Map<string, number>()
+  const orderedLevels: number[] = []
+
+  for (const item of candidateItems) {
+    const questionNumber = normalizeQuestionNumber(
+      item?.questionNumber
+      ?? item?.q
+      ?? item?.question
+      ?? item?.number
+      ?? item?.question_id
+      ?? item?.id
+      ?? item?.label
+    )
+    const cognitiveLevel = normalizeCognitiveLevel(
+      item?.cognitiveLevel
+      ?? item?.level
+      ?? item?.classification
+      ?? item?.cognitive_level
+      ?? item?.value
+      ?? item?.answer
+      ?? item
+    )
+
+    if (cognitiveLevel == null) continue
+    if (questionNumber) {
+      proposedByNumber.set(questionNumber, cognitiveLevel)
+      continue
+    }
+    orderedLevels.push(cognitiveLevel)
+  }
+
+  if (orderedLevels.length > 0) {
+    const unresolvedRows = rows.filter((row) => !proposedByNumber.has(row.questionNumber))
+    for (let index = 0; index < Math.min(unresolvedRows.length, orderedLevels.length); index += 1) {
+      proposedByNumber.set(unresolvedRows[index].questionNumber, orderedLevels[index])
+    }
+  }
+
+  for (const row of rows) {
+    if (!proposedByNumber.has(row.questionNumber)) {
+      proposedByNumber.set(row.questionNumber, 1)
+    }
+  }
+
+  return proposedByNumber
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -455,15 +559,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       aiRaw = ''
     }
 
-    const parsed = tryParseJsonLoose(aiRaw)
-    const items = extractItemsArray(parsed)
-    const proposedByNumber = new Map<string, number>()
-    for (const item of items) {
-      const questionNumber = String(item?.questionNumber || '').trim()
-      const cognitiveLevel = normalizeCognitiveLevel(item?.cognitiveLevel)
-      if (!questionNumber || cognitiveLevel == null) continue
-      proposedByNumber.set(questionNumber, cognitiveLevel)
-    }
+    const proposedByNumber = buildProposedLevelMap(paperRows, aiRaw)
 
     for (const row of paperTargetRows) {
       const proposedCognitiveLevel = proposedByNumber.get(row.questionNumber) ?? null
@@ -510,7 +606,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     notes: [
       'AI classification is performed per paper and targets all listed questions and subquestions in that paper.',
       'The model is instructed to use only DB cognitive levels 1-4: Knowledge, Routine procedures, Complex procedures, Problem-solving.',
-      'Rows without a returned prediction are skipped.',
+      'Parser is permissive: arbitrary AI outputs are coerced into DB levels and missing items fall back by order/default.',
     ],
   })
 }

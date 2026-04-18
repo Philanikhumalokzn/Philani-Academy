@@ -8653,6 +8653,44 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     })
   }, [buildPostReplyPayloadFromBlocks, normalizePostReplyBlocks])
 
+  const buildQbQuestionPostDraft = useCallback((question: any) => {
+    const normalized = normalizeExamQuestionContent(
+      unwrapQuestionField(question?.questionText, ['questionText', 'text', 'prompt']),
+      unwrapQuestionField(question?.latex, ['latex', 'equation', 'math']),
+    )
+    const qNumber = String(question?.questionNumber || '').trim()
+    const qLabel = qNumber ? `Q${qNumber}` : 'Question'
+    const titleBits = [qLabel, String(question?.year || '').trim(), String(question?.month || '').trim(), `Paper ${String(question?.paper || '').trim()}`]
+      .map((part) => part.trim())
+      .filter(Boolean)
+
+    return {
+      id: `qb-${String(question?.id || qNumber || Date.now())}`,
+      threadKey: `qb:${String(question?.id || qNumber || Date.now())}`,
+      title: titleBits.join(' · ') || qLabel,
+      prompt: normalized.questionText || qLabel,
+      imageUrl: typeof question?.imageUrl === 'string' ? question.imageUrl : null,
+      sourceId: question?.sourceId ? String(question.sourceId) : null,
+      questionNumber: qNumber || null,
+      questionId: question?.id ? String(question.id) : null,
+    }
+  }, [])
+
+  const openQbQuestionSolveComposer = useCallback((question: any) => {
+    const draft = buildQbQuestionPostDraft(question)
+    void openPostSolveComposer(draft)
+  }, [buildQbQuestionPostDraft, openPostSolveComposer])
+
+  const openQbQuestionPostComposer = useCallback((question: any) => {
+    const draft = buildQbQuestionPostDraft(question)
+    openCreateChallengeComposer()
+    setChallengeTitleDraft(String(draft.title || ''))
+    setChallengePromptDraft(String(draft.prompt || ''))
+    setChallengeImageUrl(typeof draft.imageUrl === 'string' ? draft.imageUrl : null)
+    setChallengeAudienceDraft('public')
+    setChallengeMaxAttempts('unlimited')
+  }, [buildQbQuestionPostDraft, openCreateChallengeComposer])
+
   const openReplyComposerForPostResponse = useCallback((post: any, response: any) => {
     const responseId = String(response?.id || '').trim()
     if (!responseId) return
@@ -14693,6 +14731,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           )
                         ) : null}
 
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-semibold text-[#1877f2] hover:bg-[#f0f5ff]"
+                            onClick={() => openQbQuestionSolveComposer(q)}
+                          >
+                            Solve
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-semibold text-[#4b5563] hover:bg-[#f8fafc]"
+                            onClick={() => openQbQuestionPostComposer(q)}
+                          >
+                            Post
+                          </button>
+                        </div>
+
                         {/* Row actions */}
                         <div className="mt-2 flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
@@ -17133,6 +17188,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       {renderQuestionTextWithInlineLatex(rootText)}
                     </div>
                   ) : null}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-semibold text-[#1877f2] hover:bg-[#f0f5ff]"
+                      onClick={() => openQbQuestionSolveComposer(rootItem)}
+                    >
+                      Solve
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-semibold text-[#4b5563] hover:bg-[#f8fafc]"
+                      onClick={() => openQbQuestionPostComposer(rootItem)}
+                    >
+                      Post
+                    </button>
+                  </div>
                   {rootImageUrls.length > 0 ? (
                     <div className="grid gap-2">
                       {rootImageUrls.map((url, idx) => (
@@ -17272,6 +17343,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       </div>
                     )
                   ) : null}
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-semibold text-[#1877f2] hover:bg-[#f0f5ff]"
+                      onClick={() => openQbQuestionSolveComposer(contextQ)}
+                    >
+                      Solve
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-semibold text-[#4b5563] hover:bg-[#f8fafc]"
+                      onClick={() => openQbQuestionPostComposer(contextQ)}
+                    >
+                      Post
+                    </button>
+                  </div>
                 </li>
               )
             })}

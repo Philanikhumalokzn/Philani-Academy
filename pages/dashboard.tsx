@@ -14214,70 +14214,100 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (dryRun) setLevelAiBackfillDryRun([])
 
     try {
-      const payload: Record<string, unknown> = {
-        onlyMissing: backfillOnlyMissing,
-        dryRun,
-        processAll: topicBackfillAllPapers,
-      }
-      if (!topicBackfillAllPapers && sid) payload.sourceId = sid
-      if (topicBackfillAllPapers) {
-        payload.paperBatchSize = topicAiPaperBatchSize
-        if (levelAiSourceCursor) payload.sourceCursor = levelAiSourceCursor
-      }
+      let batchCursor = topicBackfillAllPapers ? levelAiSourceCursor : null
+      let batchIndex = 0
+      let aggregatedScanned = 0
+      let aggregatedUpdated = 0
+      let aggregatedMissingContextCount = 0
+      let aggregatedMissingPredictionCount = 0
+      const aggregatedPreviews: any[] = []
+      const aggregatedSourceIds = new Set<string>()
+      let hasMoreSourceBatches = false
 
-      const res = await fetch('/api/exam-questions/backfill-levels-ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify(payload),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setLevelAiBackfillStatus('error')
-        setLevelAiBackfillMessage((data as any)?.message || 'AI levels backfill failed')
-        return
-      }
+      do {
+        batchIndex += 1
+        if (topicBackfillAllPapers && !dryRun) {
+          setLevelAiBackfillMessage(`Applying AI levels across all papers... batch ${batchIndex} (batch size ${topicAiPaperBatchSize}).`)
+        }
 
-      const scanned = Number((data as any)?.scanned ?? 0)
-      const updated = Number((data as any)?.updated ?? 0)
-      const missingContextCount = Number((data as any)?.missingContextCount ?? 0)
-      const missingPredictionCount = Number((data as any)?.missingPredictionCount ?? 0)
-      const previews = Array.isArray((data as any)?.previews) ? (data as any).previews : []
-      const scannedSourceIds = Array.isArray((data as any)?.scannedSourceIds)
-        ? (data as any).scannedSourceIds.filter((v: unknown) => typeof v === 'string' && v.trim())
-        : []
-      const nextSourceCursor = typeof (data as any)?.nextSourceCursor === 'string' && String((data as any).nextSourceCursor).trim()
-        ? String((data as any).nextSourceCursor).trim()
-        : null
-      const hasMoreSourceBatches = Boolean((data as any)?.hasMoreSourceBatches)
+        const payload: Record<string, unknown> = {
+          onlyMissing: backfillOnlyMissing,
+          dryRun,
+          processAll: topicBackfillAllPapers,
+        }
+        if (!topicBackfillAllPapers && sid) payload.sourceId = sid
+        if (topicBackfillAllPapers) {
+          payload.paperBatchSize = topicAiPaperBatchSize
+          if (batchCursor) payload.sourceCursor = batchCursor
+        }
 
-      if (topicBackfillAllPapers) {
-        setLevelAiSourceCursor(nextSourceCursor)
-        setLevelAiHasMoreSourceBatches(hasMoreSourceBatches)
-      } else {
-        resetLevelAiBatchProgress()
-      }
+        const res = await fetch('/api/exam-questions/backfill-levels-ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(payload),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          setLevelAiBackfillStatus('error')
+          setLevelAiBackfillMessage((data as any)?.message || 'AI levels backfill failed')
+          return
+        }
+
+        const scanned = Number((data as any)?.scanned ?? 0)
+        const updated = Number((data as any)?.updated ?? 0)
+        const missingContextCount = Number((data as any)?.missingContextCount ?? 0)
+        const missingPredictionCount = Number((data as any)?.missingPredictionCount ?? 0)
+        const previews = Array.isArray((data as any)?.previews) ? (data as any).previews : []
+        const scannedSourceIds = Array.isArray((data as any)?.scannedSourceIds)
+          ? (data as any).scannedSourceIds.filter((v: unknown) => typeof v === 'string' && v.trim())
+          : []
+        const nextSourceCursor = typeof (data as any)?.nextSourceCursor === 'string' && String((data as any).nextSourceCursor).trim()
+          ? String((data as any).nextSourceCursor).trim()
+          : null
+        hasMoreSourceBatches = Boolean((data as any)?.hasMoreSourceBatches)
+
+        aggregatedScanned += scanned
+        aggregatedUpdated += updated
+        aggregatedMissingContextCount += missingContextCount
+        aggregatedMissingPredictionCount += missingPredictionCount
+        for (const preview of previews) aggregatedPreviews.push(preview)
+        for (const scannedSourceId of scannedSourceIds) aggregatedSourceIds.add(scannedSourceId)
+
+        if (topicBackfillAllPapers) {
+          setLevelAiSourceCursor(nextSourceCursor)
+          setLevelAiHasMoreSourceBatches(hasMoreSourceBatches)
+          batchCursor = nextSourceCursor
+        } else {
+          resetLevelAiBatchProgress()
+        }
+
+        if (dryRun || !topicBackfillAllPapers) break
+      } while (hasMoreSourceBatches)
 
       setLevelAiBackfillStatus('done')
       if (dryRun) {
-        setLevelAiBackfillDryRun(previews)
-        const previewList = previews
+        setLevelAiBackfillDryRun(aggregatedPreviews)
+        const previewList = aggregatedPreviews
           .slice(0, 5)
           .map((p: any) => `Q${String(p?.questionNumber || '?')}: ${p?.proposedCognitiveLevel != null ? `Level ${String(p.proposedCognitiveLevel)}` : 'No level returned'}`)
         const sampleSuffix = previewList.length > 0 ? `\n${previewList.join('\n')}` : ''
         const scopeLabel = topicBackfillAllPapers ? 'ALL papers' : 'selected paper'
         const sourceBatchSuffix = topicBackfillAllPapers
-          ? ` Papers in this batch: ${scannedSourceIds.length}. ${hasMoreSourceBatches ? 'More paper batches remain.' : 'Reached final paper batch.'}`
+          ? ` Papers in this batch: ${aggregatedSourceIds.size}. ${hasMoreSourceBatches ? 'More paper batches remain.' : 'Reached final paper batch.'}`
           : ''
-        setLevelAiBackfillMessage(`AI levels preview ready (${scopeLabel}) — ${scanned} questions scanned, missing MMD papers: ${missingContextCount}, missing predictions: ${missingPredictionCount}.${sourceBatchSuffix}${sampleSuffix}`)
+        setLevelAiBackfillMessage(`AI levels preview ready (${scopeLabel}) — ${aggregatedScanned} questions scanned, missing MMD papers: ${aggregatedMissingContextCount}, missing predictions: ${aggregatedMissingPredictionCount}.${sourceBatchSuffix}${sampleSuffix}`)
         return
       }
 
+      if (topicBackfillAllPapers) {
+        resetLevelAiBatchProgress()
+      }
       const scopeLabel = topicBackfillAllPapers ? 'ALL papers' : 'selected paper'
       const sourceBatchSuffix = topicBackfillAllPapers
-        ? ` Batch papers: ${scannedSourceIds.length}. ${hasMoreSourceBatches ? 'Click Apply Levels again to continue to next papers.' : 'All queued papers processed.'}`
+        ? ` Batch papers processed: ${aggregatedSourceIds.size}. All queued papers processed automatically in ${batchIndex} batch${batchIndex === 1 ? '' : 'es'}.`
         : ''
-      setLevelAiBackfillMessage(`AI levels applied (${scopeLabel}) — ${updated} updated from ${scanned} questions. Missing MMD papers: ${missingContextCount}. Missing predictions: ${missingPredictionCount}.${sourceBatchSuffix}`)
+      setLevelAiBackfillMessage(`AI levels applied (${scopeLabel}) — ${aggregatedUpdated} updated from ${aggregatedScanned} questions. Missing MMD papers: ${aggregatedMissingContextCount}. Missing predictions: ${aggregatedMissingPredictionCount}.${sourceBatchSuffix}`)
     } catch (err: any) {
       setLevelAiBackfillStatus('error')
       setLevelAiBackfillMessage(err?.message || 'Network error during AI levels backfill')

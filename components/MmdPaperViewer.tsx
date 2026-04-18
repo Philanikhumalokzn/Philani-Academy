@@ -650,16 +650,9 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
 
   if (compact) {
     return (
-      <div className="w-full bg-transparent" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+      <div className="w-full bg-transparent [&_.katex]:!text-[#1c1e21] [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden [&_.katex-display]:max-w-full" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
         <div className="space-y-1">
-          {useMathpixRenderer && renderedHtml ? (
-            <section className="px-0 py-0">
-              <div
-                className="text-[16px] leading-[1.45] text-[#1c1e21] [&_.katex]:!text-[#1c1e21] [&_.preview]:!max-w-full [&_.preview]:!mx-0 [&_.preview]:!px-0 [&_.preview-content]:!max-w-full [&_.preview-content]:!mx-0 [&_.preview-content]:!px-0 [&_a]:!text-[#1c1e21] [&_p]:my-1.5 [&_.mmd-question-subpart]:mt-3 [&_.mmd-table-wrap]:my-1.5 [&_.mmd-table-wrap]:max-w-full [&_.mmd-table-wrap]:overflow-x-auto [&_table]:!border-collapse [&_table]:text-[13px] [&_table]:!border [&_table]:!border-solid [&_table]:!border-stone-400 [&_table]:!text-slate-900 [&_table]:!bg-white [&_.mmd-compact-table]:w-max [&_.mmd-compact-table]:min-w-full [&_.table_tabular]:!border [&_.table_tabular]:!border-solid [&_.table_tabular]:!border-stone-400 [&_.table_tabular]:!bg-white [&_tr]:!border-stone-400 [&_td]:!border [&_td]:!border-solid [&_td]:!border-stone-400 [&_td]:!bg-white [&_td]:!text-slate-900 [&_td]:px-1.5 [&_td]:py-0.5 [&_td]:leading-tight [&_th]:!border [&_th]:!border-solid [&_th]:!border-stone-400 [&_th]:!bg-white [&_th]:!text-slate-900 [&_th]:px-1.5 [&_th]:py-0.5 [&_th]:leading-tight [&_.mmd-row-title]:whitespace-nowrap [&_.mmd-row-title]:font-medium"
-                dangerouslySetInnerHTML={{ __html: renderedHtml }}
-              />
-            </section>
-          ) : blocks.map((block) => {
+          {blocks.map((block) => {
             const isSelected = !!normalizedSelectedQuestionNumber && block.questionNumber === normalizedSelectedQuestionNumber
             const isSelectedRoot = !isSelected && !!selectedRoot && block.questionNumber === selectedRoot
             const anchorId = block.questionNumber ? buildAnchorId(block.questionNumber) : undefined

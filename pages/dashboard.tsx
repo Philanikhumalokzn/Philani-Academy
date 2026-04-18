@@ -14215,6 +14215,34 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [qbContextDocumentMmd, qbContextOpen, qbContextQ?.id, qbContextItems.length])
 
+  const qbDocumentQuestionMetaByNumber = useMemo(() => {
+    const map: Record<string, { topic?: string | null; cognitiveLevel?: string | number | null; marksLabel?: string | null; isFocus?: boolean }> = {}
+
+    const upsert = (item: any) => {
+      const qNum = String(item?.questionNumber || '').trim()
+      if (!qNum) return
+      const normalized = normalizeExamQuestionContent(
+        unwrapQuestionField(item?.questionText, ['questionText', 'text', 'prompt']),
+        unwrapQuestionField(item?.latex, ['latex', 'equation', 'math']),
+      )
+      const marksLabel = getQuestionMarksLabel(item?.marks, normalized.questionText)
+      const existing = map[qNum] || {}
+      map[qNum] = {
+        topic: item?.topic || existing.topic || null,
+        cognitiveLevel: item?.cognitiveLevel ?? existing.cognitiveLevel ?? null,
+        marksLabel: marksLabel || existing.marksLabel || null,
+        isFocus: Boolean(existing.isFocus || String(item?.id || '') === String(qbContextQ?.id || '')),
+      }
+    }
+
+    if (Array.isArray(qbContextItems)) {
+      for (const item of qbContextItems) upsert(item)
+    }
+    if (qbContextQ) upsert(qbContextQ)
+
+    return map
+  }, [qbContextItems, qbContextQ])
+
   const openPreambleEditor = (rootItem: any | null) => {
     const ref = rootItem || qbContextItems[0] || qbContextQ
     const sourceUrl = (qbContextItems.find((i: any) => i.sourceUrl)?.sourceUrl) || null
@@ -17279,6 +17307,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <MmdPaperViewer
                 mmd={qbContextDocumentMmd}
                 selectedQuestionNumber={String(qbContextQ?.questionNumber || '') || null}
+                questionMetaByNumber={qbDocumentQuestionMetaByNumber}
               />
             ) : (
             <ul className="divide-y divide-slate-200">

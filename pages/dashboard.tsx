@@ -1895,6 +1895,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [topicAiPaperBatchSize, setTopicAiPaperBatchSize] = useState(5)
   const [topicAiSourceCursor, setTopicAiSourceCursor] = useState<string | null>(null)
   const [topicAiHasMoreSourceBatches, setTopicAiHasMoreSourceBatches] = useState(false)
+  const [levelAiBackfillStatus, setLevelAiBackfillStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [levelAiBackfillMessage, setLevelAiBackfillMessage] = useState<string | null>(null)
+  const [levelAiBackfillDryRun, setLevelAiBackfillDryRun] = useState<any[]>([])
+  const [levelAiSourceCursor, setLevelAiSourceCursor] = useState<string | null>(null)
+  const [levelAiHasMoreSourceBatches, setLevelAiHasMoreSourceBatches] = useState(false)
   const qbContextScrollRef = useRef<HTMLDivElement | null>(null)
   const qbContextAutoScrollDoneRef = useRef(false)
   const qbContextAutoScrollCancelledRef = useRef(false)
@@ -13752,6 +13757,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setTopicAiBackfillDryRun([])
     setTopicAiSourceCursor(null)
     setTopicAiHasMoreSourceBatches(false)
+    setLevelAiBackfillStatus('idle')
+    setLevelAiBackfillMessage(null)
+    setLevelAiBackfillDryRun([])
+    setLevelAiSourceCursor(null)
+    setLevelAiHasMoreSourceBatches(false)
     try {
       const params = new URLSearchParams()
       const paperDocParams = new URLSearchParams()
@@ -14086,14 +14096,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setTopicAiHasMoreSourceBatches(false)
   }
 
+  const resetLevelAiBatchProgress = () => {
+    setLevelAiSourceCursor(null)
+    setLevelAiHasMoreSourceBatches(false)
+  }
+
   const handleBackfillOnlyMissingToggle = (checked: boolean) => {
     setBackfillOnlyMissing(checked)
     resetTopicAiBatchProgress()
+    resetLevelAiBatchProgress()
   }
 
   const handleTopicBackfillAllPapersToggle = (checked: boolean) => {
     setTopicBackfillAllPapers(checked)
     resetTopicAiBatchProgress()
+    resetLevelAiBatchProgress()
   }
 
   const handleTopicAiPaperBatchSizeChange = (rawValue: string) => {
@@ -14101,6 +14118,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const next = Number.isFinite(parsed) ? Math.max(1, Math.min(50, Math.round(parsed))) : 1
     setTopicAiPaperBatchSize(next)
     resetTopicAiBatchProgress()
+    resetLevelAiBatchProgress()
   }
 
   const triggerAiTopicBackfill = async (sid: string | undefined, dryRun: boolean) => {
@@ -14182,6 +14200,102 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setTopicAiBackfillStatus('error')
       setTopicAiBackfillMessage(err?.message || 'Network error during AI topic backfill')
     }
+  }
+
+  const triggerAiLevelsBackfill = async (sid: string | undefined, dryRun: boolean) => {
+    if (!topicBackfillAllPapers && !sid) {
+      setLevelAiBackfillStatus('error')
+      setLevelAiBackfillMessage('No source selected for scoped AI levels backfill.')
+      return
+    }
+
+    setLevelAiBackfillStatus('loading')
+    setLevelAiBackfillMessage(null)
+    if (dryRun) setLevelAiBackfillDryRun([])
+
+    try {
+      const payload: Record<string, unknown> = {
+        onlyMissing: backfillOnlyMissing,
+        dryRun,
+        processAll: topicBackfillAllPapers,
+      }
+      if (!topicBackfillAllPapers && sid) payload.sourceId = sid
+      if (topicBackfillAllPapers) {
+        payload.paperBatchSize = topicAiPaperBatchSize
+        if (levelAiSourceCursor) payload.sourceCursor = levelAiSourceCursor
+      }
+
+      const res = await fetch('/api/exam-questions/backfill-levels-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setLevelAiBackfillStatus('error')
+        setLevelAiBackfillMessage((data as any)?.message || 'AI levels backfill failed')
+        return
+      }
+
+      const scanned = Number((data as any)?.scanned ?? 0)
+      const updated = Number((data as any)?.updated ?? 0)
+      const missingContextCount = Number((data as any)?.missingContextCount ?? 0)
+      const missingPredictionCount = Number((data as any)?.missingPredictionCount ?? 0)
+      const previews = Array.isArray((data as any)?.previews) ? (data as any).previews : []
+      const scannedSourceIds = Array.isArray((data as any)?.scannedSourceIds)
+        ? (data as any).scannedSourceIds.filter((v: unknown) => typeof v === 'string' && v.trim())
+        : []
+      const nextSourceCursor = typeof (data as any)?.nextSourceCursor === 'string' && String((data as any).nextSourceCursor).trim()
+        ? String((data as any).nextSourceCursor).trim()
+        : null
+      const hasMoreSourceBatches = Boolean((data as any)?.hasMoreSourceBatches)
+
+      if (topicBackfillAllPapers) {
+        setLevelAiSourceCursor(nextSourceCursor)
+        setLevelAiHasMoreSourceBatches(hasMoreSourceBatches)
+      } else {
+        resetLevelAiBatchProgress()
+      }
+
+      setLevelAiBackfillStatus('done')
+      if (dryRun) {
+        setLevelAiBackfillDryRun(previews)
+        const previewList = previews
+          .slice(0, 5)
+          .map((p: any) => `Q${String(p?.questionNumber || '?')}: ${p?.proposedCognitiveLevel != null ? `Level ${String(p.proposedCognitiveLevel)}` : 'No level returned'}`)
+        const sampleSuffix = previewList.length > 0 ? `\n${previewList.join('\n')}` : ''
+        const scopeLabel = topicBackfillAllPapers ? 'ALL papers' : 'selected paper'
+        const sourceBatchSuffix = topicBackfillAllPapers
+          ? ` Papers in this batch: ${scannedSourceIds.length}. ${hasMoreSourceBatches ? 'More paper batches remain.' : 'Reached final paper batch.'}`
+          : ''
+        setLevelAiBackfillMessage(`AI levels preview ready (${scopeLabel}) — ${scanned} questions scanned, missing MMD papers: ${missingContextCount}, missing predictions: ${missingPredictionCount}.${sourceBatchSuffix}${sampleSuffix}`)
+        return
+      }
+
+      const scopeLabel = topicBackfillAllPapers ? 'ALL papers' : 'selected paper'
+      const sourceBatchSuffix = topicBackfillAllPapers
+        ? ` Batch papers: ${scannedSourceIds.length}. ${hasMoreSourceBatches ? 'Click Apply Levels again to continue to next papers.' : 'All queued papers processed.'}`
+        : ''
+      setLevelAiBackfillMessage(`AI levels applied (${scopeLabel}) — ${updated} updated from ${scanned} questions. Missing MMD papers: ${missingContextCount}. Missing predictions: ${missingPredictionCount}.${sourceBatchSuffix}`)
+    } catch (err: any) {
+      setLevelAiBackfillStatus('error')
+      setLevelAiBackfillMessage(err?.message || 'Network error during AI levels backfill')
+    }
+  }
+
+  const renderLevelAiBatchProgress = () => {
+    if (!topicBackfillAllPapers) return null
+    const progressLabel = levelAiSourceCursor
+      ? (levelAiHasMoreSourceBatches ? 'Batch checkpoint saved; more papers remaining.' : 'Batch checkpoint saved; final paper batch reached.')
+      : 'Ready to start from first paper batch.'
+    const cursorLabel = levelAiSourceCursor || 'START'
+
+    return (
+      <span className="text-xs text-emerald-700">
+        Levels batch progress: {progressLabel} Batch size: {topicAiPaperBatchSize}. Cursor: {cursorLabel}
+      </span>
+    )
   }
 
   const renderTopicAiBatchProgress = () => {
@@ -16808,12 +16922,32 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           className="inline-flex items-center gap-1 rounded-md bg-fuchsia-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
                           {topicAiBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers && topicAiSourceCursor ? 'Continue topic AI' : 'Apply topic AI'}
                         </button>
+                        <button
+                          onClick={() => triggerAiLevelsBackfill(qbContextQ?.sourceId, true)}
+                          disabled={levelAiBackfillStatus === 'loading'}
+                          className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-white px-2.5 py-1 text-xs font-medium text-emerald-700 shadow-sm disabled:opacity-50">
+                          {levelAiBackfillStatus === 'loading' ? 'Running…' : 'Preview Levels'}
+                        </button>
+                        <button
+                          onClick={() => triggerAiLevelsBackfill(qbContextQ?.sourceId, false)}
+                          disabled={levelAiBackfillStatus === 'loading' || (!topicBackfillAllPapers && levelAiBackfillDryRun.length === 0)}
+                          className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                          {levelAiBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers && levelAiSourceCursor ? 'Continue Apply Levels' : 'Apply Levels'}
+                        </button>
                         {topicBackfillAllPapers ? (
                           <button
                             onClick={resetTopicAiBatchProgress}
                             disabled={topicAiBackfillStatus === 'loading'}
                             className="inline-flex items-center gap-1 rounded-md border border-fuchsia-300 bg-white px-2.5 py-1 text-xs font-medium text-fuchsia-700 shadow-sm disabled:opacity-50">
                             Restart AI batching
+                          </button>
+                        ) : null}
+                        {topicBackfillAllPapers ? (
+                          <button
+                            onClick={resetLevelAiBatchProgress}
+                            disabled={levelAiBackfillStatus === 'loading'}
+                            className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-white px-2.5 py-1 text-xs font-medium text-emerald-700 shadow-sm disabled:opacity-50">
+                            Restart Levels batching
                           </button>
                         ) : null}
                         {backfillStatus !== 'idle' && backfillMessage ? (
@@ -16831,7 +16965,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             {topicAiBackfillMessage}
                           </span>
                         ) : null}
+                        {levelAiBackfillStatus !== 'idle' && levelAiBackfillMessage ? (
+                          <span className={`whitespace-pre-wrap text-xs ${levelAiBackfillStatus === 'error' ? 'text-red-600' : levelAiBackfillStatus === 'done' ? 'text-emerald-700' : 'text-slate-500'}`}>
+                            {levelAiBackfillMessage}
+                          </span>
+                        ) : null}
                         {renderTopicAiBatchProgress()}
+                        {renderLevelAiBatchProgress()}
                       </div>
                     ) : null}
                     {isAdmin && rawParseExpanded ? (
@@ -17036,12 +17176,32 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           className="inline-flex items-center gap-1 rounded-md bg-fuchsia-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
                           {topicAiBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers && topicAiSourceCursor ? 'Continue topic AI' : 'Apply topic AI'}
                         </button>
+                        <button
+                          onClick={() => triggerAiLevelsBackfill(qbContextQ?.sourceId, true)}
+                          disabled={levelAiBackfillStatus === 'loading'}
+                          className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-white px-2.5 py-1 text-xs font-medium text-emerald-700 shadow-sm disabled:opacity-50">
+                          {levelAiBackfillStatus === 'loading' ? 'Running…' : 'Preview Levels'}
+                        </button>
+                        <button
+                          onClick={() => triggerAiLevelsBackfill(qbContextQ?.sourceId, false)}
+                          disabled={levelAiBackfillStatus === 'loading' || (!topicBackfillAllPapers && levelAiBackfillDryRun.length === 0)}
+                          className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                          {levelAiBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers && levelAiSourceCursor ? 'Continue Apply Levels' : 'Apply Levels'}
+                        </button>
                         {topicBackfillAllPapers ? (
                           <button
                             onClick={resetTopicAiBatchProgress}
                             disabled={topicAiBackfillStatus === 'loading'}
                             className="inline-flex items-center gap-1 rounded-md border border-fuchsia-300 bg-white px-2.5 py-1 text-xs font-medium text-fuchsia-700 shadow-sm disabled:opacity-50">
                             Restart AI batching
+                          </button>
+                        ) : null}
+                        {topicBackfillAllPapers ? (
+                          <button
+                            onClick={resetLevelAiBatchProgress}
+                            disabled={levelAiBackfillStatus === 'loading'}
+                            className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-white px-2.5 py-1 text-xs font-medium text-emerald-700 shadow-sm disabled:opacity-50">
+                            Restart Levels batching
                           </button>
                         ) : null}
                         {backfillStatus !== 'idle' && backfillMessage ? (
@@ -17059,7 +17219,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             {topicAiBackfillMessage}
                           </span>
                         ) : null}
+                        {levelAiBackfillStatus !== 'idle' && levelAiBackfillMessage ? (
+                          <span className={`whitespace-pre-wrap text-xs ${levelAiBackfillStatus === 'error' ? 'text-red-600' : levelAiBackfillStatus === 'done' ? 'text-emerald-700' : 'text-slate-500'}`}>
+                            {levelAiBackfillMessage}
+                          </span>
+                        ) : null}
                         {renderTopicAiBatchProgress()}
+                        {renderLevelAiBatchProgress()}
                       </div>
                     ) : null}
                     {isAdmin && rawParseExpanded ? (
@@ -17148,6 +17314,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               className="rounded-md bg-fuchsia-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
                               {topicAiBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers && topicAiSourceCursor ? 'Continue topic AI' : 'Apply topic AI'}
                             </button>
+                            <button
+                              onClick={() => triggerAiLevelsBackfill(qbContextQ?.sourceId, true)}
+                              disabled={levelAiBackfillStatus === 'loading'}
+                              className="rounded-md border border-emerald-300 bg-white px-2 py-0.5 text-xs font-medium text-emerald-700 shadow-sm disabled:opacity-50">
+                              {levelAiBackfillStatus === 'loading' ? 'Running…' : 'Preview Levels'}
+                            </button>
+                            <button
+                              onClick={() => triggerAiLevelsBackfill(qbContextQ?.sourceId, false)}
+                              disabled={levelAiBackfillStatus === 'loading' || (!topicBackfillAllPapers && levelAiBackfillDryRun.length === 0)}
+                              className="rounded-md bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50">
+                              {levelAiBackfillStatus === 'loading' ? 'Running…' : topicBackfillAllPapers && levelAiSourceCursor ? 'Continue Apply Levels' : 'Apply Levels'}
+                            </button>
                             {topicBackfillAllPapers ? (
                               <label className="flex items-center gap-1 cursor-pointer select-none">
                                 <span className="text-xs text-slate-500">AI papers/run</span>
@@ -17167,6 +17345,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 disabled={topicAiBackfillStatus === 'loading'}
                                 className="rounded-md border border-fuchsia-300 bg-white px-2 py-0.5 text-xs font-medium text-fuchsia-700 shadow-sm disabled:opacity-50">
                                 Restart AI batching
+                              </button>
+                            ) : null}
+                            {topicBackfillAllPapers ? (
+                              <button
+                                onClick={resetLevelAiBatchProgress}
+                                disabled={levelAiBackfillStatus === 'loading'}
+                                className="rounded-md border border-emerald-300 bg-white px-2 py-0.5 text-xs font-medium text-emerald-700 shadow-sm disabled:opacity-50">
+                                Restart Levels batching
                               </button>
                             ) : null}
                             <label className="flex items-center gap-1 cursor-pointer select-none">
@@ -17206,8 +17392,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       {topicAiBackfillMessage}
                     </p>
                   ) : null}
+                  {isAdmin && levelAiBackfillStatus !== 'idle' && levelAiBackfillMessage ? (
+                    <p className={`whitespace-pre-wrap text-xs ${levelAiBackfillStatus === 'error' ? 'text-red-600' : levelAiBackfillStatus === 'done' ? 'text-emerald-700' : 'text-slate-500'}`}>
+                      {levelAiBackfillMessage}
+                    </p>
+                  ) : null}
                   {isAdmin ? (
                     <p className="text-xs text-fuchsia-700">{renderTopicAiBatchProgress()}</p>
+                  ) : null}
+                  {isAdmin ? (
+                    <p className="text-xs text-emerald-700">{renderLevelAiBatchProgress()}</p>
                   ) : null}
                   {rootText ? (
                     <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">

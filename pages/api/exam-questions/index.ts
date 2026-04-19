@@ -459,44 +459,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     sourceId: string | null
   }> = []
 
+  const allItems = await prisma.examQuestion.findMany({
+    where,
+    orderBy,
+    select: itemSelect,
+  })
+
+  const familyWhereClauses = Array.from(new Map(
+    allItems.map((item) => [buildQuestionFamilyKey(item), {
+      sourceId: item.sourceId,
+      grade: item.grade,
+      year: item.year,
+      month: item.month,
+      paper: item.paper,
+    }]),
+  ).values())
+
+  familyRecords = familyWhereClauses.length > 0
+    ? await prisma.examQuestion.findMany({
+        where: { OR: familyWhereClauses },
+        select: {
+          id: true,
+          grade: true,
+          year: true,
+          month: true,
+          paper: true,
+          questionNumber: true,
+          questionDepth: true,
+          topic: true,
+          cognitiveLevel: true,
+          questionText: true,
+          imageUrl: true,
+          tableMarkdown: true,
+          sourceId: true,
+        },
+      })
+    : []
+
   if (hideCompositeRoots) {
-    const allItems = await prisma.examQuestion.findMany({
-      where,
-      orderBy,
-      select: itemSelect,
-    })
-
-    const familyWhereClauses = Array.from(new Map(
-      allItems.map((item) => [buildQuestionFamilyKey(item), {
-        sourceId: item.sourceId,
-        grade: item.grade,
-        year: item.year,
-        month: item.month,
-        paper: item.paper,
-      }]),
-    ).values())
-
-    familyRecords = familyWhereClauses.length > 0
-      ? await prisma.examQuestion.findMany({
-          where: { OR: familyWhereClauses },
-          select: {
-            id: true,
-            grade: true,
-            year: true,
-            month: true,
-            paper: true,
-            questionNumber: true,
-            questionDepth: true,
-            topic: true,
-            cognitiveLevel: true,
-            questionText: true,
-            imageUrl: true,
-            tableMarkdown: true,
-            sourceId: true,
-          },
-        })
-      : []
-
     const familyQuestionNumbersByKey = new Map<string, string[]>()
     for (const record of familyRecords) {
       const normalized = normalizeHierarchyQuestionNumber(record.questionNumber)
@@ -508,37 +508,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const omitIds = buildCompositeRootOmitSet(allItems, familyQuestionNumbersByKey)
-    const filteredItems = allItems.filter((item) => !omitIds.has(item.id))
-    total = filteredItems.length
-    items = filteredItems.slice(skip, skip + take)
+    items = allItems.filter((item) => !omitIds.has(item.id))
   } else {
-    const [rawTotal, rawItems] = await Promise.all([
-      prisma.examQuestion.count({ where }),
-      prisma.examQuestion.findMany({
-        where,
-        orderBy,
-        skip,
-        take,
-        select: itemSelect,
-      }),
-    ])
-    total = rawTotal
-    items = rawItems
-    familyRecords = rawItems.map((item) => ({
-      id: item.id,
-      grade: item.grade,
-      year: item.year,
-      month: item.month,
-      paper: item.paper,
-      questionNumber: item.questionNumber,
-      questionDepth: item.questionDepth,
-      topic: item.topic,
-      cognitiveLevel: item.cognitiveLevel,
-      questionText: item.questionText,
-      imageUrl: item.imageUrl,
-      tableMarkdown: item.tableMarkdown,
-      sourceId: item.sourceId,
-    }))
+    items = allItems
   }
 
   const sourceIds = Array.from(new Set(items.map((item) => String(item.sourceId || '')).filter(Boolean)))

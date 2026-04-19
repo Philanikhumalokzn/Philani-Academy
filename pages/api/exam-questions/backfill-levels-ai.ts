@@ -93,14 +93,48 @@ function clampText(value: unknown, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1).trim()}…` : text
 }
 
-function buildQuestionPromptLine(row: QuestionRow): string {
+function escapeRegExp(value: string): string {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function extractQuestionContextSnippet(paperMmd: string, questionNumber: string): string {
+  const text = String(paperMmd || '')
+  if (!text.trim()) return ''
+
+  const normalizedQuestionNumber = normalizeQuestionNumber(questionNumber) || String(questionNumber || '').trim()
+  const rootNumber = normalizedQuestionNumber.split('.')[0] || normalizedQuestionNumber
+  const lines = text.split(/\r?\n/)
+  const patterns = [
+    new RegExp(`^\\s*${escapeRegExp(String(questionNumber || '').trim())}\\b`, 'i'),
+    new RegExp(`^\\s*Q?${escapeRegExp(normalizedQuestionNumber)}\\b`, 'i'),
+    new RegExp(`QUESTION\\s+${escapeRegExp(rootNumber)}\\b`, 'i'),
+  ]
+
+  let hitIndex = -1
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = String(lines[index] || '')
+    if (patterns.some((pattern) => pattern.test(line))) {
+      hitIndex = index
+      break
+    }
+  }
+
+  if (hitIndex < 0) return clampText(text, 700)
+
+  const start = Math.max(0, hitIndex - 8)
+  const end = Math.min(lines.length, hitIndex + 14)
+  return clampText(lines.slice(start, end).join('\n'), 1200)
+}
+
+function buildQuestionPromptLine(row: QuestionRow, questionContextSnippet?: string | null): string {
   const normalized = normalizeExamQuestionContent(row.questionText, row.latex)
   const body = clampText(normalized.questionText || normalized.latex || row.tableMarkdown || '', 320) || '[no extracted text]'
   const parts = [`Q${row.questionNumber}`, `depth=${row.questionDepth}`]
   if (row.marks != null) parts.push(`marks=${row.marks}`)
   if (row.topic) parts.push(`topic=${row.topic}`)
   if (row.imageUrl) parts.push('hasImage=true')
-  return `${parts.join(' | ')}\n${body}`
+  const snippetBlock = questionContextSnippet ? `\nContext snippet:\n${questionContextSnippet}` : ''
+  return `${parts.join(' | ')}\n${body}${snippetBlock}`
 }
 
 function isSuspiciousLevelOneRow(row: QuestionRow): boolean {
@@ -129,10 +163,16 @@ function buildCognitivePrompt(input: {
   repairSuspiciousLevel1?: boolean
 }): string {
   const gradeLabel = String(input.grade || '').replace('_', ' ').replace(/^GRADE /i, 'Grade ')
-  const questionLines = input.questions.map((row) => buildQuestionPromptLine(row)).join('\n\n')
+  const questionLines = input.questions
+    .map((row) => buildQuestionPromptLine(
+      row,
+      input.repairSuspiciousLevel1 ? extractQuestionContextSnippet(input.paperMmd, row.questionNumber) : null,
+    ))
+    .join('\n\n')
   const repairInstructions = input.repairSuspiciousLevel1
     ? [
         'These questions are being REPAIRED because they were previously labelled Level 1 and that label is suspicious.',
+        'Use the local MMD snippet provided under each question as the primary context for classification.',
         'Use a safer rule set: Level 1 should be rare and must only be used for direct recall, direct read-off, identification, or plainly obvious one-step substitution.',
         'If a learner must perform procedure selection, algebraic manipulation, solve, calculate across steps, sketch from derived features, justify, interpret, compare, model, or reason through multiple steps, it is NOT Level 1.',
         'Be especially careful not to keep an item at Level 1 unless it is clearly pure recall/read-off.',

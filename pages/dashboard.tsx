@@ -4076,14 +4076,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [])
 
   const isMmdPaperResource = useCallback((item: ResourceBankItem) => {
-    return isPaperResource(item) && getResourceRawMmd(item).length > 0
-  }, [getResourceRawMmd, isPaperResource])
+    return getResourceRawMmd(item).length > 0
+  }, [getResourceRawMmd])
 
   const getBooksHubItems = useCallback((tab: 'papers' | 'pdfs' | 'resources') => {
     if (tab === 'papers') return booksItems.filter((item) => isMmdPaperResource(item))
-    if (tab === 'pdfs') return booksItems.filter((item) => isPdfResource(item) && !isPaperResource(item))
-    return booksItems.filter((item) => !isPaperResource(item) && !isPdfResource(item))
-  }, [booksItems, isMmdPaperResource, isPaperResource, isPdfResource])
+    if (tab === 'pdfs') return booksItems.filter((item) => isPdfResource(item) && !isMmdPaperResource(item))
+    return booksItems.filter((item) => !isMmdPaperResource(item) && !isPdfResource(item))
+  }, [booksItems, isMmdPaperResource, isPdfResource])
 
   const getLibraryGradeSourceLabel = useCallback((sourceType: LibraryGradeItem['sourceType']) => {
     if (sourceType === 'assignment') return 'Assignment'
@@ -4826,7 +4826,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const renderBooksList = useCallback((tab: 'papers' | 'pdfs' | 'resources') => {
     const visibleItems = getBooksHubItems(tab)
     const emptyLabel = tab === 'papers'
-      ? 'No MMD papers available yet.'
+      ? 'No MMD documents available for this grade yet.'
       : tab === 'pdfs'
         ? 'No PDFs available yet.'
         : 'No resources available yet.'

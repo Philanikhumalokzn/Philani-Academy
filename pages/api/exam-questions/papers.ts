@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import prisma from '../../../lib/prisma'
-import { gradeToLabel } from '../../../lib/grades'
+import { gradeToLabel, normalizeGradeInput } from '../../../lib/grades'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
@@ -12,9 +12,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const token = await getToken({ req })
   if (!token) return res.status(401).json({ message: 'Unauthenticated' })
 
+  const tokenGrade = typeof (token as any)?.grade === 'string' ? (token as any).grade : undefined
+  const requestedGrade = typeof req.query.grade === 'string' ? req.query.grade : undefined
+  const grade = normalizeGradeInput(requestedGrade || tokenGrade)
+  if (!grade) {
+    return res.status(400).json({ message: 'Grade is required' })
+  }
+
   const role = ((token as any)?.role as string | undefined) || 'student'
 
   const where: Record<string, unknown> = {
+    grade,
     sourceId: { not: null },
   }
 
@@ -69,5 +77,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item))
 
-  return res.status(200).json({ items })
+  return res.status(200).json({ grade, items })
 }

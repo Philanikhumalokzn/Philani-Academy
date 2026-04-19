@@ -211,6 +211,17 @@ type ResourceBankItem = {
   parsedJson?: any | null
 }
 
+type BooksPaperItem = {
+  id: string
+  grade: GradeValue
+  year: number
+  month: string
+  paper: number
+  sourceId: string
+  title: string
+  sourceUrl?: string | null
+}
+
 type LibraryGradeItem = {
   id: string
   assessmentTitle: string
@@ -1929,6 +1940,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [booksLoading, setBooksLoading] = useState(false)
   const [booksError, setBooksError] = useState<string | null>(null)
   const [booksItems, setBooksItems] = useState<ResourceBankItem[]>([])
+  const [booksPaperItems, setBooksPaperItems] = useState<BooksPaperItem[]>([])
 
   // Remix state
   const [qbYear, setQbYear] = useState<string>('')
@@ -4630,28 +4642,36 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const fetchBooksForGrade = useCallback(async () => {
     if (status !== 'authenticated') {
       setBooksItems([])
+      setBooksPaperItems([])
       setBooksError('Sign in to view materials.')
       return
     }
     if (!selectedGrade) {
       setBooksItems([])
+      setBooksPaperItems([])
       setBooksError('Select a grade to view materials.')
       return
     }
 
     const cacheKey = makeOfflineCacheKey(`resources:${selectedGrade}`)
+    const papersCacheKey = makeOfflineCacheKey(`papers:${selectedGrade}`)
     const cached = readLocalCache<ResourceBankItem[]>(cacheKey)
+    const cachedPapers = readLocalCache<BooksPaperItem[]>(papersCacheKey)
     if (cached?.data?.length) {
       setBooksItems(cached.data)
+    }
+    if (cachedPapers?.data?.length) {
+      setBooksPaperItems(cachedPapers.data)
     }
 
     setBooksLoading(true)
     setBooksError(null)
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      if (cached?.data?.length) {
+      if (cached?.data?.length || cachedPapers?.data?.length) {
         setBooksError('Offline. Showing last saved materials.')
       } else {
         setBooksItems([])
+        setBooksPaperItems([])
         setBooksError('Offline. No saved materials yet.')
       }
       setBooksLoading(false)
@@ -4661,15 +4681,27 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       const url = isAdmin
         ? `/api/resources?grade=${encodeURIComponent(selectedGrade)}&all=1`
         : '/api/resources?all=1'
-      const res = await fetch(url, { credentials: 'same-origin' })
+      const papersUrl = isAdmin
+        ? `/api/exam-questions/papers?grade=${encodeURIComponent(selectedGrade)}`
+        : '/api/exam-questions/papers'
+      const [res, papersRes] = await Promise.all([
+        fetch(url, { credentials: 'same-origin' }),
+        fetch(papersUrl, { credentials: 'same-origin' }),
+      ])
       const data = await res.json().catch(() => ({}))
+      const papersData = await papersRes.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.message || `Failed to load materials (${res.status})`)
+      if (!papersRes.ok) throw new Error(papersData?.message || `Failed to load papers (${papersRes.status})`)
       const items = Array.isArray(data?.items) ? data.items : []
+      const paperItems = Array.isArray(papersData?.items) ? papersData.items : []
       setBooksItems(items)
+      setBooksPaperItems(paperItems)
       writeLocalCache(cacheKey, items)
+      writeLocalCache(papersCacheKey, paperItems)
     } catch (err: any) {
       setBooksError(err?.message || 'Failed to load materials')
       if (!cached?.data?.length) setBooksItems([])
+      if (!cachedPapers?.data?.length) setBooksPaperItems([])
     } finally {
       setBooksLoading(false)
     }
@@ -4812,22 +4844,66 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     })()
   }, [isDocSavedOffline])
 
-  const openBooksPaper = useCallback(async (item: ResourceBankItem) => {
+  const openBooksPaper = useCallback(async (item: BooksPaperItem) => {
     await openPaperContext({
-      sourceId: item.id,
+      sourceId: item.sourceId,
+      grade: item.grade,
+      year: item.year,
+      month: item.month,
+      paper: item.paper,
       sourceTitle: item.title,
       title: item.title,
-      sourceUrl: item.url,
+      sourceUrl: item.sourceUrl,
       questionNumber: '',
-      documentMmd: getResourceRawMmd(item),
     })
-  }, [getResourceRawMmd])
+  }, [])
+
+  const renderBooksPaperList = useCallback(() => {
+    const emptyLabel = 'No MMD documents available for this grade yet.'
+
+    return (
+      <>
+        {booksError ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-red-600">{booksError}</section> : null}
+        {booksLoading ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">Loading...</section> : null}
+        {!booksLoading && !booksError && booksPaperItems.length === 0 ? (
+          <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">{emptyLabel}</section>
+        ) : null}
+
+        {booksPaperItems.length > 0 ? (
+          <ul>
+            {booksPaperItems.map((item) => (
+              <li
+                key={item.id}
+                className="border-b border-black/10 bg-white px-4 py-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      className="block text-left text-[15px] font-semibold text-[#111827] hover:underline whitespace-normal break-words"
+                      onClick={() => void openBooksPaper(item)}
+                    >
+                      {item.title}
+                    </button>
+                    <div className="mt-1 text-xs text-[#65676b]">
+                      {gradeToLabel(item.grade)} - {item.month} {item.year} - Paper {item.paper}
+                    </div>
+                    <div className="mt-2 text-xs text-[#1f4f82]">Open in document view</div>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </>
+    )
+  }, [booksError, booksLoading, booksPaperItems, openBooksPaper])
 
   const renderBooksList = useCallback((tab: 'papers' | 'pdfs' | 'resources') => {
+    if (tab === 'papers') return renderBooksPaperList()
+
     const visibleItems = getBooksHubItems(tab)
-    const emptyLabel = tab === 'papers'
-      ? 'No MMD documents available for this grade yet.'
-      : tab === 'pdfs'
+    const emptyLabel = tab === 'pdfs'
         ? 'No PDFs available yet.'
         : 'No resources available yet.'
 
@@ -4852,15 +4928,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      {tab === 'papers' ? (
-                        <button
-                          type="button"
-                          className="block text-left text-[15px] font-semibold text-[#111827] hover:underline whitespace-normal break-words"
-                          onClick={() => void openBooksPaper(item)}
-                        >
-                          {item.title}
-                        </button>
-                      ) : isPdfResource(item) ? (
+                      {isPdfResource(item) ? (
                         <button
                           type="button"
                           className="block text-left text-[15px] font-semibold text-[#111827] hover:underline whitespace-normal break-words"
@@ -4882,12 +4950,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         {item.tag ? `${item.tag} - ` : ''}
                         {gradeToLabel(item.grade)}
                       </div>
-                      {tab === 'papers' ? (
-                        <div className="mt-2 text-xs text-[#1f4f82]">Open in document view</div>
-                      ) : null}
                       {offlineError ? <div className="mt-2 text-xs text-amber-700">{offlineError}</div> : null}
                     </div>
-                    {item.url && tab !== 'papers' ? (
+                    {item.url ? (
                       <div className="flex items-center gap-2">
                         {savedOffline ? (
                           <button
@@ -4917,7 +4982,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         ) : null}
       </>
     )
-  }, [booksError, booksLoading, getBooksHubItems, gradeToLabel, isDocSavedOffline, isPdfResource, offlineDocErrorByUrl, offlineDocSavingUrls, openBooksPaper, openPdfViewer, removeDocOffline, saveDocOffline])
+  }, [booksError, booksLoading, getBooksHubItems, gradeToLabel, isDocSavedOffline, isPdfResource, offlineDocErrorByUrl, offlineDocSavingUrls, openPdfViewer, removeDocOffline, renderBooksPaperList, saveDocOffline])
 
   const handlePdfPostCapture = useCallback((file: File, snapshot?: PdfViewerSnapshot) => {
     queueRestore(() => {

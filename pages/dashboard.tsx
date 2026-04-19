@@ -4093,7 +4093,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const getBooksHubItems = useCallback((tab: 'papers' | 'pdfs' | 'resources') => {
     if (tab === 'papers') return booksItems.filter((item) => isMmdPaperResource(item))
-    if (tab === 'pdfs') return booksItems.filter((item) => isPdfResource(item) && !isMmdPaperResource(item))
+    if (tab === 'pdfs') return booksItems.filter((item) => isPdfResource(item))
     return booksItems.filter((item) => !isMmdPaperResource(item) && !isPdfResource(item))
   }, [booksItems, isMmdPaperResource, isPdfResource])
 

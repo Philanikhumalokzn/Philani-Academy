@@ -208,6 +208,7 @@ type ResourceBankItem = {
   size?: number | null
   createdAt: string
   tag?: string | null
+  parsedJson?: any | null
 }
 
 type LibraryGradeItem = {
@@ -4060,11 +4061,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return /\b(paper|papers|exam|examination|test|worksheet|memo|past paper|assessment)\b/.test(haystack)
   }, [])
 
+  const getResourceRawMmd = useCallback((item: ResourceBankItem) => {
+    const parsed = item?.parsedJson as any
+    return typeof parsed?.raw?.mmd === 'string' ? parsed.raw.mmd.trim() : ''
+  }, [])
+
+  const isMmdPaperResource = useCallback((item: ResourceBankItem) => {
+    return isPaperResource(item) && getResourceRawMmd(item).length > 0
+  }, [getResourceRawMmd, isPaperResource])
+
   const getBooksHubItems = useCallback((tab: 'papers' | 'pdfs' | 'resources') => {
-    if (tab === 'papers') return booksItems.filter((item) => isPaperResource(item))
+    if (tab === 'papers') return booksItems.filter((item) => isMmdPaperResource(item))
     if (tab === 'pdfs') return booksItems.filter((item) => isPdfResource(item) && !isPaperResource(item))
     return booksItems.filter((item) => !isPaperResource(item) && !isPdfResource(item))
-  }, [booksItems, isPaperResource, isPdfResource])
+  }, [booksItems, isMmdPaperResource, isPaperResource, isPdfResource])
 
   const getLibraryGradeSourceLabel = useCallback((sourceType: LibraryGradeItem['sourceType']) => {
     if (sourceType === 'assignment') return 'Assignment'
@@ -4793,10 +4803,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     })()
   }, [isDocSavedOffline])
 
+  const openBooksPaper = useCallback(async (item: ResourceBankItem) => {
+    await openPaperContext({
+      sourceId: item.id,
+      sourceTitle: item.title,
+      title: item.title,
+      sourceUrl: item.url,
+      questionNumber: '',
+      documentMmd: getResourceRawMmd(item),
+    })
+  }, [getResourceRawMmd])
+
   const renderBooksList = useCallback((tab: 'papers' | 'pdfs' | 'resources') => {
     const visibleItems = getBooksHubItems(tab)
     const emptyLabel = tab === 'papers'
-      ? 'No papers available yet.'
+      ? 'No MMD papers available yet.'
       : tab === 'pdfs'
         ? 'No PDFs available yet.'
         : 'No resources available yet.'
@@ -4822,7 +4843,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      {isPdfResource(item) ? (
+                      {tab === 'papers' ? (
+                        <button
+                          type="button"
+                          className="block text-left text-[15px] font-semibold text-[#111827] hover:underline whitespace-normal break-words"
+                          onClick={() => void openBooksPaper(item)}
+                        >
+                          {item.title}
+                        </button>
+                      ) : isPdfResource(item) ? (
                         <button
                           type="button"
                           className="block text-left text-[15px] font-semibold text-[#111827] hover:underline whitespace-normal break-words"
@@ -4844,9 +4873,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         {item.tag ? `${item.tag} - ` : ''}
                         {gradeToLabel(item.grade)}
                       </div>
+                      {tab === 'papers' ? (
+                        <div className="mt-2 text-xs text-[#1f4f82]">Open in document view</div>
+                      ) : null}
                       {offlineError ? <div className="mt-2 text-xs text-amber-700">{offlineError}</div> : null}
                     </div>
-                    {item.url ? (
+                    {item.url && tab !== 'papers' ? (
                       <div className="flex items-center gap-2">
                         {savedOffline ? (
                           <button
@@ -4876,7 +4908,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         ) : null}
       </>
     )
-  }, [booksError, booksLoading, getBooksHubItems, gradeToLabel, isDocSavedOffline, isPdfResource, offlineDocErrorByUrl, offlineDocSavingUrls, openPdfViewer, removeDocOffline, saveDocOffline])
+  }, [booksError, booksLoading, getBooksHubItems, gradeToLabel, isDocSavedOffline, isPdfResource, offlineDocErrorByUrl, offlineDocSavingUrls, openBooksPaper, openPdfViewer, removeDocOffline, saveDocOffline])
 
   const handlePdfPostCapture = useCallback((file: File, snapshot?: PdfViewerSnapshot) => {
     queueRestore(() => {
@@ -14167,6 +14199,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     try {
       const params = new URLSearchParams()
       const paperDocParams = new URLSearchParams()
+      const providedMmd = typeof q?.documentMmd === 'string' ? q.documentMmd.trim() : ''
       if (q.sourceId) {
         params.set('sourceId', String(q.sourceId))
         paperDocParams.set('sourceId', String(q.sourceId))
@@ -14183,13 +14216,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       params.set('take', '200')
       const [res, paperDocResult] = await Promise.all([
         fetch(`/api/exam-questions?${params.toString()}`, { credentials: 'same-origin' }),
-        fetch(`/api/exam-questions/paper-document?${paperDocParams.toString()}`, { credentials: 'same-origin' })
-          .then(async (paperRes) => ({ ok: paperRes.ok, data: await paperRes.json().catch(() => ({})) }))
-          .catch(() => ({ ok: false, data: {} })),
+        providedMmd
+          ? Promise.resolve({ ok: true, data: { mmd: providedMmd } })
+          : fetch(`/api/exam-questions/paper-document?${paperDocParams.toString()}`, { credentials: 'same-origin' })
+              .then(async (paperRes) => ({ ok: paperRes.ok, data: await paperRes.json().catch(() => ({})) }))
+              .catch(() => ({ ok: false, data: {} })),
       ])
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.message || `Unable to load paper context (${res.status})`)
-      const items: any[] = Array.isArray(data?.items) ? data.items : []
+      const items: any[] = res.ok && Array.isArray(data?.items) ? data.items : []
       items.sort((a, b) => compareQNum(String(a.questionNumber), String(b.questionNumber)))
 
       const rawMmd = typeof (paperDocResult as any)?.data?.mmd === 'string' ? String((paperDocResult as any).data.mmd) : ''
@@ -14199,6 +14233,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       } else {
         setQbContextDocumentMmd(null)
         setQbContextViewMode('extracted')
+      }
+
+      if (!res.ok && !rawMmd.trim()) {
+        throw new Error(data?.message || `Unable to load paper context (${res.status})`)
       }
 
       const selectedQNum = String(q?.questionNumber || '').trim()
@@ -17268,7 +17306,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       <BottomSheet
         open={qbContextOpen}
         title="Paper context"
-        subtitle={qbContextQ ? `${qbContextQ.sourceTitle ? `${qbContextQ.sourceTitle} · ` : ''}${qbContextQ.year} ${qbContextQ.month} · Paper ${qbContextQ.paper}` : undefined}
+        subtitle={qbContextQ
+          ? (String(qbContextQ.questionNumber || '').trim()
+              ? `${qbContextQ.sourceTitle ? `${qbContextQ.sourceTitle} · ` : ''}${qbContextQ.year} ${qbContextQ.month} · Paper ${qbContextQ.paper}`
+              : String(qbContextQ.sourceTitle || qbContextQ.title || '').trim() || undefined)
+          : undefined}
         onClose={() => {
           if (qbContextAutoScrollTimerRef.current != null) {
             window.clearTimeout(qbContextAutoScrollTimerRef.current)
@@ -17313,7 +17355,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
           <div className="min-w-0">
             {qbContextQ
-              ? (qbContextQ.sourceId
+              ? (!String(qbContextQ.questionNumber || '').trim()
+                ? 'Showing the original document for this paper.'
+                : qbContextQ.sourceId
                 ? (qbContextRoot
                   ? `Showing Question ${qbContextRoot} in original sequence. Selected: Q${formatQNumLabel(qbContextQ.questionNumber)}`
                   : `Showing the original extracted source for Q${formatQNumLabel(qbContextQ.questionNumber)}`)

@@ -1,45 +1,165 @@
 # Page snapshot
 
 ```yaml
-- generic [active] [ref=e1]:
-  - generic [ref=e5]:
+- generic [ref=e1]:
+  - main [ref=e4]:
     - generic [ref=e6]:
       - generic [ref=e7]:
-        - img "Philani Academy logo" [ref=e10]
-        - paragraph [ref=e11]: Philani Academy
-        - heading "Sign in" [level=1] [ref=e12]
-        - paragraph [ref=e13]: Welcome back! Enter your credentials to access the dashboard.
-      - generic [ref=e14]: Invalid email or password.
-      - generic [ref=e15]:
-        - generic [ref=e16]:
-          - generic [ref=e17]: Email
-          - textbox "Email" [ref=e18]: admin@philani.test
-        - generic [ref=e19]:
-          - generic [ref=e20]: Password
-          - textbox "Password" [ref=e21]: admin
-          - link "Forgot password?" [ref=e23] [cursor=pointer]:
-            - /url: /auth/forgot-password?email=admin%40philani.test
-        - button "Sign in" [ref=e24] [cursor=pointer]
-      - generic [ref=e25]:
-        - paragraph [ref=e26]:
-          - text: Don't have an account?
-          - link "Sign up" [ref=e27] [cursor=pointer]:
-            - /url: /signup
-        - generic [ref=e28]:
-          - paragraph [ref=e29]: Email verification
-          - paragraph [ref=e30]: If you created an account earlier and have not verified your email, request a new code below.
-          - button "Resend confirmation code" [ref=e31] [cursor=pointer]
-    - contentinfo [ref=e32]:
-      - generic [ref=e33]:
-        - link "Privacy" [ref=e34] [cursor=pointer]:
-          - /url: /privacy
-        - link "Terms" [ref=e35] [cursor=pointer]:
-          - /url: /terms
-        - link "Help" [ref=e36] [cursor=pointer]:
-          - /url: /help
-        - link "Contact" [ref=e37] [cursor=pointer]:
-          - /url: mailto:support@philaniacademy.org
-      - generic [ref=e38]: Educational platform. Use of the service is subject to platform policies and applicable law.
-      - generic [ref=e39]: © 2026 Philani Academy. All rights reserved.
-  - alert [ref=e40]
+        - generic [ref=e8]:
+          - generic [ref=e9]:
+            - button "Open menu" [ref=e10] [cursor=pointer]:
+              - img [ref=e11]
+            - img "Philani Academy logo" [ref=e13]
+          - generic [ref=e14]:
+            - button "Open Discovery" [ref=e15] [cursor=pointer]:
+              - img [ref=e16]
+            - button "Notifications" [ref=e19] [cursor=pointer]:
+              - img [ref=e20]
+          - button "Select admin grade scope" [ref=e22] [cursor=pointer]:
+            - generic [ref=e23]: Grade 12
+        - generic [ref=e25]:
+          - button "Home" [ref=e26] [cursor=pointer]:
+            - img [ref=e27]
+          - button "Study hub" [ref=e29] [cursor=pointer]:
+            - img [ref=e30]
+          - button "Groups" [ref=e33] [cursor=pointer]:
+            - img [ref=e34]
+          - button "Learning Hub" [ref=e39] [cursor=pointer]:
+            - img [ref=e40]
+          - button "My profile" [ref=e42] [cursor=pointer]:
+            - generic [ref=e44]: P
+      - generic [ref=e47]:
+        - generic [ref=e51]:
+          - generic [ref=e53]:
+            - generic [ref=e55]: PA
+            - button "What's on your mind, Playwright?" [ref=e57] [cursor=pointer]
+            - button "Add photo or screenshot" [ref=e58] [cursor=pointer]:
+              - img [ref=e59]
+          - generic [ref=e62]: Loading...
+        - generic [ref=e65]:
+          - generic [ref=e68]:
+            - img [ref=e70]
+            - generic [ref=e74]: Lessons
+          - generic [ref=e76]:
+            - generic [ref=e77]:
+              - generic [ref=e78]:
+                - heading "Current lesson" [level=2] [ref=e80]
+                - generic [ref=e82]:
+                  - generic [ref=e83]: Grade
+                  - button "Select grade workspace" [ref=e84] [cursor=pointer]: "12"
+              - generic [ref=e85]:
+                - generic [ref=e86]:
+                  - img "Lesson thumbnail" [ref=e87]
+                  - generic [ref=e90]:
+                    - generic [ref=e91]: Trigonometric Equations
+                    - generic [ref=e92]:
+                      - generic [ref=e93]:
+                        - generic [ref=e94]: Starts
+                        - generic [ref=e95]: Sat, Feb 7
+                        - generic [ref=e96]: 11:15 AM
+                      - generic [ref=e97]:
+                        - generic [ref=e98]: Ends
+                        - generic [ref=e99]: Sat, Feb 7
+                        - generic [ref=e100]: 12:15 PM
+                - generic [ref=e101]:
+                  - button "Edit lesson" [ref=e103] [cursor=pointer]
+                  - generic [ref=e104]:
+                    - button "Enter class" [ref=e105] [cursor=pointer]
+                    - generic [ref=e106]:
+                      - button "Quizzes" [ref=e107] [cursor=pointer]
+                      - button "Assignments" [ref=e108] [cursor=pointer]
+            - button "Create lesson Open" [ref=e110] [cursor=pointer]:
+              - generic [ref=e111]: Create lesson
+              - generic [ref=e112]: Open
+            - button "Live lesson selector Open" [ref=e114] [cursor=pointer]:
+              - generic [ref=e115]: Live lesson selector
+              - generic [ref=e116]: Open
+            - generic [ref=e117]:
+              - heading "Upcoming lessons" [level=2] [ref=e118]
+              - generic [ref=e119]:
+                - generic [ref=e120]: Subscription gating
+                - generic [ref=e121]:
+                  - checkbox "Require an active subscription for learners to join sessions and view assignments" [ref=e122]
+                  - generic [ref=e123]: Require an active subscription for learners to join sessions and view assignments
+              - generic [ref=e124]:
+                - button "Past lessons" [ref=e125] [cursor=pointer]
+                - list [ref=e126]:
+                  - listitem [ref=e127]:
+                    - generic [ref=e128]: No upcoming sessions right now.
+        - generic [ref=e131]:
+          - generic [ref=e133]:
+            - generic [ref=e134]:
+              - img [ref=e136]
+              - generic [ref=e141]:
+                - generic [ref=e142]: Groups
+                - generic [ref=e143]: Create, join and manage
+            - button "Refresh" [ref=e145] [cursor=pointer]
+          - generic [ref=e147]:
+            - generic [ref=e149]:
+              - generic [ref=e150]:
+                - generic [ref=e151]:
+                  - generic [ref=e152]: Start a group
+                  - generic [ref=e153]: Create, invite and manage circles from one clean workspace.
+                - generic [ref=e154]:
+                  - textbox "Group name" [ref=e155]
+                  - generic [ref=e156]:
+                    - combobox [ref=e157]:
+                      - option "Study group" [selected]
+                      - option "Class"
+                      - option "Cohort"
+                    - combobox [ref=e158]:
+                      - option "Grade" [selected]
+                      - option "Grade 8"
+                      - option "Grade 9"
+                      - option "Grade 10"
+                      - option "Grade 11"
+                      - option "Grade 12"
+                  - button "Create group" [disabled] [ref=e159]
+              - generic [ref=e160]:
+                - generic [ref=e161]:
+                  - generic [ref=e162]: Join with code
+                  - generic [ref=e163]: Paste a code and enter straight away.
+                - generic [ref=e164]:
+                  - textbox "Enter join code" [ref=e165]
+                  - button "Join group" [disabled] [ref=e166]
+            - generic [ref=e167]:
+              - generic [ref=e168]:
+                - generic [ref=e169]:
+                  - generic [ref=e170]: My groups
+                  - generic [ref=e171]: Nothing joined yet.
+                - button "Refresh" [ref=e172] [cursor=pointer]
+              - generic [ref=e173]: Groups you create or join will appear here.
+        - generic [ref=e176]:
+          - generic [ref=e178]:
+            - generic [ref=e179]:
+              - img [ref=e181]
+              - generic [ref=e183]:
+                - generic [ref=e184]: Learning Hub
+                - generic [ref=e185]: Learning
+                - generic [ref=e186]: Remix questions, browse papers, PDFs, and resources
+            - button "Refresh" [ref=e188] [cursor=pointer]
+          - generic [ref=e190]:
+            - generic [ref=e192]:
+              - button "Remix" [ref=e193] [cursor=pointer]
+              - button "Papers" [active] [ref=e194] [cursor=pointer]
+              - button "PDFs" [ref=e195] [cursor=pointer]
+              - button "Resources" [ref=e196] [cursor=pointer]
+            - generic [ref=e197]: No MMD documents available for this grade yet.
+        - generic [ref=e200]: Your profile is unavailable right now.
+      - generic [ref=e201]:
+        - generic [ref=e202]:
+          - link "Privacy" [ref=e203] [cursor=pointer]:
+            - /url: /privacy
+          - link "Terms" [ref=e204] [cursor=pointer]:
+            - /url: /terms
+          - link "Help" [ref=e205] [cursor=pointer]:
+            - /url: /help
+          - link "Contact" [ref=e206] [cursor=pointer]:
+            - /url: mailto:support@philaniacademy.org
+          - generic [ref=e207]:
+            - button "Normalization Lab" [ref=e208] [cursor=pointer]
+            - button "Keyboard" [ref=e209] [cursor=pointer]
+        - generic [ref=e210]: Educational platform. Use of the service is subject to platform policies and applicable law.
+        - generic [ref=e211]: © 2026 Philani Academy. All rights reserved.
+  - alert [ref=e212]: Philani Academy
 ```

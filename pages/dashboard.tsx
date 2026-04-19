@@ -18263,27 +18263,35 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         closeOnEscape={!qbEditSaving && !qbEditAiLoading}
         className="bottom-0"
         sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
-        contentClassName="space-y-4 overflow-y-auto px-4 pt-4 pb-[calc(var(--app-safe-bottom)+1rem)]"
+        contentClassName="p-0 flex flex-col overflow-hidden"
         zIndexClassName="z-[85]"
       >
-        {qbEditError ? (
-          <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{qbEditError}</div>
-        ) : null}
+        <div
+          className="min-h-0 max-h-[72dvh] overflow-y-auto overscroll-contain px-4 py-4 space-y-4 [touch-action:pan-y]"
+          style={{
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehaviorY: 'contain',
+          }}
+          onTouchMove={(e) => e.stopPropagation()}
+        >
+          {qbEditError ? (
+            <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{qbEditError}</div>
+          ) : null}
 
-        {qbEditingQ ? (
-          <div className="rounded-2xl border border-[#d5def0] bg-[#f7f8fa] px-4 py-3 text-xs text-[#65676b]">
-            <div className="font-semibold text-[#1c1e21]">Record scope</div>
-            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-              <span>ID: {String(qbEditingQ.id)}</span>
-              <span>Depth: {String(qbEditingQ.questionDepth ?? '') || '0'}</span>
-              <span>Source: {qbEditDraft.sourceId || 'Detached'}</span>
+          {qbEditingQ ? (
+            <div className="rounded-2xl border border-[#d5def0] bg-[#f7f8fa] px-4 py-3 text-xs text-[#65676b]">
+              <div className="font-semibold text-[#1c1e21]">Record scope</div>
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                <span>ID: {String(qbEditingQ.id)}</span>
+                <span>Depth: {String(qbEditingQ.questionDepth ?? '') || '0'}</span>
+                <span>Source: {qbEditDraft.sourceId || 'Detached'}</span>
+              </div>
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        <div className="rounded-2xl border border-[#d5def0] bg-white px-4 py-4 shadow-sm">
-          <div className="text-sm font-semibold text-[#1c1e21]">Exam metadata</div>
-          <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="rounded-2xl border border-[#d5def0] bg-white px-4 py-4 shadow-sm">
+            <div className="text-sm font-semibold text-[#1c1e21]">Exam metadata</div>
+            <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
             <div className="space-y-1">
               <label className="text-xs font-medium text-[#65676b]">Grade</label>
               <select className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" value={qbEditDraft.grade} onChange={(e) => setQbEditDraft(prev => ({ ...prev, grade: e.target.value }))} disabled={qbEditSaving}>
@@ -18309,43 +18317,43 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 {[1, 2, 3].map((paper) => <option key={paper} value={String(paper)}>{`Paper ${paper}`}</option>)}
               </select>
             </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-[1.4fr,1fr]">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-[#65676b]">Source Resource ID</label>
+                <input type="text" className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" value={qbEditDraft.sourceId} onChange={(e) => setQbEditDraft(prev => ({ ...prev, sourceId: e.target.value }))} disabled={qbEditSaving} placeholder="ResourceBankItem id or blank to detach" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-[#65676b]">Question Number</label>
+                <input type="text" className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" value={qbEditDraft.questionNumber} onChange={(e) => setQbEditDraft(prev => ({ ...prev, questionNumber: e.target.value }))} disabled={qbEditSaving} />
+              </div>
+            </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-[1.4fr,1fr]">
+          <div className="rounded-2xl border border-[#d5def0] bg-white px-4 py-4 shadow-sm space-y-3">
+            <div className="text-sm font-semibold text-[#1c1e21]">Question content</div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-[#65676b]">Source Resource ID</label>
-              <input type="text" className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" value={qbEditDraft.sourceId} onChange={(e) => setQbEditDraft(prev => ({ ...prev, sourceId: e.target.value }))} disabled={qbEditSaving} placeholder="ResourceBankItem id or blank to detach" />
+              <label className="text-xs font-medium text-[#65676b]">Question Text</label>
+              <textarea rows={6} className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21] resize-y" value={qbEditDraft.questionText} onChange={(e) => setQbEditDraft(prev => ({ ...prev, questionText: e.target.value }))} disabled={qbEditSaving} />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-[#65676b]">Question Number</label>
-              <input type="text" className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" value={qbEditDraft.questionNumber} onChange={(e) => setQbEditDraft(prev => ({ ...prev, questionNumber: e.target.value }))} disabled={qbEditSaving} />
+              <label className="text-xs font-medium text-[#65676b]">LaTeX</label>
+              <textarea rows={3} className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm font-mono text-[#1c1e21] resize-y" placeholder="Optional LaTeX expression" value={qbEditDraft.latex} onChange={(e) => setQbEditDraft(prev => ({ ...prev, latex: e.target.value }))} disabled={qbEditSaving} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[#65676b]">Table Markdown</label>
+              <textarea rows={4} className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm font-mono text-[#1c1e21] resize-y" placeholder="Optional markdown table extracted from the source" value={qbEditDraft.tableMarkdown} onChange={(e) => setQbEditDraft(prev => ({ ...prev, tableMarkdown: e.target.value }))} disabled={qbEditSaving} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[#65676b]">Image URL</label>
+              <input type="url" className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" placeholder="https://..." value={qbEditDraft.imageUrl} onChange={(e) => setQbEditDraft(prev => ({ ...prev, imageUrl: e.target.value }))} disabled={qbEditSaving} />
             </div>
           </div>
-        </div>
 
-        <div className="rounded-2xl border border-[#d5def0] bg-white px-4 py-4 shadow-sm space-y-3">
-          <div className="text-sm font-semibold text-[#1c1e21]">Question content</div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-[#65676b]">Question Text</label>
-            <textarea rows={6} className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21] resize-y" value={qbEditDraft.questionText} onChange={(e) => setQbEditDraft(prev => ({ ...prev, questionText: e.target.value }))} disabled={qbEditSaving} />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-[#65676b]">LaTeX</label>
-            <textarea rows={3} className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm font-mono text-[#1c1e21] resize-y" placeholder="Optional LaTeX expression" value={qbEditDraft.latex} onChange={(e) => setQbEditDraft(prev => ({ ...prev, latex: e.target.value }))} disabled={qbEditSaving} />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-[#65676b]">Table Markdown</label>
-            <textarea rows={4} className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm font-mono text-[#1c1e21] resize-y" placeholder="Optional markdown table extracted from the source" value={qbEditDraft.tableMarkdown} onChange={(e) => setQbEditDraft(prev => ({ ...prev, tableMarkdown: e.target.value }))} disabled={qbEditSaving} />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-[#65676b]">Image URL</label>
-            <input type="url" className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" placeholder="https://..." value={qbEditDraft.imageUrl} onChange={(e) => setQbEditDraft(prev => ({ ...prev, imageUrl: e.target.value }))} disabled={qbEditSaving} />
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-[#d5def0] bg-white px-4 py-4 shadow-sm">
-          <div className="text-sm font-semibold text-[#1c1e21]">Classification</div>
-          <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="rounded-2xl border border-[#d5def0] bg-white px-4 py-4 shadow-sm">
+            <div className="text-sm font-semibold text-[#1c1e21]">Classification</div>
+            <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
             <div className="space-y-1 md:col-span-2">
               <label className="text-xs font-medium text-[#65676b]">Topic</label>
               <select className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" value={qbEditDraft.topic} onChange={(e) => setQbEditDraft(prev => ({ ...prev, topic: e.target.value }))} disabled={qbEditSaving}>
@@ -18367,41 +18375,41 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <label className="text-xs font-medium text-[#65676b]">Marks</label>
               <input type="number" min={0} step={1} className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" value={qbEditDraft.marks} onChange={(e) => setQbEditDraft(prev => ({ ...prev, marks: e.target.value }))} disabled={qbEditSaving} />
             </div>
-          </div>
-
-          <div className="mt-3 flex h-[38px] items-center">
-            <label className="flex cursor-pointer items-center gap-2 select-none">
-              <input type="checkbox" className="h-4 w-4 rounded border-[#d5def0] accent-[#1877f2]" checked={qbEditDraft.approved} onChange={(e) => setQbEditDraft(prev => ({ ...prev, approved: e.target.checked }))} disabled={qbEditSaving} />
-              <span className="text-sm text-[#1c1e21]">{qbEditDraft.approved ? 'Approved' : 'Not approved'}</span>
-            </label>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-[#d5def0] bg-[#f7fbff] px-4 py-4 shadow-sm space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div className="text-sm font-semibold text-[#1c1e21]">AI assist</div>
-              <p className="text-xs text-[#65676b]">Preview scoped changes, then selectively apply them into the draft.</p>
             </div>
-            <button type="button" className="inline-flex h-9 items-center justify-center rounded-full bg-[#1c1e21] px-4 text-sm font-semibold text-white hover:bg-[#2d3036] disabled:opacity-50" onClick={() => void qbRequestAiAssist()} disabled={qbEditSaving || qbEditAiLoading}>
-              {qbEditAiLoading ? 'Generating…' : 'Preview AI proposal'}
-            </button>
+
+            <div className="mt-3 flex h-[38px] items-center">
+              <label className="flex cursor-pointer items-center gap-2 select-none">
+                <input type="checkbox" className="h-4 w-4 rounded border-[#d5def0] accent-[#1877f2]" checked={qbEditDraft.approved} onChange={(e) => setQbEditDraft(prev => ({ ...prev, approved: e.target.checked }))} disabled={qbEditSaving} />
+                <span className="text-sm text-[#1c1e21]">{qbEditDraft.approved ? 'Approved' : 'Not approved'}</span>
+              </label>
+            </div>
           </div>
 
-          {qbEditAiError ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{qbEditAiError}</div> : null}
-
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-[#65676b]">Scope</label>
-              <select className="w-full rounded-lg border border-[#d5def0] bg-white px-3 py-2 text-sm text-[#1c1e21]" value={qbEditAiScope} onChange={(e) => setQbEditAiScope(e.target.value as QbEditAiScope)} disabled={qbEditSaving || qbEditAiLoading}>
-                <option value="question">Question only</option>
-                <option value="root">Root question context</option>
-                <option value="paper">Whole paper context</option>
-              </select>
+          <div className="rounded-2xl border border-[#d5def0] bg-[#f7fbff] px-4 py-4 shadow-sm space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-sm font-semibold text-[#1c1e21]">AI assist</div>
+                <p className="text-xs text-[#65676b]">Preview scoped changes, then selectively apply them into the draft.</p>
+              </div>
+              <button type="button" className="inline-flex h-9 items-center justify-center rounded-full bg-[#1c1e21] px-4 text-sm font-semibold text-white hover:bg-[#2d3036] disabled:opacity-50" onClick={() => void qbRequestAiAssist()} disabled={qbEditSaving || qbEditAiLoading}>
+                {qbEditAiLoading ? 'Generating…' : 'Preview AI proposal'}
+              </button>
             </div>
-            <div className="md:col-span-2 rounded-xl border border-[#d5def0] bg-white px-3 py-3">
-              <div className="text-xs font-medium text-[#65676b]">Fields to propose</div>
-              <div className="mt-2 flex flex-wrap gap-2">
+
+            {qbEditAiError ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{qbEditAiError}</div> : null}
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-[#65676b]">Scope</label>
+                <select className="w-full rounded-lg border border-[#d5def0] bg-white px-3 py-2 text-sm text-[#1c1e21]" value={qbEditAiScope} onChange={(e) => setQbEditAiScope(e.target.value as QbEditAiScope)} disabled={qbEditSaving || qbEditAiLoading}>
+                  <option value="question">Question only</option>
+                  <option value="root">Root question context</option>
+                  <option value="paper">Whole paper context</option>
+                </select>
+              </div>
+              <div className="md:col-span-2 rounded-xl border border-[#d5def0] bg-white px-3 py-3">
+                <div className="text-xs font-medium text-[#65676b]">Fields to propose</div>
+                <div className="mt-2 flex flex-wrap gap-2">
                 {([
                   ['questionText', 'Question text'],
                   ['latex', 'LaTeX'],
@@ -18415,88 +18423,89 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <span>{label}</span>
                   </label>
                 ))}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-[#65676b]">Custom instructions</label>
-            <textarea rows={3} className="w-full rounded-lg border border-[#d5def0] bg-white px-3 py-2 text-sm text-[#1c1e21] resize-y" placeholder="Tell the model what to fix, preserve, or prioritise." value={qbEditAiInstructions} onChange={(e) => setQbEditAiInstructions(e.target.value)} disabled={qbEditSaving || qbEditAiLoading} />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-[#65676b]">Custom context</label>
-            <textarea rows={4} className="w-full rounded-lg border border-[#d5def0] bg-white px-3 py-2 text-sm text-[#1c1e21] resize-y" placeholder="Paste memo notes, cleaned OCR, or source text to scope the proposal." value={qbEditAiContextOverride} onChange={(e) => setQbEditAiContextOverride(e.target.value)} disabled={qbEditSaving || qbEditAiLoading} />
-          </div>
-
-          {qbEditAiPreview ? (
-            <div className="space-y-3 rounded-xl border border-[#d5def0] bg-white px-3 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-xs text-[#65676b]"><span className="font-medium text-[#1c1e21]">Provider:</span> {qbEditAiPreview.provider} · <span className="font-medium text-[#1c1e21]">Scope:</span> {qbEditAiPreview.scope}</div>
-                <button type="button" className="inline-flex h-8 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 text-xs font-medium text-[#1c1e21] hover:bg-[#eef2f7] disabled:opacity-50" onClick={qbApplyAllAiFields} disabled={!qbEditAiPreview.hasChanges}>Apply all proposed fields</button>
-              </div>
-
-              {!qbEditAiPreview.hasChanges ? <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">The proposal did not differ from the current stored values for the requested fields.</div> : null}
-
-              {([
-                ['questionText', 'Question text'],
-                ['latex', 'LaTeX'],
-                ['topic', 'Topic'],
-                ['cognitiveLevel', 'Cognitive level'],
-                ['marks', 'Marks'],
-                ['tableMarkdown', 'Table markdown'],
-              ] as Array<[QbEditAiFieldKey, string]>).map(([field, label]) => {
-                const currentValue = qbEditAiPreview.current[field]
-                const proposedValue = qbEditAiPreview.proposed[field]
-                if (proposedValue == null) return null
-                return (
-                  <div key={field} className="rounded-xl border border-[#e3e8f2] bg-[#fbfcfe] px-3 py-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-sm font-medium text-[#1c1e21]">{label}</div>
-                      <button type="button" className="inline-flex h-8 items-center justify-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-medium text-[#1c1e21] hover:bg-[#eef2f7]" onClick={() => qbApplyAiField(field)}>Apply to draft</button>
-                    </div>
-                    <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8b96ab]">Current</div>
-                        <pre className="mt-1 whitespace-pre-wrap rounded-lg bg-white px-3 py-2 text-xs text-[#4b5565]">{currentValue == null || currentValue === '' ? '—' : String(currentValue)}</pre>
-                      </div>
-                      <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8b96ab]">Proposed</div>
-                        <pre className="mt-1 whitespace-pre-wrap rounded-lg bg-[#eef6ff] px-3 py-2 text-xs text-[#1c1e21]">{String(proposedValue)}</pre>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-
-              {qbEditAiPreview.proposed.rationale ? <div className="rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#445066]"><span className="font-medium text-[#1c1e21]">Rationale:</span> {qbEditAiPreview.proposed.rationale}</div> : null}
-
-              {qbEditAiPreview.contextPreview ? (
-                <details className="rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2">
-                  <summary className="cursor-pointer text-sm font-medium text-[#1c1e21]">Context preview used for the proposal</summary>
-                  <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap text-xs text-[#445066]">{qbEditAiPreview.contextPreview}</pre>
-                </details>
-              ) : null}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[#65676b]">Custom instructions</label>
+              <textarea rows={3} className="w-full rounded-lg border border-[#d5def0] bg-white px-3 py-2 text-sm text-[#1c1e21] resize-y" placeholder="Tell the model what to fix, preserve, or prioritise." value={qbEditAiInstructions} onChange={(e) => setQbEditAiInstructions(e.target.value)} disabled={qbEditSaving || qbEditAiLoading} />
             </div>
-          ) : null}
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[#65676b]">Custom context</label>
+              <textarea rows={4} className="w-full rounded-lg border border-[#d5def0] bg-white px-3 py-2 text-sm text-[#1c1e21] resize-y" placeholder="Paste memo notes, cleaned OCR, or source text to scope the proposal." value={qbEditAiContextOverride} onChange={(e) => setQbEditAiContextOverride(e.target.value)} disabled={qbEditSaving || qbEditAiLoading} />
+            </div>
+
+            {qbEditAiPreview ? (
+              <div className="space-y-3 rounded-xl border border-[#d5def0] bg-white px-3 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs text-[#65676b]"><span className="font-medium text-[#1c1e21]">Provider:</span> {qbEditAiPreview.provider} · <span className="font-medium text-[#1c1e21]">Scope:</span> {qbEditAiPreview.scope}</div>
+                  <button type="button" className="inline-flex h-8 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 text-xs font-medium text-[#1c1e21] hover:bg-[#eef2f7] disabled:opacity-50" onClick={qbApplyAllAiFields} disabled={!qbEditAiPreview.hasChanges}>Apply all proposed fields</button>
+                </div>
+
+                {!qbEditAiPreview.hasChanges ? <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">The proposal did not differ from the current stored values for the requested fields.</div> : null}
+
+                {([
+                  ['questionText', 'Question text'],
+                  ['latex', 'LaTeX'],
+                  ['topic', 'Topic'],
+                  ['cognitiveLevel', 'Cognitive level'],
+                  ['marks', 'Marks'],
+                  ['tableMarkdown', 'Table markdown'],
+                ] as Array<[QbEditAiFieldKey, string]>).map(([field, label]) => {
+                  const currentValue = qbEditAiPreview.current[field]
+                  const proposedValue = qbEditAiPreview.proposed[field]
+                  if (proposedValue == null) return null
+                  return (
+                    <div key={field} className="rounded-xl border border-[#e3e8f2] bg-[#fbfcfe] px-3 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-sm font-medium text-[#1c1e21]">{label}</div>
+                        <button type="button" className="inline-flex h-8 items-center justify-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-medium text-[#1c1e21] hover:bg-[#eef2f7]" onClick={() => qbApplyAiField(field)}>Apply to draft</button>
+                      </div>
+                      <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8b96ab]">Current</div>
+                          <pre className="mt-1 whitespace-pre-wrap rounded-lg bg-white px-3 py-2 text-xs text-[#4b5565]">{currentValue == null || currentValue === '' ? '—' : String(currentValue)}</pre>
+                        </div>
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8b96ab]">Proposed</div>
+                          <pre className="mt-1 whitespace-pre-wrap rounded-lg bg-[#eef6ff] px-3 py-2 text-xs text-[#1c1e21]">{String(proposedValue)}</pre>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {qbEditAiPreview.proposed.rationale ? <div className="rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#445066]"><span className="font-medium text-[#1c1e21]">Rationale:</span> {qbEditAiPreview.proposed.rationale}</div> : null}
+
+                {qbEditAiPreview.contextPreview ? (
+                  <details className="rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2">
+                    <summary className="cursor-pointer text-sm font-medium text-[#1c1e21]">Context preview used for the proposal</summary>
+                    <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap text-xs text-[#445066]">{qbEditAiPreview.contextPreview}</pre>
+                  </details>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </div>
 
-        <div className="flex gap-2 pt-2">
+        <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 pb-[calc(var(--app-safe-bottom)+0.75rem)] flex items-center justify-end gap-2">
           <button
             type="button"
-            className="flex-1 inline-flex h-10 items-center justify-center rounded-full bg-[#1c1e21] px-4 text-sm font-semibold text-white hover:bg-[#2d3036] disabled:opacity-50"
-            onClick={() => void qbSaveEdit()}
-            disabled={qbEditSaving || qbEditAiLoading}
-          >
-            {qbEditSaving ? 'Saving…' : 'Save Changes'}
-          </button>
-          <button
-            type="button"
-            className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] hover:bg-[#eef2f7] disabled:opacity-50"
+            className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-white px-4 text-sm font-medium text-[#1c1e21] hover:bg-[#eef2f7] disabled:opacity-50"
             onClick={closeQbEdit}
             disabled={qbEditSaving || qbEditAiLoading}
           >
             Cancel
+          </button>
+          <button
+            type="button"
+            className="inline-flex h-10 items-center justify-center rounded-full bg-[#1c1e21] px-4 text-sm font-semibold text-white hover:bg-[#2d3036] disabled:opacity-50"
+            onClick={() => void qbSaveEdit()}
+            disabled={qbEditSaving || qbEditAiLoading}
+          >
+            {qbEditSaving ? 'Saving…' : 'Save Changes'}
           </button>
         </div>
       </BottomSheet>

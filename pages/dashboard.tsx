@@ -99,6 +99,22 @@ type SectionRole = typeof DASHBOARD_SECTIONS[number]['roles'][number]
 type OverlaySectionId = Exclude<SectionId, 'overview'>
 type DashboardCreateKind = 'quiz' | 'post'
 type StudentMobileTabId = 'timeline' | 'sessions' | 'groups' | 'books' | 'profile'
+type QbRemixBadge = 'year' | 'month' | 'paper' | 'topic' | 'level'
+type QbSearchFilters = {
+  year: string
+  month: string
+  paper: string
+  topic: string
+  level: string
+  number: string
+}
+type QbRemixOverlayState = {
+  questionId: string
+  badge: QbRemixBadge
+  top: number
+  left: number
+  width: number
+}
 
 type Announcement = {
   id: string
@@ -1860,6 +1876,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [qbLoading, setQbLoading] = useState(false)
   const [qbError, setQbError] = useState<string | null>(null)
   const [qbSearched, setQbSearched] = useState(false)
+  const [qbRemixMessage, setQbRemixMessage] = useState<string | null>(null)
+  const [qbRemixOverlay, setQbRemixOverlay] = useState<QbRemixOverlayState | null>(null)
+  const qbRemixOverlayRef = useRef<HTMLDivElement | null>(null)
   // Paper context sheet state (View in paper)
   const [qbContextOpen, setQbContextOpen] = useState(false)
   const [qbContextQ, setQbContextQ] = useState<any>(null)
@@ -13568,6 +13587,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   ] as const
 
   const QB_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'] as const
+  const QB_LEVEL_OPTIONS = [
+    { value: '1', label: '1 — Knowledge' },
+    { value: '2', label: '2 — Routine procedures' },
+    { value: '3', label: '3 — Complex procedures' },
+    { value: '4', label: '4 — Problem-solving' },
+  ] as const
+  const QB_REMIX_RELAXATION_ORDER: QbRemixBadge[] = ['paper', 'month', 'year', 'level']
+  const qbRemixYearOptions = useMemo(() => {
+    const currentYear = new Date().getFullYear()
+    return Array.from({ length: Math.max(1, currentYear - 2000 + 1) }, (_value, index) => {
+      const year = String(currentYear - index)
+      return { value: year, label: year }
+    })
+  }, [])
 
   const unwrapQuestionField = (value: unknown, preferredKeys: string[]): string => {
     let current: unknown = value
@@ -13603,33 +13636,217 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const renderQuestionTextWithInlineLatex = renderQuestionTextWithInlineLatexShared
 
-  const searchQuestionBank = async () => {
+  const syncQbFilters = (filters: QbSearchFilters) => {
+    setQbYear(filters.year)
+    setQbMonth(filters.month)
+    setQbPaper(filters.paper)
+    setQbTopic(filters.topic)
+    setQbLevel(filters.level)
+    setQbNumber(filters.number)
+  }
+
+  const buildQbSearchParams = (filters: QbSearchFilters) => {
+    const params = new URLSearchParams()
+    if (filters.year) params.set('year', filters.year)
+    if (filters.month) params.set('month', filters.month)
+    if (filters.paper) params.set('paper', filters.paper)
+    if (filters.topic) params.set('topic', filters.topic)
+    if (filters.level) params.set('cognitiveLevel', filters.level)
+    if (filters.number) params.set('questionNumber', filters.number)
+    params.set('take', '50')
+    return params
+  }
+
+  const fetchQuestionBankResults = async (filters: QbSearchFilters) => {
+    const params = buildQbSearchParams(filters)
+    const res = await fetch(`/api/exam-questions?${params.toString()}`, { credentials: 'same-origin' })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data?.message || `Search failed (${res.status})`)
+    return {
+      items: Array.isArray(data?.items) ? data.items : [],
+      total: typeof data?.total === 'number' ? data.total : 0,
+    }
+  }
+
+  const getCurrentQbFilters = (): QbSearchFilters => ({
+    year: qbYear,
+    month: qbMonth,
+    paper: qbPaper,
+    topic: qbTopic,
+    level: qbLevel,
+    number: qbNumber,
+  })
+
+  const searchQuestionBank = async (overrides?: Partial<QbSearchFilters>, options?: { remixMessage?: string | null }) => {
+    const filters: QbSearchFilters = {
+      ...getCurrentQbFilters(),
+      ...(overrides || {}),
+    }
     setQbLoading(true)
     setQbError(null)
     setQbSearched(true)
     setQbSelectedIds(new Set())
     setQbBulkError(null)
     try {
-      const params = new URLSearchParams()
-      if (qbYear) params.set('year', qbYear)
-      if (qbMonth) params.set('month', qbMonth)
-      if (qbPaper) params.set('paper', qbPaper)
-      if (qbTopic) params.set('topic', qbTopic)
-      if (qbLevel) params.set('cognitiveLevel', qbLevel)
-      if (qbNumber) params.set('questionNumber', qbNumber)
-      params.set('take', '50')
-      const res = await fetch(`/api/exam-questions?${params.toString()}`, { credentials: 'same-origin' })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.message || `Search failed (${res.status})`)
-      setQbItems(Array.isArray(data?.items) ? data.items : [])
-      setQbTotal(typeof data?.total === 'number' ? data.total : 0)
+      const data = await fetchQuestionBankResults(filters)
+      syncQbFilters(filters)
+      setQbItems(data.items)
+      setQbTotal(data.total)
+      setQbRemixMessage(options?.remixMessage ?? null)
     } catch (err: any) {
       setQbError(err?.message || 'Search failed')
       setQbItems([])
+      setQbTotal(0)
     } finally {
       setQbLoading(false)
     }
   }
+
+  const getQbRemixBadgeValue = (q: any, badge: QbRemixBadge): string => {
+    switch (badge) {
+      case 'year':
+        return String(q?.year || '')
+      case 'month':
+        return String(q?.month || '')
+      case 'paper':
+        return String(q?.paper || '')
+      case 'topic':
+        return String(q?.topic || '')
+      case 'level':
+        return q?.cognitiveLevel != null ? String(q.cognitiveLevel) : ''
+    }
+  }
+
+  const buildQbRemixSeedFilters = (q: any): QbSearchFilters => ({
+    year: String(q?.year || ''),
+    month: String(q?.month || ''),
+    paper: String(q?.paper || ''),
+    topic: String(q?.topic || ''),
+    level: q?.cognitiveLevel != null ? String(q.cognitiveLevel) : '',
+    number: '',
+  })
+
+  const describeQbRemixBadge = (badge: QbRemixBadge): string => {
+    switch (badge) {
+      case 'year':
+        return 'Year'
+      case 'month':
+        return 'Month'
+      case 'paper':
+        return 'Paper'
+      case 'topic':
+        return 'Topic'
+      case 'level':
+        return 'Level'
+    }
+  }
+
+  const getQbRemixOptions = (badge: QbRemixBadge): Array<{ value: string; label: string }> => {
+    switch (badge) {
+      case 'year':
+        return [{ value: '', label: 'Any year' }, ...qbRemixYearOptions]
+      case 'month':
+        return [{ value: '', label: 'Any month' }, ...QB_MONTHS.map((month) => ({ value: month, label: month }))]
+      case 'paper':
+        return [
+          { value: '', label: 'Any paper' },
+          { value: '1', label: 'Paper 1' },
+          { value: '2', label: 'Paper 2' },
+          { value: '3', label: 'Paper 3' },
+        ]
+      case 'topic':
+        return [{ value: '', label: 'Any topic' }, ...QB_TOPICS.map((topic) => ({ value: topic, label: topic }))]
+      case 'level':
+        return [{ value: '', label: 'Any level' }, ...QB_LEVEL_OPTIONS.map((option) => ({ value: option.value, label: option.label }))]
+    }
+  }
+
+  const openQbRemixOverlay = (q: any, badge: QbRemixBadge, anchor: HTMLElement) => {
+    const rect = anchor.getBoundingClientRect()
+    const overlayWidth = 188
+    const left = Math.max(12, Math.min(rect.left + (rect.width / 2) - (overlayWidth / 2), window.innerWidth - overlayWidth - 12))
+    setQbRemixOverlay({
+      questionId: String(q?.id || ''),
+      badge,
+      top: rect.bottom + 6,
+      left,
+      width: overlayWidth,
+    })
+  }
+
+  const runQbRemixSearch = async (q: any, badge: QbRemixBadge, nextValue: string) => {
+    const seed = buildQbRemixSeedFilters(q)
+    const requested: QbSearchFilters = {
+      ...seed,
+      [badge]: nextValue,
+      number: '',
+    }
+
+    setQbRemixOverlay(null)
+    setQbLoading(true)
+    setQbError(null)
+    setQbSearched(true)
+    setQbSelectedIds(new Set())
+    setQbBulkError(null)
+
+    try {
+      let candidate = { ...requested }
+      let result = await fetchQuestionBankResults(candidate)
+      const relaxed: QbRemixBadge[] = []
+
+      if (result.total === 0) {
+        for (const softKey of QB_REMIX_RELAXATION_ORDER) {
+          if (softKey === badge || !candidate[softKey]) continue
+          candidate = { ...candidate, [softKey]: '' }
+          relaxed.push(softKey)
+          result = await fetchQuestionBankResults(candidate)
+          if (result.total > 0) break
+        }
+      }
+
+      syncQbFilters(candidate)
+      setQbItems(result.items)
+      setQbTotal(result.total)
+      if (relaxed.length > 0) {
+        setQbRemixMessage(`Remix search updated ${describeQbRemixBadge(badge)} and relaxed ${relaxed.map(describeQbRemixBadge).join(', ')} to keep results compatible.`)
+      } else if (result.total > 0) {
+        setQbRemixMessage(`Remix search pinned ${describeQbRemixBadge(badge)} with no compatibility relaxation needed.`)
+      } else {
+        setQbRemixMessage('Remix search found no matches even after relaxing inherited badges.')
+      }
+    } catch (err: any) {
+      setQbError(err?.message || 'Remix search failed')
+      setQbItems([])
+      setQbTotal(0)
+    } finally {
+      setQbLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!qbRemixOverlay) return
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (qbRemixOverlayRef.current?.contains(event.target as Node)) return
+      setQbRemixOverlay(null)
+    }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setQbRemixOverlay(null)
+    }
+    const handleViewportChange = () => setQbRemixOverlay(null)
+
+    window.addEventListener('mousedown', handlePointerDown)
+    window.addEventListener('keydown', handleEscape)
+    window.addEventListener('resize', handleViewportChange)
+    window.addEventListener('scroll', handleViewportChange, true)
+
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown)
+      window.removeEventListener('keydown', handleEscape)
+      window.removeEventListener('resize', handleViewportChange)
+      window.removeEventListener('scroll', handleViewportChange, true)
+    }
+  }, [qbRemixOverlay])
 
   const getQNumParts = (value: unknown): number[] => {
     const raw = String(value ?? '').trim()
@@ -14698,6 +14915,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         <section className="border-b border-black/10 bg-white px-4 py-3 text-sm text-red-600">{qbError}</section>
       ) : null}
 
+      {qbRemixMessage ? (
+        <section className="border-b border-black/10 bg-[#f8fbff] px-4 py-3 text-sm text-[#1f4f82]">
+          {qbRemixMessage}
+        </section>
+      ) : null}
+
       {qbSearched && !qbLoading && qbItems.length === 0 ? (
         <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">
           No questions found for these filters. Try broadening your search.
@@ -14812,9 +15035,50 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 mb-1">
                           <span className="text-xs font-bold text-[#65676b]">Q{q.questionNumber}</span>
-                          <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.year} {q.month} · Paper {q.paper}</span>
-                          {q.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{q.topic}</span> : null}
-                          {q.cognitiveLevel ? <span className="text-xs rounded-full bg-[#fff3cd] px-2 py-0.5 text-[#856404]">Level {q.cognitiveLevel}</span> : null}
+                          <button
+                            type="button"
+                            className={`text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563] transition hover:bg-[#e4e7eb]${qbRemixOverlay?.questionId === String(q.id) && qbRemixOverlay.badge === 'year' ? ' ring-2 ring-[#1877f2]/35' : ''}`}
+                            onClick={(event) => openQbRemixOverlay(q, 'year', event.currentTarget)}
+                            title="Remix this result by changing the year"
+                          >
+                            {q.year}
+                          </button>
+                          <button
+                            type="button"
+                            className={`text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563] transition hover:bg-[#e4e7eb]${qbRemixOverlay?.questionId === String(q.id) && qbRemixOverlay.badge === 'month' ? ' ring-2 ring-[#1877f2]/35' : ''}`}
+                            onClick={(event) => openQbRemixOverlay(q, 'month', event.currentTarget)}
+                            title="Remix this result by changing the exam month"
+                          >
+                            {q.month}
+                          </button>
+                          <button
+                            type="button"
+                            className={`text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563] transition hover:bg-[#e4e7eb]${qbRemixOverlay?.questionId === String(q.id) && qbRemixOverlay.badge === 'paper' ? ' ring-2 ring-[#1877f2]/35' : ''}`}
+                            onClick={(event) => openQbRemixOverlay(q, 'paper', event.currentTarget)}
+                            title="Remix this result by changing the paper"
+                          >
+                            Paper {q.paper}
+                          </button>
+                          {q.topic ? (
+                            <button
+                              type="button"
+                              className={`text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2] transition hover:bg-[#dcefff]${qbRemixOverlay?.questionId === String(q.id) && qbRemixOverlay.badge === 'topic' ? ' ring-2 ring-[#1877f2]/35' : ''}`}
+                              onClick={(event) => openQbRemixOverlay(q, 'topic', event.currentTarget)}
+                              title="Remix this result by changing the topic"
+                            >
+                              {q.topic}
+                            </button>
+                          ) : null}
+                          {q.cognitiveLevel ? (
+                            <button
+                              type="button"
+                              className={`text-xs rounded-full bg-[#fff3cd] px-2 py-0.5 text-[#856404] transition hover:bg-[#ffe9a6]${qbRemixOverlay?.questionId === String(q.id) && qbRemixOverlay.badge === 'level' ? ' ring-2 ring-[#d4a72c]/35' : ''}`}
+                              onClick={(event) => openQbRemixOverlay(q, 'level', event.currentTarget)}
+                              title="Remix this result by changing the cognitive level"
+                            >
+                              Level {q.cognitiveLevel}
+                            </button>
+                          ) : null}
                           {marksLabel ? <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{marksLabel}</span> : null}
                           {isAdmin && !q.approved ? <span className="text-xs rounded-full bg-red-100 px-2 py-0.5 text-red-600">Unapproved</span> : null}
                         </div>
@@ -14958,6 +15222,41 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               })()
             ))}
           </ul>
+
+          {qbRemixOverlay ? (() => {
+            const targetQuestion = qbItems.find((item: any) => String(item.id) === qbRemixOverlay.questionId) || null
+            if (!targetQuestion) return null
+            const options = getQbRemixOptions(qbRemixOverlay.badge)
+            const selectedValue = getQbRemixBadgeValue(targetQuestion, qbRemixOverlay.badge)
+            return createPortal(
+              <div
+                ref={qbRemixOverlayRef}
+                className="fixed z-[120] overflow-hidden rounded-2xl border border-[#d5def0] bg-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]"
+                style={{ top: qbRemixOverlay.top, left: qbRemixOverlay.left, width: qbRemixOverlay.width }}
+              >
+                <div className="border-b border-black/10 bg-[#f8fbff] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#5b6b85]">
+                  Remix {describeQbRemixBadge(qbRemixOverlay.badge)}
+                </div>
+                <div className="max-h-[320px] overflow-y-auto py-1">
+                  {options.map((option) => {
+                    const isSelected = option.value === selectedValue
+                    return (
+                      <button
+                        key={`${qbRemixOverlay.badge}-${option.value || 'any'}`}
+                        type="button"
+                        className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition ${isSelected ? 'bg-[#eef5ff] text-[#1660b8]' : 'text-[#1f2937] hover:bg-[#f7f8fa]'}`}
+                        onClick={() => void runQbRemixSearch(targetQuestion, qbRemixOverlay.badge, option.value)}
+                      >
+                        <span className="min-w-0 truncate">{option.label}</span>
+                        {isSelected ? <span className="ml-2 text-[11px] font-semibold uppercase tracking-[0.16em]">Now</span> : null}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>,
+              document.body,
+            )
+          })() : null}
         </>
       ) : null}
     </div>

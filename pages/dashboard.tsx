@@ -18273,7 +18273,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         zIndexClassName="z-[85]"
       >
         <div
-          className="min-h-0 max-h-[72dvh] overflow-y-auto overscroll-contain px-4 py-4 space-y-4 [touch-action:pan-y]"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 space-y-4 [touch-action:pan-y]"
           style={{
             WebkitOverflowScrolling: 'touch',
             overscrollBehaviorY: 'contain',
@@ -18496,7 +18496,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
         </div>
 
-        <div className="border-t border-slate-200 bg-slate-50 px-4 py-3 pb-[calc(var(--app-safe-bottom)+0.75rem)] flex items-center justify-end gap-2">
+        <div
+          className="shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-end gap-2"
+          style={{
+            paddingBottom: 'calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 0.75rem)',
+          }}
+        >
           <button
             type="button"
             className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-white px-4 text-sm font-medium text-[#1c1e21] hover:bg-[#eef2f7] disabled:opacity-50"

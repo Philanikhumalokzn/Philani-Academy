@@ -4854,20 +4854,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     })()
   }, [isDocSavedOffline])
 
-  const openBooksPaper = useCallback(async (item: BooksPaperItem) => {
-    await openPaperContext({
-      sourceId: item.sourceId,
-      grade: item.grade,
-      year: item.year,
-      month: item.month,
-      paper: item.paper,
-      sourceTitle: item.title,
-      title: item.title,
-      sourceUrl: item.sourceUrl,
-      questionNumber: '',
-    })
-  }, [])
-
   const renderBooksPaperList = useCallback(() => {
     const emptyLabel = 'No MMD documents available for this grade yet.'
 
@@ -4880,34 +4866,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         ) : null}
 
         {booksPaperItems.length > 0 ? (
-          <ul>
+          <ul className="divide-y divide-black/10 bg-white">
             {booksPaperItems.map((item) => (
               <li
                 key={item.id}
-                className="border-b border-black/10 bg-white px-4 py-4"
+                className="px-4 py-3 text-[15px] font-medium text-[#111827]"
               >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <button
-                      type="button"
-                      className="block text-left text-[15px] font-semibold text-[#111827] hover:underline whitespace-normal break-words"
-                      onClick={() => void openBooksPaper(item)}
-                    >
-                      {item.title}
-                    </button>
-                    <div className="mt-1 text-xs text-[#65676b]">
-                      {gradeToLabel(item.grade)} - {item.month} {item.year} - Paper {item.paper}
-                    </div>
-                    <div className="mt-2 text-xs text-[#1f4f82]">Open in document view</div>
-                  </div>
-                </div>
+                <span className="block whitespace-normal break-words">{item.title}</span>
               </li>
             ))}
           </ul>
         ) : null}
       </>
     )
-  }, [booksError, booksLoading, booksPaperItems, openBooksPaper])
+  }, [booksError, booksLoading, booksPaperItems])
 
   const renderBooksList = useCallback((tab: 'papers' | 'pdfs' | 'resources') => {
     if (tab === 'papers') return renderBooksPaperList()

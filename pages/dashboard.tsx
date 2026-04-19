@@ -4868,18 +4868,24 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         {booksPaperItems.length > 0 ? (
           <ul className="divide-y divide-black/10 bg-white">
             {booksPaperItems.map((item) => (
-              <li
-                key={item.id}
-                className="px-4 py-3 text-[15px] font-medium text-[#111827]"
-              >
-                <span className="block whitespace-normal break-words">{item.title}</span>
+              <li key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void openPaperContext(item)
+                  }}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-[15px] font-medium text-[#111827] transition hover:bg-[#f7f7f8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#111827]/20"
+                >
+                  <span className="block whitespace-normal break-words">{item.title}</span>
+                  <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.12em] text-[#65676b]">Open</span>
+                </button>
               </li>
             ))}
           </ul>
         ) : null}
       </>
     )
-  }, [booksError, booksLoading, booksPaperItems])
+  }, [booksError, booksLoading, booksPaperItems, openPaperContext])
 
   const renderBooksList = useCallback((tab: 'papers' | 'pdfs' | 'resources') => {
     if (tab === 'papers') return renderBooksPaperList()
@@ -14225,7 +14231,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return null
   }
 
-  const openPaperContext = async (q: any) => {
+  async function openPaperContext(q: any) {
     if (qbContextAutoScrollTimerRef.current != null) {
       window.clearTimeout(qbContextAutoScrollTimerRef.current)
       qbContextAutoScrollTimerRef.current = null

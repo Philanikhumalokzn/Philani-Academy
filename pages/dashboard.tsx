@@ -1941,6 +1941,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [qbRemixOverlay, setQbRemixOverlay] = useState<QbRemixOverlayState | null>(null)
   const [qbRemixFilters, setQbRemixFilters] = useState<QbSearchFilters | null>(null)
   const qbRemixOverlayRef = useRef<HTMLDivElement | null>(null)
+  const qbRemixGestureRef = useRef<{ startX: number; startY: number; dragging: boolean }>({ startX: 0, startY: 0, dragging: false })
   // Paper context sheet state (View in paper)
   const [qbContextOpen, setQbContextOpen] = useState(false)
   const [qbContextQ, setQbContextQ] = useState<any>(null)
@@ -13842,6 +13843,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const rect = anchor.getBoundingClientRect()
     const overlayWidth = 188
     const left = Math.max(12, Math.min(rect.left + (rect.width / 2) - (overlayWidth / 2), window.innerWidth - overlayWidth - 12))
+    qbRemixGestureRef.current = { startX: 0, startY: 0, dragging: false }
     setQbRemixOverlay({
       questionId: String(q?.id || ''),
       badge,
@@ -13914,18 +13916,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setQbRemixOverlay(null)
     }
-    const handleViewportChange = () => setQbRemixOverlay(null)
+    const handleResize = () => setQbRemixOverlay(null)
+    const handleScroll = (event: Event) => {
+      if (qbRemixOverlayRef.current?.contains(event.target as Node)) return
+      setQbRemixOverlay(null)
+    }
 
     window.addEventListener('mousedown', handlePointerDown)
     window.addEventListener('keydown', handleEscape)
-    window.addEventListener('resize', handleViewportChange)
-    window.addEventListener('scroll', handleViewportChange, true)
+    window.addEventListener('resize', handleResize)
+    window.addEventListener('scroll', handleScroll, true)
 
     return () => {
       window.removeEventListener('mousedown', handlePointerDown)
       window.removeEventListener('keydown', handleEscape)
-      window.removeEventListener('resize', handleViewportChange)
-      window.removeEventListener('scroll', handleViewportChange, true)
+      window.removeEventListener('resize', handleResize)
+      window.removeEventListener('scroll', handleScroll, true)
     }
   }, [qbRemixOverlay])
 
@@ -15422,7 +15428,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 <div className="border-b border-black/10 bg-[#f8fbff] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#5b6b85]">
                   Remix {describeQbRemixBadge(qbRemixOverlay.badge)}
                 </div>
-                <div className="max-h-[320px] overflow-y-auto py-1">
+                <div className="max-h-[320px] overflow-y-auto overscroll-contain py-1" style={{ touchAction: 'pan-y' }}>
                   {options.map((option) => {
                     const isSelected = option.value === selectedValue
                     return (
@@ -15430,7 +15436,33 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         key={`${qbRemixOverlay.badge}-${option.value || 'any'}`}
                         type="button"
                         className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition ${isSelected ? 'bg-[#eef5ff] text-[#1660b8]' : 'text-[#1f2937] hover:bg-[#f7f8fa]'}`}
-                        onClick={() => void runQbRemixSearch(targetQuestion, qbRemixOverlay.badge, option.value)}
+                        onPointerDown={(event) => {
+                          qbRemixGestureRef.current = {
+                            startX: event.clientX,
+                            startY: event.clientY,
+                            dragging: false,
+                          }
+                        }}
+                        onPointerMove={(event) => {
+                          const dx = Math.abs(event.clientX - qbRemixGestureRef.current.startX)
+                          const dy = Math.abs(event.clientY - qbRemixGestureRef.current.startY)
+                          if (dx > 8 || dy > 8) {
+                            qbRemixGestureRef.current.dragging = true
+                          }
+                        }}
+                        onPointerCancel={() => {
+                          qbRemixGestureRef.current.dragging = false
+                        }}
+                        onClick={(event) => {
+                          if (qbRemixGestureRef.current.dragging) {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            qbRemixGestureRef.current = { startX: 0, startY: 0, dragging: false }
+                            return
+                          }
+                          qbRemixGestureRef.current = { startX: 0, startY: 0, dragging: false }
+                          void runQbRemixSearch(targetQuestion, qbRemixOverlay.badge, option.value)
+                        }}
                       >
                         <span className="min-w-0 truncate">{option.label}</span>
                         {isSelected ? <span className="ml-2 text-[11px] font-semibold uppercase tracking-[0.16em]">Now</span> : null}

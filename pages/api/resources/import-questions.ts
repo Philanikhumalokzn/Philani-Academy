@@ -167,6 +167,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const created: string[] = []
   const skipped: number[] = []
+  let replaced = 0
+
+  if (resourceId && resource) {
+    const deleted = await prisma.examQuestion.deleteMany({
+      where: { sourceId: resource.id },
+    })
+    replaced = deleted.count
+  }
 
   for (let i = 0; i < questions.length; i += 1) {
     const item = questions[i]
@@ -243,6 +251,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     message: `Imported ${created.length} question(s). ${skipped.length} skipped.`,
     created: created.length,
     skipped: skipped.length,
+    replaced,
     ids: created,
     resourceId: resource.id,
   })

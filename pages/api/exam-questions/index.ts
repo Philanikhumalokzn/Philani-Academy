@@ -203,56 +203,32 @@ function normalizeHierarchyQuestionNumber(value: unknown): string {
   return String(value || '').trim().replace(/^Q/i, '')
 }
 
-function buildQuestionFamilyKey(item: {
-  sourceId: string | null
-  grade?: string | null
-  year: number
-  month: string
-  paper: number
-}): string {
-  return [item.sourceId || '', item.grade || '', item.year, item.month, item.paper].join('|')
-}
-
-function buildRootRecordKey(item: {
-  sourceId: string | null
-  grade?: string | null
-  year: number
-  month: string
-  paper: number
-  questionNumber: string
-}): string {
-  return `${buildQuestionFamilyKey(item)}|${normalizeHierarchyQuestionNumber(item.questionNumber)}`
-}
-
 function buildCompositeRootOmitSet(items: Array<{
   id: string
   sourceId: string | null
-  grade?: string | null
   year: number
   month: string
   paper: number
   questionNumber: string
   questionDepth: number
-}>, familyQuestionNumbersByKey?: Map<string, string[]>): Set<string> {
+}>): Set<string> {
   const omitIds = new Set<string>()
-  const groups = familyQuestionNumbersByKey || new Map<string, string[]>()
+  const groups = new Map<string, string[]>()
 
-  if (!familyQuestionNumbersByKey) {
-    for (const item of items) {
-      const normalized = normalizeHierarchyQuestionNumber(item.questionNumber)
-      if (!normalized) continue
-      const groupKey = buildQuestionFamilyKey(item)
-      const list = groups.get(groupKey) || []
-      list.push(normalized)
-      groups.set(groupKey, list)
-    }
+  for (const item of items) {
+    const normalized = normalizeHierarchyQuestionNumber(item.questionNumber)
+    if (!normalized) continue
+    const groupKey = [item.sourceId || '', item.year, item.month, item.paper].join('|')
+    const list = groups.get(groupKey) || []
+    list.push(normalized)
+    groups.set(groupKey, list)
   }
 
   for (const item of items) {
     if (item.questionDepth !== 0) continue
     const normalized = normalizeHierarchyQuestionNumber(item.questionNumber)
     if (!normalized) continue
-    const groupKey = buildQuestionFamilyKey(item)
+    const groupKey = [item.sourceId || '', item.year, item.month, item.paper].join('|')
     const siblings = groups.get(groupKey) || []
     if (siblings.some((candidate) => candidate !== normalized && candidate.startsWith(`${normalized}.`))) {
       omitIds.add(item.id)
@@ -391,6 +367,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (year && Number.isFinite(year)) where.year = year
   if (month) where.month = month
   if (paper && Number.isFinite(paper)) where.paper = paper
+  if (topic) where.topic = topic
+  if (cognitiveLevel && Number.isFinite(cognitiveLevel)) where.cognitiveLevel = cognitiveLevel
   if (questionNumber) where.questionNumber = { startsWith: questionNumber }
   if (sourceId) where.sourceId = sourceId
   if (approvedOnly) where.approved = true
@@ -443,74 +421,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     createdAt: Date
   }> = []
 
-  let familyRecords: Array<{
-    id: string
-    grade: string
-    year: number
-    month: string
-    paper: number
-    questionNumber: string
-    questionDepth: number
-    topic: string | null
-    cognitiveLevel: number | null
-    questionText: string
-    imageUrl: string | null
-    tableMarkdown: string | null
-    sourceId: string | null
-  }> = []
-
-  const allItems = await prisma.examQuestion.findMany({
-    where,
-    orderBy,
-    select: itemSelect,
-  })
-
-  const familyWhereClauses = Array.from(new Map(
-    allItems.map((item) => [buildQuestionFamilyKey(item), {
-      sourceId: item.sourceId,
-      grade: item.grade,
-      year: item.year,
-      month: item.month,
-      paper: item.paper,
-    }]),
-  ).values())
-
-  familyRecords = familyWhereClauses.length > 0
-    ? await prisma.examQuestion.findMany({
-        where: { OR: familyWhereClauses },
-        select: {
-          id: true,
-          grade: true,
-          year: true,
-          month: true,
-          paper: true,
-          questionNumber: true,
-          questionDepth: true,
-          topic: true,
-          cognitiveLevel: true,
-          questionText: true,
-          imageUrl: true,
-          tableMarkdown: true,
-          sourceId: true,
-        },
-      })
-    : []
-
   if (hideCompositeRoots) {
-    const familyQuestionNumbersByKey = new Map<string, string[]>()
-    for (const record of familyRecords) {
-      const normalized = normalizeHierarchyQuestionNumber(record.questionNumber)
-      if (!normalized) continue
-      const familyKey = buildQuestionFamilyKey(record)
-      const list = familyQuestionNumbersByKey.get(familyKey) || []
-      if (!list.includes(normalized)) list.push(normalized)
-      familyQuestionNumbersByKey.set(familyKey, list)
-    }
-
-    const omitIds = buildCompositeRootOmitSet(allItems, familyQuestionNumbersByKey)
-    items = allItems.filter((item) => !omitIds.has(item.id))
+    const allItems = await prisma.examQuestion.findMany({
+      where,
+      orderBy,
+      select: itemSelect,
+    })
+    const omitIds = buildCompositeRootOmitSet(allItems)
+    const filteredItems = allItems.filter((item) => !omitIds.has(item.id))
+    total = filteredItems.length
+    items = filteredItems.slice(skip, skip + take)
   } else {
-    items = allItems
+    const [rawTotal, rawItems] = await Promise.all([
+      prisma.examQuestion.count({ where }),
+      prisma.examQuestion.findMany({
+        where,
+        orderBy,
+        skip,
+        take,
+        select: itemSelect,
+      }),
+    ])
+    total = rawTotal
+    items = rawItems
   }
 
   const sourceIds = Array.from(new Set(items.map((item) => String(item.sourceId || '')).filter(Boolean)))
@@ -551,49 +484,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     sourceMarksMap.set(source.id, buildQuestionMarksMapFromMmd(mmd))
   }
 
-  const rootRecordByKey = new Map<string, {
-    id: string
-    questionNumber: string
-    topic: string | null
-    cognitiveLevel: number | null
-    questionText: string
-    imageUrl: string | null
-    tableMarkdown: string | null
-  }>()
-  for (const record of familyRecords) {
-    if (record.questionDepth !== 0) continue
-    const rootKey = buildRootRecordKey(record)
-    if (!rootRecordByKey.has(rootKey)) {
-      rootRecordByKey.set(rootKey, {
-        id: record.id,
-        questionNumber: record.questionNumber,
-        topic: record.topic,
-        cognitiveLevel: record.cognitiveLevel,
-        questionText: record.questionText,
-        imageUrl: record.imageUrl,
-        tableMarkdown: record.tableMarkdown,
-      })
-    }
-  }
-
-  const filteredItemsByEffectiveClassification = items.filter((item) => {
-    const rootNumber = normalizeHierarchyQuestionNumber(item.questionNumber).split('.')[0] || ''
-    const rootRecord = rootNumber ? rootRecordByKey.get(`${buildQuestionFamilyKey(item)}|${rootNumber}`) : null
-    const effectiveTopic = item.topic || rootRecord?.topic || null
-    const effectiveCognitiveLevel = item.cognitiveLevel ?? rootRecord?.cognitiveLevel ?? null
-
-    if (topic && effectiveTopic !== topic) return false
-    if (cognitiveLevel && Number.isFinite(cognitiveLevel) && effectiveCognitiveLevel !== cognitiveLevel) return false
-    return true
-  })
-
-  total = filteredItemsByEffectiveClassification.length
-  items = filteredItemsByEffectiveClassification.slice(skip, skip + take)
-
   const enrichedItems = items.map((item) => {
-    const rootNumber = normalizeHierarchyQuestionNumber(item.questionNumber).split('.')[0] || ''
-    const rootRecord = rootNumber ? rootRecordByKey.get(`${buildQuestionFamilyKey(item)}|${rootNumber}`) : null
-    const isSubquestion = item.questionDepth > 0
     const derivedUrls = item.sourceId
       ? collectInheritedImages(item.questionNumber, sourceImageMap.get(item.sourceId) || new Map<string, string[]>())
       : []
@@ -607,25 +498,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ? pickQuestionMarks(item.questionNumber, sourceMarksMap.get(item.sourceId) || new Map<string, number>())
         : null
     )
-    const effectiveTopic = item.topic || rootRecord?.topic || null
-    const effectiveCognitiveLevel = item.cognitiveLevel ?? rootRecord?.cognitiveLevel ?? null
-
-    const rootQuestionText = isSubquestion && rootRecord && rootRecord.id !== item.id
-      ? String(rootRecord.questionText || '').trim() || null
-      : null
-
-    const resolvedTableMarkdown = item.tableMarkdown || (isSubquestion ? (rootRecord?.tableMarkdown || null) : null)
 
     return {
       ...item,
-      topic: effectiveTopic,
-      cognitiveLevel: effectiveCognitiveLevel,
       marks: resolvedMarks,
       imageUrl: imageUrls[0] || null,
       imageUrls,
-      tableMarkdown: resolvedTableMarkdown,
-      rootQuestionNumber: isSubquestion && rootRecord && rootRecord.id !== item.id ? rootRecord.questionNumber : null,
-      rootQuestionText,
       sourceTitle: item.sourceId ? (sourceTitleMap.get(item.sourceId) || null) : null,
       sourceUrl: item.sourceId ? (sourceUrlMap.get(item.sourceId) || null) : null,
     }

@@ -1940,7 +1940,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [qbRemixMessage, setQbRemixMessage] = useState<string | null>(null)
   const [qbRemixOverlay, setQbRemixOverlay] = useState<QbRemixOverlayState | null>(null)
   const [qbRemixFilters, setQbRemixFilters] = useState<QbSearchFilters | null>(null)
-  const [qbExpandedRootContexts, setQbExpandedRootContexts] = useState<Set<string>>(new Set())
   const qbRemixOverlayRef = useRef<HTMLDivElement | null>(null)
   const qbRemixGestureRef = useRef<{ startX: number; startY: number; dragging: boolean }>({ startX: 0, startY: 0, dragging: false })
   // Paper context sheet state (View in paper)
@@ -15188,11 +15187,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 )
                 const cleanText = normalizedQuestion.questionText
                 const cleanLatex = normalizedQuestion.latex
-                const normalizedRootPreamble = normalizeExamQuestionContent(
-                  unwrapQuestionField(q?.rootQuestionText, ['questionText', 'text', 'prompt']),
-                  '',
-                )
-                const cleanRootPreamble = normalizedRootPreamble.questionText
                 const latexHtml = cleanLatex ? renderKatexDisplayHtml(cleanLatex) : ''
                 const marksLabel = getQuestionMarksLabel(q?.marks, cleanText)
                 const questionImageUrls = (() => {
@@ -15212,9 +15206,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 })()
                 const isSelected = isAdmin && qbSelectedIds.has(String(q.id))
                 const isSubquestion = String(q.questionNumber ?? '').includes('.')
-                const rootContextKey = String(q.id)
-                const hasLongRootContext = cleanRootPreamble.length > 280
-                const isRootContextExpanded = qbExpandedRootContexts.has(rootContextKey)
 
                 return (
                   <li key={q.id} className={`border-b border-black/10 bg-white px-4 py-3 transition-colors${isSelected ? ' !bg-[#f0f5ff]' : ''}`}>
@@ -15284,52 +15275,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         </div>
 
                         {isSubquestion ? (
-                          <div className="space-y-2">
-                            {cleanRootPreamble ? (
-                              <div className="rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-2.5 py-2">
-                                <div className="mb-1 flex items-center justify-between gap-2">
-                                  <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#5b6b85]">
-                                    Q{String(q?.rootQuestionNumber || '').trim() || String(q?.questionNumber || '').trim().split('.')[0]} context
-                                  </div>
-                                  {hasLongRootContext ? (
-                                    <button
-                                      type="button"
-                                      className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#1877f2] transition hover:text-[#0f5fc4]"
-                                      onClick={() => {
-                                        setQbExpandedRootContexts((prev) => {
-                                          const next = new Set(prev)
-                                          if (next.has(rootContextKey)) next.delete(rootContextKey)
-                                          else next.add(rootContextKey)
-                                          return next
-                                        })
-                                      }}
-                                      aria-expanded={isRootContextExpanded}
-                                      aria-label={`${isRootContextExpanded ? 'Collapse' : 'Expand'} root context for question ${String(q?.questionNumber || '')}`}
-                                    >
-                                      {isRootContextExpanded ? 'Collapse' : 'Expand'}
-                                    </button>
-                                  ) : null}
-                                </div>
-                                <div
-                                  className={`text-xs leading-relaxed text-[#334155] whitespace-pre-wrap break-words ${!isRootContextExpanded && hasLongRootContext ? 'overflow-hidden' : ''}`}
-                                  style={!isRootContextExpanded && hasLongRootContext ? { maxHeight: '5.5rem' } : undefined}
-                                >
-                                  {renderQuestionTextWithInlineLatex(cleanRootPreamble)}
-                                </div>
-                              </div>
-                            ) : null}
-                            <button
-                              type="button"
-                              className="w-full text-left text-sm text-[#1c1e21] whitespace-pre-wrap break-words rounded-lg border border-transparent hover:border-[#dbe4f3] hover:bg-[#f8fbff] px-2 py-1 -mx-2 transition-colors cursor-pointer active:bg-[#eef5ff]"
-                              onClick={() => void openPaperContext(q)}
-                              title="Tap to view this question in its full paper context"
-                            >
-                              <div className="text-sm text-[#1c1e21]">
-                                {renderQuestionTextWithInlineLatex(cleanText)}
-                              </div>
-                              <span className="block mt-1 text-[10px] text-[#1877f2] opacity-60">tap to view in context ↗</span>
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            className="w-full text-left text-sm text-[#1c1e21] whitespace-pre-wrap break-words rounded-lg border border-transparent hover:border-[#dbe4f3] hover:bg-[#f8fbff] px-2 py-1 -mx-2 transition-colors cursor-pointer active:bg-[#eef5ff]"
+                            onClick={() => void openPaperContext(q)}
+                            title="Tap to view this question in its full paper context"
+                          >
+                            {renderQuestionTextWithInlineLatex(cleanText)}
+                            <span className="block mt-1 text-[10px] text-[#1877f2] opacity-60">tap to view in context ↗</span>
+                          </button>
                         ) : (
                           <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
                             {renderQuestionTextWithInlineLatex(cleanText)}

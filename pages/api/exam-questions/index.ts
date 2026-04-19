@@ -391,8 +391,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (year && Number.isFinite(year)) where.year = year
   if (month) where.month = month
   if (paper && Number.isFinite(paper)) where.paper = paper
-  if (topic) where.topic = topic
-  if (cognitiveLevel && Number.isFinite(cognitiveLevel)) where.cognitiveLevel = cognitiveLevel
   if (questionNumber) where.questionNumber = { startsWith: questionNumber }
   if (sourceId) where.sourceId = sourceId
   if (approvedOnly) where.approved = true
@@ -453,6 +451,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     paper: number
     questionNumber: string
     questionDepth: number
+    topic: string | null
+    cognitiveLevel: number | null
     questionText: string
     imageUrl: string | null
     tableMarkdown: string | null
@@ -487,6 +487,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             paper: true,
             questionNumber: true,
             questionDepth: true,
+            topic: true,
+            cognitiveLevel: true,
             questionText: true,
             imageUrl: true,
             tableMarkdown: true,
@@ -530,6 +532,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       paper: item.paper,
       questionNumber: item.questionNumber,
       questionDepth: item.questionDepth,
+      topic: item.topic,
+      cognitiveLevel: item.cognitiveLevel,
       questionText: item.questionText,
       imageUrl: item.imageUrl,
       tableMarkdown: item.tableMarkdown,
@@ -578,6 +582,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const rootRecordByKey = new Map<string, {
     id: string
     questionNumber: string
+    topic: string | null
+    cognitiveLevel: number | null
     questionText: string
     imageUrl: string | null
     tableMarkdown: string | null
@@ -589,12 +595,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       rootRecordByKey.set(rootKey, {
         id: record.id,
         questionNumber: record.questionNumber,
+        topic: record.topic,
+        cognitiveLevel: record.cognitiveLevel,
         questionText: record.questionText,
         imageUrl: record.imageUrl,
         tableMarkdown: record.tableMarkdown,
       })
     }
   }
+
+  const filteredItemsByEffectiveClassification = items.filter((item) => {
+    const rootNumber = normalizeHierarchyQuestionNumber(item.questionNumber).split('.')[0] || ''
+    const rootRecord = rootNumber ? rootRecordByKey.get(`${buildQuestionFamilyKey(item)}|${rootNumber}`) : null
+    const effectiveTopic = item.topic || rootRecord?.topic || null
+    const effectiveCognitiveLevel = item.cognitiveLevel ?? rootRecord?.cognitiveLevel ?? null
+
+    if (topic && effectiveTopic !== topic) return false
+    if (cognitiveLevel && Number.isFinite(cognitiveLevel) && effectiveCognitiveLevel !== cognitiveLevel) return false
+    return true
+  })
+
+  total = filteredItemsByEffectiveClassification.length
+  items = filteredItemsByEffectiveClassification.slice(skip, skip + take)
 
   const enrichedItems = items.map((item) => {
     const rootNumber = normalizeHierarchyQuestionNumber(item.questionNumber).split('.')[0] || ''
@@ -613,6 +635,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ? pickQuestionMarks(item.questionNumber, sourceMarksMap.get(item.sourceId) || new Map<string, number>())
         : null
     )
+    const effectiveTopic = item.topic || rootRecord?.topic || null
+    const effectiveCognitiveLevel = item.cognitiveLevel ?? rootRecord?.cognitiveLevel ?? null
 
     const rootQuestionText = isSubquestion && rootRecord && rootRecord.id !== item.id
       ? String(rootRecord.questionText || '').trim() || null
@@ -622,6 +646,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     return {
       ...item,
+      topic: effectiveTopic,
+      cognitiveLevel: effectiveCognitiveLevel,
       marks: resolvedMarks,
       imageUrl: imageUrls[0] || null,
       imageUrls,

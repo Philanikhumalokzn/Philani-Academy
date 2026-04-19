@@ -15187,6 +15187,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 )
                 const cleanText = normalizedQuestion.questionText
                 const cleanLatex = normalizedQuestion.latex
+                const normalizedRootPreamble = normalizeExamQuestionContent(
+                  unwrapQuestionField(q?.rootQuestionText, ['questionText', 'text', 'prompt']),
+                  '',
+                )
+                const cleanRootPreamble = normalizedRootPreamble.questionText
                 const latexHtml = cleanLatex ? renderKatexDisplayHtml(cleanLatex) : ''
                 const marksLabel = getQuestionMarksLabel(q?.marks, cleanText)
                 const questionImageUrls = (() => {
@@ -15281,7 +15286,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             onClick={() => void openPaperContext(q)}
                             title="Tap to view this question in its full paper context"
                           >
-                            {renderQuestionTextWithInlineLatex(cleanText)}
+                            {cleanRootPreamble ? (
+                              <div className="mb-2 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-2.5 py-2">
+                                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#5b6b85]">
+                                  Q{String(q?.rootQuestionNumber || '').trim() || String(q?.questionNumber || '').trim().split('.')[0]} context
+                                </div>
+                                <div className="text-xs leading-relaxed text-[#334155] whitespace-pre-wrap break-words">
+                                  {renderQuestionTextWithInlineLatex(cleanRootPreamble)}
+                                </div>
+                              </div>
+                            ) : null}
+                            <div className="text-sm text-[#1c1e21]">
+                              {renderQuestionTextWithInlineLatex(cleanText)}
+                            </div>
                             <span className="block mt-1 text-[10px] text-[#1877f2] opacity-60">tap to view in context ↗</span>
                           </button>
                         ) : (

@@ -203,32 +203,56 @@ function normalizeHierarchyQuestionNumber(value: unknown): string {
   return String(value || '').trim().replace(/^Q/i, '')
 }
 
+function buildQuestionFamilyKey(item: {
+  sourceId: string | null
+  grade?: string | null
+  year: number
+  month: string
+  paper: number
+}): string {
+  return [item.sourceId || '', item.grade || '', item.year, item.month, item.paper].join('|')
+}
+
+function buildRootRecordKey(item: {
+  sourceId: string | null
+  grade?: string | null
+  year: number
+  month: string
+  paper: number
+  questionNumber: string
+}): string {
+  return `${buildQuestionFamilyKey(item)}|${normalizeHierarchyQuestionNumber(item.questionNumber)}`
+}
+
 function buildCompositeRootOmitSet(items: Array<{
   id: string
   sourceId: string | null
+  grade?: string | null
   year: number
   month: string
   paper: number
   questionNumber: string
   questionDepth: number
-}>): Set<string> {
+}>, familyQuestionNumbersByKey?: Map<string, string[]>): Set<string> {
   const omitIds = new Set<string>()
-  const groups = new Map<string, string[]>()
+  const groups = familyQuestionNumbersByKey || new Map<string, string[]>()
 
-  for (const item of items) {
-    const normalized = normalizeHierarchyQuestionNumber(item.questionNumber)
-    if (!normalized) continue
-    const groupKey = [item.sourceId || '', item.year, item.month, item.paper].join('|')
-    const list = groups.get(groupKey) || []
-    list.push(normalized)
-    groups.set(groupKey, list)
+  if (!familyQuestionNumbersByKey) {
+    for (const item of items) {
+      const normalized = normalizeHierarchyQuestionNumber(item.questionNumber)
+      if (!normalized) continue
+      const groupKey = buildQuestionFamilyKey(item)
+      const list = groups.get(groupKey) || []
+      list.push(normalized)
+      groups.set(groupKey, list)
+    }
   }
 
   for (const item of items) {
     if (item.questionDepth !== 0) continue
     const normalized = normalizeHierarchyQuestionNumber(item.questionNumber)
     if (!normalized) continue
-    const groupKey = [item.sourceId || '', item.year, item.month, item.paper].join('|')
+    const groupKey = buildQuestionFamilyKey(item)
     const siblings = groups.get(groupKey) || []
     if (siblings.some((candidate) => candidate !== normalized && candidate.startsWith(`${normalized}.`))) {
       omitIds.add(item.id)
@@ -421,13 +445,67 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     createdAt: Date
   }> = []
 
+  let familyRecords: Array<{
+    id: string
+    grade: string
+    year: number
+    month: string
+    paper: number
+    questionNumber: string
+    questionDepth: number
+    questionText: string
+    imageUrl: string | null
+    tableMarkdown: string | null
+    sourceId: string | null
+  }> = []
+
   if (hideCompositeRoots) {
     const allItems = await prisma.examQuestion.findMany({
       where,
       orderBy,
       select: itemSelect,
     })
-    const omitIds = buildCompositeRootOmitSet(allItems)
+
+    const familyWhereClauses = Array.from(new Map(
+      allItems.map((item) => [buildQuestionFamilyKey(item), {
+        sourceId: item.sourceId,
+        grade: item.grade,
+        year: item.year,
+        month: item.month,
+        paper: item.paper,
+      }]),
+    ).values())
+
+    familyRecords = familyWhereClauses.length > 0
+      ? await prisma.examQuestion.findMany({
+          where: { OR: familyWhereClauses },
+          select: {
+            id: true,
+            grade: true,
+            year: true,
+            month: true,
+            paper: true,
+            questionNumber: true,
+            questionDepth: true,
+            questionText: true,
+            imageUrl: true,
+            tableMarkdown: true,
+            sourceId: true,
+          },
+        })
+      : []
+
+    const familyQuestionNumbersByKey = new Map<string, string[]>()
+    for (const record of familyRecords) {
+      const normalized = normalizeHierarchyQuestionNumber(record.questionNumber)
+      if (!normalized) continue
+      const familyKey = buildQuestionFamilyKey(record)
+      const list = familyQuestionNumbersByKey.get(familyKey) || []
+      if (!list.includes(normalized)) list.push(normalized)
+      familyQuestionNumbersByKey.set(familyKey, list)
+    }
+
+    const omitIds = buildCompositeRootOmitSet(allItems, familyQuestionNumbersByKey)
     const filteredItems = allItems.filter((item) => !omitIds.has(item.id))
     total = filteredItems.length
     items = filteredItems.slice(skip, skip + take)
@@ -444,6 +522,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ])
     total = rawTotal
     items = rawItems
+    familyRecords = rawItems.map((item) => ({
+      id: item.id,
+      grade: item.grade,
+      year: item.year,
+      month: item.month,
+      paper: item.paper,
+      questionNumber: item.questionNumber,
+      questionDepth: item.questionDepth,
+      questionText: item.questionText,
+      imageUrl: item.imageUrl,
+      tableMarkdown: item.tableMarkdown,
+      sourceId: item.sourceId,
+    }))
   }
 
   const sourceIds = Array.from(new Set(items.map((item) => String(item.sourceId || '')).filter(Boolean)))
@@ -484,7 +575,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     sourceMarksMap.set(source.id, buildQuestionMarksMapFromMmd(mmd))
   }
 
+  const rootRecordByKey = new Map<string, {
+    id: string
+    questionNumber: string
+    questionText: string
+    imageUrl: string | null
+    tableMarkdown: string | null
+  }>()
+  for (const record of familyRecords) {
+    if (record.questionDepth !== 0) continue
+    const rootKey = buildRootRecordKey(record)
+    if (!rootRecordByKey.has(rootKey)) {
+      rootRecordByKey.set(rootKey, {
+        id: record.id,
+        questionNumber: record.questionNumber,
+        questionText: record.questionText,
+        imageUrl: record.imageUrl,
+        tableMarkdown: record.tableMarkdown,
+      })
+    }
+  }
+
   const enrichedItems = items.map((item) => {
+    const rootNumber = normalizeHierarchyQuestionNumber(item.questionNumber).split('.')[0] || ''
+    const rootRecord = rootNumber ? rootRecordByKey.get(`${buildQuestionFamilyKey(item)}|${rootNumber}`) : null
+    const isSubquestion = item.questionDepth > 0
     const derivedUrls = item.sourceId
       ? collectInheritedImages(item.questionNumber, sourceImageMap.get(item.sourceId) || new Map<string, string[]>())
       : []
@@ -499,11 +614,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         : null
     )
 
+    const rootQuestionText = isSubquestion && rootRecord && rootRecord.id !== item.id
+      ? String(rootRecord.questionText || '').trim() || null
+      : null
+
+    const resolvedTableMarkdown = item.tableMarkdown || (isSubquestion ? (rootRecord?.tableMarkdown || null) : null)
+
     return {
       ...item,
       marks: resolvedMarks,
       imageUrl: imageUrls[0] || null,
       imageUrls,
+      tableMarkdown: resolvedTableMarkdown,
+      rootQuestionNumber: isSubquestion && rootRecord && rootRecord.id !== item.id ? rootRecord.questionNumber : null,
+      rootQuestionText,
       sourceTitle: item.sourceId ? (sourceTitleMap.get(item.sourceId) || null) : null,
       sourceUrl: item.sourceId ? (sourceUrlMap.get(item.sourceId) || null) : null,
     }

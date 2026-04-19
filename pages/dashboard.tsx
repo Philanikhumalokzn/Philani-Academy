@@ -4659,8 +4659,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
     try {
       const url = isAdmin
-        ? `/api/resources?grade=${encodeURIComponent(selectedGrade)}`
-        : '/api/resources'
+        ? `/api/resources?grade=${encodeURIComponent(selectedGrade)}&all=1`
+        : '/api/resources?all=1'
       const res = await fetch(url, { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.message || `Failed to load materials (${res.status})`)

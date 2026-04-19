@@ -160,7 +160,7 @@ export default function ResourceBankPage() {
     setLoading(true)
     setError(null)
     try {
-      const url = role === 'admin' ? `/api/resources?grade=${encodeURIComponent(grade)}` : '/api/resources'
+      const url = role === 'admin' ? `/api/resources?grade=${encodeURIComponent(grade)}&all=1` : '/api/resources?all=1'
       const res = await fetch(url, { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.message || `Failed to load resources (${res.status})`)

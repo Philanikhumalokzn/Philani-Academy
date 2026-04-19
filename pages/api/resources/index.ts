@@ -311,6 +311,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === 'GET') {
     const q = typeof req.query.grade === 'string' ? req.query.grade : ''
     const wants = normalizeGradeInput(q)
+    const allRaw = typeof req.query.all === 'string' ? req.query.all : ''
+    const wantsAll = ['1', 'true', 'yes', 'on'].includes(allRaw.trim().toLowerCase())
+    const limitRaw = typeof req.query.limit === 'string' ? Number.parseInt(req.query.limit, 10) : Number.NaN
+    const take = wantsAll
+      ? undefined
+      : Number.isFinite(limitRaw)
+        ? Math.max(1, Math.min(limitRaw, 2000))
+        : 200
 
     const grade = role === 'admin' ? (wants || tokenGrade) : tokenGrade
     if (!grade) return res.status(400).json({ message: 'Grade not configured for this account' })
@@ -318,7 +326,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const items = await prisma.resourceBankItem.findMany({
       where: { grade },
       orderBy: { createdAt: 'desc' },
-      take: 200,
+      ...(typeof take === 'number' ? { take } : {}),
       select: {
         id: true,
         grade: true,

@@ -4718,6 +4718,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [booksOverlayOpen, fetchBooksForGrade])
 
   useEffect(() => {
+    if (!booksOverlayOpen || booksHubTab !== 'papers') return
+    void fetchBooksForGrade()
+  }, [booksHubTab, booksOverlayOpen, fetchBooksForGrade])
+
+  useEffect(() => {
     if (!booksOverlayOpen) return
     const cached = readLocalCache<string[]>(offlineDocsKey)
     setOfflineDocUrls(Array.isArray(cached?.data) ? cached.data : [])

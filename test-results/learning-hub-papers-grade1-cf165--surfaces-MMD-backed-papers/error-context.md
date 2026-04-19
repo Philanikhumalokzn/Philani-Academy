@@ -1,0 +1,45 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - img "Philani Academy logo" [ref=e10]
+        - paragraph [ref=e11]: Philani Academy
+        - heading "Sign in" [level=1] [ref=e12]
+        - paragraph [ref=e13]: Welcome back! Enter your credentials to access the dashboard.
+      - generic [ref=e14]: Invalid email or password.
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - generic [ref=e17]: Email
+          - textbox "Email" [ref=e18]: admin@philani.test
+        - generic [ref=e19]:
+          - generic [ref=e20]: Password
+          - textbox "Password" [ref=e21]: admin
+          - link "Forgot password?" [ref=e23] [cursor=pointer]:
+            - /url: /auth/forgot-password?email=admin%40philani.test
+        - button "Sign in" [ref=e24] [cursor=pointer]
+      - generic [ref=e25]:
+        - paragraph [ref=e26]:
+          - text: Don't have an account?
+          - link "Sign up" [ref=e27] [cursor=pointer]:
+            - /url: /signup
+        - generic [ref=e28]:
+          - paragraph [ref=e29]: Email verification
+          - paragraph [ref=e30]: If you created an account earlier and have not verified your email, request a new code below.
+          - button "Resend confirmation code" [ref=e31] [cursor=pointer]
+    - contentinfo [ref=e32]:
+      - generic [ref=e33]:
+        - link "Privacy" [ref=e34] [cursor=pointer]:
+          - /url: /privacy
+        - link "Terms" [ref=e35] [cursor=pointer]:
+          - /url: /terms
+        - link "Help" [ref=e36] [cursor=pointer]:
+          - /url: /help
+        - link "Contact" [ref=e37] [cursor=pointer]:
+          - /url: mailto:support@philaniacademy.org
+      - generic [ref=e38]: Educational platform. Use of the service is subject to platform policies and applicable law.
+      - generic [ref=e39]: © 2026 Philani Academy. All rights reserved.
+  - alert [ref=e40]
+```

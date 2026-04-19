@@ -115,6 +115,67 @@ type QbRemixOverlayState = {
   left: number
   width: number
 }
+type QbEditAiScope = 'question' | 'root' | 'paper'
+type QbEditAiFieldKey = 'questionText' | 'latex' | 'topic' | 'cognitiveLevel' | 'marks' | 'tableMarkdown'
+type QbEditDraft = {
+  grade: string
+  year: string
+  month: string
+  paper: string
+  sourceId: string
+  questionNumber: string
+  questionText: string
+  latex: string
+  imageUrl: string
+  tableMarkdown: string
+  topic: string
+  cognitiveLevel: string
+  marks: string
+  approved: boolean
+}
+type QbEditAiPreview = {
+  provider: string
+  scope: QbEditAiScope
+  hasChanges: boolean
+  current: {
+    questionText: string | null
+    latex: string | null
+    topic: string | null
+    cognitiveLevel: number | null
+    marks: number | null
+    tableMarkdown: string | null
+  }
+  proposed: {
+    questionText: string | null
+    latex: string | null
+    topic: string | null
+    cognitiveLevel: number | null
+    marks: number | null
+    tableMarkdown: string | null
+    rationale: string | null
+  }
+  contextPreview: string | null
+  rawOutput: string
+}
+
+function createEmptyQbEditDraft(): QbEditDraft {
+  return {
+    grade: '',
+    year: '',
+    month: '',
+    paper: '',
+    sourceId: '',
+    questionNumber: '',
+    questionText: '',
+    latex: '',
+    imageUrl: '',
+    tableMarkdown: '',
+    topic: '',
+    cognitiveLevel: '',
+    marks: '',
+    approved: false,
+  }
+}
 
 type Announcement = {
   id: string
@@ -1926,12 +1987,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   // QB admin CRUD state
   const [qbSelectedIds, setQbSelectedIds] = useState<Set<string>>(new Set())
   const [qbEditingQ, setQbEditingQ] = useState<any>(null)
-  const [qbEditDraft, setQbEditDraft] = useState<{
-    questionText: string; latex: string; questionNumber: string
-    topic: string; cognitiveLevel: string; marks: string; approved: boolean
-  }>({ questionText: '', latex: '', questionNumber: '', topic: '', cognitiveLevel: '', marks: '', approved: false })
+  const [qbEditDraft, setQbEditDraft] = useState<QbEditDraft>(createEmptyQbEditDraft())
   const [qbEditSaving, setQbEditSaving] = useState(false)
   const [qbEditError, setQbEditError] = useState<string | null>(null)
+  const [qbEditAiScope, setQbEditAiScope] = useState<QbEditAiScope>('question')
+  const [qbEditAiInstructions, setQbEditAiInstructions] = useState('')
+  const [qbEditAiContextOverride, setQbEditAiContextOverride] = useState('')
+  const [qbEditAiFields, setQbEditAiFields] = useState({
+    questionText: true,
+    latex: false,
+    topic: true,
+    cognitiveLevel: true,
+    marks: false,
+    tableMarkdown: false,
+  })
+  const [qbEditAiLoading, setQbEditAiLoading] = useState(false)
+  const [qbEditAiError, setQbEditAiError] = useState<string | null>(null)
+  const [qbEditAiPreview, setQbEditAiPreview] = useState<QbEditAiPreview | null>(null)
   const [qbBulkBusy, setQbBulkBusy] = useState(false)
   const [qbBulkError, setQbBulkError] = useState<string | null>(null)
   // Preamble editor state (admin)
@@ -14707,9 +14779,40 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     )
   }
 
+  const resetQbEditAiState = () => {
+    setQbEditAiScope('question')
+    setQbEditAiInstructions('')
+    setQbEditAiContextOverride('')
+    setQbEditAiFields({
+      questionText: true,
+      latex: false,
+      topic: true,
+      cognitiveLevel: true,
+      marks: false,
+      tableMarkdown: false,
+    })
+    setQbEditAiLoading(false)
+    setQbEditAiError(null)
+    setQbEditAiPreview(null)
+  }
+
+  const closeQbEdit = () => {
+    setQbEditingQ(null)
+    setQbEditDraft(createEmptyQbEditDraft())
+    setQbEditError(null)
+    resetQbEditAiState()
+  }
+
   const qbOpenEdit = (q: any) => {
     setQbEditingQ(q)
     setQbEditDraft({
+      grade: String(q.grade || ''),
+      year: q.year != null ? String(q.year) : '',
+      month: String(q.month || ''),
+      paper: q.paper != null ? String(q.paper) : '',
+      sourceId: String(q.sourceId || ''),
+      imageUrl: String(q.imageUrl || ''),
+      tableMarkdown: String(q.tableMarkdown || ''),
       questionText: String(q.questionText || ''),
       latex: String(q.latex || ''),
       questionNumber: String(q.questionNumber || ''),
@@ -14719,6 +14822,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       approved: Boolean(q.approved),
     })
     setQbEditError(null)
+    resetQbEditAiState()
   }
 
   const qbSaveEdit = async () => {
@@ -14727,9 +14831,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setQbEditError(null)
     try {
       const body: Record<string, unknown> = {
+        grade: qbEditDraft.grade.trim() || undefined,
+        year: qbEditDraft.year.trim() ? parseInt(qbEditDraft.year.trim(), 10) : undefined,
+        month: qbEditDraft.month.trim() || undefined,
+        paper: qbEditDraft.paper.trim() ? parseInt(qbEditDraft.paper.trim(), 10) : undefined,
+        sourceId: qbEditDraft.sourceId.trim() || null,
         questionText: qbEditDraft.questionText.trim(),
         latex: qbEditDraft.latex.trim() || null,
         questionNumber: qbEditDraft.questionNumber.trim(),
+        imageUrl: qbEditDraft.imageUrl.trim() || null,
+        tableMarkdown: qbEditDraft.tableMarkdown.trim() || null,
         topic: qbEditDraft.topic || null,
         cognitiveLevel: qbEditDraft.cognitiveLevel ? parseInt(qbEditDraft.cognitiveLevel, 10) : null,
         marks: qbEditDraft.marks !== '' ? parseFloat(qbEditDraft.marks) : null,
@@ -14743,13 +14854,72 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error((data as any)?.message || `Save failed (${res.status})`)
-      setQbItems(prev => prev.map((item: any) => item.id === qbEditingQ.id ? { ...item, ...data } : item))
-      setQbEditingQ(null)
+      const refreshed = await fetchQuestionBankResults(getCurrentQbFilters())
+      setQbItems(refreshed.items)
+      setQbTotal(refreshed.total)
+      closeQbEdit()
     } catch (err: any) {
       setQbEditError((err as any)?.message || 'Failed to save')
     } finally {
       setQbEditSaving(false)
     }
+  }
+
+  const qbRequestAiAssist = async () => {
+    if (!qbEditingQ) return
+    setQbEditAiLoading(true)
+    setQbEditAiError(null)
+    setQbEditAiPreview(null)
+    try {
+      const res = await fetch('/api/exam-questions/ai-assist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          questionId: String(qbEditingQ.id),
+          scope: qbEditAiScope,
+          requestedFields: qbEditAiFields,
+          customInstructions: qbEditAiInstructions,
+          customContext: qbEditAiContextOverride,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as any)?.message || `AI assist failed (${res.status})`)
+      setQbEditAiPreview(data as QbEditAiPreview)
+    } catch (err: any) {
+      setQbEditAiError((err as any)?.message || 'AI assist failed')
+    } finally {
+      setQbEditAiLoading(false)
+    }
+  }
+
+  const qbApplyAiField = (field: QbEditAiFieldKey) => {
+    const proposed = qbEditAiPreview?.proposed?.[field]
+    if (proposed == null) return
+    setQbEditDraft(prev => {
+      switch (field) {
+        case 'questionText':
+          return { ...prev, questionText: String(proposed) }
+        case 'latex':
+          return { ...prev, latex: String(proposed) }
+        case 'topic':
+          return { ...prev, topic: String(proposed) }
+        case 'cognitiveLevel':
+          return { ...prev, cognitiveLevel: String(proposed) }
+        case 'marks':
+          return { ...prev, marks: String(proposed) }
+        case 'tableMarkdown':
+          return { ...prev, tableMarkdown: String(proposed) }
+        default:
+          return prev
+      }
+    })
+  }
+
+  const qbApplyAllAiFields = () => {
+    ;(['questionText', 'latex', 'topic', 'cognitiveLevel', 'marks', 'tableMarkdown'] as QbEditAiFieldKey[]).forEach((field) => {
+      if (qbEditAiPreview?.proposed?.[field] != null) qbApplyAiField(field)
+    })
   }
 
   const qbDeleteOne = async (id: string) => {
@@ -18087,109 +18257,226 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         open={Boolean(qbEditingQ)}
         title="Edit Question"
         subtitle={qbEditingQ ? `Q${String(qbEditingQ.questionNumber)} · ${String(qbEditingQ.year)} ${String(qbEditingQ.month)} · Paper ${String(qbEditingQ.paper)}` : undefined}
-        onClose={() => { setQbEditingQ(null); setQbEditError(null) }}
+        onClose={closeQbEdit}
         backdrop
-        closeOnBackdrop={!qbEditSaving}
-        closeOnEscape={!qbEditSaving}
-        contentClassName="px-4 py-4 space-y-4"
+        closeOnBackdrop={!qbEditSaving && !qbEditAiLoading}
+        closeOnEscape={!qbEditSaving && !qbEditAiLoading}
+        contentClassName="max-h-[85vh] space-y-4 overflow-y-auto px-4 py-4"
         zIndexClassName="z-[85]"
       >
         {qbEditError ? (
           <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{qbEditError}</div>
         ) : null}
 
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-[#65676b]">Question Number</label>
-          <input
-            type="text"
-            className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
-            value={qbEditDraft.questionNumber}
-            onChange={(e) => setQbEditDraft(prev => ({ ...prev, questionNumber: e.target.value }))}
-            disabled={qbEditSaving}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-[#65676b]">Question Text</label>
-          <textarea
-            rows={5}
-            className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21] resize-y"
-            value={qbEditDraft.questionText}
-            onChange={(e) => setQbEditDraft(prev => ({ ...prev, questionText: e.target.value }))}
-            disabled={qbEditSaving}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-[#65676b]">LaTeX</label>
-          <textarea
-            rows={3}
-            className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm font-mono text-[#1c1e21] resize-y"
-            placeholder="Optional LaTeX expression"
-            value={qbEditDraft.latex}
-            onChange={(e) => setQbEditDraft(prev => ({ ...prev, latex: e.target.value }))}
-            disabled={qbEditSaving}
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-[#65676b]">Topic</label>
-            <select
-              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
-              value={qbEditDraft.topic}
-              onChange={(e) => setQbEditDraft(prev => ({ ...prev, topic: e.target.value }))}
-              disabled={qbEditSaving}
-            >
-              <option value="">— None —</option>
-              {QB_TOPICS.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-[#65676b]">Cognitive Level</label>
-            <select
-              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
-              value={qbEditDraft.cognitiveLevel}
-              onChange={(e) => setQbEditDraft(prev => ({ ...prev, cognitiveLevel: e.target.value }))}
-              disabled={qbEditSaving}
-            >
-              <option value="">— None —</option>
-              <option value="1">1 — Knowledge</option>
-              <option value="2">2 — Routine procedures</option>
-              <option value="3">3 — Complex procedures</option>
-              <option value="4">4 — Problem-solving</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-[#65676b]">Marks</label>
-            <input
-              type="number"
-              min={0}
-              step={1}
-              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
-              value={qbEditDraft.marks}
-              onChange={(e) => setQbEditDraft(prev => ({ ...prev, marks: e.target.value }))}
-              disabled={qbEditSaving}
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-[#65676b]">Approved</label>
-            <div className="flex h-[38px] items-center">
-              <label className="flex cursor-pointer items-center gap-2 select-none">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-[#d5def0] accent-[#1877f2]"
-                  checked={qbEditDraft.approved}
-                  onChange={(e) => setQbEditDraft(prev => ({ ...prev, approved: e.target.checked }))}
-                  disabled={qbEditSaving}
-                />
-                <span className="text-sm text-[#1c1e21]">{qbEditDraft.approved ? 'Approved' : 'Not approved'}</span>
-              </label>
+        {qbEditingQ ? (
+          <div className="rounded-2xl border border-[#d5def0] bg-[#f7f8fa] px-4 py-3 text-xs text-[#65676b]">
+            <div className="font-semibold text-[#1c1e21]">Record scope</div>
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+              <span>ID: {String(qbEditingQ.id)}</span>
+              <span>Depth: {String(qbEditingQ.questionDepth ?? '') || '0'}</span>
+              <span>Source: {qbEditDraft.sourceId || 'Detached'}</span>
             </div>
           </div>
+        ) : null}
+
+        <div className="rounded-2xl border border-[#d5def0] bg-white px-4 py-4 shadow-sm">
+          <div className="text-sm font-semibold text-[#1c1e21]">Exam metadata</div>
+          <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[#65676b]">Grade</label>
+              <select className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" value={qbEditDraft.grade} onChange={(e) => setQbEditDraft(prev => ({ ...prev, grade: e.target.value }))} disabled={qbEditSaving}>
+                <option value="">Keep current</option>
+                {GRADE_VALUES.map((grade) => <option key={grade} value={grade}>{gradeToLabel(grade)}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[#65676b]">Year</label>
+              <input type="number" min={2000} max={2100} className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" value={qbEditDraft.year} onChange={(e) => setQbEditDraft(prev => ({ ...prev, year: e.target.value }))} disabled={qbEditSaving} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[#65676b]">Month</label>
+              <select className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" value={qbEditDraft.month} onChange={(e) => setQbEditDraft(prev => ({ ...prev, month: e.target.value }))} disabled={qbEditSaving}>
+                <option value="">Select month</option>
+                {QB_MONTHS.map((month) => <option key={month} value={month}>{month}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[#65676b]">Paper</label>
+              <select className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" value={qbEditDraft.paper} onChange={(e) => setQbEditDraft(prev => ({ ...prev, paper: e.target.value }))} disabled={qbEditSaving}>
+                <option value="">Select paper</option>
+                {[1, 2, 3].map((paper) => <option key={paper} value={String(paper)}>{`Paper ${paper}`}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-[1.4fr,1fr]">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[#65676b]">Source Resource ID</label>
+              <input type="text" className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" value={qbEditDraft.sourceId} onChange={(e) => setQbEditDraft(prev => ({ ...prev, sourceId: e.target.value }))} disabled={qbEditSaving} placeholder="ResourceBankItem id or blank to detach" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[#65676b]">Question Number</label>
+              <input type="text" className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" value={qbEditDraft.questionNumber} onChange={(e) => setQbEditDraft(prev => ({ ...prev, questionNumber: e.target.value }))} disabled={qbEditSaving} />
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[#d5def0] bg-white px-4 py-4 shadow-sm space-y-3">
+          <div className="text-sm font-semibold text-[#1c1e21]">Question content</div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-[#65676b]">Question Text</label>
+            <textarea rows={6} className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21] resize-y" value={qbEditDraft.questionText} onChange={(e) => setQbEditDraft(prev => ({ ...prev, questionText: e.target.value }))} disabled={qbEditSaving} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-[#65676b]">LaTeX</label>
+            <textarea rows={3} className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm font-mono text-[#1c1e21] resize-y" placeholder="Optional LaTeX expression" value={qbEditDraft.latex} onChange={(e) => setQbEditDraft(prev => ({ ...prev, latex: e.target.value }))} disabled={qbEditSaving} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-[#65676b]">Table Markdown</label>
+            <textarea rows={4} className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm font-mono text-[#1c1e21] resize-y" placeholder="Optional markdown table extracted from the source" value={qbEditDraft.tableMarkdown} onChange={(e) => setQbEditDraft(prev => ({ ...prev, tableMarkdown: e.target.value }))} disabled={qbEditSaving} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-[#65676b]">Image URL</label>
+            <input type="url" className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" placeholder="https://..." value={qbEditDraft.imageUrl} onChange={(e) => setQbEditDraft(prev => ({ ...prev, imageUrl: e.target.value }))} disabled={qbEditSaving} />
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[#d5def0] bg-white px-4 py-4 shadow-sm">
+          <div className="text-sm font-semibold text-[#1c1e21]">Classification</div>
+          <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="space-y-1 md:col-span-2">
+              <label className="text-xs font-medium text-[#65676b]">Topic</label>
+              <select className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" value={qbEditDraft.topic} onChange={(e) => setQbEditDraft(prev => ({ ...prev, topic: e.target.value }))} disabled={qbEditSaving}>
+                <option value="">— None —</option>
+                {QB_TOPICS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[#65676b]">Cognitive Level</label>
+              <select className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" value={qbEditDraft.cognitiveLevel} onChange={(e) => setQbEditDraft(prev => ({ ...prev, cognitiveLevel: e.target.value }))} disabled={qbEditSaving}>
+                <option value="">— None —</option>
+                <option value="1">1 — Knowledge</option>
+                <option value="2">2 — Routine procedures</option>
+                <option value="3">3 — Complex procedures</option>
+                <option value="4">4 — Problem-solving</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[#65676b]">Marks</label>
+              <input type="number" min={0} step={1} className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" value={qbEditDraft.marks} onChange={(e) => setQbEditDraft(prev => ({ ...prev, marks: e.target.value }))} disabled={qbEditSaving} />
+            </div>
+          </div>
+
+          <div className="mt-3 flex h-[38px] items-center">
+            <label className="flex cursor-pointer items-center gap-2 select-none">
+              <input type="checkbox" className="h-4 w-4 rounded border-[#d5def0] accent-[#1877f2]" checked={qbEditDraft.approved} onChange={(e) => setQbEditDraft(prev => ({ ...prev, approved: e.target.checked }))} disabled={qbEditSaving} />
+              <span className="text-sm text-[#1c1e21]">{qbEditDraft.approved ? 'Approved' : 'Not approved'}</span>
+            </label>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[#d5def0] bg-[#f7fbff] px-4 py-4 shadow-sm space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-sm font-semibold text-[#1c1e21]">AI assist</div>
+              <p className="text-xs text-[#65676b]">Preview scoped changes, then selectively apply them into the draft.</p>
+            </div>
+            <button type="button" className="inline-flex h-9 items-center justify-center rounded-full bg-[#1c1e21] px-4 text-sm font-semibold text-white hover:bg-[#2d3036] disabled:opacity-50" onClick={() => void qbRequestAiAssist()} disabled={qbEditSaving || qbEditAiLoading}>
+              {qbEditAiLoading ? 'Generating…' : 'Preview AI proposal'}
+            </button>
+          </div>
+
+          {qbEditAiError ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{qbEditAiError}</div> : null}
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-[#65676b]">Scope</label>
+              <select className="w-full rounded-lg border border-[#d5def0] bg-white px-3 py-2 text-sm text-[#1c1e21]" value={qbEditAiScope} onChange={(e) => setQbEditAiScope(e.target.value as QbEditAiScope)} disabled={qbEditSaving || qbEditAiLoading}>
+                <option value="question">Question only</option>
+                <option value="root">Root question context</option>
+                <option value="paper">Whole paper context</option>
+              </select>
+            </div>
+            <div className="md:col-span-2 rounded-xl border border-[#d5def0] bg-white px-3 py-3">
+              <div className="text-xs font-medium text-[#65676b]">Fields to propose</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {([
+                  ['questionText', 'Question text'],
+                  ['latex', 'LaTeX'],
+                  ['topic', 'Topic'],
+                  ['cognitiveLevel', 'Cognitive level'],
+                  ['marks', 'Marks'],
+                  ['tableMarkdown', 'Table markdown'],
+                ] as Array<[QbEditAiFieldKey, string]>).map(([field, label]) => (
+                  <label key={field} className="inline-flex items-center gap-2 rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 py-1.5 text-xs text-[#1c1e21]">
+                    <input type="checkbox" className="h-3.5 w-3.5 rounded border-[#d5def0] accent-[#1877f2]" checked={qbEditAiFields[field]} onChange={(e) => setQbEditAiFields(prev => ({ ...prev, [field]: e.target.checked }))} disabled={qbEditSaving || qbEditAiLoading} />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-[#65676b]">Custom instructions</label>
+            <textarea rows={3} className="w-full rounded-lg border border-[#d5def0] bg-white px-3 py-2 text-sm text-[#1c1e21] resize-y" placeholder="Tell the model what to fix, preserve, or prioritise." value={qbEditAiInstructions} onChange={(e) => setQbEditAiInstructions(e.target.value)} disabled={qbEditSaving || qbEditAiLoading} />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-[#65676b]">Custom context</label>
+            <textarea rows={4} className="w-full rounded-lg border border-[#d5def0] bg-white px-3 py-2 text-sm text-[#1c1e21] resize-y" placeholder="Paste memo notes, cleaned OCR, or source text to scope the proposal." value={qbEditAiContextOverride} onChange={(e) => setQbEditAiContextOverride(e.target.value)} disabled={qbEditSaving || qbEditAiLoading} />
+          </div>
+
+          {qbEditAiPreview ? (
+            <div className="space-y-3 rounded-xl border border-[#d5def0] bg-white px-3 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs text-[#65676b]"><span className="font-medium text-[#1c1e21]">Provider:</span> {qbEditAiPreview.provider} · <span className="font-medium text-[#1c1e21]">Scope:</span> {qbEditAiPreview.scope}</div>
+                <button type="button" className="inline-flex h-8 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 text-xs font-medium text-[#1c1e21] hover:bg-[#eef2f7] disabled:opacity-50" onClick={qbApplyAllAiFields} disabled={!qbEditAiPreview.hasChanges}>Apply all proposed fields</button>
+              </div>
+
+              {!qbEditAiPreview.hasChanges ? <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">The proposal did not differ from the current stored values for the requested fields.</div> : null}
+
+              {([
+                ['questionText', 'Question text'],
+                ['latex', 'LaTeX'],
+                ['topic', 'Topic'],
+                ['cognitiveLevel', 'Cognitive level'],
+                ['marks', 'Marks'],
+                ['tableMarkdown', 'Table markdown'],
+              ] as Array<[QbEditAiFieldKey, string]>).map(([field, label]) => {
+                const currentValue = qbEditAiPreview.current[field]
+                const proposedValue = qbEditAiPreview.proposed[field]
+                if (proposedValue == null) return null
+                return (
+                  <div key={field} className="rounded-xl border border-[#e3e8f2] bg-[#fbfcfe] px-3 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm font-medium text-[#1c1e21]">{label}</div>
+                      <button type="button" className="inline-flex h-8 items-center justify-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-medium text-[#1c1e21] hover:bg-[#eef2f7]" onClick={() => qbApplyAiField(field)}>Apply to draft</button>
+                    </div>
+                    <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8b96ab]">Current</div>
+                        <pre className="mt-1 whitespace-pre-wrap rounded-lg bg-white px-3 py-2 text-xs text-[#4b5565]">{currentValue == null || currentValue === '' ? '—' : String(currentValue)}</pre>
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8b96ab]">Proposed</div>
+                        <pre className="mt-1 whitespace-pre-wrap rounded-lg bg-[#eef6ff] px-3 py-2 text-xs text-[#1c1e21]">{String(proposedValue)}</pre>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+
+              {qbEditAiPreview.proposed.rationale ? <div className="rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#445066]"><span className="font-medium text-[#1c1e21]">Rationale:</span> {qbEditAiPreview.proposed.rationale}</div> : null}
+
+              {qbEditAiPreview.contextPreview ? (
+                <details className="rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2">
+                  <summary className="cursor-pointer text-sm font-medium text-[#1c1e21]">Context preview used for the proposal</summary>
+                  <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap text-xs text-[#445066]">{qbEditAiPreview.contextPreview}</pre>
+                </details>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="flex gap-2 pt-2">
@@ -18197,15 +18484,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             type="button"
             className="flex-1 inline-flex h-10 items-center justify-center rounded-full bg-[#1c1e21] px-4 text-sm font-semibold text-white hover:bg-[#2d3036] disabled:opacity-50"
             onClick={() => void qbSaveEdit()}
-            disabled={qbEditSaving}
+            disabled={qbEditSaving || qbEditAiLoading}
           >
             {qbEditSaving ? 'Saving…' : 'Save Changes'}
           </button>
           <button
             type="button"
             className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] hover:bg-[#eef2f7] disabled:opacity-50"
-            onClick={() => { setQbEditingQ(null); setQbEditError(null) }}
-            disabled={qbEditSaving}
+            onClick={closeQbEdit}
+            disabled={qbEditSaving || qbEditAiLoading}
           >
             Cancel
           </button>

@@ -1,6 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import prisma from '../../../lib/prisma'
+import { normalizeGradeInput } from '../../../lib/grades'
+import { VALID_MONTHS } from '../resources/extract-questions'
 
 export const config = {
   api: { bodyParser: { sizeLimit: '16kb' } },
@@ -23,7 +25,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === 'PATCH') {
     if (role !== 'admin') return res.status(403).json({ message: 'Admin only' })
 
-    const { topic, cognitiveLevel, marks, approved, questionText, latex, questionNumber, imageUrl, tableMarkdown } = req.body as {
+    const { grade, year, month, paper, sourceId, topic, cognitiveLevel, marks, approved, questionText, latex, questionNumber, imageUrl, tableMarkdown } = req.body as {
+      grade?: string | null
+      year?: number | null
+      month?: string | null
+      paper?: number | null
+      sourceId?: string | null
       topic?: string | null
       cognitiveLevel?: number | null
       marks?: number | null
@@ -36,6 +43,43 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const data: any = {}
+    if (grade !== undefined) {
+      const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : undefined)
+      if (!normalizedGrade) return res.status(400).json({ message: 'grade must be a valid grade value' })
+      data.grade = normalizedGrade
+    }
+    if (year !== undefined) {
+      if (typeof year !== 'number' || !Number.isFinite(year) || year < 2000 || year > 2100) {
+        return res.status(400).json({ message: 'year must be a valid number between 2000 and 2100' })
+      }
+      data.year = Math.round(year)
+    }
+    if (month !== undefined) {
+      const normalizedMonth = typeof month === 'string' ? month.trim() : ''
+      if (!VALID_MONTHS.includes(normalizedMonth)) {
+        return res.status(400).json({ message: `month must be one of: ${VALID_MONTHS.join(', ')}` })
+      }
+      data.month = normalizedMonth
+    }
+    if (paper !== undefined) {
+      if (typeof paper !== 'number' || !Number.isFinite(paper) || ![1, 2, 3].includes(Math.round(paper))) {
+        return res.status(400).json({ message: 'paper must be 1, 2, or 3' })
+      }
+      data.paper = Math.round(paper)
+    }
+    if (sourceId !== undefined) {
+      const normalizedSourceId = typeof sourceId === 'string' ? sourceId.trim() : ''
+      if (!normalizedSourceId) {
+        data.sourceId = null
+      } else {
+        const sourceExists = await prisma.resourceBankItem.findUnique({
+          where: { id: normalizedSourceId },
+          select: { id: true },
+        })
+        if (!sourceExists) return res.status(400).json({ message: 'sourceId does not match an existing resource' })
+        data.sourceId = normalizedSourceId
+      }
+    }
     if (topic !== undefined) data.topic = topic && VALID_TOPICS.includes(topic) ? topic : null
     if (cognitiveLevel !== undefined) {
       data.cognitiveLevel =
@@ -77,7 +121,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         where: { id },
         data,
         select: {
-          id: true, topic: true, cognitiveLevel: true, marks: true,
+          id: true, grade: true, year: true, month: true, paper: true, sourceId: true,
+          topic: true, cognitiveLevel: true, marks: true,
           approved: true, questionText: true, latex: true, questionNumber: true, questionDepth: true,
           imageUrl: true, tableMarkdown: true,
         },

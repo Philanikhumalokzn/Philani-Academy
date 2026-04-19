@@ -18261,7 +18261,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         backdrop
         closeOnBackdrop={!qbEditSaving && !qbEditAiLoading}
         closeOnEscape={!qbEditSaving && !qbEditAiLoading}
-        contentClassName="max-h-[85vh] space-y-4 overflow-y-auto px-4 py-4"
+        className="bottom-0"
+        sheetClassName="rounded-t-[28px] rounded-b-none border-x-0 border-b-0 border-t border-slate-200 bg-white shadow-[0_-18px_40px_rgba(15,23,42,0.14)]"
+        contentClassName="space-y-4 overflow-y-auto px-4 pt-4 pb-[calc(var(--app-safe-bottom)+1rem)]"
         zIndexClassName="z-[85]"
       >
         {qbEditError ? (

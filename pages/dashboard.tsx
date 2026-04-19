@@ -960,6 +960,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const { data: session, status, update: updateSession } = useSession()
   const { queueRestore, discardRestore, popRestore, hasRestore } = useOverlayRestore()
   const gradeOptions = useMemo(() => GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) })), [])
+  const adminGradeStorageKey = useMemo(() => {
+    const userKey = String((session as any)?.user?.id || session?.user?.email || 'anon')
+    return `pa:admin:selected-grade:v1:${userKey}`
+  }, [session])
   const [selectedGrade, setSelectedGrade] = useState<GradeValue | null>(null)
   const [gradeReady, setGradeReady] = useState(false)
   const [isMobile, setIsMobile] = useState(initialIsMobile)
@@ -7342,10 +7346,32 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const updateGradeSelection = (grade: GradeValue) => {
     if (selectedGrade === grade) return
     setSelectedGrade(grade)
+    if (typeof window !== 'undefined' && isAdmin) {
+      try {
+        window.localStorage.setItem(adminGradeStorageKey, grade)
+      } catch {
+        // ignore persistence failures
+      }
+    }
     if (router.isReady) {
       const nextQuery = { ...router.query, grade }
       router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true })
     }
+  }
+
+  const openGradeWorkspaceSelectorFromElement = (element: HTMLElement, externalDrag?: { pointerId: number; startClientY: number } | null) => {
+    const rect = element.getBoundingClientRect()
+    setGradeWorkspaceSelectorAnchor({
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      left: rect.left,
+      width: rect.width,
+      height: rect.height,
+    })
+    setGradeWorkspaceSelectorPreview(null)
+    setGradeWorkspaceSelectorExternalDrag(externalDrag || null)
+    setGradeWorkspaceSelectorOpen(true)
   }
 
   const toLocalDateTimeValue = (value: unknown) => {
@@ -9995,10 +10021,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const normalizedQuery = normalizeGradeInput(typeof queryGradeString === 'string' ? queryGradeString : undefined)
     const sessionGrade = normalizeGradeInput((session as any)?.user?.grade as string | undefined)
     const role = (session as any)?.user?.role as string | undefined
+    const persistedAdminGrade = (() => {
+      if (typeof window === 'undefined' || role !== 'admin') return null
+      try {
+        return normalizeGradeInput(window.localStorage.getItem(adminGradeStorageKey) || undefined)
+      } catch {
+        return null
+      }
+    })()
 
     let resolved: GradeValue | null = normalizedQuery || null
     if (!resolved) {
-      if ((role === 'student' || role === 'teacher') && sessionGrade) {
+      if (role === 'admin' && persistedAdminGrade) {
+        resolved = persistedAdminGrade
+      } else if ((role === 'student' || role === 'teacher') && sessionGrade) {
         resolved = sessionGrade
       }
     }
@@ -10016,7 +10052,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       }
     }
     setGradeReady(true)
-  }, [router.isReady, router.pathname, gradeReady, session, queryGradeString, selectedGrade])
+  }, [adminGradeStorageKey, router.isReady, router.pathname, gradeReady, session, queryGradeString, selectedGrade])
+
+  useEffect(() => {
+    if (!gradeReady || !isAdmin || !selectedGrade || typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(adminGradeStorageKey, selectedGrade)
+    } catch {
+      // ignore persistence failures
+    }
+  }, [adminGradeStorageKey, gradeReady, isAdmin, selectedGrade])
 
   useEffect(() => {
     if (!gradeReady || !selectedGrade) return
@@ -10693,35 +10738,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     className="inline-flex min-w-[40px] items-center justify-center rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-white touch-none"
                     onPointerDown={(e) => {
                       if ((e as any).pointerType === 'mouse') return
-                      const el = e.currentTarget as HTMLElement
-                      const r = el.getBoundingClientRect()
-                      setGradeWorkspaceSelectorAnchor({
-                        top: r.top,
-                        right: r.right,
-                        bottom: r.bottom,
-                        left: r.left,
-                        width: r.width,
-                        height: r.height,
-                      })
-                      setGradeWorkspaceSelectorPreview(null)
-                      setGradeWorkspaceSelectorExternalDrag({ pointerId: e.pointerId, startClientY: e.clientY })
-                      setGradeWorkspaceSelectorOpen(true)
+                      openGradeWorkspaceSelectorFromElement(e.currentTarget as HTMLElement, { pointerId: e.pointerId, startClientY: e.clientY })
                       e.preventDefault()
                       e.stopPropagation()
                     }}
                     onClick={(e) => {
-                      const el = e.currentTarget as HTMLElement
-                      const r = el.getBoundingClientRect()
-                      setGradeWorkspaceSelectorAnchor({
-                        top: r.top,
-                        right: r.right,
-                        bottom: r.bottom,
-                        left: r.left,
-                        width: r.width,
-                        height: r.height,
-                      })
-                      setGradeWorkspaceSelectorPreview(null)
-                      setGradeWorkspaceSelectorOpen(true)
+                      openGradeWorkspaceSelectorFromElement(e.currentTarget as HTMLElement)
                     }}
                     aria-label="Select grade workspace"
                     title="Select grade workspace"
@@ -16289,6 +16311,27 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 </button>
               </div>
             </div>
+
+            {isAdmin ? (
+              <div className="flex justify-center border-b border-black/10 bg-white px-4 pb-2 pt-1">
+                <button
+                  type="button"
+                  className="inline-flex min-w-[168px] max-w-full flex-col items-center justify-center rounded-2xl border border-black/10 bg-[#f8fafc] px-4 py-2 text-center text-[#1c1e21] shadow-sm touch-none"
+                  onPointerDown={(e) => {
+                    if ((e as any).pointerType === 'mouse') return
+                    openGradeWorkspaceSelectorFromElement(e.currentTarget as HTMLElement, { pointerId: e.pointerId, startClientY: e.clientY })
+                    e.preventDefault()
+                    e.stopPropagation()
+                  }}
+                  onClick={(e) => openGradeWorkspaceSelectorFromElement(e.currentTarget as HTMLElement)}
+                  aria-label="Select admin grade scope"
+                  title="Select admin grade scope"
+                >
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#65676b]">Grade Scope</span>
+                  <span className="mt-1 text-sm font-semibold">{gradeWorkspaceSelectorPreview ? gradeToLabel(gradeWorkspaceSelectorPreview) : activeGradeLabel}</span>
+                </button>
+              </div>
+            ) : null}
 
             <div>
               <div className="relative grid grid-cols-5 border-b border-black/10 bg-white">

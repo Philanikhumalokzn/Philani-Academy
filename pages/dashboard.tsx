@@ -1939,6 +1939,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [qbSearched, setQbSearched] = useState(false)
   const [qbRemixMessage, setQbRemixMessage] = useState<string | null>(null)
   const [qbRemixOverlay, setQbRemixOverlay] = useState<QbRemixOverlayState | null>(null)
+  const [qbRemixFilters, setQbRemixFilters] = useState<QbSearchFilters | null>(null)
   const qbRemixOverlayRef = useRef<HTMLDivElement | null>(null)
   // Paper context sheet state (View in paper)
   const [qbContextOpen, setQbContextOpen] = useState(false)
@@ -13763,6 +13764,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     try {
       const data = await fetchQuestionBankResults(filters)
       syncQbFilters(filters)
+      setQbRemixFilters(null)
       setQbItems(data.items)
       setQbTotal(data.total)
       setQbRemixMessage(options?.remixMessage ?? null)
@@ -13790,17 +13792,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }
 
-  const buildQbRemixSeedFilters = (q: any): QbSearchFilters => {
-    const current = getCurrentQbFilters()
-    return {
-      year: current.year || String(q?.year || ''),
-      month: current.month || String(q?.month || ''),
-      paper: current.paper || String(q?.paper || ''),
-      topic: current.topic || String(q?.topic || ''),
-      level: current.level || (q?.cognitiveLevel != null ? String(q.cognitiveLevel) : ''),
-      number: '',
-    }
-  }
+  const buildQbQuestionSeedFilters = (q: any): QbSearchFilters => ({
+    year: String(q?.year || ''),
+    month: String(q?.month || ''),
+    paper: String(q?.paper || ''),
+    topic: String(q?.topic || ''),
+    level: q?.cognitiveLevel != null ? String(q.cognitiveLevel) : '',
+    number: '',
+  })
+
+  const buildQbRemixSeedFilters = (q: any): QbSearchFilters => qbRemixFilters || buildQbQuestionSeedFilters(q)
 
   const describeQbRemixBadge = (badge: QbRemixBadge): string => {
     switch (badge) {
@@ -13881,6 +13882,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       }
 
       syncQbFilters(candidate)
+      setQbRemixFilters(candidate)
       setQbItems(result.items)
       setQbTotal(result.total)
       const isFullyUnrestricted = !candidate.year && !candidate.month && !candidate.paper && !candidate.topic && !candidate.level
@@ -15010,6 +15012,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <input
               type="number"
               className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+              aria-label="Question bank year filter"
               placeholder="e.g. 2024"
               min={2000}
               max={2100}
@@ -15021,6 +15024,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div className="text-xs text-[#65676b]">Exam month</div>
             <select
               className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+              aria-label="Question bank month filter"
               value={qbMonth}
               onChange={(e) => setQbMonth(e.target.value)}
             >
@@ -15032,6 +15036,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div className="text-xs text-[#65676b]">Paper</div>
             <select
               className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+              aria-label="Question bank paper filter"
               value={qbPaper}
               onChange={(e) => setQbPaper(e.target.value)}
             >
@@ -15045,6 +15050,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div className="text-xs text-[#65676b]">Topic</div>
             <select
               className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+              aria-label="Question bank topic filter"
               value={qbTopic}
               onChange={(e) => setQbTopic(e.target.value)}
             >
@@ -15056,6 +15062,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div className="text-xs text-[#65676b]">Difficulty (cognitive level)</div>
             <select
               className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+              aria-label="Question bank level filter"
               value={qbLevel}
               onChange={(e) => setQbLevel(e.target.value)}
             >
@@ -15071,6 +15078,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <input
               type="text"
               className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+              aria-label="Question bank number filter"
               placeholder="e.g. 1, 1.1, 1.1.5"
               value={qbNumber}
               onChange={(e) => setQbNumber(e.target.value)}

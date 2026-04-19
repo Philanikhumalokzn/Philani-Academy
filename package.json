@@ -13,6 +13,7 @@
     "silence:baseline-warning": "node scripts/silence_baseline_warning.js",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:studio": "prisma studio",
+    "questions:audit-levels-mmd": "node scripts/audit_cognitive_levels_mmd_context.js --write",
     "questions:backfill-math": "node scripts/backfill_exam_question_math.js --write",
     "questions:backfill-source-ids": "node scripts/backfill_exam_question_source_ids.js --write --create-snapshots",
     "questions:dedupe-exact": "node scripts/dedupe_exact_exam_questions.js --write",

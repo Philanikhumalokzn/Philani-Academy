@@ -67,8 +67,13 @@ function normalizeCognitiveLevel(value: unknown, options?: { coerceUnknownToOne?
 function normalizeQuestionNumber(value: unknown): string | null {
   const text = String(value ?? '').trim()
   if (!text) return null
-  const match = text.match(/(\d+(?:\.\d+)*)/)
-  return match?.[1] ? match[1] : null
+  const matches = [...text.matchAll(/(\d+(?:\.\d+)*)/g)].map((match) => match[1]).filter(Boolean)
+  if (!matches.length) return null
+  return matches.sort((left, right) => {
+    const depthDiff = right.split('.').length - left.split('.').length
+    if (depthDiff !== 0) return depthDiff
+    return right.length - left.length
+  })[0] || null
 }
 
 function questionSortParts(qNum: string): number[] {

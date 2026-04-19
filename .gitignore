@@ -16,3 +16,4 @@ build*.log
 
 # Keep independent repo out of Philani index
 Bhanoyi-Secondary-School-Website/
+.env*.local

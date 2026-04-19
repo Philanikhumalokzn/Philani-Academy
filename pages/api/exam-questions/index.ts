@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
+import type { Prisma } from '@prisma/client'
 import prisma from '../../../lib/prisma'
 import { normalizeGradeInput } from '../../../lib/grades'
 
@@ -198,6 +199,45 @@ function pickQuestionMarks(qNum: string, marksMap: Map<string, number>): number 
   return null
 }
 
+function normalizeHierarchyQuestionNumber(value: unknown): string {
+  return String(value || '').trim().replace(/^Q/i, '')
+}
+
+function buildCompositeRootOmitSet(items: Array<{
+  id: string
+  sourceId: string | null
+  year: number
+  month: string
+  paper: number
+  questionNumber: string
+  questionDepth: number
+}>): Set<string> {
+  const omitIds = new Set<string>()
+  const groups = new Map<string, string[]>()
+
+  for (const item of items) {
+    const normalized = normalizeHierarchyQuestionNumber(item.questionNumber)
+    if (!normalized) continue
+    const groupKey = [item.sourceId || '', item.year, item.month, item.paper].join('|')
+    const list = groups.get(groupKey) || []
+    list.push(normalized)
+    groups.set(groupKey, list)
+  }
+
+  for (const item of items) {
+    if (item.questionDepth !== 0) continue
+    const normalized = normalizeHierarchyQuestionNumber(item.questionNumber)
+    if (!normalized) continue
+    const groupKey = [item.sourceId || '', item.year, item.month, item.paper].join('|')
+    const siblings = groups.get(groupKey) || []
+    if (siblings.some((candidate) => candidate !== normalized && candidate.startsWith(`${normalized}.`))) {
+      omitIds.add(item.id)
+    }
+  }
+
+  return omitIds
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const token = await getToken({ req })
   const role = ((token as any)?.role as string | undefined) || 'student'
@@ -316,6 +356,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const cognitiveLevel = q.cognitiveLevel ? parseInt(String(q.cognitiveLevel), 10) : undefined
   const questionNumber = q.questionNumber ? String(q.questionNumber) : undefined
   const sourceId = q.sourceId ? String(q.sourceId) : undefined
+  const hideCompositeRoots = ['1', 'true', 'yes'].includes(String(q.hideCompositeRoots || '').toLowerCase())
   const approvedOnly = role !== 'admin' // students only see approved questions
   const page = Math.max(1, parseInt(String(q.page || '1'), 10))
   const take = Math.min(100, Math.max(1, parseInt(String(q.take || '50'), 10)))
@@ -332,34 +373,78 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (sourceId) where.sourceId = sourceId
   if (approvedOnly) where.approved = true
 
-  const [total, items] = await Promise.all([
-    prisma.examQuestion.count({ where }),
-    prisma.examQuestion.findMany({
+  const itemSelect = {
+    id: true,
+    grade: true,
+    year: true,
+    month: true,
+    paper: true,
+    questionNumber: true,
+    questionDepth: true,
+    topic: true,
+    cognitiveLevel: true,
+    marks: true,
+    questionText: true,
+    latex: true,
+    imageUrl: true,
+    tableMarkdown: true,
+    approved: true,
+    sourceId: true,
+    createdAt: true,
+  } as const
+
+  const orderBy: Prisma.ExamQuestionOrderByWithRelationInput[] = [
+    { year: 'desc' },
+    { month: 'asc' },
+    { paper: 'asc' },
+    { questionNumber: 'asc' },
+  ]
+
+  let total = 0
+  let items: Array<{
+    id: string
+    grade: string
+    year: number
+    month: string
+    paper: number
+    questionNumber: string
+    questionDepth: number
+    topic: string | null
+    cognitiveLevel: number | null
+    marks: number | null
+    questionText: string
+    latex: string | null
+    imageUrl: string | null
+    tableMarkdown: string | null
+    approved: boolean
+    sourceId: string | null
+    createdAt: Date
+  }> = []
+
+  if (hideCompositeRoots) {
+    const allItems = await prisma.examQuestion.findMany({
       where,
-      orderBy: [{ year: 'desc' }, { month: 'asc' }, { paper: 'asc' }, { questionNumber: 'asc' }],
-      skip,
-      take,
-      select: {
-        id: true,
-        grade: true,
-        year: true,
-        month: true,
-        paper: true,
-        questionNumber: true,
-        questionDepth: true,
-        topic: true,
-        cognitiveLevel: true,
-        marks: true,
-        questionText: true,
-        latex: true,
-        imageUrl: true,
-        tableMarkdown: true,
-        approved: true,
-        sourceId: true,
-        createdAt: true,
-      },
-    }),
-  ])
+      orderBy,
+      select: itemSelect,
+    })
+    const omitIds = buildCompositeRootOmitSet(allItems)
+    const filteredItems = allItems.filter((item) => !omitIds.has(item.id))
+    total = filteredItems.length
+    items = filteredItems.slice(skip, skip + take)
+  } else {
+    const [rawTotal, rawItems] = await Promise.all([
+      prisma.examQuestion.count({ where }),
+      prisma.examQuestion.findMany({
+        where,
+        orderBy,
+        skip,
+        take,
+        select: itemSelect,
+      }),
+    ])
+    total = rawTotal
+    items = rawItems
+  }
 
   const sourceIds = Array.from(new Set(items.map((item) => String(item.sourceId || '')).filter(Boolean)))
   const sources = sourceIds.length

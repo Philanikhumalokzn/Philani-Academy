@@ -13653,6 +13653,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (filters.topic) params.set('topic', filters.topic)
     if (filters.level) params.set('cognitiveLevel', filters.level)
     if (filters.number) params.set('questionNumber', filters.number)
+    params.set('hideCompositeRoots', '1')
     params.set('take', '50')
     return params
   }

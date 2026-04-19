@@ -203,6 +203,16 @@ function normalizeHierarchyQuestionNumber(value: unknown): string {
   return String(value || '').trim().replace(/^Q/i, '')
 }
 
+function shuffleInPlace<T>(items: T[]): T[] {
+  for (let i = items.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const next = items[i]
+    items[i] = items[j]
+    items[j] = next
+  }
+  return items
+}
+
 function buildCompositeRootOmitSet(items: Array<{
   id: string
   sourceId: string | null
@@ -357,6 +367,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const questionNumber = q.questionNumber ? String(q.questionNumber) : undefined
   const sourceId = q.sourceId ? String(q.sourceId) : undefined
   const hideCompositeRoots = ['1', 'true', 'yes'].includes(String(q.hideCompositeRoots || '').toLowerCase())
+  const randomize = ['1', 'true', 'yes'].includes(String(q.random || '').toLowerCase())
   const approvedOnly = role !== 'admin' // students only see approved questions
   const page = Math.max(1, parseInt(String(q.page || '1'), 10))
   const take = Math.min(100, Math.max(1, parseInt(String(q.take || '50'), 10)))
@@ -421,16 +432,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     createdAt: Date
   }> = []
 
-  if (hideCompositeRoots) {
+  if (hideCompositeRoots || randomize) {
     const allItems = await prisma.examQuestion.findMany({
       where,
       orderBy,
       select: itemSelect,
     })
-    const omitIds = buildCompositeRootOmitSet(allItems)
+    const omitIds = hideCompositeRoots ? buildCompositeRootOmitSet(allItems) : new Set<string>()
     const filteredItems = allItems.filter((item) => !omitIds.has(item.id))
-    total = filteredItems.length
-    items = filteredItems.slice(skip, skip + take)
+    const orderedItems = randomize ? shuffleInPlace([...filteredItems]) : filteredItems
+    total = orderedItems.length
+    items = orderedItems.slice(skip, skip + take)
   } else {
     const [rawTotal, rawItems] = await Promise.all([
       prisma.examQuestion.count({ where }),

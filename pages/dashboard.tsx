@@ -13942,8 +13942,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return params
   }
 
-  const fetchQuestionBankResults = async (filters: QbSearchFilters) => {
+  const fetchQuestionBankResults = async (filters: QbSearchFilters, options?: { randomize?: boolean }) => {
     const params = buildQbSearchParams(filters)
+    if (options?.randomize) params.set('random', '1')
     const res = await fetch(`/api/exam-questions?${params.toString()}`, { credentials: 'same-origin' })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data?.message || `Search failed (${res.status})`)
@@ -13981,6 +13982,37 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setQbRemixMessage(options?.remixMessage ?? null)
     } catch (err: any) {
       setQbError(err?.message || 'Search failed')
+      setQbItems([])
+      setQbTotal(0)
+    } finally {
+      setQbLoading(false)
+    }
+  }
+
+  const loadRandomRemixResults = async () => {
+    const filters: QbSearchFilters = {
+      year: '',
+      month: '',
+      paper: '',
+      topic: '',
+      level: '',
+      number: '',
+    }
+    setQbRemixOverlay(null)
+    setQbLoading(true)
+    setQbError(null)
+    setQbSearched(true)
+    setQbSelectedIds(new Set())
+    setQbBulkError(null)
+    try {
+      const data = await fetchQuestionBankResults(filters, { randomize: true })
+      syncQbFilters(filters)
+      setQbRemixFilters(null)
+      setQbItems(data.items)
+      setQbTotal(data.total)
+      setQbRemixMessage('Showing a fresh random remix set across all years, months, papers, topics, and levels.')
+    } catch (err: any) {
+      setQbError(err?.message || 'Remix search failed')
       setQbItems([])
       setQbTotal(0)
     } finally {
@@ -14144,6 +14176,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       window.removeEventListener('scroll', handleScroll, true)
     }
   }, [qbRemixOverlay])
+
+  useEffect(() => {
+    if (booksHubTab !== 'remix') return
+    void loadRandomRemixResults()
+  }, [booksHubTab])
 
   const getQNumParts = (value: unknown): number[] => {
     const raw = String(value ?? '').trim()
@@ -15226,96 +15263,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       <section className="border-b border-black/10 bg-white px-4 py-4 space-y-3">
         <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Remix</div>
-        <div className="text-sm text-[#1f2937]">Search and remix past exam questions by year, paper, topic, and difficulty.</div>
-
-        <div className="grid gap-2 sm:grid-cols-2">
-          <div className="space-y-1">
-            <div className="text-xs text-[#65676b]">Year</div>
-            <input
-              type="number"
-              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
-              aria-label="Remix year filter"
-              placeholder="e.g. 2024"
-              min={2000}
-              max={2100}
-              value={qbYear}
-              onChange={(e) => setQbYear(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <div className="text-xs text-[#65676b]">Exam month</div>
-            <select
-              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
-              aria-label="Remix month filter"
-              value={qbMonth}
-              onChange={(e) => setQbMonth(e.target.value)}
-            >
-              <option value="">Any month</option>
-              {QB_MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1">
-            <div className="text-xs text-[#65676b]">Paper</div>
-            <select
-              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
-              aria-label="Remix paper filter"
-              value={qbPaper}
-              onChange={(e) => setQbPaper(e.target.value)}
-            >
-              <option value="">Any paper</option>
-              <option value="1">Paper 1</option>
-              <option value="2">Paper 2</option>
-              <option value="3">Paper 3</option>
-            </select>
-          </div>
-          <div className="space-y-1">
-            <div className="text-xs text-[#65676b]">Topic</div>
-            <select
-              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
-              aria-label="Remix topic filter"
-              value={qbTopic}
-              onChange={(e) => setQbTopic(e.target.value)}
-            >
-              <option value="">Any topic</option>
-              {QB_TOPICS.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1">
-            <div className="text-xs text-[#65676b]">Difficulty (cognitive level)</div>
-            <select
-              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
-              aria-label="Remix level filter"
-              value={qbLevel}
-              onChange={(e) => setQbLevel(e.target.value)}
-            >
-              <option value="">Any level</option>
-              <option value="1">1 — Knowledge</option>
-              <option value="2">2 — Routine procedures</option>
-              <option value="3">3 — Complex procedures</option>
-              <option value="4">4 — Problem-solving</option>
-            </select>
-          </div>
-          <div className="space-y-1">
-            <div className="text-xs text-[#65676b]">Question number prefix</div>
-            <input
-              type="text"
-              className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
-              aria-label="Remix number filter"
-              placeholder="e.g. 1, 1.1, 1.1.5"
-              value={qbNumber}
-              onChange={(e) => setQbNumber(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <button
-          type="button"
-          className="inline-flex h-10 items-center justify-center rounded-full bg-[#1c1e21] px-5 text-sm font-semibold text-white transition hover:bg-[#2d3036]"
-          onClick={() => void searchQuestionBank()}
-          disabled={qbLoading}
-        >
-          {qbLoading ? 'Searching…' : 'Search Remix'}
-        </button>
+        <div className="text-sm text-[#1f2937]">Each time you open Remix it loads a fresh random set. Use the badges on each question row to pivot year, month, paper, topic, or level.</div>
       </section>
 
       {qbError ? (

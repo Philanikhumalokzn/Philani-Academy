@@ -1920,12 +1920,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'profile' | 'admin' | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [booksOverlayOpen, setBooksOverlayOpen] = useState(false)
-  const [booksHubTab, setBooksHubTab] = useState<'library' | 'resources' | 'questions'>('library')
+  const [booksHubTab, setBooksHubTab] = useState<'remix' | 'papers' | 'pdfs' | 'resources'>('remix')
   const [booksLoading, setBooksLoading] = useState(false)
   const [booksError, setBooksError] = useState<string | null>(null)
   const [booksItems, setBooksItems] = useState<ResourceBankItem[]>([])
 
-  // Question Bank state
+  // Remix state
   const [qbYear, setQbYear] = useState<string>('')
   const [qbMonth, setQbMonth] = useState<string>('')
   const [qbPaper, setQbPaper] = useState<string>('')
@@ -4053,6 +4053,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return contentType.includes('application/pdf') || filename.endsWith('.pdf') || url.includes('.pdf')
   }, [])
 
+  const isPaperResource = useCallback((item: ResourceBankItem) => {
+    const haystack = [item.tag, item.title, item.filename]
+      .map((value) => String(value || '').toLowerCase())
+      .join(' ')
+    return /\b(paper|papers|exam|examination|test|worksheet|memo|past paper|assessment)\b/.test(haystack)
+  }, [])
+
+  const getBooksHubItems = useCallback((tab: 'papers' | 'pdfs' | 'resources') => {
+    if (tab === 'papers') return booksItems.filter((item) => isPaperResource(item))
+    if (tab === 'pdfs') return booksItems.filter((item) => isPdfResource(item) && !isPaperResource(item))
+    return booksItems.filter((item) => !isPaperResource(item) && !isPdfResource(item))
+  }, [booksItems, isPaperResource, isPdfResource])
+
   const getLibraryGradeSourceLabel = useCallback((sourceType: LibraryGradeItem['sourceType']) => {
     if (sourceType === 'assignment') return 'Assignment'
     if (sourceType === 'post_solution') return 'Post solution'
@@ -4779,6 +4792,91 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       }
     })()
   }, [isDocSavedOffline])
+
+  const renderBooksList = useCallback((tab: 'papers' | 'pdfs' | 'resources') => {
+    const visibleItems = getBooksHubItems(tab)
+    const emptyLabel = tab === 'papers'
+      ? 'No papers available yet.'
+      : tab === 'pdfs'
+        ? 'No PDFs available yet.'
+        : 'No resources available yet.'
+
+    return (
+      <>
+        {booksError ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-red-600">{booksError}</section> : null}
+        {booksLoading ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">Loading...</section> : null}
+        {!booksLoading && !booksError && visibleItems.length === 0 ? (
+          <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">{emptyLabel}</section>
+        ) : null}
+
+        {visibleItems.length > 0 ? (
+          <ul>
+            {visibleItems.map((item) => {
+              const savedOffline = item.url ? isDocSavedOffline(item.url) : false
+              const savingOffline = item.url ? offlineDocSavingUrls.includes(item.url) : false
+              const offlineError = item.url ? offlineDocErrorByUrl[item.url] : ''
+              return (
+                <li
+                  key={item.id}
+                  className="border-b border-black/10 bg-white px-4 py-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      {isPdfResource(item) ? (
+                        <button
+                          type="button"
+                          className="block text-left text-[15px] font-semibold text-[#111827] hover:underline whitespace-normal break-words"
+                          onClick={() => openPdfViewer(item)}
+                        >
+                          {item.title}
+                        </button>
+                      ) : (
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block text-[15px] font-semibold text-[#111827] hover:underline whitespace-normal break-words"
+                        >
+                          {item.title}
+                        </a>
+                      )}
+                      <div className="mt-1 text-xs text-[#65676b]">
+                        {item.tag ? `${item.tag} - ` : ''}
+                        {gradeToLabel(item.grade)}
+                      </div>
+                      {offlineError ? <div className="mt-2 text-xs text-amber-700">{offlineError}</div> : null}
+                    </div>
+                    {item.url ? (
+                      <div className="flex items-center gap-2">
+                        {savedOffline ? (
+                          <button
+                            type="button"
+                            className="inline-flex h-9 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 text-xs font-medium text-[#1c1e21]"
+                            onClick={() => void removeDocOffline(item)}
+                          >
+                            Remove offline
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="inline-flex h-9 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 text-xs font-medium text-[#1c1e21]"
+                            onClick={() => void saveDocOffline(item)}
+                            disabled={savingOffline}
+                          >
+                            {savingOffline ? 'Saving...' : 'Save offline'}
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        ) : null}
+      </>
+    )
+  }, [booksError, booksLoading, getBooksHubItems, gradeToLabel, isDocSavedOffline, isPdfResource, offlineDocErrorByUrl, offlineDocSavingUrls, openPdfViewer, removeDocOffline, saveDocOffline])
 
   const handlePdfPostCapture = useCallback((file: File, snapshot?: PdfViewerSnapshot) => {
     queueRestore(() => {
@@ -13628,7 +13726,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       books: {
         eyebrow: 'Learning Hub',
         title: 'Learning',
-        subtitle: 'Resources and study materials'
+        subtitle: 'Remix questions, browse papers, PDFs, and resources'
       }
     }[id]
 
@@ -15009,8 +15107,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     <div>
 
       <section className="border-b border-black/10 bg-white px-4 py-4 space-y-3">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Question Bank</div>
-        <div className="text-sm text-[#1f2937]">Search past exam questions by year, paper, topic, and difficulty.</div>
+        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Remix</div>
+        <div className="text-sm text-[#1f2937]">Search and remix past exam questions by year, paper, topic, and difficulty.</div>
 
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="space-y-1">
@@ -15018,7 +15116,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <input
               type="number"
               className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
-              aria-label="Question bank year filter"
+              aria-label="Remix year filter"
               placeholder="e.g. 2024"
               min={2000}
               max={2100}
@@ -15030,7 +15128,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div className="text-xs text-[#65676b]">Exam month</div>
             <select
               className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
-              aria-label="Question bank month filter"
+              aria-label="Remix month filter"
               value={qbMonth}
               onChange={(e) => setQbMonth(e.target.value)}
             >
@@ -15042,7 +15140,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div className="text-xs text-[#65676b]">Paper</div>
             <select
               className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
-              aria-label="Question bank paper filter"
+              aria-label="Remix paper filter"
               value={qbPaper}
               onChange={(e) => setQbPaper(e.target.value)}
             >
@@ -15056,7 +15154,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div className="text-xs text-[#65676b]">Topic</div>
             <select
               className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
-              aria-label="Question bank topic filter"
+              aria-label="Remix topic filter"
               value={qbTopic}
               onChange={(e) => setQbTopic(e.target.value)}
             >
@@ -15068,7 +15166,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div className="text-xs text-[#65676b]">Difficulty (cognitive level)</div>
             <select
               className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
-              aria-label="Question bank level filter"
+              aria-label="Remix level filter"
               value={qbLevel}
               onChange={(e) => setQbLevel(e.target.value)}
             >
@@ -15084,7 +15182,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <input
               type="text"
               className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
-              aria-label="Question bank number filter"
+              aria-label="Remix number filter"
               placeholder="e.g. 1, 1.1, 1.1.5"
               value={qbNumber}
               onChange={(e) => setQbNumber(e.target.value)}
@@ -15098,7 +15196,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           onClick={() => void searchQuestionBank()}
           disabled={qbLoading}
         >
-          {qbLoading ? 'Searching…' : 'Search Questions'}
+          {qbLoading ? 'Searching…' : 'Search Remix'}
         </button>
       </section>
 
@@ -15512,16 +15610,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             }}
             disabled={booksLoading}
           >
-            {booksLoading ? 'Refreshing...' : 'Refresh Learning Library'}
+            {booksLoading ? 'Refreshing...' : 'Refresh Learning Hub'}
           </button>
           <button
             type="button"
             className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] transition hover:bg-[#eef2f7]"
             onClick={() => {
-              setBooksHubTab('library')
+              setBooksHubTab('resources')
             }}
           >
-            View Current Resources
+            View Shared Resources
           </button>
         </div>
       </section>
@@ -15539,19 +15637,33 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     </div>
   )
 
-  const renderBooksSurfaceContent = () => (
-    <div>
-      {/* Tab switcher — admin gets Library + Resources + Question Bank; students get Library + Question Bank */}
-      <section className="border-b border-black/10 bg-white px-4 py-3">
-        <div className="inline-flex rounded-full border border-[#d5def0] bg-[#f7f8fa] p-1">
-          <button
-            type="button"
-            className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'library' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
-            onClick={() => setBooksHubTab('library')}
-          >
-            Library
-          </button>
-          {isAdmin ? (
+  function renderBooksSurfaceContent() {
+    return (
+      <div>
+        {/* Tab switcher */}
+        <section className="border-b border-black/10 bg-white px-4 py-3">
+          <div className="inline-flex rounded-full border border-[#d5def0] bg-[#f7f8fa] p-1">
+            <button
+              type="button"
+              className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'remix' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
+              onClick={() => setBooksHubTab('remix')}
+            >
+              Remix
+            </button>
+            <button
+              type="button"
+              className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'papers' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
+              onClick={() => setBooksHubTab('papers')}
+            >
+              Papers
+            </button>
+            <button
+              type="button"
+              className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'pdfs' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
+              onClick={() => setBooksHubTab('pdfs')}
+            >
+              PDFs
+            </button>
             <button
               type="button"
               className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'resources' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
@@ -15559,97 +15671,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             >
               Resources
             </button>
-          ) : null}
-          <button
-            type="button"
-            className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'questions' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
-            onClick={() => setBooksHubTab('questions')}
-          >
-            Question Bank
-          </button>
-        </div>
-      </section>
+          </div>
+        </section>
 
-      {isAdmin && booksHubTab === 'resources' ? renderAdminBooksResourcesContent() : null}
-      {booksHubTab === 'questions' ? renderQuestionBankContent() : null}
-
-      {booksHubTab === 'library' ? (
-        <>
-      {booksError ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-red-600">{booksError}</section> : null}
-      {booksLoading ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">Loading...</section> : null}
-      {!booksLoading && !booksError && booksItems.length === 0 ? (
-        <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">No materials available yet.</section>
-      ) : null}
-
-      {booksItems.length > 0 ? (
-        <ul>
-          {booksItems.map((item) => {
-            const savedOffline = item.url ? isDocSavedOffline(item.url) : false
-            const savingOffline = item.url ? offlineDocSavingUrls.includes(item.url) : false
-            const offlineError = item.url ? offlineDocErrorByUrl[item.url] : ''
-            return (
-              <li
-                key={item.id}
-                className="border-b border-black/10 bg-white px-4 py-4"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    {isPdfResource(item) ? (
-                      <button
-                        type="button"
-                        className="block text-left text-[15px] font-semibold text-[#111827] hover:underline whitespace-normal break-words"
-                        onClick={() => openPdfViewer(item)}
-                      >
-                        {item.title}
-                      </button>
-                    ) : (
-                      <a
-                        href={item.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block text-[15px] font-semibold text-[#111827] hover:underline whitespace-normal break-words"
-                      >
-                        {item.title}
-                      </a>
-                    )}
-                    <div className="mt-1 text-xs text-[#65676b]">
-                      {item.tag ? `${item.tag} - ` : ''}
-                      {gradeToLabel(item.grade)}
-                    </div>
-                    {offlineError ? <div className="mt-2 text-xs text-amber-700">{offlineError}</div> : null}
-                  </div>
-                  {item.url ? (
-                    <div className="flex items-center gap-2">
-                      {savedOffline ? (
-                        <button
-                          type="button"
-                          className="inline-flex h-9 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 text-xs font-medium text-[#1c1e21]"
-                          onClick={() => void removeDocOffline(item)}
-                        >
-                          Remove offline
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="inline-flex h-9 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-3 text-xs font-medium text-[#1c1e21]"
-                          onClick={() => void saveDocOffline(item)}
-                          disabled={savingOffline}
-                        >
-                          {savingOffline ? 'Saving...' : 'Save offline'}
-                        </button>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              </li>
-            )
-          })}
-        </ul>
-      ) : null}
-        </>
-      ) : null}
-    </div>
-  )
+        {booksHubTab === 'remix' ? renderQuestionBankContent() : null}
+        {booksHubTab === 'papers' ? renderBooksList('papers') : null}
+        {booksHubTab === 'pdfs' ? renderBooksList('pdfs') : null}
+        {booksHubTab === 'resources' ? (
+          <>
+            {isAdmin ? renderAdminBooksResourcesContent() : null}
+            {renderBooksList('resources')}
+          </>
+        ) : null}
+      </div>
+    )
+  }
 
   const renderStudentSurfaceSection = (id: 'sessions' | 'groups' | 'discover' | 'books') => {
     const action =

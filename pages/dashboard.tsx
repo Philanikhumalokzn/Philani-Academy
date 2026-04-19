@@ -13790,14 +13790,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }
 
-  const buildQbRemixSeedFilters = (q: any): QbSearchFilters => ({
-    year: String(q?.year || ''),
-    month: String(q?.month || ''),
-    paper: String(q?.paper || ''),
-    topic: String(q?.topic || ''),
-    level: q?.cognitiveLevel != null ? String(q.cognitiveLevel) : '',
-    number: '',
-  })
+  const buildQbRemixSeedFilters = (q: any): QbSearchFilters => {
+    const current = getCurrentQbFilters()
+    return {
+      year: current.year || String(q?.year || ''),
+      month: current.month || String(q?.month || ''),
+      paper: current.paper || String(q?.paper || ''),
+      topic: current.topic || String(q?.topic || ''),
+      level: current.level || (q?.cognitiveLevel != null ? String(q.cognitiveLevel) : ''),
+      number: '',
+    }
+  }
 
   const describeQbRemixBadge = (badge: QbRemixBadge): string => {
     switch (badge) {
@@ -13880,7 +13883,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       syncQbFilters(candidate)
       setQbItems(result.items)
       setQbTotal(result.total)
-      if (relaxed.length > 0) {
+      const isFullyUnrestricted = !candidate.year && !candidate.month && !candidate.paper && !candidate.topic && !candidate.level
+      if (isFullyUnrestricted && result.total > 0) {
+        setQbRemixMessage('Remix search is now fully unrestricted across year, month, paper, topic, and level.')
+      } else if (relaxed.length > 0) {
         setQbRemixMessage(`Remix search updated ${describeQbRemixBadge(badge)} and relaxed ${relaxed.map(describeQbRemixBadge).join(', ')} to keep results compatible.`)
       } else if (result.total > 0) {
         setQbRemixMessage(`Remix search pinned ${describeQbRemixBadge(badge)} with no compatibility relaxation needed.`)
@@ -15398,7 +15404,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             const targetQuestion = qbItems.find((item: any) => String(item.id) === qbRemixOverlay.questionId) || null
             if (!targetQuestion) return null
             const options = getQbRemixOptions(qbRemixOverlay.badge)
-            const selectedValue = getQbRemixBadgeValue(targetQuestion, qbRemixOverlay.badge)
+            const selectedValue = buildQbRemixSeedFilters(targetQuestion)[qbRemixOverlay.badge]
             return createPortal(
               <div
                 ref={qbRemixOverlayRef}

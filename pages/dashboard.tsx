@@ -2252,6 +2252,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const activeGradeLabel = gradeReady
     ? (selectedGrade ? gradeToLabel(selectedGrade) : 'Select a grade')
     : 'Resolving grade'
+  const compactHeaderGradeLabel = useMemo(() => {
+    const preview = gradeWorkspaceSelectorPreview ?? selectedGrade
+    if (!preview) return 'Grade -'
+    return `Grade ${String(preview).replace('GRADE_', '')}`
+  }, [gradeWorkspaceSelectorPreview, selectedGrade])
   const learnerName = session?.user?.name || session?.user?.email || 'Guest learner'
   const learnerAvatarUrl = (session as any)?.user?.image as string | undefined
   const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | null>(null)
@@ -16260,7 +16265,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         )}
 
         <div className="sticky top-0 z-30 bg-[rgba(255,255,255,0.98)] backdrop-blur-xl">
-          <div className="mobile-safe-header-row flex items-center justify-between gap-3 border-b border-black/10 px-4 py-2">
+          <div className="mobile-safe-header-row relative flex items-center justify-between gap-3 border-b border-black/10 px-4 py-2">
               <div className="flex items-center gap-2 min-w-0">
                 <button
                   type="button"
@@ -16310,13 +16315,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   )}
                 </button>
               </div>
-            </div>
-
-            {isAdmin ? (
-              <div className="flex justify-center border-b border-black/10 bg-white px-4 pb-2 pt-1">
+              {isAdmin ? (
                 <button
                   type="button"
-                  className="inline-flex min-w-[168px] max-w-full flex-col items-center justify-center rounded-2xl border border-black/10 bg-[#f8fafc] px-4 py-2 text-center text-[#1c1e21] shadow-sm touch-none"
+                  className="absolute left-1/2 top-1/2 z-10 inline-flex max-w-[calc(100vw-220px)] -translate-x-1/2 -translate-y-1/2 items-center justify-center px-2 py-1 text-sm font-semibold text-[#1c1e21] touch-none"
                   onPointerDown={(e) => {
                     if ((e as any).pointerType === 'mouse') return
                     openGradeWorkspaceSelectorFromElement(e.currentTarget as HTMLElement, { pointerId: e.pointerId, startClientY: e.clientY })
@@ -16327,11 +16329,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   aria-label="Select admin grade scope"
                   title="Select admin grade scope"
                 >
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#65676b]">Grade Scope</span>
-                  <span className="mt-1 text-sm font-semibold">{gradeWorkspaceSelectorPreview ? gradeToLabel(gradeWorkspaceSelectorPreview) : activeGradeLabel}</span>
+                  <span className="truncate">{compactHeaderGradeLabel}</span>
                 </button>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
 
             <div>
               <div className="relative grid grid-cols-5 border-b border-black/10 bg-white">

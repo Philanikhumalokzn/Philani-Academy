@@ -24,6 +24,87 @@ function asIdList(value: unknown, maxItems: number): string[] {
   return out
 }
 
+function firstNonEmpty(...values: unknown[]): string {
+  for (const value of values) {
+    const text = typeof value === 'string' ? value.trim() : ''
+    if (text) return text
+  }
+  return ''
+}
+
+function getSharedString<T>(items: T[], pick: (item: T) => unknown): string {
+  if (items.length === 0) return ''
+  const values = items
+    .map((item) => firstNonEmpty(pick(item)))
+    .filter(Boolean)
+  if (values.length !== items.length) return ''
+  const first = values[0]
+  return values.every((value) => value === first) ? first : ''
+}
+
+function getSharedNumber<T>(items: T[], pick: (item: T) => unknown): number | null {
+  if (items.length === 0) return null
+  const values = items
+    .map((item) => {
+      const raw = pick(item)
+      const num = typeof raw === 'number' ? raw : Number(raw)
+      return Number.isFinite(num) ? num : null
+    })
+  if (values.some((value) => value == null)) return null
+  const first = values[0]
+  return values.every((value) => value === first) ? first : null
+}
+
+function buildAutoRemixName(
+  questions: Array<{ year: number; month: string; paper: number; topic: string | null; cognitiveLevel: string | number | null }>,
+  creatorLabel: string,
+): string {
+  const year = getSharedNumber(questions, (item) => item.year)
+  const month = getSharedString(questions, (item) => item.month)
+  const paper = getSharedNumber(questions, (item) => item.paper)
+  const topic = getSharedString(questions, (item) => item.topic)
+  const level = getSharedString(questions, (item) => item.cognitiveLevel)
+
+  const parts = [
+    year != null ? String(year) : '',
+    month,
+    paper != null ? `Paper ${paper}` : '',
+    topic,
+    level ? `Level ${level}` : '',
+  ].filter(Boolean)
+
+  return [...(parts.length > 0 ? parts : ['Mixed selection']), creatorLabel || 'Creator'].join(' · ')
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+async function ensureUniqueRemixName(userId: string, baseName: string, excludeId?: string) {
+  const normalizedBaseName = baseName.trim() || 'Untitled remix'
+  const existing = await prisma.questionRemix.findMany({
+    where: {
+      createdById: userId,
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+      name: { startsWith: normalizedBaseName },
+    },
+    select: { name: true },
+  })
+
+  if (existing.length === 0) return normalizedBaseName
+
+  const matcher = new RegExp(`^${escapeRegExp(normalizedBaseName)}(?: (\\d+))?$`)
+  let maxSuffix = 0
+  for (const item of existing) {
+    const match = item.name.match(matcher)
+    if (!match) continue
+    const suffix = match[1] ? Number(match[1]) : 1
+    if (Number.isFinite(suffix) && suffix > maxSuffix) maxSuffix = suffix
+  }
+
+  return maxSuffix === 0 ? normalizedBaseName : `${normalizedBaseName} ${maxSuffix + 1}`
+}
+
 async function getViewerContext(userId: string, role: string) {
   const [viewer, memberships] = await Promise.all([
     prisma.user.findUnique({
@@ -153,7 +234,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(403).json({ message: 'Teachers or admins only' })
     }
 
-    const name = asTrimmedString(req.body?.name, 160)
+    const requestedName = asTrimmedString(req.body?.name, 160)
     const description = asTrimmedString(req.body?.description, 4000)
     const inviteNote = asTrimmedString(req.body?.inviteNote, 2000)
     const audienceRaw = asTrimmedString(req.body?.audience, 20).toLowerCase()
@@ -163,19 +244,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const invitedUserIds = asIdList(req.body?.invitedUserIds, 120).filter((id) => id !== userId)
     const invitedGroupIds = asIdList(req.body?.invitedGroupIds, 60)
 
-    if (!name) return res.status(400).json({ message: 'Remix name is required' })
     if (questionIds.length === 0) return res.status(400).json({ message: 'Select at least one question' })
 
     const [context, questions] = await Promise.all([
       getViewerContext(userId, role),
       prisma.examQuestion.findMany({
         where: { id: { in: questionIds } },
-        select: { id: true, grade: true },
+        select: {
+          id: true,
+          grade: true,
+          year: true,
+          month: true,
+          paper: true,
+          topic: true,
+          cognitiveLevel: true,
+        },
       }),
     ])
 
     if (!context.viewer) return res.status(404).json({ message: 'User not found' })
     if (questions.length !== questionIds.length) return res.status(400).json({ message: 'Some selected questions no longer exist' })
+
+    const creatorLabel = firstNonEmpty(context.viewer.name, context.viewer.email, 'Creator')
+    const name = await ensureUniqueRemixName(
+      userId,
+      requestedName || buildAutoRemixName(questions, creatorLabel),
+    )
 
     const uniqueGrades = Array.from(new Set(questions.map((item) => String(item.grade))))
     const derivedGrade = uniqueGrades.length === 1 ? normalizeGradeInput(uniqueGrades[0]) : null

@@ -13838,7 +13838,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       books: {
         eyebrow: 'Learning Hub',
         title: 'Learning',
-        subtitle: 'Remix questions, browse papers, PDFs, and resources'
+        subtitle: ''
       }
     }[id]
 
@@ -15261,19 +15261,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const renderQuestionBankContent = () => (
     <div>
 
-      <section className="border-b border-black/10 bg-white px-4 py-4 space-y-3">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Remix</div>
-        <div className="text-sm text-[#1f2937]">Each time you open Remix it loads a fresh random set. Use the badges on each question row to pivot year, month, paper, topic, or level.</div>
-      </section>
-
       {qbError ? (
         <section className="border-b border-black/10 bg-white px-4 py-3 text-sm text-red-600">{qbError}</section>
-      ) : null}
-
-      {qbRemixMessage ? (
-        <section className="border-b border-black/10 bg-[#f8fbff] px-4 py-3 text-sm text-[#1f4f82]">
-          {qbRemixMessage}
-        </section>
       ) : null}
 
       {qbSearched && !qbLoading && qbItems.length === 0 ? (
@@ -15646,8 +15635,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const renderAdminBooksResourcesContent = () => (
     <div>
       <section className="border-b border-black/10 bg-white px-4 py-4">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#65676b]">Admin Resources Pipeline</div>
-        <div className="mt-1 text-sm text-[#1f2937]">Upload files, parse with Mathpix, run AI normalization, and manage grade resources.</div>
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
           <button
             type="button"
@@ -15687,17 +15674,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           >
             View Shared Resources
           </button>
-        </div>
-      </section>
-
-      <section className="border-b border-black/10 bg-white px-4 py-4">
-        <div className="text-[13px] font-semibold text-[#1f2937]">Available Actions</div>
-        <div className="mt-2 space-y-1 text-xs text-[#4b5563]">
-          <div>Upload image, PDF, or document resources per grade.</div>
-          <div>Parse uploaded files with Mathpix OCR.</div>
-          <div>Apply AI post-normalization with Gemini.</div>
-          <div>Convert parsed outputs to DOCX and download LaTeX where available.</div>
-          <div>Edit metadata, re-parse, review parse errors, and delete resources.</div>
         </div>
       </section>
     </div>

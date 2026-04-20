@@ -160,6 +160,14 @@ type QbEditAiPreview = {
 
 type QuestionRemixAudience = 'private' | 'grade' | 'public'
 
+type QuestionRemixCompatibilitySignature = {
+  year: string
+  month: string
+  paper: string
+  topic: string
+  level: string
+}
+
 type QuestionRemixSummary = {
   id: string
   name: string
@@ -178,6 +186,7 @@ type QuestionRemixSummary = {
   questionCount: number
   invitedUsersCount: number
   invitedGroupsCount: number
+  compatibilitySignature?: QuestionRemixCompatibilitySignature
   previewQuestions?: Array<{
     id: string
     questionNumber: string
@@ -282,6 +291,36 @@ function buildQuestionRemixIntersectionName(items: any[], creatorLabel: string):
   ].filter(Boolean)
 
   return [...(parts.length > 0 ? parts : ['Mixed selection']), creatorLabel || 'Creator'].join(' · ')
+}
+
+function buildQuestionRemixCompatibilitySignature(items: any[]): QuestionRemixCompatibilitySignature {
+  return {
+    year: getSharedQuestionRemixNameText(items, (item) => item?.year),
+    month: getSharedQuestionRemixNameText(items, (item) => item?.month),
+    paper: getSharedQuestionRemixNameText(items, (item) => item?.paper),
+    topic: getSharedQuestionRemixNameText(items, (item) => item?.topic),
+    level: getSharedQuestionRemixNameText(items, (item) => item?.cognitiveLevel),
+  }
+}
+
+function questionRemixCompatibilitySignatureToFilters(signature?: QuestionRemixCompatibilitySignature | null): QbSearchFilters {
+  return {
+    year: signature?.year || '',
+    month: signature?.month || '',
+    paper: signature?.paper || '',
+    topic: signature?.topic || '',
+    level: signature?.level || '',
+    number: '',
+  }
+}
+
+function areQuestionRemixSignaturesCompatible(
+  left?: QuestionRemixCompatibilitySignature | null,
+  right?: QuestionRemixCompatibilitySignature | null,
+): boolean {
+  if (!left || !right) return false
+  const keys: Array<keyof QuestionRemixCompatibilitySignature> = ['year', 'month', 'paper', 'topic', 'level']
+  return keys.every((key) => (left[key] || '') === (right[key] || '')) && keys.some((key) => Boolean(left[key] && right[key]))
 }
 
 type Announcement = {
@@ -2144,6 +2183,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [questionRemixEditOpen, setQuestionRemixEditOpen] = useState(false)
   const [questionRemixEditTargetId, setQuestionRemixEditTargetId] = useState<string | null>(null)
   const [questionRemixDraft, setQuestionRemixDraft] = useState<QuestionRemixDraft>(createEmptyQuestionRemixDraft())
+  const [questionRemixCreateNewEnabled, setQuestionRemixCreateNewEnabled] = useState(true)
+  const [questionRemixCreateExistingIds, setQuestionRemixCreateExistingIds] = useState<string[]>([])
+  const [questionRemixAppendTargetId, setQuestionRemixAppendTargetId] = useState<string | null>(null)
+  const [questionRemixSearchHandoff, setQuestionRemixSearchHandoff] = useState<null | { filters: QbSearchFilters; message: string }>(null)
   const [questionRemixCreateBusy, setQuestionRemixCreateBusy] = useState(false)
   const [questionRemixCreateError, setQuestionRemixCreateError] = useState<string | null>(null)
   const [questionRemixEditBusy, setQuestionRemixEditBusy] = useState(false)
@@ -14199,6 +14242,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [])
 
+  const selectedQuestionRemixSignature = useMemo(
+    () => buildQuestionRemixCompatibilitySignature(qbItems.filter((item: any) => qbSelectedIds.has(String(item?.id || '')))),
+    [qbItems, qbSelectedIds],
+  )
+
+  const compatibleQuestionRemixes = useMemo(() => {
+    if (qbSelectedIds.size === 0) return []
+    return questionRemixes.filter((item) => areQuestionRemixSignaturesCompatible(selectedQuestionRemixSignature, item.compatibilitySignature || null))
+  }, [qbSelectedIds.size, questionRemixes, selectedQuestionRemixSignature])
+
   const buildSelectedQuestionRemixNamePreview = useCallback(() => {
     const selectedQuestions = qbItems.filter((item: any) => qbSelectedIds.has(String(item?.id || '')))
     return buildQuestionRemixIntersectionName(selectedQuestions, learnerName)
@@ -14207,6 +14260,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const closeQuestionRemixCreate = useCallback(() => {
     setQuestionRemixCreateOpen(false)
     setQuestionRemixDraft(createEmptyQuestionRemixDraft())
+    setQuestionRemixCreateNewEnabled(true)
+    setQuestionRemixCreateExistingIds([])
     setQuestionRemixCreateError(null)
     setQuestionRemixInviteQuery('')
     setQuestionRemixInviteResults([])
@@ -14225,13 +14280,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const openQuestionRemixCreate = useCallback(() => {
     if (qbSelectedIds.size === 0) return
+    const compatibleIds = compatibleQuestionRemixes.map((item) => item.id)
     setQuestionRemixCreateOpen(true)
     setQuestionRemixCreateError(null)
+    setQuestionRemixCreateNewEnabled(true)
+    setQuestionRemixCreateExistingIds(
+      questionRemixAppendTargetId && compatibleIds.includes(questionRemixAppendTargetId)
+        ? [questionRemixAppendTargetId]
+        : [],
+    )
     setQuestionRemixDraft({
       ...createEmptyQuestionRemixDraft(),
       name: buildSelectedQuestionRemixNamePreview(),
     })
-  }, [buildSelectedQuestionRemixNamePreview, qbSelectedIds])
+  }, [buildSelectedQuestionRemixNamePreview, compatibleQuestionRemixes, qbSelectedIds.size, questionRemixAppendTargetId])
 
   const openQuestionRemixEdit = useCallback((remixId: string) => {
     const source = (selectedQuestionRemix?.id === remixId ? selectedQuestionRemix : null)
@@ -14269,33 +14331,76 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setQuestionRemixCreateError('Select at least one question first.')
       return
     }
-    const payload = {
-      name: questionRemixDraft.name.trim(),
-      questionIds,
+    if (!questionRemixCreateNewEnabled && questionRemixCreateExistingIds.length === 0) {
+      setQuestionRemixCreateError('Choose at least one compatible remix or create a new one.')
+      return
     }
     setQuestionRemixCreateBusy(true)
     setQuestionRemixCreateError(null)
     try {
-      const res = await fetch('/api/question-remixes', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error((data as any)?.message || `Failed to create remix (${res.status})`)
+      let nextSelectedRemixId: string | null = null
+
+      if (questionRemixCreateNewEnabled) {
+        const res = await fetch('/api/question-remixes', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: questionRemixDraft.name.trim(),
+            questionIds,
+          }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error((data as any)?.message || `Failed to create remix (${res.status})`)
+        nextSelectedRemixId = (data as any)?.id || null
+      }
+
+      for (const remixId of questionRemixCreateExistingIds) {
+        const res = await fetch(`/api/question-remixes/${encodeURIComponent(remixId)}`, {
+          method: 'PATCH',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ questionIds }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error((data as any)?.message || `Failed to update remix (${res.status})`)
+        if (!nextSelectedRemixId) nextSelectedRemixId = remixId
+      }
+
       await loadQuestionRemixes()
-      setSelectedQuestionRemixId((data as any)?.id || null)
+      setSelectedQuestionRemixId(nextSelectedRemixId || null)
       setQbSelectedIds(new Set())
       setQbBulkError(null)
       closeQuestionRemixCreate()
+      if (nextSelectedRemixId) setQuestionRemixAppendTargetId(nextSelectedRemixId)
       setBooksHubTab('remixes')
     } catch (err: any) {
       setQuestionRemixCreateError(err?.message || 'Failed to create remix')
     } finally {
       setQuestionRemixCreateBusy(false)
     }
-  }, [closeQuestionRemixCreate, loadQuestionRemixes, qbSelectedIds, questionRemixDraft])
+  }, [closeQuestionRemixCreate, loadQuestionRemixes, qbSelectedIds, questionRemixCreateExistingIds, questionRemixCreateNewEnabled, questionRemixDraft])
+
+  const toggleQuestionRemixCreateExisting = useCallback((remixId: string) => {
+    setQuestionRemixCreateExistingIds((prev) => (
+      prev.includes(remixId)
+        ? prev.filter((id) => id !== remixId)
+        : [...prev, remixId]
+    ))
+  }, [])
+
+  const startAddingQuestionsToQuestionRemix = useCallback((remix: QuestionRemixSummary | QuestionRemixDetail) => {
+    const filters = questionRemixCompatibilitySignatureToFilters(remix.compatibilitySignature || null)
+    const hasPinnedFilters = Boolean(filters.year || filters.month || filters.paper || filters.topic || filters.level)
+    setQuestionRemixAppendTargetId(remix.id)
+    setBooksHubTab('remix')
+    setQuestionRemixSearchHandoff({
+      filters,
+      message: hasPinnedFilters
+        ? `Adding questions to ${remix.name}. Search is pinned to this remix intersection.`
+        : `Adding questions to ${remix.name}. Search is open because this remix has no single shared intersection.`,
+    })
+  }, [])
 
   const submitQuestionRemixEdit = useCallback(async () => {
     if (!questionRemixEditTargetId) {
@@ -14532,8 +14637,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   useEffect(() => {
     if (booksHubTab !== 'remix') return
+    if (questionRemixSearchHandoff) {
+      void searchQuestionBank(questionRemixSearchHandoff.filters, { remixMessage: questionRemixSearchHandoff.message })
+      setQuestionRemixSearchHandoff(null)
+      return
+    }
     void loadRandomRemixResults()
-  }, [booksHubTab])
+  }, [booksHubTab, questionRemixSearchHandoff])
 
   useEffect(() => {
     if (booksHubTab !== 'remixes') return
@@ -15767,6 +15877,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     {selectedQuestionRemix.inviteNote ? <div className="mt-3 rounded-xl border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-sm text-[#445066]">{selectedQuestionRemix.inviteNote}</div> : null}
                   </div>
                   <div className="shrink-0 text-right text-xs text-[#65676b]">
+                    {canCurateQuestionRemixes ? (
+                      <button
+                        type="button"
+                        className="mb-2 inline-flex h-8 items-center rounded-full bg-[#0f766e] px-3 text-xs font-semibold text-white hover:bg-[#115e59]"
+                        onClick={() => startAddingQuestionsToQuestionRemix(selectedQuestionRemix)}
+                      >
+                        Add questions
+                      </button>
+                    ) : null}
                     <div>{selectedQuestionRemix.createdBy?.name || selectedQuestionRemix.createdBy?.email || 'Unknown owner'}</div>
                     <div className="mt-1">Updated {new Date(selectedQuestionRemix.updatedAt).toLocaleString()}</div>
                   </div>
@@ -15824,6 +15943,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const renderQuestionBankContent = () => (
     <div>
+
+      {questionRemixAppendTargetId ? (
+        <section className="border-b border-black/10 bg-[#eef5ff] px-4 py-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-[#1877f2]">
+            Adding to {questionRemixes.find((item) => item.id === questionRemixAppendTargetId)?.name || 'selected remix'}
+          </span>
+          <button
+            type="button"
+            className="inline-flex h-7 items-center rounded-full border border-[#bfd7ff] bg-white px-3 text-xs font-medium text-[#2457a6] hover:bg-[#f7faff]"
+            onClick={() => setQuestionRemixAppendTargetId(null)}
+          >
+            Clear target
+          </button>
+        </section>
+      ) : null}
 
       {qbError ? (
         <section className="border-b border-black/10 bg-white px-4 py-3 text-sm text-red-600">{qbError}</section>
@@ -18871,6 +19005,45 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <div className="mt-1 text-xs text-[#65676b]">{qbSelectedIds.size} selected question{qbSelectedIds.size === 1 ? '' : 's'}</div>
             </div>
             <div className="space-y-4 px-5 py-4">
+              {compatibleQuestionRemixes.length > 0 ? (
+                <div className="space-y-3">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={questionRemixCreateNewEnabled}
+                      onChange={(event) => setQuestionRemixCreateNewEnabled(event.target.checked)}
+                      className="h-4 w-4 rounded border-[#d5def0] accent-[#1877f2]"
+                      disabled={questionRemixCreateBusy}
+                    />
+                    <span className="text-sm font-medium text-[#1c1e21]">Create new remix</span>
+                  </label>
+
+                  <div className="rounded-2xl border border-[#eef2f7] bg-[#f7f8fa] px-4 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#65676b]">Compatible remixes</div>
+                    <div className="mt-2 space-y-2">
+                      {compatibleQuestionRemixes.map((item) => {
+                        const checked = questionRemixCreateExistingIds.includes(item.id)
+                        return (
+                          <label key={item.id} className="flex cursor-pointer items-start gap-3 rounded-xl border border-white bg-white px-3 py-2">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleQuestionRemixCreateExisting(item.id)}
+                              className="mt-0.5 h-4 w-4 rounded border-[#d5def0] accent-[#1877f2]"
+                              disabled={questionRemixCreateBusy}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium text-[#1c1e21]">{item.name}</span>
+                              <span className="mt-1 block text-xs text-[#65676b]">{item.questionCount} question{item.questionCount === 1 ? '' : 's'}</span>
+                            </span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#65676b]">Name</label>
                 <input
@@ -18878,7 +19051,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   value={questionRemixDraft.name}
                   onChange={(event) => setQuestionRemixDraft((prev) => ({ ...prev, name: event.target.value }))}
                   className="w-full rounded-2xl border border-[#d5def0] bg-[#f7f8fa] px-4 py-3 text-sm text-[#1c1e21]"
-                  disabled={questionRemixCreateBusy}
+                  disabled={questionRemixCreateBusy || !questionRemixCreateNewEnabled}
                 />
               </div>
               <div className="rounded-2xl border border-[#eef2f7] bg-[#f7f8fa] px-4 py-3 text-sm text-[#4b5563]">

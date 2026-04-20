@@ -76,6 +76,24 @@ function buildAutoRemixName(
   return [...(parts.length > 0 ? parts : ['Mixed selection']), creatorLabel || 'Creator'].join(' · ')
 }
 
+function buildCompatibilitySignature(
+  questions: Array<{ year: number; month: string; paper: number; topic: string | null; cognitiveLevel: string | number | null }>,
+) {
+  const year = getSharedNumber(questions, (item) => item.year)
+  const month = getSharedString(questions, (item) => item.month)
+  const paper = getSharedNumber(questions, (item) => item.paper)
+  const topic = getSharedString(questions, (item) => item.topic)
+  const level = getSharedString(questions, (item) => item.cognitiveLevel)
+
+  return {
+    year: year != null ? String(year) : '',
+    month,
+    paper: paper != null ? String(paper) : '',
+    topic,
+    level,
+  }
+}
+
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -177,7 +195,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         },
         questions: {
           orderBy: { orderIndex: 'asc' },
-          take: 3,
           include: {
             question: {
               select: {
@@ -187,6 +204,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 month: true,
                 paper: true,
                 topic: true,
+                cognitiveLevel: true,
               },
             },
           },
@@ -202,30 +220,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })
 
     return res.status(200).json({
-      items: remixes.map((item) => ({
-        id: item.id,
-        name: item.name,
-        description: item.description,
-        grade: item.grade,
-        audience: item.audience,
-        inviteNote: item.inviteNote,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
-        createdBy: item.createdBy,
-        questionCount: item._count.questions,
-        invitedUsersCount: item._count.invitedUsers,
-        invitedGroupsCount: item._count.invitedGroups,
-        previewQuestions: item.questions.map((entry) => ({
-          id: entry.question.id,
-          questionNumber: entry.question.questionNumber,
-          year: entry.question.year,
-          month: entry.question.month,
-          paper: entry.question.paper,
-          topic: entry.question.topic,
-        })),
-        invitedUsers: item.invitedUsers.map((entry) => entry.user),
-        invitedGroups: item.invitedGroups.map((entry) => entry.group),
-      })),
+      items: remixes.map((item) => {
+        const allQuestions = item.questions.map((entry) => entry.question)
+        return {
+          id: item.id,
+          name: item.name,
+          description: item.description,
+          grade: item.grade,
+          audience: item.audience,
+          inviteNote: item.inviteNote,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+          createdBy: item.createdBy,
+          questionCount: item._count.questions,
+          invitedUsersCount: item._count.invitedUsers,
+          invitedGroupsCount: item._count.invitedGroups,
+          compatibilitySignature: buildCompatibilitySignature(allQuestions),
+          previewQuestions: item.questions.slice(0, 3).map((entry) => ({
+            id: entry.question.id,
+            questionNumber: entry.question.questionNumber,
+            year: entry.question.year,
+            month: entry.question.month,
+            paper: entry.question.paper,
+            topic: entry.question.topic,
+          })),
+          invitedUsers: item.invitedUsers.map((entry) => entry.user),
+          invitedGroups: item.invitedGroups.map((entry) => entry.group),
+        }
+      }),
     })
   }
 

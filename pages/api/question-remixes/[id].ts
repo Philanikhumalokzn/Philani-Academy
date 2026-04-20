@@ -31,6 +31,47 @@ function asIdList(value: unknown, maxItems: number): string[] {
   return out
 }
 
+function getSharedString<T>(items: T[], pick: (item: T) => unknown): string {
+  if (items.length === 0) return ''
+  const values = items
+    .map((item) => firstNonEmpty(pick(item)))
+    .filter(Boolean)
+  if (values.length !== items.length) return ''
+  const first = values[0]
+  return values.every((value) => value === first) ? first : ''
+}
+
+function getSharedNumber<T>(items: T[], pick: (item: T) => unknown): number | null {
+  if (items.length === 0) return null
+  const values = items
+    .map((item) => {
+      const raw = pick(item)
+      const num = typeof raw === 'number' ? raw : Number(raw)
+      return Number.isFinite(num) ? num : null
+    })
+  if (values.some((value) => value == null)) return null
+  const first = values[0]
+  return values.every((value) => value === first) ? first : null
+}
+
+function buildCompatibilitySignature(
+  questions: Array<{ year: number; month: string; paper: number; topic: string | null; cognitiveLevel: string | number | null }>,
+) {
+  const year = getSharedNumber(questions, (item) => item.year)
+  const month = getSharedString(questions, (item) => item.month)
+  const paper = getSharedNumber(questions, (item) => item.paper)
+  const topic = getSharedString(questions, (item) => item.topic)
+  const level = getSharedString(questions, (item) => item.cognitiveLevel)
+
+  return {
+    year: year != null ? String(year) : '',
+    month,
+    paper: paper != null ? String(paper) : '',
+    topic,
+    level,
+  }
+}
+
 async function getViewerContext(userId: string, role: string) {
   const [viewer, memberships] = await Promise.all([
     prisma.user.findUnique({
@@ -147,6 +188,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       createdBy: remix.createdBy,
       invitedUsers: remix.invitedUsers.map((entry) => entry.user),
       invitedGroups: remix.invitedGroups.map((entry) => entry.group),
+      compatibilitySignature: buildCompatibilitySignature(remix.questions.map((entry) => entry.question)),
       questions: remix.questions.map((entry) => ({
         ...entry.question,
         imageUrls: entry.question.imageUrl ? [entry.question.imageUrl] : [],
@@ -176,6 +218,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const inviteNote = asTrimmedString(req.body?.inviteNote, 2000)
     const audienceRaw = asTrimmedString(req.body?.audience, 20).toLowerCase()
     const audience = VALID_AUDIENCES.has(audienceRaw) ? audienceRaw : remix.audience
+    const questionIds = asIdList(req.body?.questionIds, 120)
     const invitedUserIds = asIdList(req.body?.invitedUserIds, 120).filter((id) => id !== userId)
     const invitedGroupIds = asIdList(req.body?.invitedGroupIds, 60)
 
@@ -183,7 +226,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ message: 'Grade audience requires a single remix grade' })
     }
 
-    const [validUsers, membershipRows] = await Promise.all([
+    const [validUsers, membershipRows, existingQuestions, appendedQuestions] = await Promise.all([
       invitedUserIds.length > 0
         ? prisma.user.findMany({
             where: { id: { in: invitedUserIds } },
@@ -196,12 +239,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             select: { groupId: true },
           })
         : Promise.resolve([]),
+      prisma.questionRemixQuestion.findMany({
+        where: { remixId },
+        select: { questionId: true, orderIndex: true },
+        orderBy: { orderIndex: 'asc' },
+      }),
+      questionIds.length > 0
+        ? prisma.examQuestion.findMany({
+            where: { id: { in: questionIds } },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
     ])
 
     const allowedUserIds = validUsers.map((item) => item.id)
     const allowedGroupIds = membershipRows.map((item) => item.groupId)
     const previousUserIds = new Set(remix.invitedUsers.map((item) => item.userId))
     const previousGroupIds = new Set(remix.invitedGroups.map((item) => item.groupId))
+    const existingQuestionIds = new Set(existingQuestions.map((item) => item.questionId))
+    const validAppendedQuestionIds = appendedQuestions.map((item) => item.id)
+    if (validAppendedQuestionIds.length !== questionIds.length) {
+      return res.status(400).json({ message: 'Some selected questions no longer exist' })
+    }
+    const nextOrderIndex = existingQuestions.length > 0 ? Math.max(...existingQuestions.map((item) => item.orderIndex)) + 1 : 0
+    const appendedQuestionCreates = validAppendedQuestionIds
+      .filter((questionId) => !existingQuestionIds.has(questionId))
+      .map((questionId, index) => ({ questionId, orderIndex: nextOrderIndex + index }))
 
     const updated = await prisma.questionRemix.update({
       where: { id: remixId },
@@ -209,6 +272,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         description: description || null,
         inviteNote: inviteNote || null,
         audience,
+        ...(appendedQuestionCreates.length > 0
+          ? {
+              questions: {
+                create: appendedQuestionCreates,
+              },
+            }
+          : {}),
         invitedUsers: {
           deleteMany: {},
           ...(allowedUserIds.length > 0
@@ -295,6 +365,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       questionCount: updated._count.questions,
       invitedUsersCount: updated._count.invitedUsers,
       invitedGroupsCount: updated._count.invitedGroups,
+      addedQuestionCount: appendedQuestionCreates.length,
       invitedUsers: updated.invitedUsers.map((entry) => entry.user),
       invitedGroups: updated.invitedGroups.map((entry) => entry.group),
     })

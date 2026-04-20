@@ -158,6 +158,71 @@ type QbEditAiPreview = {
   rawOutput: string
 }
 
+type QuestionRemixAudience = 'private' | 'grade' | 'public'
+
+type QuestionRemixSummary = {
+  id: string
+  name: string
+  description?: string | null
+  grade?: string | null
+  audience: QuestionRemixAudience
+  inviteNote?: string | null
+  createdAt: string
+  updatedAt: string
+  createdBy?: {
+    id: string
+    name?: string | null
+    email?: string | null
+    role?: string | null
+  } | null
+  questionCount: number
+  invitedUsersCount: number
+  invitedGroupsCount: number
+  previewQuestions?: Array<{
+    id: string
+    questionNumber: string
+    year: number
+    month: string
+    paper: number
+    topic?: string | null
+  }>
+  invitedUsers?: Array<{
+    id: string
+    name?: string | null
+    email?: string | null
+    role?: string | null
+    grade?: string | null
+  }>
+  invitedGroups?: Array<{
+    id: string
+    name: string
+    type?: string | null
+    grade?: string | null
+  }>
+}
+
+type QuestionRemixDetail = QuestionRemixSummary & {
+  questions: any[]
+}
+
+type QuestionRemixDraft = {
+  name: string
+  description: string
+  audience: QuestionRemixAudience
+  inviteNote: string
+  invitedUserIds: string[]
+  invitedGroupIds: string[]
+}
+
+type QuestionRemixInviteUser = {
+  id: string
+  name: string
+  email?: string | null
+  role?: string | null
+  grade?: string | null
+  schoolName?: string | null
+}
+
 function createEmptyQbEditDraft(): QbEditDraft {
   return {
     grade: '',
@@ -174,6 +239,17 @@ function createEmptyQbEditDraft(): QbEditDraft {
     cognitiveLevel: '',
     marks: '',
     approved: false,
+  }
+}
+
+function createEmptyQuestionRemixDraft(): QuestionRemixDraft {
+  return {
+    name: '',
+    description: '',
+    audience: 'private',
+    inviteNote: '',
+    invitedUserIds: [],
+    invitedGroupIds: [],
   }
 }
 
@@ -1049,6 +1125,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     [sessionPlatformRole]
   )
   const isTeacherOrAdminUser = currentLessonRoleProfile.capabilities.canOrchestrateLesson
+  const canCurateQuestionRemixes = isTeacherOrAdminUser
 
   const newPointDraft = (): LessonPointDraft => ({
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -1936,7 +2013,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'profile' | 'admin' | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [booksOverlayOpen, setBooksOverlayOpen] = useState(false)
-  const [booksHubTab, setBooksHubTab] = useState<'remix' | 'papers' | 'pdfs' | 'resources'>('remix')
+  const [booksHubTab, setBooksHubTab] = useState<'remix' | 'remixes' | 'papers' | 'pdfs' | 'resources'>('remix')
   const [booksLoading, setBooksLoading] = useState(false)
   const [booksError, setBooksError] = useState<string | null>(null)
   const [booksItems, setBooksItems] = useState<ResourceBankItem[]>([])
@@ -2025,6 +2102,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [qbEditAiPreview, setQbEditAiPreview] = useState<QbEditAiPreview | null>(null)
   const [qbBulkBusy, setQbBulkBusy] = useState(false)
   const [qbBulkError, setQbBulkError] = useState<string | null>(null)
+  const [questionRemixes, setQuestionRemixes] = useState<QuestionRemixSummary[]>([])
+  const [questionRemixesLoading, setQuestionRemixesLoading] = useState(false)
+  const [questionRemixesError, setQuestionRemixesError] = useState<string | null>(null)
+  const [selectedQuestionRemixId, setSelectedQuestionRemixId] = useState<string | null>(null)
+  const [selectedQuestionRemix, setSelectedQuestionRemix] = useState<QuestionRemixDetail | null>(null)
+  const [selectedQuestionRemixLoading, setSelectedQuestionRemixLoading] = useState(false)
+  const [selectedQuestionRemixError, setSelectedQuestionRemixError] = useState<string | null>(null)
+  const [questionRemixCreateOpen, setQuestionRemixCreateOpen] = useState(false)
+  const [questionRemixDraft, setQuestionRemixDraft] = useState<QuestionRemixDraft>(createEmptyQuestionRemixDraft())
+  const [questionRemixCreateBusy, setQuestionRemixCreateBusy] = useState(false)
+  const [questionRemixCreateError, setQuestionRemixCreateError] = useState<string | null>(null)
+  const [questionRemixInviteQuery, setQuestionRemixInviteQuery] = useState('')
+  const [questionRemixInviteBusy, setQuestionRemixInviteBusy] = useState(false)
+  const [questionRemixInviteResults, setQuestionRemixInviteResults] = useState<QuestionRemixInviteUser[]>([])
+  const [questionRemixInviteError, setQuestionRemixInviteError] = useState<string | null>(null)
   // Preamble editor state (admin)
   const [qbPreambleEditOpen, setQbPreambleEditOpen] = useState(false)
   const [qbPreambleEditTarget, setQbPreambleEditTarget] = useState<{
@@ -2740,6 +2832,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     void loadMyGroups()
     void loadNotifications()
   }, [dashboardSectionOverlay, loadMyGroups, loadNotifications])
+
+  useEffect(() => {
+    if (!questionRemixCreateOpen) return
+    if (!canCurateQuestionRemixes) return
+    if (myGroupsLoading || myGroups.length > 0) return
+    void loadMyGroups()
+  }, [canCurateQuestionRemixes, loadMyGroups, myGroups.length, myGroupsLoading, questionRemixCreateOpen])
 
   useEffect(() => {
     // Keep the legacy overlay effect as a no-op (behavior moved to discoverPanelActive effect).
@@ -14020,6 +14119,128 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }
 
+  const loadQuestionRemixes = useCallback(async () => {
+    if (status !== 'authenticated') return
+    setQuestionRemixesLoading(true)
+    setQuestionRemixesError(null)
+    try {
+      const res = await fetch('/api/question-remixes', { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as any)?.message || `Failed to load remixes (${res.status})`)
+      const items = Array.isArray((data as any)?.items) ? (data as any).items : []
+      setQuestionRemixes(items)
+      setSelectedQuestionRemixId((prev) => {
+        if (prev && items.some((item: QuestionRemixSummary) => item.id === prev)) return prev
+        return items[0]?.id || null
+      })
+    } catch (err: any) {
+      setQuestionRemixes([])
+      setQuestionRemixesError(err?.message || 'Failed to load remixes')
+    } finally {
+      setQuestionRemixesLoading(false)
+    }
+  }, [status])
+
+  const loadQuestionRemixDetail = useCallback(async (remixId: string) => {
+    if (!remixId) {
+      setSelectedQuestionRemix(null)
+      setSelectedQuestionRemixError(null)
+      return
+    }
+    setSelectedQuestionRemixLoading(true)
+    setSelectedQuestionRemixError(null)
+    try {
+      const res = await fetch(`/api/question-remixes/${encodeURIComponent(remixId)}`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as any)?.message || `Failed to load remix (${res.status})`)
+      setSelectedQuestionRemix(data as QuestionRemixDetail)
+    } catch (err: any) {
+      setSelectedQuestionRemix(null)
+      setSelectedQuestionRemixError(err?.message || 'Failed to load remix')
+    } finally {
+      setSelectedQuestionRemixLoading(false)
+    }
+  }, [])
+
+  const closeQuestionRemixCreate = useCallback(() => {
+    setQuestionRemixCreateOpen(false)
+    setQuestionRemixDraft(createEmptyQuestionRemixDraft())
+    setQuestionRemixCreateError(null)
+    setQuestionRemixInviteQuery('')
+    setQuestionRemixInviteResults([])
+    setQuestionRemixInviteError(null)
+  }, [])
+
+  const openQuestionRemixCreate = useCallback(() => {
+    if (qbSelectedIds.size === 0) return
+    setQuestionRemixCreateOpen(true)
+    setQuestionRemixCreateError(null)
+    setQuestionRemixInviteError(null)
+    setQuestionRemixInviteQuery('')
+    setQuestionRemixInviteResults([])
+    setQuestionRemixDraft((prev) => ({
+      ...createEmptyQuestionRemixDraft(),
+      audience: prev.audience,
+    }))
+  }, [qbSelectedIds])
+
+  const submitQuestionRemixCreate = useCallback(async () => {
+    const questionIds = Array.from(qbSelectedIds)
+    if (questionIds.length === 0) {
+      setQuestionRemixCreateError('Select at least one question first.')
+      return
+    }
+    const payload = {
+      name: questionRemixDraft.name.trim(),
+      description: questionRemixDraft.description.trim(),
+      audience: questionRemixDraft.audience,
+      inviteNote: questionRemixDraft.inviteNote.trim(),
+      invitedUserIds: questionRemixDraft.invitedUserIds,
+      invitedGroupIds: questionRemixDraft.invitedGroupIds,
+      questionIds,
+    }
+    setQuestionRemixCreateBusy(true)
+    setQuestionRemixCreateError(null)
+    try {
+      const res = await fetch('/api/question-remixes', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as any)?.message || `Failed to create remix (${res.status})`)
+      await loadQuestionRemixes()
+      setSelectedQuestionRemixId((data as any)?.id || null)
+      setQbSelectedIds(new Set())
+      setQbBulkError(null)
+      closeQuestionRemixCreate()
+      setBooksHubTab('remixes')
+    } catch (err: any) {
+      setQuestionRemixCreateError(err?.message || 'Failed to create remix')
+    } finally {
+      setQuestionRemixCreateBusy(false)
+    }
+  }, [closeQuestionRemixCreate, loadQuestionRemixes, qbSelectedIds, questionRemixDraft])
+
+  const toggleQuestionRemixInviteUser = useCallback((userId: string) => {
+    setQuestionRemixDraft((prev) => ({
+      ...prev,
+      invitedUserIds: prev.invitedUserIds.includes(userId)
+        ? prev.invitedUserIds.filter((id) => id !== userId)
+        : [...prev.invitedUserIds, userId],
+    }))
+  }, [])
+
+  const toggleQuestionRemixInviteGroup = useCallback((groupId: string) => {
+    setQuestionRemixDraft((prev) => ({
+      ...prev,
+      invitedGroupIds: prev.invitedGroupIds.includes(groupId)
+        ? prev.invitedGroupIds.filter((id) => id !== groupId)
+        : [...prev.invitedGroupIds, groupId],
+    }))
+  }, [])
+
   const getQbRemixBadgeValue = (q: any, badge: QbRemixBadge): string => {
     switch (badge) {
       case 'year':
@@ -14181,6 +14402,64 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (booksHubTab !== 'remix') return
     void loadRandomRemixResults()
   }, [booksHubTab])
+
+  useEffect(() => {
+    if (booksHubTab !== 'remixes') return
+    void loadQuestionRemixes()
+  }, [booksHubTab, loadQuestionRemixes])
+
+  useEffect(() => {
+    if (booksHubTab !== 'remixes') return
+    if (!selectedQuestionRemixId) {
+      setSelectedQuestionRemix(null)
+      setSelectedQuestionRemixError(null)
+      return
+    }
+    void loadQuestionRemixDetail(selectedQuestionRemixId)
+  }, [booksHubTab, loadQuestionRemixDetail, selectedQuestionRemixId])
+
+  useEffect(() => {
+    if (!questionRemixCreateOpen) return
+    const query = questionRemixInviteQuery.trim()
+    if (query.length === 0) {
+      setQuestionRemixInviteResults([])
+      setQuestionRemixInviteError(null)
+      return
+    }
+
+    let cancelled = false
+    setQuestionRemixInviteBusy(true)
+    setQuestionRemixInviteError(null)
+    const timerId = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/discover/users?q=${encodeURIComponent(query)}&hint=${encodeURIComponent(query)}&limit=12`, {
+          credentials: 'same-origin',
+        })
+        const data = await res.json().catch(() => ([]))
+        if (!res.ok) throw new Error((data as any)?.message || `Search failed (${res.status})`)
+        if (cancelled) return
+        const items = Array.isArray(data) ? data : []
+        setQuestionRemixInviteResults(items.map((item: any) => ({
+          id: String(item.id),
+          name: String(item.name || 'Unnamed learner'),
+          role: typeof item.role === 'string' ? item.role : null,
+          grade: typeof item.grade === 'string' ? item.grade : null,
+          schoolName: typeof item.schoolName === 'string' ? item.schoolName : null,
+        })))
+      } catch (err: any) {
+        if (cancelled) return
+        setQuestionRemixInviteResults([])
+        setQuestionRemixInviteError(err?.message || 'Unable to search learners')
+      } finally {
+        if (!cancelled) setQuestionRemixInviteBusy(false)
+      }
+    }, 180)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timerId)
+    }
+  }, [questionRemixCreateOpen, questionRemixInviteQuery])
 
   const getQNumParts = (value: unknown): number[] => {
     const raw = String(value ?? '').trim()
@@ -15258,6 +15537,125 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }
 
+  const renderQuestionRemixesContent = () => {
+    const selectedSummary = selectedQuestionRemixId
+      ? questionRemixes.find((item) => item.id === selectedQuestionRemixId) || null
+      : null
+
+    return (
+      <div className="grid gap-0 md:grid-cols-[320px_minmax(0,1fr)]">
+        <section className="border-b border-black/10 bg-white md:border-b-0 md:border-r md:border-black/10">
+          {questionRemixesError ? <div className="border-b border-black/10 px-4 py-3 text-sm text-red-600">{questionRemixesError}</div> : null}
+          {questionRemixesLoading ? <div className="px-4 py-4 text-sm text-[#65676b]">Loading remixes...</div> : null}
+          {!questionRemixesLoading && questionRemixes.length === 0 ? (
+            <div className="px-4 py-4 text-sm text-[#65676b]">No remixes yet.</div>
+          ) : null}
+          {questionRemixes.length > 0 ? (
+            <ul className="divide-y divide-black/10">
+              {questionRemixes.map((item) => {
+                const isSelected = item.id === selectedQuestionRemixId
+                return (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedQuestionRemixId(item.id)}
+                      className={`w-full px-4 py-3 text-left transition ${isSelected ? 'bg-[#eef5ff]' : 'bg-white hover:bg-[#f7f8fa]'}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-semibold text-[#1c1e21]">{item.name}</div>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            <span className="rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[11px] text-[#4b5563]">{item.questionCount} question{item.questionCount === 1 ? '' : 's'}</span>
+                            <span className="rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[11px] text-[#1877f2]">{item.audience}</span>
+                            {item.grade ? <span className="rounded-full bg-[#f8fafc] px-2 py-0.5 text-[11px] text-[#4b5563]">{gradeToLabel(item.grade as GradeValue)}</span> : null}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-[11px] text-[#65676b]">{new Date(item.updatedAt).toLocaleDateString()}</div>
+                      </div>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : null}
+        </section>
+
+        <section className="bg-white">
+          {selectedQuestionRemixError ? <div className="border-b border-black/10 px-4 py-3 text-sm text-red-600">{selectedQuestionRemixError}</div> : null}
+          {selectedQuestionRemixLoading ? <div className="px-4 py-4 text-sm text-[#65676b]">Loading remix...</div> : null}
+          {!selectedQuestionRemixLoading && !selectedQuestionRemix && !selectedQuestionRemixError ? (
+            <div className="px-4 py-4 text-sm text-[#65676b]">Select a remix to view its questions.</div>
+          ) : null}
+          {selectedQuestionRemix ? (
+            <>
+              <div className="border-b border-black/10 px-4 py-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-lg font-semibold text-[#1c1e21]">{selectedQuestionRemix.name}</div>
+                    {selectedQuestionRemix.description ? <div className="mt-1 text-sm text-[#4b5563] whitespace-pre-wrap">{selectedQuestionRemix.description}</div> : null}
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-[#65676b]">
+                      <span className="rounded-full bg-[#f0f2f5] px-2 py-1">{selectedQuestionRemix.questions.length} question{selectedQuestionRemix.questions.length === 1 ? '' : 's'}</span>
+                      <span className="rounded-full bg-[#e8f4fd] px-2 py-1 text-[#1877f2]">Audience: {selectedQuestionRemix.audience}</span>
+                      {selectedQuestionRemix.grade ? <span className="rounded-full bg-[#f8fafc] px-2 py-1">{gradeToLabel(selectedQuestionRemix.grade as GradeValue)}</span> : null}
+                    </div>
+                    {selectedQuestionRemix.inviteNote ? <div className="mt-3 rounded-xl border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-sm text-[#445066]">{selectedQuestionRemix.inviteNote}</div> : null}
+                  </div>
+                  <div className="shrink-0 text-right text-xs text-[#65676b]">
+                    <div>{selectedQuestionRemix.createdBy?.name || selectedQuestionRemix.createdBy?.email || 'Unknown owner'}</div>
+                    <div className="mt-1">Updated {new Date(selectedQuestionRemix.updatedAt).toLocaleString()}</div>
+                  </div>
+                </div>
+
+                {(selectedQuestionRemix.invitedUsers.length > 0 || selectedQuestionRemix.invitedGroups.length > 0) ? (
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#65676b]">Learners</div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {selectedQuestionRemix.invitedUsers.length > 0 ? selectedQuestionRemix.invitedUsers.map((user) => (
+                          <span key={user.id} className="rounded-full bg-[#f0f2f5] px-2.5 py-1 text-xs text-[#4b5563]">{user.name || user.email || user.id}</span>
+                        )) : <span className="text-xs text-[#9aa0a6]">None</span>}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#65676b]">Groups</div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {selectedQuestionRemix.invitedGroups.length > 0 ? selectedQuestionRemix.invitedGroups.map((group) => (
+                          <span key={group.id} className="rounded-full bg-[#f0f2f5] px-2.5 py-1 text-xs text-[#4b5563]">{group.name}</span>
+                        )) : <span className="text-xs text-[#9aa0a6]">None</span>}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <ul>
+                {selectedQuestionRemix.questions.map((q: any) => {
+                  const normalizedQuestion = normalizeExamQuestionContent(
+                    unwrapQuestionField(q?.questionText, ['questionText', 'text', 'prompt']),
+                    unwrapQuestionField(q?.latex, ['latex', 'equation', 'math']),
+                  )
+                  const cleanText = normalizedQuestion.questionText
+                  return (
+                    <li key={q.id} className="border-b border-black/10 px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <span className="text-xs font-bold text-[#65676b]">Q{q.questionNumber}</span>
+                        <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.year}</span>
+                        <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.month}</span>
+                        <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">Paper {q.paper}</span>
+                        {q.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{q.topic}</span> : null}
+                      </div>
+                      <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">{renderQuestionTextWithInlineLatex(cleanText)}</div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
+          ) : null}
+        </section>
+      </div>
+    )
+  }
+
   const renderQuestionBankContent = () => (
     <div>
 
@@ -15273,9 +15671,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       {qbItems.length > 0 ? (
         <>
-          {/* Results header with select-all (admin) and count */}
+          {/* Results header with select-all and count */}
           <section className="border-b border-black/10 bg-white px-4 py-2 flex items-center gap-3">
-            {isAdmin ? (
+            {canCurateQuestionRemixes ? (
               <label className="flex items-center gap-1.5 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -15292,33 +15690,45 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </section>
 
           {/* Bulk action toolbar — shown when items are selected */}
-          {isAdmin && qbSelectedIds.size > 0 ? (
+          {canCurateQuestionRemixes && qbSelectedIds.size > 0 ? (
             <section className="border-b border-black/10 bg-[#fff8e7] px-4 py-2.5 flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold text-[#856404] mr-1">{qbSelectedIds.size} selected</span>
               <button
                 type="button"
-                className="inline-flex h-7 items-center rounded-full bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
-                onClick={() => void qbBulkDelete()}
+                className="inline-flex h-7 items-center rounded-full bg-[#0f766e] px-3 text-xs font-semibold text-white hover:bg-[#115e59] disabled:opacity-50"
+                onClick={openQuestionRemixCreate}
                 disabled={qbBulkBusy}
               >
-                Delete
+                Add to remix
               </button>
-              <button
-                type="button"
-                className="inline-flex h-7 items-center rounded-full bg-[#1877f2] px-3 text-xs font-semibold text-white hover:bg-[#166fe5] disabled:opacity-50"
-                onClick={() => void qbBulkPatch({ approved: true })}
-                disabled={qbBulkBusy}
-              >
-                Approve
-              </button>
-              <button
-                type="button"
-                className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-medium text-[#4b5563] hover:bg-[#f0f2f5] disabled:opacity-50"
-                onClick={() => void qbBulkPatch({ approved: false })}
-                disabled={qbBulkBusy}
-              >
-                Unapprove
-              </button>
+              {isAdmin ? (
+                <>
+                  <button
+                    type="button"
+                    className="inline-flex h-7 items-center rounded-full bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                    onClick={() => void qbBulkDelete()}
+                    disabled={qbBulkBusy}
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex h-7 items-center rounded-full bg-[#1877f2] px-3 text-xs font-semibold text-white hover:bg-[#166fe5] disabled:opacity-50"
+                    onClick={() => void qbBulkPatch({ approved: true })}
+                    disabled={qbBulkBusy}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-medium text-[#4b5563] hover:bg-[#f0f2f5] disabled:opacity-50"
+                    onClick={() => void qbBulkPatch({ approved: false })}
+                    disabled={qbBulkBusy}
+                  >
+                    Unapprove
+                  </button>
+                </>
+              ) : null}
               <button
                 type="button"
                 className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-medium text-[#65676b] hover:bg-[#f0f2f5]"
@@ -15357,14 +15767,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   pushUrl(q?.imageUrl)
                   return urls
                 })()
-                const isSelected = isAdmin && qbSelectedIds.has(String(q.id))
+                const isSelected = canCurateQuestionRemixes && qbSelectedIds.has(String(q.id))
                 const isSubquestion = String(q.questionNumber ?? '').includes('.')
 
                 return (
                   <li key={q.id} className={`border-b border-black/10 bg-white px-4 py-3 transition-colors${isSelected ? ' !bg-[#f0f5ff]' : ''}`}>
                     <div className="flex gap-3 items-start">
-                      {/* Row select checkbox (admin only) */}
-                      {isAdmin ? (
+                      {/* Row select checkbox */}
+                      {canCurateQuestionRemixes ? (
                         <div className="flex-shrink-0 pt-0.5">
                           <input
                             type="checkbox"
@@ -15694,6 +16104,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </button>
             <button
               type="button"
+              className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'remixes' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
+              onClick={() => setBooksHubTab('remixes')}
+            >
+              Remixes
+            </button>
+            <button
+              type="button"
               className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'papers' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
               onClick={() => setBooksHubTab('papers')}
             >
@@ -15716,7 +16133,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
         </section>
 
-        {booksHubTab === 'remix' ? renderQuestionBankContent() : null}
+          {booksHubTab === 'remix' ? renderQuestionBankContent() : null}
+          {booksHubTab === 'remixes' ? renderQuestionRemixesContent() : null}
         {booksHubTab === 'papers' ? renderBooksList('papers') : null}
         {booksHubTab === 'pdfs' ? renderBooksList('pdfs') : null}
         {booksHubTab === 'resources' ? (
@@ -18273,6 +18691,156 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             )}
             </>
           )}
+        </div>
+      </BottomSheet>
+
+      <BottomSheet
+        open={questionRemixCreateOpen}
+        title="Create remix"
+        subtitle={`${qbSelectedIds.size} selected question${qbSelectedIds.size === 1 ? '' : 's'}`}
+        onClose={closeQuestionRemixCreate}
+        backdrop
+        closeOnBackdrop={!questionRemixCreateBusy}
+        closeOnEscape={!questionRemixCreateBusy}
+        className="bottom-0"
+        contentClassName="p-0"
+        zIndexClassName="z-[88]"
+      >
+        <div className="space-y-4 px-4 py-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#65676b]">Name</label>
+            <input
+              type="text"
+              value={questionRemixDraft.name}
+              onChange={(event) => setQuestionRemixDraft((prev) => ({ ...prev, name: event.target.value }))}
+              placeholder="e.g. Functions intervention set"
+              className="w-full rounded-xl border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+              disabled={questionRemixCreateBusy}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#65676b]">Description</label>
+            <textarea
+              rows={3}
+              value={questionRemixDraft.description}
+              onChange={(event) => setQuestionRemixDraft((prev) => ({ ...prev, description: event.target.value }))}
+              placeholder="Optional context for the learners receiving this remix"
+              className="w-full rounded-xl border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21] resize-y"
+              disabled={questionRemixCreateBusy}
+            />
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#65676b]">Audience</label>
+              <select
+                value={questionRemixDraft.audience}
+                onChange={(event) => setQuestionRemixDraft((prev) => ({ ...prev, audience: event.target.value as QuestionRemixAudience }))}
+                className="w-full rounded-xl border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+                disabled={questionRemixCreateBusy}
+              >
+                <option value="private">Private</option>
+                <option value="grade">Grade</option>
+                <option value="public">Public</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#65676b]">Invite note</label>
+              <input
+                type="text"
+                value={questionRemixDraft.inviteNote}
+                onChange={(event) => setQuestionRemixDraft((prev) => ({ ...prev, inviteNote: event.target.value }))}
+                placeholder="Optional note sent with the remix"
+                className="w-full rounded-xl border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+                disabled={questionRemixCreateBusy}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#65676b]">Invite learners</div>
+            <input
+              type="text"
+              value={questionRemixInviteQuery}
+              onChange={(event) => setQuestionRemixInviteQuery(event.target.value)}
+              placeholder="Search learners by name, school, or email"
+              className="w-full rounded-xl border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+              disabled={questionRemixCreateBusy}
+            />
+            {questionRemixInviteBusy ? <div className="text-xs text-[#65676b]">Searching learners...</div> : null}
+            {questionRemixInviteError ? <div className="text-xs text-red-600">{questionRemixInviteError}</div> : null}
+            {questionRemixInviteResults.length > 0 ? (
+              <div className="max-h-44 overflow-y-auto rounded-xl border border-[#dbe4f3] bg-white">
+                {questionRemixInviteResults.map((user) => {
+                  const checked = questionRemixDraft.invitedUserIds.includes(user.id)
+                  return (
+                    <label key={user.id} className="flex cursor-pointer items-center gap-3 border-b border-black/5 px-3 py-2 last:border-b-0">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleQuestionRemixInviteUser(user.id)}
+                        className="h-4 w-4 rounded border-[#d5def0] accent-[#1877f2]"
+                        disabled={questionRemixCreateBusy}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-[#1c1e21]">{user.name}</div>
+                        <div className="truncate text-xs text-[#65676b]">{[user.role, user.grade ? gradeToLabel(user.grade as GradeValue) : '', user.schoolName].filter(Boolean).join(' • ')}</div>
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#65676b]">Invite groups</div>
+            <div className="rounded-xl border border-[#dbe4f3] bg-white">
+              {myGroups.length > 0 ? myGroups.map((entry) => {
+                const group = entry.group
+                const checked = questionRemixDraft.invitedGroupIds.includes(group.id)
+                return (
+                  <label key={group.id} className="flex cursor-pointer items-center gap-3 border-b border-black/5 px-3 py-2 last:border-b-0">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleQuestionRemixInviteGroup(group.id)}
+                      className="h-4 w-4 rounded border-[#d5def0] accent-[#1877f2]"
+                      disabled={questionRemixCreateBusy}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-[#1c1e21]">{group.name}</div>
+                      <div className="truncate text-xs text-[#65676b]">{[group.type, group.grade ? gradeToLabel(group.grade as GradeValue) : '', `${group.membersCount} members`].filter(Boolean).join(' • ')}</div>
+                    </div>
+                  </label>
+                )
+              }) : (
+                <div className="px-3 py-3 text-xs text-[#65676b]">No groups available.</div>
+              )}
+            </div>
+          </div>
+
+          {questionRemixCreateError ? <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{questionRemixCreateError}</div> : null}
+
+          <div className="flex flex-wrap justify-end gap-2 pt-1">
+            <button
+              type="button"
+              className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-white px-4 text-sm font-medium text-[#4b5563] hover:bg-[#f0f2f5] disabled:opacity-50"
+              onClick={closeQuestionRemixCreate}
+              disabled={questionRemixCreateBusy}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-10 items-center justify-center rounded-full bg-[#1877f2] px-4 text-sm font-semibold text-white hover:bg-[#166fe5] disabled:opacity-50"
+              onClick={() => void submitQuestionRemixCreate()}
+              disabled={questionRemixCreateBusy}
+            >
+              {questionRemixCreateBusy ? 'Creating...' : 'Create remix'}
+            </button>
+          </div>
         </div>
       </BottomSheet>
 

@@ -77,6 +77,8 @@ model User {
   pushDevices PushDevice[]
   challenges UserChallenge[]
   socialPosts SocialPost[]
+  createdQuestionRemixes QuestionRemix[] @relation("QuestionRemixCreatedBy")
+  receivedQuestionRemixes QuestionRemixUser[]
 
   followers UserFollow[] @relation("UserFollowers")
   following UserFollow[] @relation("UserFollowing")
@@ -161,6 +163,7 @@ model ExamQuestion {
   approved       Boolean  @default(false)
 
   source         ResourceBankItem? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  remixEntries   QuestionRemixQuestion[]
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -189,6 +192,7 @@ model LearningGroup {
 
   invites       GroupInvite[]
   joinRequests  GroupJoinRequest[]
+  questionRemixLinks QuestionRemixGroup[]
 }
 
 model LearningGroupMember {
@@ -254,6 +258,65 @@ model Notification {
 
   @@index([userId, createdAt])
   @@index([userId, readAt])
+}
+
+model QuestionRemix {
+  id          String   @id @default(cuid())
+  createdById String
+  name        String
+  description String?  @db.Text
+  grade       Grade?
+  audience    String   @default("private")
+  inviteNote  String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy   User                  @relation("QuestionRemixCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  questions   QuestionRemixQuestion[]
+  invitedUsers QuestionRemixUser[]
+  invitedGroups QuestionRemixGroup[]
+
+  @@index([createdById, createdAt])
+  @@index([audience, createdAt])
+  @@index([grade, createdAt])
+}
+
+model QuestionRemixQuestion {
+  remixId     String
+  questionId  String
+  orderIndex  Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  remix       QuestionRemix @relation(fields: [remixId], references: [id], onDelete: Cascade)
+  question    ExamQuestion  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@id([remixId, questionId])
+  @@index([questionId])
+  @@index([remixId, orderIndex])
+}
+
+model QuestionRemixUser {
+  remixId     String
+  userId      String
+  createdAt   DateTime @default(now())
+
+  remix       QuestionRemix @relation(fields: [remixId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([remixId, userId])
+  @@index([userId])
+}
+
+model QuestionRemixGroup {
+  remixId     String
+  groupId     String
+  createdAt   DateTime @default(now())
+
+  remix       QuestionRemix @relation(fields: [remixId], references: [id], onDelete: Cascade)
+  group       LearningGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([remixId, groupId])
+  @@index([groupId])
 }
 
 model PushDevice {

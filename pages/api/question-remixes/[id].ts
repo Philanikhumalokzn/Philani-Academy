@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../lib/prisma'
 import { getUserIdFromReq, getUserRole } from '../../../lib/auth'
+import { getDisplayRemixName, type RemixNameSignature } from '../../../lib/remixNames'
 
 const VALID_AUDIENCES = new Set(['private', 'grade', 'public'])
 
@@ -56,7 +57,7 @@ function getSharedNumber<T>(items: T[], pick: (item: T) => unknown): number | nu
 
 function buildCompatibilitySignature(
   questions: Array<{ year: number; month: string; paper: number; topic: string | null; cognitiveLevel: string | number | null }>,
-) {
+): RemixNameSignature {
   const year = getSharedNumber(questions, (item) => item.year)
   const month = getSharedString(questions, (item) => item.month)
   const paper = getSharedNumber(questions, (item) => item.paper)
@@ -176,9 +177,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (!remix) return res.status(404).json({ message: 'Remix not found' })
 
+    const compatibilitySignature = buildCompatibilitySignature(remix.questions.map((entry) => entry.question))
+
     return res.status(200).json({
       id: remix.id,
-      name: remix.name,
+      name: getDisplayRemixName(remix.name, compatibilitySignature, remix.createdBy?.name || remix.createdBy?.email || ''),
       description: remix.description,
       grade: remix.grade,
       audience: remix.audience,
@@ -188,7 +191,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       createdBy: remix.createdBy,
       invitedUsers: remix.invitedUsers.map((entry) => entry.user),
       invitedGroups: remix.invitedGroups.map((entry) => entry.group),
-      compatibilitySignature: buildCompatibilitySignature(remix.questions.map((entry) => entry.question)),
+      compatibilitySignature,
       questions: remix.questions.map((entry) => ({
         ...entry.question,
         imageUrls: entry.question.imageUrl ? [entry.question.imageUrl] : [],

@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../lib/prisma'
 import { getUserIdFromReq, getUserRole } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
+import { buildCompactRemixName, getDisplayRemixName, type RemixNameSignature } from '../../../lib/remixNames'
 
 const VALID_AUDIENCES = new Set(['private', 'grade', 'public'])
 
@@ -55,30 +56,9 @@ function getSharedNumber<T>(items: T[], pick: (item: T) => unknown): number | nu
   return values.every((value) => value === first) ? first : null
 }
 
-function buildAutoRemixName(
-  questions: Array<{ year: number; month: string; paper: number; topic: string | null; cognitiveLevel: string | number | null }>,
-  creatorLabel: string,
-): string {
-  const year = getSharedNumber(questions, (item) => item.year)
-  const month = getSharedString(questions, (item) => item.month)
-  const paper = getSharedNumber(questions, (item) => item.paper)
-  const topic = getSharedString(questions, (item) => item.topic)
-  const level = getSharedString(questions, (item) => item.cognitiveLevel)
-
-  const parts = [
-    year != null ? String(year) : '',
-    month,
-    paper != null ? `Paper ${paper}` : '',
-    topic,
-    level ? `Level ${level}` : '',
-  ].filter(Boolean)
-
-  return [...(parts.length > 0 ? parts : ['Mixed selection']), creatorLabel || 'Creator'].join(' · ')
-}
-
 function buildCompatibilitySignature(
   questions: Array<{ year: number; month: string; paper: number; topic: string | null; cognitiveLevel: string | number | null }>,
-) {
+): RemixNameSignature {
   const year = getSharedNumber(questions, (item) => item.year)
   const month = getSharedString(questions, (item) => item.month)
   const paper = getSharedNumber(questions, (item) => item.paper)
@@ -222,9 +202,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({
       items: remixes.map((item) => {
         const allQuestions = item.questions.map((entry) => entry.question)
+        const compatibilitySignature = buildCompatibilitySignature(allQuestions)
         return {
           id: item.id,
-          name: item.name,
+          name: getDisplayRemixName(item.name, compatibilitySignature, item.createdBy?.name || item.createdBy?.email || ''),
           description: item.description,
           grade: item.grade,
           audience: item.audience,
@@ -235,7 +216,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           questionCount: item._count.questions,
           invitedUsersCount: item._count.invitedUsers,
           invitedGroupsCount: item._count.invitedGroups,
-          compatibilitySignature: buildCompatibilitySignature(allQuestions),
+          compatibilitySignature,
           previewQuestions: item.questions.slice(0, 3).map((entry) => ({
             id: entry.question.id,
             questionNumber: entry.question.questionNumber,
@@ -287,10 +268,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!context.viewer) return res.status(404).json({ message: 'User not found' })
     if (questions.length !== questionIds.length) return res.status(400).json({ message: 'Some selected questions no longer exist' })
 
-    const creatorLabel = firstNonEmpty(context.viewer.name, context.viewer.email, 'Creator')
+    const compatibilitySignature = buildCompatibilitySignature(questions)
     const name = await ensureUniqueRemixName(
       userId,
-      requestedName || buildAutoRemixName(questions, creatorLabel),
+      requestedName || buildCompactRemixName(compatibilitySignature),
     )
 
     const uniqueGrades = Array.from(new Set(questions.map((item) => String(item.grade))))

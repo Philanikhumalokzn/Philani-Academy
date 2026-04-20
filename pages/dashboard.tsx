@@ -40,6 +40,7 @@ import { isSpecialTestStudentEmail } from '../lib/testUsers'
 import { createLessonRoleProfile, getPlatformRoleDisplayLabel, hasLessonCapabilityForRole, isRecognizedLessonParticipantRole, normalizePlatformRole } from '../lib/lessonAccessControl'
 import { renderKatexDisplayHtml as renderKatexDisplayHtmlRaw, renderKatexInlineHtml as renderKatexInlineHtmlRaw, splitLatexIntoSteps as splitLatexIntoStepsRaw } from '../lib/latexRender'
 import { normalizeExamQuestionContent } from '../lib/questionMath'
+import { buildCompactRemixName, type RemixNameSignature } from '../lib/remixNames'
 import { renderTextWithKatex as renderTextWithKatexRaw } from '../lib/renderTextWithKatex'
 import { renderQuestionTextWithInlineLatex as renderQuestionTextWithInlineLatexShared } from '../lib/renderQuestionText'
 import { toDisplayFileName } from '../lib/fileName'
@@ -160,13 +161,7 @@ type QbEditAiPreview = {
 
 type QuestionRemixAudience = 'private' | 'grade' | 'public'
 
-type QuestionRemixCompatibilitySignature = {
-  year: string
-  month: string
-  paper: string
-  topic: string
-  level: string
-}
+type QuestionRemixCompatibilitySignature = RemixNameSignature
 
 type QuestionRemixSummary = {
   id: string
@@ -276,21 +271,8 @@ function getSharedQuestionRemixNameText(items: any[], pick: (item: any) => unkno
   return values.every((value) => value === first) ? first : ''
 }
 
-function buildQuestionRemixIntersectionName(items: any[], creatorLabel: string): string {
-  const year = getSharedQuestionRemixNameText(items, (item) => item?.year)
-  const month = getSharedQuestionRemixNameText(items, (item) => item?.month)
-  const paper = getSharedQuestionRemixNameText(items, (item) => item?.paper)
-  const topic = getSharedQuestionRemixNameText(items, (item) => item?.topic)
-  const level = getSharedQuestionRemixNameText(items, (item) => item?.cognitiveLevel)
-  const parts = [
-    year,
-    month,
-    paper ? `Paper ${paper}` : '',
-    topic,
-    level ? `Level ${level}` : '',
-  ].filter(Boolean)
-
-  return [...(parts.length > 0 ? parts : ['Mixed selection']), creatorLabel || 'Creator'].join(' · ')
+function buildQuestionRemixIntersectionName(items: any[]): string {
+  return buildCompactRemixName(buildQuestionRemixCompatibilitySignature(items))
 }
 
 function buildQuestionRemixCompatibilitySignature(items: any[]): QuestionRemixCompatibilitySignature {
@@ -14254,8 +14236,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const buildSelectedQuestionRemixNamePreview = useCallback(() => {
     const selectedQuestions = qbItems.filter((item: any) => qbSelectedIds.has(String(item?.id || '')))
-    return buildQuestionRemixIntersectionName(selectedQuestions, learnerName)
-  }, [learnerName, qbItems, qbSelectedIds])
+    return buildQuestionRemixIntersectionName(selectedQuestions)
+  }, [qbItems, qbSelectedIds])
 
   const closeQuestionRemixCreate = useCallback(() => {
     setQuestionRemixCreateOpen(false)
@@ -15829,7 +15811,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-semibold text-[#1c1e21]">{item.name}</div>
+                          <div className="text-sm font-semibold leading-tight text-[#1c1e21] whitespace-normal break-words">{item.name}</div>
                           <div className="mt-1 flex flex-wrap gap-1.5">
                             <span className="rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[11px] text-[#4b5563]">{item.questionCount} question{item.questionCount === 1 ? '' : 's'}</span>
                             <span className="rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[11px] text-[#1877f2]">{item.audience}</span>
@@ -19048,7 +19030,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               disabled={questionRemixCreateBusy}
                             />
                             <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-medium text-[#1c1e21]">{item.name}</span>
+                              <span className="block text-sm font-medium leading-tight text-[#1c1e21] whitespace-normal break-words">{item.name}</span>
                               <span className="mt-1 block text-xs text-[#65676b]">{item.questionCount} question{item.questionCount === 1 ? '' : 's'}</span>
                             </span>
                           </label>

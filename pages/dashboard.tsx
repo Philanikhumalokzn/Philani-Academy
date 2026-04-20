@@ -18703,10 +18703,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         closeOnBackdrop={!questionRemixCreateBusy}
         closeOnEscape={!questionRemixCreateBusy}
         className="bottom-0"
-        contentClassName="p-0"
+        contentClassName="p-0 flex flex-col overflow-hidden"
         zIndexClassName="z-[88]"
       >
-        <div className="space-y-4 px-4 py-4">
+        <div
+          className="min-h-0 max-h-[72dvh] overflow-y-auto overscroll-contain px-4 py-4 space-y-4 [touch-action:pan-y]"
+          style={{
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehaviorY: 'contain',
+          }}
+          onTouchMove={(e) => e.stopPropagation()}
+        >
           <div className="space-y-1.5">
             <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#65676b]">Name</label>
             <input
@@ -18822,8 +18829,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
 
           {questionRemixCreateError ? <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{questionRemixCreateError}</div> : null}
+        </div>
 
-          <div className="flex flex-wrap justify-end gap-2 pt-1">
+        <div className="border-t border-[#dbe4f3] bg-[#f7f8fa] px-4 py-3">
+          <div className="flex flex-wrap justify-end gap-2">
             <button
               type="button"
               className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-white px-4 text-sm font-medium text-[#4b5563] hover:bg-[#f0f2f5] disabled:opacity-50"

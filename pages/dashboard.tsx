@@ -15874,18 +15874,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <span className="rounded-full bg-[#e8f4fd] px-2 py-1 text-[#1877f2]">Audience: {selectedQuestionRemix.audience}</span>
                       {selectedQuestionRemix.grade ? <span className="rounded-full bg-[#f8fafc] px-2 py-1">{gradeToLabel(selectedQuestionRemix.grade as GradeValue)}</span> : null}
                     </div>
+                    {canCurateQuestionRemixes ? (
+                      <div className="mt-3">
+                        <button
+                          type="button"
+                          className="inline-flex h-9 items-center rounded-full bg-[#0f766e] px-4 text-sm font-semibold text-white hover:bg-[#115e59]"
+                          onClick={() => startAddingQuestionsToQuestionRemix(selectedQuestionRemix)}
+                        >
+                          Add questions
+                        </button>
+                      </div>
+                    ) : null}
                     {selectedQuestionRemix.inviteNote ? <div className="mt-3 rounded-xl border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-sm text-[#445066]">{selectedQuestionRemix.inviteNote}</div> : null}
                   </div>
                   <div className="shrink-0 text-right text-xs text-[#65676b]">
-                    {canCurateQuestionRemixes ? (
-                      <button
-                        type="button"
-                        className="mb-2 inline-flex h-8 items-center rounded-full bg-[#0f766e] px-3 text-xs font-semibold text-white hover:bg-[#115e59]"
-                        onClick={() => startAddingQuestionsToQuestionRemix(selectedQuestionRemix)}
-                      >
-                        Add questions
-                      </button>
-                    ) : null}
                     <div>{selectedQuestionRemix.createdBy?.name || selectedQuestionRemix.createdBy?.email || 'Unknown owner'}</div>
                     <div className="mt-1">Updated {new Date(selectedQuestionRemix.updatedAt).toLocaleString()}</div>
                   </div>
@@ -15910,6 +15912,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       </div>
                     </div>
                   </div>
+                ) : null}
+              </div>
+
+              <div className="border-b border-black/10 px-4 py-3 flex items-center justify-between gap-3 bg-[#f7f8fa]">
+                <div className="text-sm font-medium text-[#1c1e21]">Questions in this remix</div>
+                {canCurateQuestionRemixes ? (
+                  <button
+                    type="button"
+                    className="inline-flex h-8 items-center rounded-full border border-[#0f766e]/20 bg-white px-3 text-xs font-semibold text-[#0f766e] hover:bg-[#f0fdf9]"
+                    onClick={() => startAddingQuestionsToQuestionRemix(selectedQuestionRemix)}
+                  >
+                    Add questions
+                  </button>
                 ) : null}
               </div>
 

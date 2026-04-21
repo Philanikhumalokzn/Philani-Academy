@@ -15958,20 +15958,36 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const renderQuestionBankContent = () => (
     <div>
 
-      {questionRemixAppendTargetId ? (
-        <section className="border-b border-black/10 bg-[#eef5ff] px-4 py-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-[#1877f2]">
-            Adding to {questionRemixes.find((item) => item.id === questionRemixAppendTargetId)?.name || 'selected remix'}
-          </span>
-          <button
-            type="button"
-            className="inline-flex h-7 items-center rounded-full border border-[#bfd7ff] bg-white px-3 text-xs font-medium text-[#2457a6] hover:bg-[#f7faff]"
-            onClick={() => setQuestionRemixAppendTargetId(null)}
-          >
-            Clear target
-          </button>
-        </section>
-      ) : null}
+      {(() => {
+        const targetRemix = questionRemixAppendTargetId
+          ? questionRemixes.find((item) => item.id === questionRemixAppendTargetId) || null
+          : null
+
+        return questionRemixAppendTargetId ? (
+          <section className="border-b border-black/10 bg-[#eef5ff] px-4 py-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-[#1877f2]">
+              Adding to {targetRemix?.name || 'selected remix'}
+            </span>
+            {canCurateQuestionRemixes && qbSelectedIds.size > 0 ? (
+              <button
+                type="button"
+                className="inline-flex h-7 items-center rounded-full bg-[#1877f2] px-3 text-xs font-semibold text-white hover:bg-[#166fe5] disabled:opacity-50"
+                onClick={openQuestionRemixCreate}
+                disabled={qbBulkBusy}
+              >
+                Add {qbSelectedIds.size} selected question{qbSelectedIds.size === 1 ? '' : 's'}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="inline-flex h-7 items-center rounded-full border border-[#bfd7ff] bg-white px-3 text-xs font-medium text-[#2457a6] hover:bg-[#f7faff]"
+              onClick={() => setQuestionRemixAppendTargetId(null)}
+            >
+              Clear target
+            </button>
+          </section>
+        ) : null
+      })()}
 
       {qbError ? (
         <section className="border-b border-black/10 bg-white px-4 py-3 text-sm text-red-600">{qbError}</section>
@@ -16013,7 +16029,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 onClick={openQuestionRemixCreate}
                 disabled={qbBulkBusy}
               >
-                Add to remix
+                {questionRemixAppendTargetId
+                  ? `Add to ${questionRemixes.find((item) => item.id === questionRemixAppendTargetId)?.name || 'target remix'}`
+                  : 'Add to remix'}
               </button>
               {isAdmin ? (
                 <>

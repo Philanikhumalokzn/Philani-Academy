@@ -2168,6 +2168,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [questionRemixCreateOpen, setQuestionRemixCreateOpen] = useState(false)
   const [questionRemixEditOpen, setQuestionRemixEditOpen] = useState(false)
   const [questionRemixEditTargetId, setQuestionRemixEditTargetId] = useState<string | null>(null)
+  const [questionRemixCrudOpen, setQuestionRemixCrudOpen] = useState(false)
+  const [questionRemixCrudTargetId, setQuestionRemixCrudTargetId] = useState<string | null>(null)
+  const [questionRemixCrudBusy, setQuestionRemixCrudBusy] = useState(false)
+  const [questionRemixCrudError, setQuestionRemixCrudError] = useState<string | null>(null)
+  const [questionRemixDeleteConfirmOpen, setQuestionRemixDeleteConfirmOpen] = useState(false)
   const [questionRemixDraft, setQuestionRemixDraft] = useState<QuestionRemixDraft>(createEmptyQuestionRemixDraft())
   const [questionRemixCreateNewEnabled, setQuestionRemixCreateNewEnabled] = useState(true)
   const [questionRemixCreateExistingIds, setQuestionRemixCreateExistingIds] = useState<string[]>([])
@@ -2183,6 +2188,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [questionRemixInviteError, setQuestionRemixInviteError] = useState<string | null>(null)
   const questionRemixLongPressTimerRef = useRef<number | null>(null)
   const questionRemixLongPressTriggeredRef = useRef(false)
+  const questionRemixCrudTarget = questionRemixCrudTargetId
+    ? ((selectedQuestionRemix?.id === questionRemixCrudTargetId ? selectedQuestionRemix : null)
+      || questionRemixes.find((item) => item.id === questionRemixCrudTargetId)
+      || null)
+    : null
   // Preamble editor state (admin)
   const [qbPreambleEditOpen, setQbPreambleEditOpen] = useState(false)
   const [qbPreambleEditTarget, setQbPreambleEditTarget] = useState<{
@@ -14264,6 +14274,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setQuestionRemixInviteError(null)
   }, [])
 
+  const closeQuestionRemixCrud = useCallback(() => {
+    setQuestionRemixCrudOpen(false)
+    setQuestionRemixCrudTargetId(null)
+    setQuestionRemixCrudError(null)
+    setQuestionRemixDeleteConfirmOpen(false)
+  }, [])
+
+  const openQuestionRemixCrud = useCallback((remixId: string) => {
+    setSelectedQuestionRemixId(remixId)
+    setQuestionRemixCrudTargetId(remixId)
+    setQuestionRemixCrudOpen(true)
+    setQuestionRemixCrudBusy(false)
+    setQuestionRemixCrudError(null)
+    setQuestionRemixDeleteConfirmOpen(false)
+  }, [])
+
   const openQuestionRemixCreate = useCallback(() => {
     if (qbSelectedIds.size === 0) return
     const compatibleIds = compatibleQuestionRemixes.map((item) => item.id)
@@ -14424,6 +14450,39 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     })
   }, [])
 
+  const deleteQuestionRemix = useCallback(async () => {
+    if (!questionRemixCrudTargetId) return
+
+    setQuestionRemixCrudBusy(true)
+    setQuestionRemixCrudError(null)
+    try {
+      const res = await fetch(`/api/question-remixes/${encodeURIComponent(questionRemixCrudTargetId)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as any)?.message || `Failed to delete remix (${res.status})`)
+
+      await loadQuestionRemixes()
+      if (selectedQuestionRemixId === questionRemixCrudTargetId) {
+        setSelectedQuestionRemixId(null)
+        setSelectedQuestionRemix(null)
+        setSelectedQuestionRemixError(null)
+      }
+      if (questionRemixAppendTargetId === questionRemixCrudTargetId) {
+        setQuestionRemixAppendTargetId(null)
+      }
+      if (questionRemixEditTargetId === questionRemixCrudTargetId) {
+        closeQuestionRemixEdit()
+      }
+      closeQuestionRemixCrud()
+    } catch (err: any) {
+      setQuestionRemixCrudError(err?.message || 'Failed to delete remix')
+    } finally {
+      setQuestionRemixCrudBusy(false)
+    }
+  }, [closeQuestionRemixCrud, closeQuestionRemixEdit, loadQuestionRemixes, questionRemixAppendTargetId, questionRemixCrudTargetId, questionRemixEditTargetId, selectedQuestionRemixId])
+
   const submitQuestionRemixEdit = useCallback(async () => {
     if (!questionRemixEditTargetId) {
       setQuestionRemixEditError('Select a remix first.')
@@ -14491,9 +14550,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     questionRemixLongPressTimerRef.current = window.setTimeout(() => {
       questionRemixLongPressTimerRef.current = null
       questionRemixLongPressTriggeredRef.current = true
-      openQuestionRemixEdit(remixId)
+      openQuestionRemixCrud(remixId)
     }, 420)
-  }, [clearQuestionRemixLongPress, openQuestionRemixEdit])
+  }, [clearQuestionRemixLongPress, openQuestionRemixCrud])
 
   useEffect(() => {
     return () => {
@@ -15807,9 +15866,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       ? questionRemixes.find((item) => item.id === selectedQuestionRemixId) || null
       : null
     const canEditSelectedQuestionRemix = Boolean(
-      currentUserId
-      && selectedQuestionRemix?.createdBy?.id
-      && String(selectedQuestionRemix.createdBy.id) === String(currentUserId)
+      isAdmin
+      || (currentUserId
+        && selectedQuestionRemix?.createdBy?.id
+        && String(selectedQuestionRemix.createdBy.id) === String(currentUserId))
     )
 
     return (
@@ -15825,9 +15885,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               {questionRemixes.map((item) => {
                 const isSelected = item.id === selectedQuestionRemixId
                 const canEditItem = Boolean(
-                  currentUserId
-                  && item.createdBy?.id
-                  && String(item.createdBy.id) === String(currentUserId)
+                  isAdmin
+                  || (currentUserId
+                    && item.createdBy?.id
+                    && String(item.createdBy.id) === String(currentUserId))
                 )
                 return (
                   <li key={item.id}>
@@ -15842,7 +15903,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       }}
                       onContextMenu={canEditItem ? (event) => {
                         event.preventDefault()
-                        openQuestionRemixEdit(item.id)
+                        openQuestionRemixCrud(item.id)
                       } : undefined}
                       onTouchStart={canEditItem ? () => armQuestionRemixLongPress(item.id) : undefined}
                       onTouchEnd={canEditItem ? clearQuestionRemixLongPress : undefined}
@@ -15886,7 +15947,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 className="border-b border-black/10 px-4 py-4"
                 onContextMenu={canEditSelectedQuestionRemix ? (event) => {
                   event.preventDefault()
-                  openQuestionRemixEdit(selectedQuestionRemix.id)
+                  openQuestionRemixCrud(selectedQuestionRemix.id)
                 } : undefined}
                 onTouchStart={canEditSelectedQuestionRemix ? () => armQuestionRemixLongPress(selectedQuestionRemix.id) : undefined}
                 onTouchEnd={canEditSelectedQuestionRemix ? clearQuestionRemixLongPress : undefined}
@@ -19347,6 +19408,97 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
         </div>
       ) : null}
+
+      <BottomSheet
+        open={questionRemixCrudOpen}
+        title="Remix actions"
+        subtitle={questionRemixCrudTarget?.name || undefined}
+        onClose={closeQuestionRemixCrud}
+        backdrop
+        closeOnBackdrop={!questionRemixCrudBusy}
+        closeOnEscape={!questionRemixCrudBusy}
+        className="bottom-0"
+        contentClassName="p-0"
+        zIndexClassName="z-[88]"
+      >
+        <div className="flex flex-col">
+          <button
+            type="button"
+            className="flex items-center justify-between border-b border-black/10 px-4 py-3 text-left text-sm font-medium text-[#1c1e21] hover:bg-[#f7f8fa] disabled:opacity-50"
+            onClick={() => {
+              if (!questionRemixCrudTargetId) return
+              closeQuestionRemixCrud()
+              openQuestionRemixEdit(questionRemixCrudTargetId)
+            }}
+            disabled={questionRemixCrudBusy || !questionRemixCrudTargetId}
+          >
+            <span>Edit metadata</span>
+            <span className="text-xs text-[#65676b]">Rename, audience, invites</span>
+          </button>
+
+          <button
+            type="button"
+            className="flex items-center justify-between border-b border-black/10 px-4 py-3 text-left text-sm font-medium text-[#1c1e21] hover:bg-[#f7f8fa] disabled:opacity-50"
+            onClick={() => {
+              if (!questionRemixCrudTarget) return
+              closeQuestionRemixCrud()
+              startAddingQuestionsToQuestionRemix(questionRemixCrudTarget)
+            }}
+            disabled={questionRemixCrudBusy || !questionRemixCrudTarget}
+          >
+            <span>Add questions</span>
+            <span className="text-xs text-[#65676b]">Search and append to this remix</span>
+          </button>
+
+          {!questionRemixDeleteConfirmOpen ? (
+            <button
+              type="button"
+              className="flex items-center justify-between border-b border-black/10 px-4 py-3 text-left text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              onClick={() => setQuestionRemixDeleteConfirmOpen(true)}
+              disabled={questionRemixCrudBusy || !questionRemixCrudTargetId}
+            >
+              <span>Delete remix</span>
+              <span className="text-xs text-red-400">Permanent</span>
+            </button>
+          ) : (
+            <div className="border-b border-black/10 bg-red-50 px-4 py-3">
+              <div className="text-sm font-semibold text-red-700">Delete this remix permanently?</div>
+              <div className="mt-1 text-xs text-red-600">This removes the remix and its question list for everyone it was shared with.</div>
+              <div className="mt-3 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  className="inline-flex h-8 items-center rounded-full border border-red-200 bg-white px-3 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                  onClick={() => setQuestionRemixDeleteConfirmOpen(false)}
+                  disabled={questionRemixCrudBusy}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex h-8 items-center rounded-full bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                  onClick={() => void deleteQuestionRemix()}
+                  disabled={questionRemixCrudBusy}
+                >
+                  {questionRemixCrudBusy ? 'Deleting...' : 'Confirm delete'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {questionRemixCrudError ? <div className="border-b border-black/10 px-4 py-3 text-sm text-red-600">{questionRemixCrudError}</div> : null}
+
+          <div className="px-4 py-3">
+            <button
+              type="button"
+              className="inline-flex h-9 w-full items-center justify-center rounded-full border border-[#d5def0] bg-white px-4 text-sm font-medium text-[#4b5563] hover:bg-[#f0f2f5] disabled:opacity-50"
+              onClick={closeQuestionRemixCrud}
+              disabled={questionRemixCrudBusy}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </BottomSheet>
 
       <BottomSheet
         open={reextractPreviewOpen}

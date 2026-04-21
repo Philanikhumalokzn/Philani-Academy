@@ -459,6 +459,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })
   }
 
-  res.setHeader('Allow', ['GET', 'PATCH'])
+  if (req.method === 'DELETE') {
+    const remix = await prisma.questionRemix.findUnique({
+      where: { id: remixId },
+      select: {
+        id: true,
+        createdById: true,
+      },
+    })
+
+    if (!remix) return res.status(404).json({ message: 'Remix not found' })
+
+    const canDelete = role === 'admin' || remix.createdById === userId
+    if (!canDelete) return res.status(403).json({ message: 'Only the creator can delete this remix' })
+
+    await prisma.questionRemix.delete({
+      where: { id: remixId },
+    })
+
+    return res.status(200).json({ id: remixId, deleted: true })
+  }
+
+  res.setHeader('Allow', ['GET', 'PATCH', 'DELETE'])
   return res.status(405).end()
 }

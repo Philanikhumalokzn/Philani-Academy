@@ -6,6 +6,12 @@ export type RemixNameSignature = {
   level: string
 }
 
+export type ResolvedRemixName = {
+  displayName: string
+  suggestedName: string
+  isManualName: boolean
+}
+
 const MONTH_ABBREVIATIONS: Record<string, string> = {
   january: 'Jan',
   jan: 'Jan',
@@ -52,7 +58,7 @@ export function abbreviateMonthLabel(month: string): string {
   return MONTH_ABBREVIATIONS[lookupKey] || normalizedMonth
 }
 
-export function buildCompactRemixName(signature: RemixNameSignature): string {
+export function buildSuggestedRemixName(signature: RemixNameSignature): string {
   const year = normalizeText(signature.year)
   const month = abbreviateMonthLabel(normalizeText(signature.month))
   const paper = normalizeText(signature.paper)
@@ -67,7 +73,12 @@ export function buildCompactRemixName(signature: RemixNameSignature): string {
     level ? `Lvl ${level}` : '',
   ].filter(Boolean)
 
-  return parts.length > 0 ? parts.join(' ') : 'Mixed Remix'
+  return parts.join(' ')
+}
+
+export function buildCompactRemixName(signature: RemixNameSignature): string {
+  const suggestedName = buildSuggestedRemixName(signature)
+  return suggestedName || 'Mixed Remix'
 }
 
 function buildPreviousCompactRemixName(signature: RemixNameSignature): string {
@@ -114,22 +125,48 @@ export function getDisplayRemixName(
   storedName: string | null | undefined,
   signature: RemixNameSignature,
   creatorLabel?: string | null,
+  nameManuallySet?: boolean | null,
 ): string {
+  return resolveRemixName(storedName, signature, creatorLabel, nameManuallySet).displayName
+}
+
+export function resolveRemixName(
+  storedName: string | null | undefined,
+  signature: RemixNameSignature,
+  creatorLabel?: string | null,
+  nameManuallySet?: boolean | null,
+): ResolvedRemixName {
   const normalizedStoredName = normalizeText(storedName)
-  const compactName = buildCompactRemixName(signature)
-  if (!normalizedStoredName) return compactName
+  const suggestedName = buildSuggestedRemixName(signature)
 
   const legacyWithCreator = buildLegacyAutoRemixName(signature, creatorLabel)
   const legacyWithoutCreator = buildLegacyAutoRemixName(signature)
   const previousCompactName = buildPreviousCompactRemixName(signature)
+  const compactName = buildCompactRemixName(signature)
 
-  if (
-    normalizedStoredName === legacyWithCreator
+  const matchesAutoPattern = normalizedStoredName !== '' && (
+    normalizedStoredName === suggestedName
+    || normalizedStoredName === compactName
+    || normalizedStoredName === legacyWithCreator
     || normalizedStoredName === legacyWithoutCreator
     || normalizedStoredName === previousCompactName
-  ) {
-    return compactName
+  )
+
+  const isManualName = typeof nameManuallySet === 'boolean'
+    ? nameManuallySet
+    : Boolean(normalizedStoredName) && !matchesAutoPattern
+
+  if (isManualName) {
+    return {
+      displayName: normalizedStoredName || suggestedName || 'Untitled remix',
+      suggestedName,
+      isManualName: true,
+    }
   }
 
-  return normalizedStoredName
+  return {
+    displayName: suggestedName || normalizedStoredName || 'Untitled remix',
+    suggestedName,
+    isManualName: false,
+  }
 }

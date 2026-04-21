@@ -264,6 +264,7 @@ model QuestionRemix {
   id          String   @id @default(cuid())
   createdById String
   name        String
+  nameManuallySet Boolean?
   description String?  @db.Text
   grade       Grade?
   audience    String   @default("private")

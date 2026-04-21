@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../lib/prisma'
 import { getUserIdFromReq, getUserRole } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
-import { buildCompactRemixName, getDisplayRemixName, type RemixNameSignature } from '../../../lib/remixNames'
+import { buildSuggestedRemixName, resolveRemixName, type RemixNameSignature } from '../../../lib/remixNames'
 
 const VALID_AUDIENCES = new Set(['private', 'grade', 'public'])
 
@@ -101,6 +101,10 @@ async function ensureUniqueRemixName(userId: string, baseName: string, excludeId
   }
 
   return maxSuffix === 0 ? normalizedBaseName : `${normalizedBaseName} ${maxSuffix + 1}`
+}
+
+function isRequestedNameManual(requestedName: string, suggestedName: string): boolean {
+  return Boolean(requestedName) && requestedName !== suggestedName
 }
 
 async function getViewerContext(userId: string, role: string) {
@@ -203,9 +207,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       items: remixes.map((item) => {
         const allQuestions = item.questions.map((entry) => entry.question)
         const compatibilitySignature = buildCompatibilitySignature(allQuestions)
+        const resolvedName = resolveRemixName(
+          item.name,
+          compatibilitySignature,
+          item.createdBy?.name || item.createdBy?.email || '',
+          item.nameManuallySet,
+        )
         return {
           id: item.id,
-          name: getDisplayRemixName(item.name, compatibilitySignature, item.createdBy?.name || item.createdBy?.email || ''),
+          name: resolvedName.displayName,
+          suggestedName: resolvedName.suggestedName,
+          nameManuallySet: resolvedName.isManualName,
           description: item.description,
           grade: item.grade,
           audience: item.audience,
@@ -269,10 +281,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (questions.length !== questionIds.length) return res.status(400).json({ message: 'Some selected questions no longer exist' })
 
     const compatibilitySignature = buildCompatibilitySignature(questions)
-    const name = await ensureUniqueRemixName(
-      userId,
-      requestedName || buildCompactRemixName(compatibilitySignature),
-    )
+    const suggestedName = buildSuggestedRemixName(compatibilitySignature)
+    const manualNameRequested = isRequestedNameManual(requestedName, suggestedName)
+    const baseName = manualNameRequested ? requestedName : suggestedName
+    if (!baseName) {
+      return res.status(400).json({ message: 'Enter a remix name when the selected questions have no shared intersection.' })
+    }
+    const name = await ensureUniqueRemixName(userId, baseName)
 
     const uniqueGrades = Array.from(new Set(questions.map((item) => String(item.grade))))
     const derivedGrade = uniqueGrades.length === 1 ? normalizeGradeInput(uniqueGrades[0]) : null
@@ -305,6 +320,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       data: {
         createdById: userId,
         name,
+        nameManuallySet: manualNameRequested,
         ...(description ? { description } : {}),
         ...(inviteNote ? { inviteNote } : {}),
         ...(grade ? { grade } : {}),
@@ -370,6 +386,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(201).json({
       id: created.id,
       name: created.name,
+      suggestedName,
+      nameManuallySet: manualNameRequested,
       description: created.description,
       grade: created.grade,
       audience: created.audience,

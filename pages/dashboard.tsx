@@ -40,7 +40,7 @@ import { isSpecialTestStudentEmail } from '../lib/testUsers'
 import { createLessonRoleProfile, getPlatformRoleDisplayLabel, hasLessonCapabilityForRole, isRecognizedLessonParticipantRole, normalizePlatformRole } from '../lib/lessonAccessControl'
 import { renderKatexDisplayHtml as renderKatexDisplayHtmlRaw, renderKatexInlineHtml as renderKatexInlineHtmlRaw, splitLatexIntoSteps as splitLatexIntoStepsRaw } from '../lib/latexRender'
 import { normalizeExamQuestionContent } from '../lib/questionMath'
-import { buildCompactRemixName, type RemixNameSignature } from '../lib/remixNames'
+import { buildSuggestedRemixName, type RemixNameSignature } from '../lib/remixNames'
 import { renderTextWithKatex as renderTextWithKatexRaw } from '../lib/renderTextWithKatex'
 import { renderQuestionTextWithInlineLatex as renderQuestionTextWithInlineLatexShared } from '../lib/renderQuestionText'
 import { toDisplayFileName } from '../lib/fileName'
@@ -166,6 +166,8 @@ type QuestionRemixCompatibilitySignature = RemixNameSignature
 type QuestionRemixSummary = {
   id: string
   name: string
+  suggestedName?: string | null
+  nameManuallySet?: boolean
   description?: string | null
   grade?: string | null
   audience: QuestionRemixAudience
@@ -211,6 +213,7 @@ type QuestionRemixDetail = QuestionRemixSummary & {
 
 type QuestionRemixDraft = {
   name: string
+  suggestedName: string
   description: string
   audience: QuestionRemixAudience
   inviteNote: string
@@ -249,6 +252,7 @@ function createEmptyQbEditDraft(): QbEditDraft {
 function createEmptyQuestionRemixDraft(): QuestionRemixDraft {
   return {
     name: '',
+    suggestedName: '',
     description: '',
     audience: 'private',
     inviteNote: '',
@@ -272,7 +276,7 @@ function getSharedQuestionRemixNameText(items: any[], pick: (item: any) => unkno
 }
 
 function buildQuestionRemixIntersectionName(items: any[]): string {
-  return buildCompactRemixName(buildQuestionRemixCompatibilitySignature(items))
+  return buildSuggestedRemixName(buildQuestionRemixCompatibilitySignature(items))
 }
 
 function buildQuestionRemixCompatibilitySignature(items: any[]): QuestionRemixCompatibilitySignature {
@@ -14274,6 +14278,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setQuestionRemixDraft({
       ...createEmptyQuestionRemixDraft(),
       name: buildSelectedQuestionRemixNamePreview(),
+      suggestedName: buildSelectedQuestionRemixNamePreview(),
     })
   }, [buildSelectedQuestionRemixNamePreview, compatibleQuestionRemixes, qbSelectedIds.size, questionRemixAppendTargetId])
 
@@ -14296,6 +14301,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setQuestionRemixInviteError(null)
     setQuestionRemixDraft({
       name: source.name || '',
+      suggestedName: source.suggestedName || '',
       description: source.description || '',
       audience: source.audience || 'private',
       inviteNote: source.inviteNote || '',
@@ -14391,6 +14397,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
 
     const payload = {
+      name: questionRemixDraft.name.trim(),
       description: questionRemixDraft.description.trim(),
       audience: questionRemixDraft.audience,
       inviteNote: questionRemixDraft.inviteNote.trim(),
@@ -19062,9 +19069,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   type="text"
                   value={questionRemixDraft.name}
                   onChange={(event) => setQuestionRemixDraft((prev) => ({ ...prev, name: event.target.value }))}
+                  placeholder={questionRemixDraft.suggestedName || 'Enter a remix name'}
                   className="w-full rounded-2xl border border-[#d5def0] bg-[#f7f8fa] px-4 py-3 text-sm text-[#1c1e21]"
                   disabled={questionRemixCreateBusy || !questionRemixCreateNewEnabled}
                 />
+                <div className="text-xs text-[#65676b]">
+                  {questionRemixDraft.suggestedName
+                    ? `Suggested from the shared intersection: ${questionRemixDraft.suggestedName}`
+                    : 'No shared intersection was found. Enter a name manually.'}
+                </div>
               </div>
               <div className="rounded-2xl border border-[#eef2f7] bg-[#f7f8fa] px-4 py-3 text-sm text-[#4b5563]">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#65676b]">Creator</div>
@@ -19107,6 +19120,35 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 [touch-action:pan-y]" style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
               <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#65676b]">Name</label>
+                  <input
+                    type="text"
+                    value={questionRemixDraft.name}
+                    onChange={(event) => setQuestionRemixDraft((prev) => ({ ...prev, name: event.target.value }))}
+                    placeholder={questionRemixDraft.suggestedName || 'Enter a remix name'}
+                    className="w-full rounded-xl border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]"
+                    disabled={questionRemixEditBusy}
+                  />
+                  <div className="flex items-center justify-between gap-3 text-xs text-[#65676b]">
+                    <span>
+                      {questionRemixDraft.suggestedName
+                        ? `Suggested from the current intersection: ${questionRemixDraft.suggestedName}`
+                        : 'No shared intersection remains. Use a manual name.'}
+                    </span>
+                    {questionRemixDraft.suggestedName ? (
+                      <button
+                        type="button"
+                        className="shrink-0 font-semibold text-[#1877f2] disabled:opacity-50"
+                        onClick={() => setQuestionRemixDraft((prev) => ({ ...prev, name: prev.suggestedName }))}
+                        disabled={questionRemixEditBusy}
+                      >
+                        Use suggestion
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#65676b]">Description</label>
                   <textarea

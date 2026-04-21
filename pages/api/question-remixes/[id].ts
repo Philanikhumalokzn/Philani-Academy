@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../lib/prisma'
 import { getUserIdFromReq, getUserRole } from '../../../lib/auth'
-import { getDisplayRemixName, type RemixNameSignature } from '../../../lib/remixNames'
+import { buildSuggestedRemixName, resolveRemixName, type RemixNameSignature } from '../../../lib/remixNames'
 
 const VALID_AUDIENCES = new Set(['private', 'grade', 'public'])
 
@@ -71,6 +71,39 @@ function buildCompatibilitySignature(
     topic,
     level,
   }
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+async function ensureUniqueRemixName(userId: string, baseName: string, excludeId?: string) {
+  const normalizedBaseName = baseName.trim() || 'Untitled remix'
+  const existing = await prisma.questionRemix.findMany({
+    where: {
+      createdById: userId,
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+      name: { startsWith: normalizedBaseName },
+    },
+    select: { name: true },
+  })
+
+  if (existing.length === 0) return normalizedBaseName
+
+  const matcher = new RegExp(`^${escapeRegExp(normalizedBaseName)}(?: (\\d+))?$`)
+  let maxSuffix = 0
+  for (const item of existing) {
+    const match = item.name.match(matcher)
+    if (!match) continue
+    const suffix = match[1] ? Number(match[1]) : 1
+    if (Number.isFinite(suffix) && suffix > maxSuffix) maxSuffix = suffix
+  }
+
+  return maxSuffix === 0 ? normalizedBaseName : `${normalizedBaseName} ${maxSuffix + 1}`
+}
+
+function isRequestedNameManual(requestedName: string, suggestedName: string): boolean {
+  return Boolean(requestedName) && requestedName !== suggestedName
 }
 
 async function getViewerContext(userId: string, role: string) {
@@ -178,10 +211,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!remix) return res.status(404).json({ message: 'Remix not found' })
 
     const compatibilitySignature = buildCompatibilitySignature(remix.questions.map((entry) => entry.question))
+    const resolvedName = resolveRemixName(
+      remix.name,
+      compatibilitySignature,
+      remix.createdBy?.name || remix.createdBy?.email || '',
+      remix.nameManuallySet,
+    )
 
     return res.status(200).json({
       id: remix.id,
-      name: getDisplayRemixName(remix.name, compatibilitySignature, remix.createdBy?.name || remix.createdBy?.email || ''),
+      name: resolvedName.displayName,
+      suggestedName: resolvedName.suggestedName,
+      nameManuallySet: resolvedName.isManualName,
       description: remix.description,
       grade: remix.grade,
       audience: remix.audience,
@@ -217,6 +258,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const canEdit = role === 'admin' || remix.createdById === userId
     if (!canEdit) return res.status(403).json({ message: 'Only the creator can edit this remix' })
 
+    const hasRequestedName = Object.prototype.hasOwnProperty.call(req.body || {}, 'name')
+    const requestedName = asTrimmedString(req.body?.name, 160)
     const description = asTrimmedString(req.body?.description, 4000)
     const inviteNote = asTrimmedString(req.body?.inviteNote, 2000)
     const audienceRaw = asTrimmedString(req.body?.audience, 20).toLowerCase()
@@ -244,13 +287,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         : Promise.resolve([]),
       prisma.questionRemixQuestion.findMany({
         where: { remixId },
-        select: { questionId: true, orderIndex: true },
+        select: {
+          questionId: true,
+          orderIndex: true,
+          question: {
+            select: {
+              year: true,
+              month: true,
+              paper: true,
+              topic: true,
+              cognitiveLevel: true,
+            },
+          },
+        },
         orderBy: { orderIndex: 'asc' },
       }),
       questionIds.length > 0
         ? prisma.examQuestion.findMany({
             where: { id: { in: questionIds } },
-            select: { id: true },
+            select: { id: true, year: true, month: true, paper: true, topic: true, cognitiveLevel: true },
           })
         : Promise.resolve([]),
     ])
@@ -268,10 +323,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const appendedQuestionCreates = validAppendedQuestionIds
       .filter((questionId) => !existingQuestionIds.has(questionId))
       .map((questionId, index) => ({ questionId, orderIndex: nextOrderIndex + index }))
+    const currentCompatibilitySignature = buildCompatibilitySignature(existingQuestions.map((item) => item.question))
+    const currentResolvedName = resolveRemixName(
+      remix.name,
+      currentCompatibilitySignature,
+      remix.createdBy?.name || remix.createdBy?.email || '',
+      remix.nameManuallySet,
+    )
+    const nextQuestionsForSignature = [
+      ...existingQuestions.map((item) => item.question),
+      ...appendedQuestions.filter((item) => !existingQuestionIds.has(item.id)),
+    ]
+    const nextCompatibilitySignature = buildCompatibilitySignature(nextQuestionsForSignature)
+    const nextSuggestedName = buildSuggestedRemixName(nextCompatibilitySignature)
+    const manualNameRequested = isRequestedNameManual(requestedName, nextSuggestedName)
+
+    if ((hasRequestedName || !currentResolvedName.isManualName) && !manualNameRequested && !nextSuggestedName) {
+      return res.status(400).json({ message: 'Enter a remix name before saving a remix with no shared intersection.' })
+    }
+
+    const nextBaseName = hasRequestedName
+      ? (manualNameRequested ? requestedName : nextSuggestedName)
+      : (currentResolvedName.isManualName ? remix.name : nextSuggestedName)
+    const nextNameManuallySet = hasRequestedName ? manualNameRequested : currentResolvedName.isManualName
+    const nextName = nextBaseName
+      ? await ensureUniqueRemixName(userId, nextBaseName, remixId)
+      : remix.name
 
     const updated = await prisma.questionRemix.update({
       where: { id: remixId },
       data: {
+        name: nextName,
+        nameManuallySet: nextNameManuallySet,
         description: description || null,
         inviteNote: inviteNote || null,
         audience,
@@ -358,6 +441,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({
       id: updated.id,
       name: updated.name,
+      suggestedName: nextSuggestedName,
+      nameManuallySet: nextNameManuallySet,
       description: updated.description,
       grade: updated.grade,
       audience: updated.audience,

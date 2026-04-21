@@ -15861,10 +15861,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }
 
-  const renderQuestionRemixesContent = () => {
-    const selectedSummary = selectedQuestionRemixId
-      ? questionRemixes.find((item) => item.id === selectedQuestionRemixId) || null
-      : null
+  const renderSelectedQuestionRemixDetailContent = () => {
     const canEditSelectedQuestionRemix = Boolean(
       isAdmin
       || (currentUserId
@@ -15872,9 +15869,128 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         && String(selectedQuestionRemix.createdBy.id) === String(currentUserId))
     )
 
+    if (selectedQuestionRemixError) {
+      return <div className="px-4 py-4 text-sm text-red-600">{selectedQuestionRemixError}</div>
+    }
+
+    if (selectedQuestionRemixLoading) {
+      return <div className="px-4 py-4 text-sm text-[#65676b]">Loading remix...</div>
+    }
+
+    if (!selectedQuestionRemix) {
+      return <div className="px-4 py-4 text-sm text-[#65676b]">Select a remix to view its questions.</div>
+    }
+
     return (
-      <div className="grid gap-0 md:grid-cols-[320px_minmax(0,1fr)]">
-        <section className="border-b border-black/10 bg-white md:border-b-0 md:border-r md:border-black/10">
+      <>
+        <div
+          className="border-b border-black/10 px-4 py-4"
+          onContextMenu={canEditSelectedQuestionRemix ? (event) => {
+            event.preventDefault()
+            openQuestionRemixCrud(selectedQuestionRemix.id)
+          } : undefined}
+          onTouchStart={canEditSelectedQuestionRemix ? () => armQuestionRemixLongPress(selectedQuestionRemix.id) : undefined}
+          onTouchEnd={canEditSelectedQuestionRemix ? clearQuestionRemixLongPress : undefined}
+          onTouchCancel={canEditSelectedQuestionRemix ? clearQuestionRemixLongPress : undefined}
+          onTouchMove={canEditSelectedQuestionRemix ? clearQuestionRemixLongPress : undefined}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div
+                className="overflow-x-auto whitespace-nowrap text-lg font-semibold text-[#1c1e21] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                style={{ WebkitOverflowScrolling: 'touch' }}
+              >
+                {selectedQuestionRemix.name}
+              </div>
+              {selectedQuestionRemix.description ? <div className="mt-1 text-sm text-[#4b5563] whitespace-pre-wrap">{selectedQuestionRemix.description}</div> : null}
+              <div className="mt-2 flex flex-wrap gap-2 text-xs text-[#65676b]">
+                <span className="rounded-full bg-[#f0f2f5] px-2 py-1">{selectedQuestionRemix.questions.length} question{selectedQuestionRemix.questions.length === 1 ? '' : 's'}</span>
+                <span className="rounded-full bg-[#e8f4fd] px-2 py-1 text-[#1877f2]">Audience: {selectedQuestionRemix.audience}</span>
+                {selectedQuestionRemix.grade ? <span className="rounded-full bg-[#f8fafc] px-2 py-1">{gradeToLabel(selectedQuestionRemix.grade as GradeValue)}</span> : null}
+              </div>
+              {canCurateQuestionRemixes ? (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    className="inline-flex h-9 items-center rounded-full bg-[#0f766e] px-4 text-sm font-semibold text-white hover:bg-[#115e59]"
+                    onClick={() => startAddingQuestionsToQuestionRemix(selectedQuestionRemix)}
+                  >
+                    Add questions
+                  </button>
+                </div>
+              ) : null}
+              {selectedQuestionRemix.inviteNote ? <div className="mt-3 rounded-xl border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-sm text-[#445066]">{selectedQuestionRemix.inviteNote}</div> : null}
+            </div>
+            <div className="shrink-0 text-right text-xs text-[#65676b]">
+              <div>{selectedQuestionRemix.createdBy?.name || selectedQuestionRemix.createdBy?.email || 'Unknown owner'}</div>
+              <div className="mt-1">Updated {new Date(selectedQuestionRemix.updatedAt).toLocaleString()}</div>
+            </div>
+          </div>
+
+          {(selectedQuestionRemix.invitedUsers.length > 0 || selectedQuestionRemix.invitedGroups.length > 0) ? (
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#65676b]">Learners</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {selectedQuestionRemix.invitedUsers.length > 0 ? selectedQuestionRemix.invitedUsers.map((user) => (
+                    <span key={user.id} className="rounded-full bg-[#f0f2f5] px-2.5 py-1 text-xs text-[#4b5563]">{user.name || user.email || user.id}</span>
+                  )) : <span className="text-xs text-[#9aa0a6]">None</span>}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#65676b]">Groups</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {selectedQuestionRemix.invitedGroups.length > 0 ? selectedQuestionRemix.invitedGroups.map((group) => (
+                    <span key={group.id} className="rounded-full bg-[#f0f2f5] px-2.5 py-1 text-xs text-[#4b5563]">{group.name}</span>
+                  )) : <span className="text-xs text-[#9aa0a6]">None</span>}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="border-b border-black/10 px-4 py-3 flex items-center justify-between gap-3 bg-[#f7f8fa]">
+          <div className="text-sm font-medium text-[#1c1e21]">Questions in this remix</div>
+          {canCurateQuestionRemixes ? (
+            <button
+              type="button"
+              className="inline-flex h-8 items-center rounded-full border border-[#0f766e]/20 bg-white px-3 text-xs font-semibold text-[#0f766e] hover:bg-[#f0fdf9]"
+              onClick={() => startAddingQuestionsToQuestionRemix(selectedQuestionRemix)}
+            >
+              Add questions
+            </button>
+          ) : null}
+        </div>
+
+        <ul>
+          {selectedQuestionRemix.questions.map((q: any) => {
+            const normalizedQuestion = normalizeExamQuestionContent(
+              unwrapQuestionField(q?.questionText, ['questionText', 'text', 'prompt']),
+              unwrapQuestionField(q?.latex, ['latex', 'equation', 'math']),
+            )
+            const cleanText = normalizedQuestion.questionText
+            return (
+              <li key={q.id} className="border-b border-black/10 px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <span className="text-xs font-bold text-[#65676b]">Q{q.questionNumber}</span>
+                  <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.year}</span>
+                  <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.month}</span>
+                  <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">Paper {q.paper}</span>
+                  {q.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{q.topic}</span> : null}
+                </div>
+                <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">{renderQuestionTextWithInlineLatex(cleanText)}</div>
+              </li>
+            )
+          })}
+        </ul>
+      </>
+    )
+  }
+
+  const renderQuestionRemixesContent = () => {
+    return (
+      <div className="bg-white">
+        <section className="border-b border-black/10 bg-white">
           {questionRemixesError ? <div className="border-b border-black/10 px-4 py-3 text-sm text-red-600">{questionRemixesError}</div> : null}
           {questionRemixesLoading ? <div className="px-4 py-4 text-sm text-[#65676b]">Loading remixes...</div> : null}
           {!questionRemixesLoading && questionRemixes.length === 0 ? (
@@ -15932,118 +16048,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 )
               })}
             </ul>
-          ) : null}
-        </section>
-
-        <section className="bg-white">
-          {selectedQuestionRemixError ? <div className="border-b border-black/10 px-4 py-3 text-sm text-red-600">{selectedQuestionRemixError}</div> : null}
-          {selectedQuestionRemixLoading ? <div className="px-4 py-4 text-sm text-[#65676b]">Loading remix...</div> : null}
-          {!selectedQuestionRemixLoading && !selectedQuestionRemix && !selectedQuestionRemixError ? (
-            <div className="px-4 py-4 text-sm text-[#65676b]">Select a remix to view its questions.</div>
-          ) : null}
-          {selectedQuestionRemix ? (
-            <>
-              <div
-                className="border-b border-black/10 px-4 py-4"
-                onContextMenu={canEditSelectedQuestionRemix ? (event) => {
-                  event.preventDefault()
-                  openQuestionRemixCrud(selectedQuestionRemix.id)
-                } : undefined}
-                onTouchStart={canEditSelectedQuestionRemix ? () => armQuestionRemixLongPress(selectedQuestionRemix.id) : undefined}
-                onTouchEnd={canEditSelectedQuestionRemix ? clearQuestionRemixLongPress : undefined}
-                onTouchCancel={canEditSelectedQuestionRemix ? clearQuestionRemixLongPress : undefined}
-                onTouchMove={canEditSelectedQuestionRemix ? clearQuestionRemixLongPress : undefined}
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div
-                      className="overflow-x-auto whitespace-nowrap text-lg font-semibold text-[#1c1e21] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-                      style={{ WebkitOverflowScrolling: 'touch' }}
-                    >
-                      {selectedQuestionRemix.name}
-                    </div>
-                    {selectedQuestionRemix.description ? <div className="mt-1 text-sm text-[#4b5563] whitespace-pre-wrap">{selectedQuestionRemix.description}</div> : null}
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-[#65676b]">
-                      <span className="rounded-full bg-[#f0f2f5] px-2 py-1">{selectedQuestionRemix.questions.length} question{selectedQuestionRemix.questions.length === 1 ? '' : 's'}</span>
-                      <span className="rounded-full bg-[#e8f4fd] px-2 py-1 text-[#1877f2]">Audience: {selectedQuestionRemix.audience}</span>
-                      {selectedQuestionRemix.grade ? <span className="rounded-full bg-[#f8fafc] px-2 py-1">{gradeToLabel(selectedQuestionRemix.grade as GradeValue)}</span> : null}
-                    </div>
-                    {canCurateQuestionRemixes ? (
-                      <div className="mt-3">
-                        <button
-                          type="button"
-                          className="inline-flex h-9 items-center rounded-full bg-[#0f766e] px-4 text-sm font-semibold text-white hover:bg-[#115e59]"
-                          onClick={() => startAddingQuestionsToQuestionRemix(selectedQuestionRemix)}
-                        >
-                          Add questions
-                        </button>
-                      </div>
-                    ) : null}
-                    {selectedQuestionRemix.inviteNote ? <div className="mt-3 rounded-xl border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-sm text-[#445066]">{selectedQuestionRemix.inviteNote}</div> : null}
-                  </div>
-                  <div className="shrink-0 text-right text-xs text-[#65676b]">
-                    <div>{selectedQuestionRemix.createdBy?.name || selectedQuestionRemix.createdBy?.email || 'Unknown owner'}</div>
-                    <div className="mt-1">Updated {new Date(selectedQuestionRemix.updatedAt).toLocaleString()}</div>
-                  </div>
-                </div>
-
-                {(selectedQuestionRemix.invitedUsers.length > 0 || selectedQuestionRemix.invitedGroups.length > 0) ? (
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#65676b]">Learners</div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {selectedQuestionRemix.invitedUsers.length > 0 ? selectedQuestionRemix.invitedUsers.map((user) => (
-                          <span key={user.id} className="rounded-full bg-[#f0f2f5] px-2.5 py-1 text-xs text-[#4b5563]">{user.name || user.email || user.id}</span>
-                        )) : <span className="text-xs text-[#9aa0a6]">None</span>}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#65676b]">Groups</div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {selectedQuestionRemix.invitedGroups.length > 0 ? selectedQuestionRemix.invitedGroups.map((group) => (
-                          <span key={group.id} className="rounded-full bg-[#f0f2f5] px-2.5 py-1 text-xs text-[#4b5563]">{group.name}</span>
-                        )) : <span className="text-xs text-[#9aa0a6]">None</span>}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="border-b border-black/10 px-4 py-3 flex items-center justify-between gap-3 bg-[#f7f8fa]">
-                <div className="text-sm font-medium text-[#1c1e21]">Questions in this remix</div>
-                {canCurateQuestionRemixes ? (
-                  <button
-                    type="button"
-                    className="inline-flex h-8 items-center rounded-full border border-[#0f766e]/20 bg-white px-3 text-xs font-semibold text-[#0f766e] hover:bg-[#f0fdf9]"
-                    onClick={() => startAddingQuestionsToQuestionRemix(selectedQuestionRemix)}
-                  >
-                    Add questions
-                  </button>
-                ) : null}
-              </div>
-
-              <ul>
-                {selectedQuestionRemix.questions.map((q: any) => {
-                  const normalizedQuestion = normalizeExamQuestionContent(
-                    unwrapQuestionField(q?.questionText, ['questionText', 'text', 'prompt']),
-                    unwrapQuestionField(q?.latex, ['latex', 'equation', 'math']),
-                  )
-                  const cleanText = normalizedQuestion.questionText
-                  return (
-                    <li key={q.id} className="border-b border-black/10 px-4 py-3">
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <span className="text-xs font-bold text-[#65676b]">Q{q.questionNumber}</span>
-                        <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.year}</span>
-                        <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.month}</span>
-                        <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">Paper {q.paper}</span>
-                        {q.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{q.topic}</span> : null}
-                      </div>
-                      <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">{renderQuestionTextWithInlineLatex(cleanText)}</div>
-                    </li>
-                  )
-                })}
-              </ul>
-            </>
           ) : null}
         </section>
       </div>
@@ -19497,6 +19501,27 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               Close
             </button>
           </div>
+        </div>
+      </BottomSheet>
+
+      <BottomSheet
+        open={booksHubTab === 'remixes' && Boolean(selectedQuestionRemixId)}
+        title={selectedQuestionRemix?.name || questionRemixes.find((item) => item.id === selectedQuestionRemixId)?.name || 'Remix'}
+        subtitle={selectedQuestionRemix ? `${selectedQuestionRemix.questions.length} question${selectedQuestionRemix.questions.length === 1 ? '' : 's'}` : undefined}
+        onClose={() => {
+          setSelectedQuestionRemixId(null)
+          setSelectedQuestionRemix(null)
+          setSelectedQuestionRemixError(null)
+        }}
+        backdrop
+        closeOnBackdrop
+        closeOnEscape
+        className="bottom-0"
+        contentClassName="p-0"
+        zIndexClassName="z-[86]"
+      >
+        <div className="min-h-0 max-h-[78dvh] overflow-y-auto overscroll-contain [touch-action:pan-y]" style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
+          {renderSelectedQuestionRemixDetailContent()}
         </div>
       </BottomSheet>
 

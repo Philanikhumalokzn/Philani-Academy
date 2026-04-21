@@ -14282,6 +14282,40 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     })
   }, [buildSelectedQuestionRemixNamePreview, compatibleQuestionRemixes, qbSelectedIds.size, questionRemixAppendTargetId])
 
+  const appendSelectedQuestionsToQuestionRemixTarget = useCallback(async () => {
+    const questionIds = Array.from(qbSelectedIds)
+    if (questionIds.length === 0) {
+      setQbBulkError('Select at least one question first.')
+      return
+    }
+    if (!questionRemixAppendTargetId) {
+      openQuestionRemixCreate()
+      return
+    }
+
+    setQbBulkBusy(true)
+    setQbBulkError(null)
+    try {
+      const res = await fetch(`/api/question-remixes/${encodeURIComponent(questionRemixAppendTargetId)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questionIds }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as any)?.message || `Failed to update remix (${res.status})`)
+
+      await loadQuestionRemixes()
+      setSelectedQuestionRemixId(questionRemixAppendTargetId)
+      setQbSelectedIds(new Set())
+      setBooksHubTab('remixes')
+    } catch (err: any) {
+      setQbBulkError(err?.message || 'Failed to add questions to the target remix')
+    } finally {
+      setQbBulkBusy(false)
+    }
+  }, [loadQuestionRemixes, openQuestionRemixCreate, qbSelectedIds, questionRemixAppendTargetId])
+
   const openQuestionRemixEdit = useCallback((remixId: string) => {
     const source = (selectedQuestionRemix?.id === remixId ? selectedQuestionRemix : null)
       || questionRemixes.find((item) => item.id === remixId)
@@ -16026,7 +16060,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <button
                 type="button"
                 className="inline-flex h-7 items-center rounded-full bg-[#0f766e] px-3 text-xs font-semibold text-white hover:bg-[#115e59] disabled:opacity-50"
-                onClick={openQuestionRemixCreate}
+                onClick={() => void (questionRemixAppendTargetId ? appendSelectedQuestionsToQuestionRemixTarget() : openQuestionRemixCreate())}
                 disabled={qbBulkBusy}
               >
                 {questionRemixAppendTargetId

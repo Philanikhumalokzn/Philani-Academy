@@ -6,106 +6,91 @@ export type RemixNameSignature = {
   level: string
 }
 
-const TOPIC_PHRASE_ABBREVIATIONS: Record<string, string> = {
-  'analytical geometry': 'Anal Geo',
-  'euclidean geometry': 'Euclid Geo',
-  'straight line geometry': 'Line Geo',
-  'number patterns': 'Num Pat',
-  'number patterns sequences and series': 'Num Pat Seq',
-  'sequences and series': 'Seq Series',
-  'functions and graphs': 'Func Graphs',
-  'data handling': 'Data',
-  'financial mathematics': 'Fin Maths',
-  'financial maths': 'Fin Maths',
+const MONTH_ABBREVIATIONS: Record<string, string> = {
+  january: 'Jan',
+  jan: 'Jan',
+  february: 'Feb',
+  feb: 'Feb',
+  march: 'Mar',
+  mar: 'Mar',
+  april: 'Apr',
+  apr: 'Apr',
+  may: 'May',
+  june: 'Jun',
+  jun: 'Jun',
+  july: 'Jul',
+  jul: 'Jul',
+  august: 'Aug',
+  aug: 'Aug',
+  september: 'Sep',
+  sept: 'Sep',
+  sep: 'Sep',
+  october: 'Oct',
+  oct: 'Oct',
+  november: 'Nov',
+  nov: 'Nov',
+  december: 'Dec',
+  dec: 'Dec',
 }
-
-const TOPIC_WORD_ABBREVIATIONS: Record<string, string> = {
-  analytical: 'Anal',
-  geometry: 'Geo',
-  euclidean: 'Euclid',
-  straight: 'Line',
-  line: 'Line',
-  trigonometry: 'Trig',
-  probability: 'Prob',
-  statistics: 'Stats',
-  measurement: 'Meas',
-  financial: 'Fin',
-  mathematics: 'Maths',
-  maths: 'Maths',
-  functions: 'Func',
-  function: 'Func',
-  graphs: 'Graphs',
-  graph: 'Graph',
-  calculus: 'Calc',
-  differentiation: 'Diff',
-  derivatives: 'Diff',
-  derivative: 'Diff',
-  integration: 'Int',
-  algebraic: 'Alg',
-  algebra: 'Alg',
-  expressions: 'Expr',
-  expression: 'Expr',
-  equations: 'Eqns',
-  equation: 'Eqn',
-  inequalities: 'Ineq',
-  inequality: 'Ineq',
-  sequences: 'Seq',
-  sequence: 'Seq',
-  series: 'Series',
-  patterns: 'Pat',
-  pattern: 'Pat',
-  number: 'Num',
-  transformation: 'Trans',
-  transformations: 'Trans',
-  coordinate: 'Coord',
-  coordinates: 'Coords',
-}
-
-const STOP_WORDS = new Set(['and', 'of', 'the', 'to', 'for'])
 
 function normalizeText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function normalizeTopicKey(topic: string): string {
-  return topic
+function normalizeLookupKey(value: string): string {
+  return value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
 
-function toTitleCase(word: string): string {
-  if (!word) return ''
-  return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-}
-
-export function abbreviateTopicLabel(topic: string): string {
-  const normalizedTopic = normalizeText(topic)
-  if (!normalizedTopic) return ''
-
-  const topicKey = normalizeTopicKey(normalizedTopic)
-  if (TOPIC_PHRASE_ABBREVIATIONS[topicKey]) return TOPIC_PHRASE_ABBREVIATIONS[topicKey]
-
-  const abbreviatedWords = topicKey
-    .split(' ')
-    .filter(Boolean)
-    .filter((word) => !STOP_WORDS.has(word))
-    .map((word) => TOPIC_WORD_ABBREVIATIONS[word] || toTitleCase(word))
-
-  return abbreviatedWords.join(' ').trim()
+export function abbreviateMonthLabel(month: string): string {
+  const normalizedMonth = normalizeText(month)
+  if (!normalizedMonth) return ''
+  const lookupKey = normalizeLookupKey(normalizedMonth)
+  return MONTH_ABBREVIATIONS[lookupKey] || normalizedMonth
 }
 
 export function buildCompactRemixName(signature: RemixNameSignature): string {
   const year = normalizeText(signature.year)
+  const month = abbreviateMonthLabel(normalizeText(signature.month))
   const paper = normalizeText(signature.paper)
-  const topic = abbreviateTopicLabel(normalizeText(signature.topic))
+  const topic = normalizeText(signature.topic)
   const level = normalizeText(signature.level)
 
   const parts = [
     year,
+    month,
     paper ? `P${paper}` : '',
     topic,
+    level ? `Lvl ${level}` : '',
+  ].filter(Boolean)
+
+  return parts.length > 0 ? parts.join(' ') : 'Mixed Remix'
+}
+
+function buildPreviousCompactRemixName(signature: RemixNameSignature): string {
+  const year = normalizeText(signature.year)
+  const paper = normalizeText(signature.paper)
+  const topic = normalizeText(signature.topic)
+  const level = normalizeText(signature.level)
+
+  const legacyTopic = topic
+    .replace(/\bAnalytical\b/gi, 'Anal')
+    .replace(/\bGeometry\b/gi, 'Geo')
+    .replace(/\bEuclidean\b/gi, 'Euclid')
+    .replace(/\bStraight Line\b/gi, 'Line')
+    .replace(/\bFinancial Mathematics\b/gi, 'Fin Maths')
+    .replace(/\bFunctions\b/gi, 'Func')
+    .replace(/\bPatterns\b/gi, 'Pat')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const parts = [
+    year,
+    paper ? `P${paper}` : '',
+    legacyTopic,
     level ? `Lev ${level}` : '',
   ].filter(Boolean)
 
@@ -136,8 +121,13 @@ export function getDisplayRemixName(
 
   const legacyWithCreator = buildLegacyAutoRemixName(signature, creatorLabel)
   const legacyWithoutCreator = buildLegacyAutoRemixName(signature)
+  const previousCompactName = buildPreviousCompactRemixName(signature)
 
-  if (normalizedStoredName === legacyWithCreator || normalizedStoredName === legacyWithoutCreator) {
+  if (
+    normalizedStoredName === legacyWithCreator
+    || normalizedStoredName === legacyWithoutCreator
+    || normalizedStoredName === previousCompactName
+  ) {
     return compactName
   }
 

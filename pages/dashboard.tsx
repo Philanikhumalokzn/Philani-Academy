@@ -15811,7 +15811,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <div className="text-sm font-semibold leading-tight text-[#1c1e21] whitespace-normal break-words">{item.name}</div>
+                          <div
+                            className="overflow-x-auto whitespace-nowrap text-sm font-semibold text-[#1c1e21] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                            style={{ WebkitOverflowScrolling: 'touch' }}
+                          >
+                            {item.name}
+                          </div>
                           <div className="mt-1 flex flex-wrap gap-1.5">
                             <span className="rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[11px] text-[#4b5563]">{item.questionCount} question{item.questionCount === 1 ? '' : 's'}</span>
                             <span className="rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[11px] text-[#1877f2]">{item.audience}</span>
@@ -15849,7 +15854,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="text-lg font-semibold text-[#1c1e21]">{selectedQuestionRemix.name}</div>
+                    <div
+                      className="overflow-x-auto whitespace-nowrap text-lg font-semibold text-[#1c1e21] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                      style={{ WebkitOverflowScrolling: 'touch' }}
+                    >
+                      {selectedQuestionRemix.name}
+                    </div>
                     {selectedQuestionRemix.description ? <div className="mt-1 text-sm text-[#4b5563] whitespace-pre-wrap">{selectedQuestionRemix.description}</div> : null}
                     <div className="mt-2 flex flex-wrap gap-2 text-xs text-[#65676b]">
                       <span className="rounded-full bg-[#f0f2f5] px-2 py-1">{selectedQuestionRemix.questions.length} question{selectedQuestionRemix.questions.length === 1 ? '' : 's'}</span>
@@ -19030,7 +19040,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               disabled={questionRemixCreateBusy}
                             />
                             <span className="min-w-0 flex-1">
-                              <span className="block text-sm font-medium leading-tight text-[#1c1e21] whitespace-normal break-words">{item.name}</span>
+                              <span
+                                className="block overflow-x-auto whitespace-nowrap text-sm font-medium text-[#1c1e21] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                                style={{ WebkitOverflowScrolling: 'touch' }}
+                              >
+                                {item.name}
+                              </span>
                               <span className="mt-1 block text-xs text-[#65676b]">{item.questionCount} question{item.questionCount === 1 ? '' : 's'}</span>
                             </span>
                           </label>

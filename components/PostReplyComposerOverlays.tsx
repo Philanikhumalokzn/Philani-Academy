@@ -153,12 +153,14 @@ export default function PostReplyComposerOverlays({
                 onClick={() => onEditBlock(crudTarget.block, crudTarget.index)}
               >
                 <span>
-                  <span className="block text-sm font-semibold">{crudTarget.block.type === 'image' ? 'Open image' : 'Edit block'}</span>
+                  <span className="block text-sm font-semibold">{crudTarget.block.type === 'image' ? 'Open image' : crudTarget.block.type === 'table' ? 'Edit table block' : 'Edit block'}</span>
                   <span className="block text-xs text-slate-500">
                     {crudTarget.block.type === 'text'
                       ? 'Load this text back into the composer for editing.'
                       : crudTarget.block.type === 'latex'
                         ? 'Reopen this math block in the keyboard editor.'
+                        : crudTarget.block.type === 'table'
+                          ? 'Load this table markdown back into the composer for editing.'
                         : crudTarget.block.type === 'canvas'
                           ? 'Reopen this handwritten block in the solve canvas.'
                           : 'Open this image in the zoomable viewer.'}
@@ -318,6 +320,29 @@ export default function PostReplyComposerOverlays({
                                         Edit ink
                                       </button>
                                     </div>
+                                  </div>
+                                </div>
+                              )
+                            }
+
+                            if (block.type === 'table') {
+                              return (
+                                <div
+                                  key={block.id}
+                                  role="button"
+                                  tabIndex={0}
+                                  className="inline-flex max-w-full"
+                                  onClick={() => onEditBlock(block, index)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                      event.preventDefault()
+                                      onEditBlock(block, index)
+                                    }
+                                  }}
+                                  {...blockHandlers}
+                                >
+                                  <div className="overflow-hidden rounded-[24px]">
+                                    <PostComposerBlocksPreview blocks={[block]} compact />
                                   </div>
                                 </div>
                               )

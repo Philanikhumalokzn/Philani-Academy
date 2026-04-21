@@ -3,6 +3,7 @@ import { renderKatexDisplayHtml } from '../lib/latexRender'
 import type { PostReplyBlock } from '../lib/postReplyComposer'
 import { normalizePostReplyBlocks } from '../lib/postReplyComposer'
 import { renderTextWithKatex } from '../lib/renderTextWithKatex'
+import MmdPaperViewer from './MmdPaperViewer'
 
 type Props = {
   blocks?: PostReplyBlock[] | null
@@ -54,6 +55,14 @@ export default function PostComposerBlocksPreview({
             return <div key={blockKey} className="overflow-x-auto text-[#1c1e21]" dangerouslySetInnerHTML={{ __html: latexHtml }} />
           }
           return <div key={blockKey} className={resolvedTextClassName}>{renderTextWithKatex(block.latex)}</div>
+        }
+
+        if (block.type === 'table') {
+          return (
+            <div key={blockKey} className="overflow-hidden rounded-2xl border border-black/10 bg-white">
+              <MmdPaperViewer mmd={block.markdown} compact />
+            </div>
+          )
         }
 
         if (block.type === 'canvas') {

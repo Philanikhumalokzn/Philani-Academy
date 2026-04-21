@@ -95,6 +95,9 @@ export default function PublicFeedPostCard({
             if (!latex) return ''
             return `$$\n${latex}\n$$`
           }
+          if (block.type === 'table') {
+            return String(block.markdown || '').trim()
+          }
           if (block.type === 'image') {
             const image = String(block.imageUrl || '').trim()
             if (!image) return ''

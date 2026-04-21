@@ -9,6 +9,7 @@ import FeedComposerPill from '../../components/FeedComposerPill'
 import FullScreenGlassOverlay from '../../components/FullScreenGlassOverlay'
 import ImageCropperModal from '../../components/ImageCropperModal'
 import InlinePostSolutionsThread, { type InlinePostResponseAction, type ResponseRenderArgs } from '../../components/InlinePostSolutionsThread'
+import MmdPaperViewer from '../../components/MmdPaperViewer'
 import OverlayPortal from '../../components/OverlayPortal'
 import OwnPostsManagerOverlay from '../../components/OwnPostsManagerOverlay'
 import PostComposerOverlay from '../../components/PostComposerOverlay'
@@ -148,6 +149,13 @@ const renderProfilePostReplyBlocks = (blocks: PostReplyBlock[], keyPrefix: strin
             return <div key={`${keyPrefix}-${block.id}-${index}`} className="leading-relaxed text-white/95" dangerouslySetInnerHTML={{ __html: latexHtml }} />
           }
           return <div key={`${keyPrefix}-${block.id}-${index}`} className="text-sm leading-6 whitespace-pre-wrap break-words text-white/85">{renderTextWithKatex(block.latex)}</div>
+        }
+        if (block.type === 'table') {
+          return (
+            <div key={`${keyPrefix}-${block.id}-${index}`} className="overflow-hidden rounded-2xl border border-white/10 bg-white">
+              <MmdPaperViewer mmd={block.markdown} compact />
+            </div>
+          )
         }
         if (block.type === 'image') {
           return (
@@ -1109,6 +1117,12 @@ export function PublicUserProfileSurface({
     if (block.type === 'text') {
       setPostSolveEditingTarget(target)
       setPostSolveText(block.text)
+      focusPostSolveTextarea()
+      return
+    }
+    if (block.type === 'table') {
+      setPostSolveEditingTarget(target)
+      setPostSolveText(block.markdown)
       focusPostSolveTextarea()
       return
     }

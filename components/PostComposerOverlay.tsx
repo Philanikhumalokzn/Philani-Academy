@@ -247,6 +247,27 @@ function ComposerBlockList({
           )
         }
 
+        if (block.type === 'table') {
+          return (
+            <div
+              key={block.id}
+              role="button"
+              tabIndex={0}
+              className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] overflow-hidden rounded-2xl"
+              onClick={() => onEditBlock?.(block, index)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onEditBlock?.(block, index)
+                }
+              }}
+              {...blockHandlers}
+            >
+              <PostComposerBlocksPreview blocks={[block]} compact />
+            </div>
+          )
+        }
+
         if (block.type === 'canvas') {
           return (
             <div key={block.id} className="pt-1">
@@ -498,8 +519,8 @@ export default function PostComposerOverlay(props: Props) {
               <div className="space-y-2">
                 <button type="button" className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] flex w-full items-center justify-between rounded-2xl px-4 py-4 text-left text-slate-800 transition hover:brightness-[1.02]" onClick={() => props.onEditBlock?.(props.crudTarget!.block, props.crudTarget!.index)}>
                   <span>
-                    <span className="block text-sm font-semibold">{props.crudTarget.block.type === 'image' ? 'Open image' : 'Edit block'}</span>
-                    <span className="block text-xs text-slate-500">Return this composer item to its editor.</span>
+                    <span className="block text-sm font-semibold">{props.crudTarget.block.type === 'image' ? 'Open image' : props.crudTarget.block.type === 'table' ? 'Edit table block' : 'Edit block'}</span>
+                    <span className="block text-xs text-slate-500">{props.crudTarget.block.type === 'table' ? 'Load this table markdown back into the composer for editing.' : 'Return this composer item to its editor.'}</span>
                   </span>
                   <span className="text-slate-400">{`>`}</span>
                 </button>

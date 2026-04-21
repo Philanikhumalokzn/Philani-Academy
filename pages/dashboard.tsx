@@ -473,6 +473,12 @@ type PostReplyLatexBlock = {
   latex: string
 }
 
+type PostReplyTableBlock = {
+  id: string
+  type: 'table'
+  markdown: string
+}
+
 type PostReplyCanvasBlock = {
   id: string
   type: 'canvas'
@@ -485,7 +491,7 @@ type PostReplyImageBlock = {
   imageUrl: string
 }
 
-type PostReplyBlock = PostReplyTextBlock | PostReplyLatexBlock | PostReplyCanvasBlock | PostReplyImageBlock
+type PostReplyBlock = PostReplyTextBlock | PostReplyLatexBlock | PostReplyTableBlock | PostReplyCanvasBlock | PostReplyImageBlock
 
 type PostReplyThreadMeta = {
   parentResponseId?: string | null
@@ -806,6 +812,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         if (latex.trim()) acc.push({ id: blockId, type: 'latex', latex })
         return acc
       }
+      if (blockType === 'table') {
+        const markdown = typeof rawBlock?.markdown === 'string'
+          ? rawBlock.markdown
+          : (typeof rawBlock?.tableMarkdown === 'string' ? rawBlock.tableMarkdown : '')
+        if (markdown.trim()) acc.push({ id: blockId, type: 'table', markdown })
+        return acc
+      }
       if (blockType === 'canvas') {
         const scene = normalizePublicSolveScene(rawBlock?.scene)
         if (scene) acc.push({ id: blockId, type: 'canvas', scene })
@@ -823,6 +836,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const fallbackBlocks: PostReplyBlock[] = []
     const studentText = typeof source?.studentText === 'string' ? source.studentText : ''
     const latex = typeof source?.latex === 'string' ? source.latex : ''
+    const tableMarkdown = typeof source?.tableMarkdown === 'string' ? source.tableMarkdown : ''
     const scene = normalizePublicSolveScene(source?.excalidrawScene)
 
     if (studentText.trim()) {
@@ -830,6 +844,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
     if (latex.trim()) {
       fallbackBlocks.push({ id: createPostReplyBlockId(), type: 'latex', latex })
+    }
+    if (tableMarkdown.trim()) {
+      fallbackBlocks.push({ id: createPostReplyBlockId(), type: 'table', markdown: tableMarkdown })
     }
     if (scene) {
       fallbackBlocks.push({ id: createPostReplyBlockId(), type: 'canvas', scene })
@@ -907,6 +924,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               return <div key={`${keyPrefix}-${block.id}-${index}`} className={mathClassName} dangerouslySetInnerHTML={{ __html: latexHtml }} />
             }
             return <div key={`${keyPrefix}-${block.id}-${index}`} className={textClassName}>{renderTextWithKatex(block.latex)}</div>
+          }
+
+          if (block.type === 'table') {
+            return (
+              <div key={`${keyPrefix}-${block.id}-${index}`} className="overflow-hidden rounded-2xl border border-black/10 bg-white">
+                <MmdPaperViewer mmd={block.markdown} compact />
+              </div>
+            )
           }
 
           if (block.type === 'image') {
@@ -1747,6 +1772,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       const insertIndex = Math.max(0, Math.min(editingTarget.index, filteredBlocks.length))
       const nextBlocks = [...filteredBlocks]
       nextBlocks.splice(insertIndex, 0, { id: editingTarget.blockId, type: 'text', text: nextText } as PostReplyTextBlock)
+      return nextBlocks
+    }
+    if (editingTarget?.type === 'table') {
+      const filteredBlocks = blocks.filter((block) => block.id !== editingTarget.blockId)
+      if (!trimmedText) return filteredBlocks
+      const insertIndex = Math.max(0, Math.min(editingTarget.index, filteredBlocks.length))
+      const nextBlocks = [...filteredBlocks]
+      nextBlocks.splice(insertIndex, 0, { id: editingTarget.blockId, type: 'table', markdown: nextText } as PostReplyTableBlock)
       return nextBlocks
     }
     if (!trimmedText) return blocks
@@ -9152,18 +9185,41 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       unwrapQuestionField(question?.questionText, ['questionText', 'text', 'prompt']),
       unwrapQuestionField(question?.latex, ['latex', 'equation', 'math']),
     )
+    const tableMarkdown = typeof question?.tableMarkdown === 'string' ? question.tableMarkdown.trim() : ''
+    const imageUrls: string[] = (() => {
+      const urls: string[] = []
+      const seen = new Set<string>()
+      const pushUrl = (value: unknown) => {
+        const candidate = String(value || '').trim()
+        if (!candidate || seen.has(candidate)) return
+        seen.add(candidate)
+        urls.push(candidate)
+      }
+      pushUrl(question?.imageUrl)
+      if (Array.isArray(question?.imageUrls)) {
+        for (const imageUrl of question.imageUrls) pushUrl(imageUrl)
+      }
+      return urls
+    })()
     const qNumber = String(question?.questionNumber || '').trim()
     const qLabel = qNumber ? `Q${qNumber}` : 'Question'
     const titleBits = [qLabel, String(question?.year || '').trim(), String(question?.month || '').trim(), `Paper ${String(question?.paper || '').trim()}`]
       .map((part) => part.trim())
       .filter(Boolean)
+    const contentBlocks: PostReplyBlock[] = [
+      ...(normalized.questionText ? [{ id: createPostReplyBlockId(), type: 'text', text: normalized.questionText } as PostReplyTextBlock] : []),
+      ...(normalized.latex ? [{ id: createPostReplyBlockId(), type: 'latex', latex: normalized.latex } as PostReplyLatexBlock] : []),
+      ...(tableMarkdown ? [{ id: createPostReplyBlockId(), type: 'table', markdown: tableMarkdown } as PostReplyTableBlock] : []),
+      ...imageUrls.map((imageUrl) => ({ id: createPostReplyBlockId(), type: 'image', imageUrl } as PostReplyImageBlock)),
+    ]
 
     return {
       id: `qb-${String(question?.id || qNumber || Date.now())}`,
       threadKey: `qb:${String(question?.id || qNumber || Date.now())}`,
       title: titleBits.join(' · ') || qLabel,
       prompt: normalized.questionText || qLabel,
-      imageUrl: typeof question?.imageUrl === 'string' ? question.imageUrl : null,
+      imageUrl: imageUrls[0] || null,
+      contentBlocks,
       sourceId: question?.sourceId ? String(question.sourceId) : null,
       questionNumber: qNumber || null,
       questionId: question?.id ? String(question.id) : null,
@@ -9180,8 +9236,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     openCreateChallengeComposer()
     setChallengeTitleDraft(String(draft.title || ''))
     setChallengePromptDraft(String(draft.prompt || ''))
-    setPostSolveBlocks([])
-    setPostSolveText(String(draft.prompt || ''))
+    setPostSolveBlocks(Array.isArray(draft.contentBlocks) ? draft.contentBlocks : [])
+    setPostSolveText('')
     setChallengeImageUrl(typeof draft.imageUrl === 'string' ? draft.imageUrl : null)
     setPostComposerMetaDraft({
       origin: 'qb-question-post',
@@ -9660,6 +9716,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (block.type === 'text') {
       setPostSolveEditingTarget(target)
       setPostSolveText(block.text)
+      focusPostSolveTextarea()
+      return
+    }
+
+    if (block.type === 'table') {
+      setPostSolveEditingTarget(target)
+      setPostSolveText(block.markdown)
       focusPostSolveTextarea()
       return
     }

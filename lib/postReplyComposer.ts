@@ -12,6 +12,12 @@ export type PostReplyLatexBlock = {
   latex: string
 }
 
+export type PostReplyTableBlock = {
+  id: string
+  type: 'table'
+  markdown: string
+}
+
 export type PostReplyCanvasBlock = {
   id: string
   type: 'canvas'
@@ -24,7 +30,7 @@ export type PostReplyImageBlock = {
   imageUrl: string
 }
 
-export type PostReplyBlock = PostReplyTextBlock | PostReplyLatexBlock | PostReplyCanvasBlock | PostReplyImageBlock
+export type PostReplyBlock = PostReplyTextBlock | PostReplyLatexBlock | PostReplyTableBlock | PostReplyCanvasBlock | PostReplyImageBlock
 
 export type PostReplyThreadMeta = {
   parentResponseId?: string | null
@@ -124,6 +130,13 @@ export const normalizePostReplyBlocks = (source: any): PostReplyBlock[] => {
       if (latex.trim()) acc.push({ id: blockId, type: 'latex', latex })
       return acc
     }
+    if (blockType === 'table') {
+      const markdown = typeof rawBlock?.markdown === 'string'
+        ? rawBlock.markdown
+        : (typeof rawBlock?.tableMarkdown === 'string' ? rawBlock.tableMarkdown : '')
+      if (markdown.trim()) acc.push({ id: blockId, type: 'table', markdown })
+      return acc
+    }
     if (blockType === 'canvas') {
       const scene = normalizePublicSolveScene(rawBlock?.scene)
       if (scene) acc.push({ id: blockId, type: 'canvas', scene })
@@ -141,6 +154,7 @@ export const normalizePostReplyBlocks = (source: any): PostReplyBlock[] => {
   const fallbackBlocks: PostReplyBlock[] = []
   const studentText = typeof source?.studentText === 'string' ? source.studentText : ''
   const latex = typeof source?.latex === 'string' ? source.latex : ''
+  const tableMarkdown = typeof source?.tableMarkdown === 'string' ? source.tableMarkdown : ''
   const scene = normalizePublicSolveScene(source?.excalidrawScene)
 
   if (studentText.trim()) {
@@ -148,6 +162,9 @@ export const normalizePostReplyBlocks = (source: any): PostReplyBlock[] => {
   }
   if (latex.trim()) {
     fallbackBlocks.push({ id: createPostReplyBlockId(), type: 'latex', latex })
+  }
+  if (tableMarkdown.trim()) {
+    fallbackBlocks.push({ id: createPostReplyBlockId(), type: 'table', markdown: tableMarkdown })
   }
   if (scene) {
     fallbackBlocks.push({ id: createPostReplyBlockId(), type: 'canvas', scene })
@@ -199,6 +216,14 @@ export const composePostSolveBlocksWithDraftText = (
     const insertIndex = Math.max(0, Math.min(editingTarget.index, filteredBlocks.length))
     const nextBlocks = [...filteredBlocks]
     nextBlocks.splice(insertIndex, 0, { id: editingTarget.blockId, type: 'text', text: nextText } as PostReplyTextBlock)
+    return nextBlocks
+  }
+  if (editingTarget?.type === 'table') {
+    const filteredBlocks = blocks.filter((block) => block.id !== editingTarget.blockId)
+    if (!trimmedText) return filteredBlocks
+    const insertIndex = Math.max(0, Math.min(editingTarget.index, filteredBlocks.length))
+    const nextBlocks = [...filteredBlocks]
+    nextBlocks.splice(insertIndex, 0, { id: editingTarget.blockId, type: 'table', markdown: nextText } as PostReplyTableBlock)
     return nextBlocks
   }
   if (!trimmedText) return blocks

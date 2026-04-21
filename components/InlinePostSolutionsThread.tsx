@@ -4,6 +4,7 @@ import { PublicSolvePlainExcalidrawViewer, type PublicSolveScene } from './Publi
 import { getPostReplyThreadMeta, normalizePostReplyBlocks } from '../lib/postReplyComposer'
 import { renderKatexDisplayHtml } from '../lib/latexRender'
 import { renderTextWithKatex } from '../lib/renderTextWithKatex'
+import MmdPaperViewer from './MmdPaperViewer'
 
 export type ResponseRenderArgs = {
   responseId: string
@@ -280,6 +281,14 @@ export default function InlinePostSolutionsThread({
                 return <div key={blockKey} className={palette.mathBlockClass} dangerouslySetInnerHTML={{ __html: latexHtml }} />
               }
               return <div key={blockKey} className={palette.textBlockClass}>{renderTextWithKatex(block.latex)}</div>
+            }
+
+            if (block.type === 'table') {
+              return (
+                <div key={blockKey} className="overflow-hidden rounded-2xl border border-black/10 bg-white">
+                  <MmdPaperViewer mmd={block.markdown} compact />
+                </div>
+              )
             }
 
             if (block.type === 'image') {

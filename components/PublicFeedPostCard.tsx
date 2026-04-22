@@ -7,6 +7,7 @@ import PostComposerBlocksPreview from './PostComposerBlocksPreview'
 import UserLink from './UserLink'
 import ZoomableImageOverlay from './ZoomableImageOverlay'
 import MmdPaperViewer from './MmdPaperViewer'
+import { renderKatexDisplayHtml } from '../lib/latexRender'
 
 type PublicFeedPostAction = {
   label: string
@@ -110,6 +111,7 @@ export default function PublicFeedPostCard({
         .filter(Boolean)
         .join('\n\n')
     : ''
+  const isLatexOnlyBody = !enableMmdBodyViewer && contentRows.length > 0 && contentRows.every((block) => block.type === 'latex')
 
   const renderSocialActionButton = (opts: PublicFeedPostAction) => (
     <div key={opts.label} className="flex min-w-0 flex-1 flex-col items-center justify-center">
@@ -195,6 +197,21 @@ export default function PublicFeedPostCard({
       {enableMmdBodyViewer && mmdBodyContent ? (
         <div className="mt-2 px-3">
           <MmdPaperViewer mmd={mmdBodyContent} compact />
+        </div>
+      ) : isLatexOnlyBody ? (
+        <div className="mt-3 px-4 space-y-3">
+          {contentRows.map((block, index) => {
+            const latex = block.type === 'latex' ? String(block.latex || '').trim() : ''
+            const latexHtml = latex ? renderKatexDisplayHtml(latex) : ''
+            if (!latexHtml) return null
+            return (
+              <div
+                key={`${block.id}-${index}`}
+                className="overflow-x-auto text-[#1c1e21]"
+                dangerouslySetInnerHTML={{ __html: latexHtml }}
+              />
+            )
+          })}
         </div>
       ) : contentRows.map((block, index) => {
         const spacingClassName = index === 0 ? 'mt-1.5' : 'mt-3'

@@ -2228,7 +2228,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [questionRemixCreateNewEnabled, setQuestionRemixCreateNewEnabled] = useState(true)
   const [questionRemixCreateExistingIds, setQuestionRemixCreateExistingIds] = useState<string[]>([])
   const [questionRemixAppendTargetId, setQuestionRemixAppendTargetId] = useState<string | null>(null)
-  const [questionRemixSearchHandoff, setQuestionRemixSearchHandoff] = useState<null | { filters: QbSearchFilters; message: string }>(null)
+  const [questionRemixSearchHandoff, setQuestionRemixSearchHandoff] = useState<null | { filters: QbSearchFilters; message: string; focusQuestionId?: string | null }>(null)
   const [questionRemixCreateBusy, setQuestionRemixCreateBusy] = useState(false)
   const [questionRemixCreateError, setQuestionRemixCreateError] = useState<string | null>(null)
   const [questionRemixEditBusy, setQuestionRemixEditBusy] = useState(false)
@@ -2237,10 +2237,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [questionRemixInviteBusy, setQuestionRemixInviteBusy] = useState(false)
   const [questionRemixInviteResults, setQuestionRemixInviteResults] = useState<QuestionRemixInviteUser[]>([])
   const [questionRemixInviteError, setQuestionRemixInviteError] = useState<string | null>(null)
-  const [questionRemixFocusQuestionId, setQuestionRemixFocusQuestionId] = useState<string | null>(null)
+  const [qbFocusedQuestionId, setQbFocusedQuestionId] = useState<string | null>(null)
   const questionRemixLongPressTimerRef = useRef<number | null>(null)
   const questionRemixLongPressTriggeredRef = useRef(false)
-  const questionRemixQuestionItemRefs = useRef<Record<string, HTMLLIElement | null>>({})
+  const qbQuestionItemRefs = useRef<Record<string, HTMLLIElement | null>>({})
   const questionRemixCrudTarget = questionRemixCrudTargetId
     ? ((selectedQuestionRemix?.id === questionRemixCrudTargetId ? selectedQuestionRemix : null)
       || questionRemixes.find((item) => item.id === questionRemixCrudTargetId)
@@ -15002,6 +15002,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   useEffect(() => {
     if (booksHubTab !== 'remix') return
     if (questionRemixSearchHandoff) {
+      setQbFocusedQuestionId(questionRemixSearchHandoff.focusQuestionId || null)
       void searchQuestionBank(questionRemixSearchHandoff.filters, { remixMessage: questionRemixSearchHandoff.message })
       setQuestionRemixSearchHandoff(null)
       return
@@ -15025,21 +15026,27 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [booksHubTab, loadQuestionRemixDetail, selectedQuestionRemixId])
 
   useEffect(() => {
-    if (!questionRemixFocusQuestionId) return
-    if (!selectedQuestionRemix?.questions?.some((item: any) => String(item?.id || '') === questionRemixFocusQuestionId)) return
+    if (booksHubTab !== 'remix') return
+    if (!qbFocusedQuestionId) return
+    if (!qbItems.some((item: any) => String(item?.id || '') === qbFocusedQuestionId)) {
+      if (!qbLoading) {
+        setQbFocusedQuestionId(null)
+      }
+      return
+    }
 
     const timerId = window.setTimeout(() => {
-      const target = questionRemixQuestionItemRefs.current[questionRemixFocusQuestionId]
+      const target = qbQuestionItemRefs.current[qbFocusedQuestionId]
       if (target) {
         target.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }
-      setQuestionRemixFocusQuestionId(null)
+      setQbFocusedQuestionId(null)
     }, 80)
 
     return () => {
       window.clearTimeout(timerId)
     }
-  }, [questionRemixFocusQuestionId, selectedQuestionRemix])
+  }, [booksHubTab, qbFocusedQuestionId, qbItems, qbLoading])
 
   useEffect(() => {
     if (!questionRemixEditOpen) return
@@ -16180,22 +16187,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       return <div className="px-4 py-4 text-sm text-[#65676b]">Select a remix to view its questions.</div>
     }
 
-    const openQuestionInSourceRemix = (question: any) => {
-      const targetRemixId = typeof question?.sourceRemixId === 'string' && question.sourceRemixId.trim()
-        ? question.sourceRemixId.trim()
-        : selectedQuestionRemix.id
+    const openQuestionInRemixResults = (question: any) => {
       const targetQuestionId = typeof question?.id === 'string' ? question.id : String(question?.id || '')
-      if (targetQuestionId) {
-        setQuestionRemixFocusQuestionId(targetQuestionId)
+      const filters: QbSearchFilters = {
+        year: typeof question?.year === 'number' ? String(question.year) : String(question?.year || ''),
+        month: typeof question?.month === 'string' ? question.month : '',
+        paper: typeof question?.paper === 'number' ? String(question.paper) : String(question?.paper || ''),
+        topic: typeof question?.topic === 'string' ? question.topic : '',
+        level: typeof question?.cognitiveLevel === 'string' || typeof question?.cognitiveLevel === 'number' ? String(question.cognitiveLevel) : '',
+        number: typeof question?.questionNumber === 'string' || typeof question?.questionNumber === 'number' ? String(question.questionNumber) : '',
       }
-      if (targetRemixId && targetRemixId !== selectedQuestionRemix.id) {
-        setSelectedQuestionRemixId(targetRemixId)
-        return
-      }
-      window.setTimeout(() => {
-        const target = targetQuestionId ? questionRemixQuestionItemRefs.current[targetQuestionId] : null
-        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      }, 0)
+      setBooksHubTab('remix')
+      setQuestionRemixSearchHandoff({
+        filters,
+        focusQuestionId: targetQuestionId || null,
+        message: `Showing Q${String(question?.questionNumber || '')} from ${selectedQuestionRemix.name} in Remix results.`,
+      })
     }
 
     return (
@@ -16291,21 +16298,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               unwrapQuestionField(q?.latex, ['latex', 'equation', 'math']),
             )
             const cleanText = normalizedQuestion.questionText
-            const sourceLabel = typeof q?.sourceRemixName === 'string' && q.sourceRemixName.trim()
-              ? q.sourceRemixName.trim()
-              : selectedQuestionRemix.name
             return (
-              <li
-                key={q.id}
-                ref={(el) => {
-                  questionRemixQuestionItemRefs.current[String(q.id)] = el
-                }}
-                className="border-b border-black/10"
-              >
+              <li key={q.id} className="border-b border-black/10">
                 <button
                   type="button"
                   className="w-full px-4 py-3 text-left transition hover:bg-[#f8fbff] active:bg-[#eef5ff]"
-                  onClick={() => openQuestionInSourceRemix(q)}
+                  onClick={() => openQuestionInRemixResults(q)}
                 >
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <span className="text-xs font-bold text-[#65676b]">Q{q.questionNumber}</span>
@@ -16316,7 +16314,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   </div>
                   <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">{renderQuestionTextWithInlineLatex(cleanText)}</div>
                   <div className="mt-2 text-[11px] font-medium text-[#1877f2]">
-                    Open in {sourceLabel} {'>'}
+                    Open in Remix results {'>'}
                   </div>
                 </button>
               </li>
@@ -16548,7 +16546,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const isSubquestion = String(q.questionNumber ?? '').includes('.')
 
                 return (
-                  <li key={q.id} className={`border-b border-black/10 bg-white px-4 py-3 transition-colors${isSelected ? ' !bg-[#f0f5ff]' : ''}`}>
+                  <li
+                    key={q.id}
+                    ref={(el) => {
+                      qbQuestionItemRefs.current[String(q.id)] = el
+                    }}
+                    className={`border-b border-black/10 bg-white px-4 py-3 transition-colors${isSelected ? ' !bg-[#f0f5ff]' : ''}`}
+                  >
                     <div className="flex gap-3 items-start">
                       {/* Row select checkbox */}
                       {canCurateQuestionRemixes ? (

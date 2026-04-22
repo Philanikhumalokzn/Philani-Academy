@@ -19,6 +19,7 @@ import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import OwnPostsManagerOverlay from '../components/OwnPostsManagerOverlay'
 import PostComposerBlocksPreview from '../components/PostComposerBlocksPreview'
 import PostComposerOverlay from '../components/PostComposerOverlay'
+import MathPostCard from '../components/MathPostCard'
 import { PublicSolveCanvasViewer, PublicSolvePlainExcalidrawViewer, PublicSolveComposer, PublicSolveOpacityWorkspace, normalizePublicSolveScene, preparePublicSolveSceneForPlainPreview, type PublicSolveScene } from '../components/PublicSolveCanvas'
 import TaskManageMenu from '../components/TaskManageMenu'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
@@ -100,6 +101,13 @@ type SectionRole = typeof DASHBOARD_SECTIONS[number]['roles'][number]
 type OverlaySectionId = Exclude<SectionId, 'overview'>
 type DashboardCreateKind = 'quiz' | 'post'
 type StudentMobileTabId = 'timeline' | 'sessions' | 'groups' | 'books' | 'profile'
+type MathDashboardPost = {
+  id: string
+  latex: string
+  createdById: string
+  createdByName?: string
+  createdAt: string
+}
 type QbRemixBadge = 'year' | 'month' | 'paper' | 'topic' | 'level'
 type QbSearchFilters = {
   year: string
@@ -1296,6 +1304,27 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setCreateOverlayOpen(true)
   }, [])
 
+  const openCreateMathComposer = useCallback(() => {
+    setCreateKind('post')
+    setEditingChallengeId(null)
+    setEditingPostId(null)
+    setPostSolveBlocks([])
+    setPostSolveText('')
+    setPostTypedSolveLatex('')
+    setPostSolveEditingTarget(null)
+    setComposerBlockCrudTarget(null)
+    setPostTypedSolveOverlay(null)
+    setPostSolveOverlay(null)
+    setPostTypedOverlayChromeVisible(false)
+    setPostReplyImageSourceSheetOpen(false)
+    setPostReplyImageEditOpen(false)
+    setPostReplyImageEditFile(null)
+    setPostComposerMetaDraft(null)
+    setChallengeParsedJsonText(null)
+    setChallengeParsedOpen(false)
+    setCreateOverlayOpen(true)
+  }, [])
+
   const [challengeImageEditOpen, setChallengeImageEditOpen] = useState(false)
   const [challengeImageEditFile, setChallengeImageEditFile] = useState<File | null>(null)
   const [challengeImageSourceFile, setChallengeImageSourceFile] = useState<File | null>(null)
@@ -2099,7 +2128,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [studentMobileTab, setStudentMobileTab] = useState<StudentMobileTabId>('timeline')
   const [studentDashboardProfileOpen, setStudentDashboardProfileOpen] = useState(false)
   const [, setStudentDashboardProfileHeight] = useState(960)
-  const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'profile' | 'admin' | null>(null)
+  const [studentQuickOverlay, setStudentQuickOverlay] = useState<'timeline' | 'sessions' | 'groups' | 'profile' | 'math' | 'admin' | null>(null)
+  const [mathDashboardPosts, setMathDashboardPosts] = useState<MathDashboardPost[]>([])
+  const [mathDashboardLoading, setMathDashboardLoading] = useState(false)
+  const [mathDashboardError, setMathDashboardError] = useState<string | null>(null)
+  const mathDashboardFetchedOnceRef = useRef(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [booksOverlayOpen, setBooksOverlayOpen] = useState(false)
   const [booksHubTab, setBooksHubTab] = useState<'remix' | 'remixes' | 'papers' | 'pdfs' | 'resources'>('remix')
@@ -3365,33 +3398,29 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     setChallengePosting(true)
     try {
-      const title = challengeTitleDraft.trim()
-      const audience = challengeAudienceDraft
-      const grade = selectedGrade || normalizeGradeInput((session as any)?.user?.grade as string | undefined) || null
-
-      const res = await fetch('/api/posts', {
+      for (const block of latexBlocks) {
+        const res = await fetch('/api/math-posts', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title,
-          prompt: '',
-          imageUrl: null,
-          contentBlocks: latexBlocks,
-          composerMeta: postComposerMetaDraft,
-          audience,
-          maxAttempts: null,
-          grade,
+            latex: block.latex,
         }),
       })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(data?.message || `Failed to post math (${res.status})`)
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          throw new Error(data?.message || `Failed to post math (${res.status})`)
+        }
+        if (data?.id && data?.latex) {
+          setMathDashboardPosts((prev) => [{
+            id: String(data.id),
+            latex: String(data.latex || ''),
+            createdById: String(data.createdById || ''),
+            createdByName: typeof data.createdByName === 'string' ? data.createdByName : 'Anonymous',
+            createdAt: String(data.createdAt || new Date().toISOString()),
+          }, ...prev])
+        }
       }
-
-      const createdItem = buildHydratedCreatedPost(data, session, String(viewerId || ''), selectedGrade || null)
-      setTimelineChallenges((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
-      setStudentFeedPosts((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
       
       // Clear composer
       discardRestore()
@@ -3400,7 +3429,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setPostSolveBlocks([])
       setPostSolveText('')
       setPostTypedSolveLatex('')
-      alert('Math posted to timeline!')
+      mathDashboardFetchedOnceRef.current = true
+      alert('Math posted!')
     } catch (err: any) {
       alert(err?.message || 'Failed to post math')
     } finally {
@@ -4270,7 +4300,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     finishStudentMobileSwipe(event.pointerId)
   }, [finishStudentMobileSwipe])
 
-  const openStudentQuickOverlay = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'admin') => {
+  const openStudentQuickOverlay = useCallback((tab: 'timeline' | 'sessions' | 'groups' | 'math' | 'admin') => {
     setStudentDashboardProfileOpen(false)
     setStudentQuickOverlay(tab)
     if (tab === 'timeline') setTimelineOpen(true)
@@ -6279,6 +6309,34 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     markTimelinePostsRead(ids)
   }, [timelineOpen, timelineChallengesLoading, timelineChallengesError, timelineChallenges, markTimelinePostsRead])
 
+  useEffect(() => {
+    if (studentQuickOverlay !== 'math') return
+    if (mathDashboardFetchedOnceRef.current) return
+
+    mathDashboardFetchedOnceRef.current = true
+    setMathDashboardLoading(true)
+    setMathDashboardError(null)
+
+    void (async () => {
+      try {
+        const res = await fetch('/api/math-posts?limit=100', { credentials: 'same-origin' })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          setMathDashboardError(data?.message || `Unable to load math posts (${res.status})`)
+          setMathDashboardPosts([])
+          return
+        }
+        const posts = Array.isArray(data?.posts) ? data.posts : []
+        setMathDashboardPosts(posts)
+      } catch (err: any) {
+        setMathDashboardError(err?.message || 'Unable to load math posts')
+        setMathDashboardPosts([])
+      } finally {
+        setMathDashboardLoading(false)
+      }
+    })()
+  }, [studentQuickOverlay])
+
   const renderTimelineItems = (items: any[]) => (
     <ul className="space-y-2">
       {items.map((c: any) => {
@@ -6523,7 +6581,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const labelClass = (tab: 'timeline' | 'sessions' | 'groups' | 'discover') =>
       `text-[10px] leading-none transition-opacity ${studentMobileTab === tab ? 'opacity-80' : 'opacity-0'} text-white`
 
-    const quickActionCount = isAdmin ? 7 : 6
+    const quickActionCount = isAdmin ? 8 : 7
     const buttonWidth = `calc(100% / ${quickActionCount})`
 
     return (
@@ -6593,6 +6651,24 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <path d="M8 13c2.761 0 5 1.567 5 3.5V19H3v-2.5C3 14.567 5.239 13 8 13Z" stroke="currentColor" strokeWidth="2" />
           </svg>
           <span className={labelClass('groups')}>Groups</span>
+        </button>
+
+        <button
+          type="button"
+          className={`${baseBtn} ${studentQuickOverlay === 'math' ? activeBtn : ''} flex-none snap-start`}
+          style={{ width: buttonWidth }}
+          onClick={() => openStudentQuickOverlay('math')}
+          aria-label="Math"
+          title="Math"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M4 6h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M7 6v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M7 18h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M12 10l3 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M15 10l-3 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+          <span className="text-[10px] leading-none opacity-80 text-white">Math</span>
         </button>
 
         <button
@@ -7268,6 +7344,44 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     <div className="space-y-0">
       {renderStudentHomeFeed()}
     </div>
+  )
+
+  const renderStudentMathPanel = () => (
+    <section className="space-y-3 rounded-3xl border border-white/10 bg-white/5 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="font-semibold text-white">Math</div>
+          <div className="text-xs text-white/60">Post pure LaTeX without normal feed styling.</div>
+        </div>
+        <button
+          type="button"
+          className="btn btn-primary text-xs"
+          onClick={openCreateMathComposer}
+        >
+          New Math Post
+        </button>
+      </div>
+
+      {mathDashboardLoading ? (
+        <div className="text-sm text-white/70">Loading math posts...</div>
+      ) : mathDashboardError ? (
+        <div className="text-sm text-red-300">{mathDashboardError}</div>
+      ) : mathDashboardPosts.length === 0 ? (
+        <div className="text-sm text-white/70">No math posts yet.</div>
+      ) : (
+        <div className="space-y-3">
+          {mathDashboardPosts.map((post) => (
+            <MathPostCard
+              key={String(post.id)}
+              id={String(post.id)}
+              latex={String(post.latex || '')}
+              authorName={typeof post.createdByName === 'string' ? post.createdByName : 'Anonymous'}
+              createdAt={String(post.createdAt || '')}
+            />
+          ))}
+        </div>
+      )}
+    </section>
   )
 
   const renderInlineSolutionsThread = (item: any, options: {
@@ -18237,6 +18351,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           title={
             studentQuickOverlay === 'timeline'
               ? 'Timeline'
+              : studentQuickOverlay === 'math'
+                ? 'Math'
               : studentQuickOverlay === 'admin'
                 ? 'Admin tools'
               : (DASHBOARD_SECTIONS as readonly any[]).find(s => s.id === studentQuickOverlay)?.label || 'Section'
@@ -18253,6 +18369,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           <div className="space-y-3">
             {studentQuickOverlay === 'timeline'
               ? renderTimelineCard()
+              : studentQuickOverlay === 'math'
+                ? renderStudentMathPanel()
               : studentQuickOverlay === 'admin'
                 ? renderAdminToolsQuickPanel()
                 : (studentQuickOverlay === 'sessions' || studentQuickOverlay === 'groups')

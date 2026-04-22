@@ -19,6 +19,7 @@ import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import OwnPostsManagerOverlay from '../components/OwnPostsManagerOverlay'
 import PostComposerBlocksPreview from '../components/PostComposerBlocksPreview'
 import PostComposerOverlay from '../components/PostComposerOverlay'
+import SocialActionStrip, { type SocialActionStripAction } from '../components/SocialActionStrip'
 import { PublicSolveCanvasViewer, PublicSolvePlainExcalidrawViewer, PublicSolveComposer, PublicSolveOpacityWorkspace, normalizePublicSolveScene, preparePublicSolveSceneForPlainPreview, type PublicSolveScene } from '../components/PublicSolveCanvas'
 import TaskManageMenu from '../components/TaskManageMenu'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
@@ -6596,43 +6597,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (status !== 'authenticated') return null
     if (!isRecognizedLessonParticipantRole(sessionRole)) return null
 
-    const renderSocialActionButton = (opts: {
-      label: string
-      statusLabel?: string
-      active?: boolean
-      onClick: () => void
-      icon: React.ReactNode
-      disabled?: boolean
-      countLabel?: string
-      onCountClick?: () => void
-    }) => (
-      <div className="flex min-w-0 flex-1 flex-col items-center justify-center">
-        <div className="mb-1 flex h-[14px] items-center">
-          <button
-            type="button"
-            className={`text-[11px] font-semibold leading-none whitespace-nowrap ${
-              opts.countLabel ? 'text-[#65676b] hover:text-[#1877f2]' : 'invisible pointer-events-none'
-            }`}
-            onClick={(event) => {
-              event.stopPropagation()
-              opts.onCountClick?.()
-            }}
-          >
-            {opts.countLabel || '0'}
-          </button>
-        </div>
-        <button
-          type="button"
-          className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em] transition ${opts.active ? 'bg-[#e7f3ff] text-[#1877f2]' : 'text-[#65676b] hover:bg-[#f0f2f5]'} ${opts.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
-          onClick={opts.onClick}
-          disabled={opts.disabled}
-        >
-          <span className="shrink-0">{opts.icon}</span>
-          <span className="truncate whitespace-nowrap">{opts.statusLabel || opts.label}</span>
-        </button>
-      </div>
-    )
-
     const getStartMs = (s: any) => (s?.startsAt ? new Date(s.startsAt).getTime() : 0)
     const getEndMs = (s: any) => {
       if (s?.endsAt) return new Date(s.endsAt).getTime()
@@ -7108,78 +7072,83 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     </div>
 
                     <div className="mt-2 pt-1 text-[#65676b]">
-                      <div className="flex items-center gap-1">
-                        {renderSocialActionButton({
-                          label: 'Like',
-                          active: Boolean(socialLikedItems[socialItemKey]),
-                          countLabel: formatSocialCountLabel(socialLikeCountByItemKey[socialItemKey], 'Like', 'Likes'),
-                          onClick: () => toggleSocialLike(socialItemKey),
-                          icon: socialLikedItems[socialItemKey] ? (
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
-                              <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" />
-                              <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" />
-                            </svg>
-                          ) : (
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-                              <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                              <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          ),
-                        })}
-                        {renderSocialActionButton({
-                          label: isPost ? 'Reply' : (hasAttempted ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve'),
-                          countLabel: isPost
-                            ? formatSocialCountLabel((p as any)?.solutionCount, 'Reply', 'Replies')
-                            : undefined,
-                          onClick: () => {
-                            if (isPost) {
-                              void openPostSolveComposer(p)
-                              return
-                            }
-                            if (hasAttempted) {
-                              openChallengeCommentThread(itemId)
-                              return
-                            }
-                            if (href !== '#') {
-                              void router.push(href)
-                            }
+                      <SocialActionStrip
+                        actions={[
+                          {
+                            key: `${socialItemKey}:like`,
+                            label: 'Like',
+                            active: Boolean(socialLikedItems[socialItemKey]),
+                            countLabel: formatSocialCountLabel(socialLikeCountByItemKey[socialItemKey], 'Like', 'Likes'),
+                            onClick: () => toggleSocialLike(socialItemKey),
+                            icon: socialLikedItems[socialItemKey] ? (
+                              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                                <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" />
+                                <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" />
+                              </svg>
+                            ) : (
+                              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                                <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            ),
                           },
-                          onCountClick: isPost ? (() => {
-                            void openPostThread(p)
-                          }) : undefined,
-                          disabled: !itemId,
-                          icon: (
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-                              <path d="M4 20H8L18.5 9.5C19.3284 8.67157 19.3284 7.32843 18.5 6.5C17.6716 5.67157 16.3284 5.67157 15.5 6.5L5 17V20Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                              <path d="M14.5 7.5L17.5 10.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          ),
-                        })}
-                        {renderSocialActionButton({
-                          label: 'Share',
-                          countLabel: formatSocialCountLabel(socialShareCountByItemKey[socialItemKey], 'Share', 'Shares'),
-                          statusLabel: lastSharedSocialItemKey === socialItemKey ? 'Copied' : undefined,
-                          onClick: () => {
-                            shareDashboardItem({
-                              itemKey: socialItemKey,
-                              title,
-                              text: prompt || title,
-                              path: isPost ? `/dashboard?postId=${encodeURIComponent(itemId)}` : href,
-                            })
-                            setSocialShareCountByItemKey((prev) => ({
-                              ...prev,
-                              [socialItemKey]: (prev[socialItemKey] ?? 0) + 1,
-                            }))
+                          {
+                            key: `${socialItemKey}:reply`,
+                            label: isPost ? 'Reply' : (hasAttempted ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve'),
+                            countLabel: isPost
+                              ? formatSocialCountLabel((p as any)?.solutionCount, 'Reply', 'Replies')
+                              : undefined,
+                            onClick: () => {
+                              if (isPost) {
+                                void openPostSolveComposer(p)
+                                return
+                              }
+                              if (hasAttempted) {
+                                openChallengeCommentThread(itemId)
+                                return
+                              }
+                              if (href !== '#') {
+                                void router.push(href)
+                              }
+                            },
+                            onCountClick: isPost ? (() => {
+                              void openPostThread(p)
+                            }) : undefined,
+                            disabled: !itemId,
+                            icon: (
+                              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                                <path d="M4 20H8L18.5 9.5C19.3284 8.67157 19.3284 7.32843 18.5 6.5C17.6716 5.67157 16.3284 5.67157 15.5 6.5L5 17V20Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                <path d="M14.5 7.5L17.5 10.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            ),
                           },
-                          disabled: !itemId,
-                          icon: (
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-                              <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                              <path d="M4 19V17C4 13.6863 6.68629 11 10 11H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          ),
-                        })}
-                      </div>
+                          {
+                            key: `${socialItemKey}:share`,
+                            label: 'Share',
+                            countLabel: formatSocialCountLabel(socialShareCountByItemKey[socialItemKey], 'Share', 'Shares'),
+                            statusLabel: lastSharedSocialItemKey === socialItemKey ? 'Copied' : undefined,
+                            onClick: () => {
+                              shareDashboardItem({
+                                itemKey: socialItemKey,
+                                title,
+                                text: prompt || title,
+                                path: isPost ? `/dashboard?postId=${encodeURIComponent(itemId)}` : href,
+                              })
+                              setSocialShareCountByItemKey((prev) => ({
+                                ...prev,
+                                [socialItemKey]: (prev[socialItemKey] ?? 0) + 1,
+                              }))
+                            },
+                            disabled: !itemId,
+                            icon: (
+                              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                                <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                <path d="M4 19V17C4 13.6863 6.68629 11 10 11H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            ),
+                          },
+                        ] satisfies SocialActionStripAction[]}
+                      />
                       {isPreviewTarget
                         ? renderInlineSolutionsThread(p, {
                             kind: 'post',
@@ -9264,43 +9233,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return 0
   }
 
-  const renderQbQuestionActionButton = (opts: {
-    label: string
-    statusLabel?: string
-    active?: boolean
-    onClick: () => void
-    icon: React.ReactNode
-    disabled?: boolean
-    countLabel?: string
-    onCountClick?: () => void
-  }) => (
-    <div className="flex min-w-0 flex-1 flex-col items-center justify-center">
-      <div className="mb-1 flex h-[14px] items-center">
-        <button
-          type="button"
-          className={`text-[11px] font-semibold leading-none whitespace-nowrap ${
-            opts.countLabel ? 'text-[#65676b] hover:text-[#1877f2]' : 'invisible pointer-events-none'
-          }`}
-          onClick={(event) => {
-            event.stopPropagation()
-            opts.onCountClick?.()
-          }}
-        >
-          {opts.countLabel || '0'}
-        </button>
-      </div>
-      <button
-        type="button"
-        className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em] transition ${opts.active ? 'bg-[#e7f3ff] text-[#1877f2]' : 'text-[#65676b] hover:bg-[#f0f2f5]'} ${opts.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
-        onClick={opts.onClick}
-        disabled={opts.disabled}
-      >
-        <span className="shrink-0">{opts.icon}</span>
-        <span className="truncate whitespace-nowrap">{opts.statusLabel || opts.label}</span>
-      </button>
-    </div>
-  )
-
   const renderQbQuestionSocialActions = (question: any) => {
     const draft = buildQbQuestionPostDraft(question)
     const itemId = String(draft.id || question?.id || '').trim()
@@ -9312,9 +9244,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     return (
       <>
-        <div className="mt-2 pt-1 text-[#65676b]">
-          <div className="flex items-center gap-1">
-            {renderQbQuestionActionButton({
+        <SocialActionStrip
+          className="mt-2 pt-1 text-[#65676b]"
+          actions={[
+            {
+              key: `${socialItemKey}:like`,
               label: 'Like',
               active: Boolean(socialLikedItems[socialItemKey]),
               countLabel: formatSocialCountLabel(socialLikeCountByItemKey[socialItemKey], 'Like', 'Likes'),
@@ -9330,8 +9264,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               ),
-            })}
-            {renderQbQuestionActionButton({
+            },
+            {
+              key: `${socialItemKey}:reply`,
               label: 'Reply',
               countLabel: formatSocialCountLabel(replyCount, 'Reply', 'Replies'),
               onClick: () => {
@@ -9346,8 +9281,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   <path d="M14.5 7.5L17.5 10.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               ),
-            })}
-            {renderQbQuestionActionButton({
+            },
+            {
+              key: `${socialItemKey}:share`,
               label: 'Share',
               onClick: () => openQbQuestionPostComposer(question),
               icon: (
@@ -9356,9 +9292,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   <path d="M4 19V17C4 13.6863 6.68629 11 10 11H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               ),
-            })}
-          </div>
-        </div>
+            },
+          ] satisfies SocialActionStripAction[]}
+        />
         {renderInlineSolutionsThread(draft, { kind: 'post' })}
       </>
     )

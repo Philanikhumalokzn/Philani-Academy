@@ -4,21 +4,10 @@ import type { PostReplyBlock } from '../lib/postReplyComposer'
 import { normalizePostReplyBlocks } from '../lib/postReplyComposer'
 import OverlayPortal from './OverlayPortal'
 import PostComposerBlocksPreview from './PostComposerBlocksPreview'
+import SocialActionStrip, { type SocialActionStripAction } from './SocialActionStrip'
 import UserLink from './UserLink'
 import ZoomableImageOverlay from './ZoomableImageOverlay'
 import MmdPaperViewer from './MmdPaperViewer'
-
-type PublicFeedPostAction = {
-  label: string
-  statusLabel?: string
-  active?: boolean
-  onClick: () => void
-  icon: ReactNode
-  disabled?: boolean
-  count?: number | null
-  countLabel?: string
-  onCountClick?: () => void
-}
 
 export type PublicFeedPostCardProps = {
   authorId?: string | null
@@ -44,7 +33,7 @@ export type PublicFeedPostCardProps = {
   bodyPointerProps?: Pick<HTMLAttributes<HTMLDivElement>, 'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onPointerCancel' | 'onPointerLeave' | 'onContextMenu'>
   customBody?: ReactNode
   sideActions?: ReactNode
-  actions?: PublicFeedPostAction[]
+  actions?: SocialActionStripAction[]
   children?: ReactNode
 }
 
@@ -111,34 +100,6 @@ export default function PublicFeedPostCard({
         .join('\n\n')
     : ''
   const isLatexOnlyBody = !enableMmdBodyViewer && contentRows.length > 0 && contentRows.every((block) => block.type === 'latex')
-
-  const renderSocialActionButton = (opts: PublicFeedPostAction) => (
-    <div key={opts.label} className="flex min-w-0 flex-1 flex-col items-center justify-center">
-      <div className="mb-1 flex h-[14px] items-center">
-        <button
-          type="button"
-          className={`text-[11px] font-semibold leading-none whitespace-nowrap ${
-            opts.countLabel ? 'text-[#65676b] hover:text-[#1877f2]' : 'invisible pointer-events-none'
-          }`}
-          onClick={(e) => {
-            e.stopPropagation()
-            opts.onCountClick?.()
-          }}
-        >
-          {opts.countLabel || '0'}
-        </button>
-      </div>
-      <button
-        type="button"
-        className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em] transition ${opts.active ? 'bg-[#e7f3ff] text-[#1877f2]' : 'text-[#65676b] hover:bg-[#f0f2f5]'} ${opts.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
-        onClick={opts.onClick}
-        disabled={opts.disabled}
-      >
-        <span className="shrink-0">{opts.icon}</span>
-        <span className="truncate whitespace-nowrap">{opts.statusLabel || opts.label}</span>
-      </button>
-    </div>
-  )
 
   const openResolvedImageViewer = useCallback((url: string, titleText: string) => {
     if (onOpenImage) {
@@ -288,10 +249,8 @@ export default function PublicFeedPostCard({
       {body}
 
       {actions.length > 0 ? (
-        <div className="mt-1 px-4 pt-0.5 text-[#65676b] sm:px-6">
-          <div className="flex items-center gap-1">
-            {actions.map(renderSocialActionButton)}
-          </div>
+        <div className="mt-1 px-4 pt-0.5 sm:px-6">
+          <SocialActionStrip actions={actions} className="text-[#65676b]" />
           {children ? children : null}
         </div>
       ) : children ? <div className="mt-1 px-4 pt-0.5 text-[#65676b] sm:px-6">{children}</div> : null}

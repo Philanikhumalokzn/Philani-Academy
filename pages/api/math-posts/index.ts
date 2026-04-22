@@ -1,11 +1,15 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getUserIdFromReq } from '../../../lib/auth'
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
 
 // In-memory store for now (will migrate to Prisma if needed)
 const mathPosts: Array<{
   id: string
   latex: string
   createdById: string
+  createdByName?: string
   createdAt: string
 }> = []
 
@@ -25,10 +29,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ message: 'LaTeX is required' })
     }
 
+    // Fetch user name
+    let createdByName = 'Anonymous'
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, email: true },
+      })
+      createdByName = user?.name || user?.email || 'Anonymous'
+    } catch (error) {
+      console.error('Failed to fetch user info:', error)
+    }
+
     const post = {
       id: generateId(),
       latex: latexStr,
       createdById: userId,
+      createdByName,
       createdAt: new Date().toISOString(),
     }
 

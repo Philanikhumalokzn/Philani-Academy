@@ -9602,15 +9602,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setPostSolveEditingTarget(null)
       setComposerBlockCrudTarget(null)
 
-      await openPostThread({
-        id: activeDraft.postId,
-        threadKey: activeDraft.threadKey,
-        title: activeDraft.title,
-        prompt: activeDraft.prompt,
-        imageUrl: activeDraft.imageUrl || null,
-        authorName: activeDraft.authorName || null,
-        authorAvatarUrl: activeDraft.authorAvatarUrl || null,
-      }, { forceOpen: true })
+      if (!String(activeDraft.threadKey || '').startsWith('qb:')) {
+        await openPostThread({
+          id: activeDraft.postId,
+          threadKey: activeDraft.threadKey,
+          title: activeDraft.title,
+          prompt: activeDraft.prompt,
+          imageUrl: activeDraft.imageUrl || null,
+          authorName: activeDraft.authorName || null,
+          authorAvatarUrl: activeDraft.authorAvatarUrl || null,
+        }, { forceOpen: true })
+      }
     } catch (err: any) {
       setPostSolveError(err?.message || 'Failed to submit reply')
     } finally {

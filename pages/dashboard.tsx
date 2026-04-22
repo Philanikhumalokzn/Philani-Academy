@@ -3365,18 +3365,33 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     setChallengePosting(true)
     try {
-      for (const block of latexBlocks) {
-        const res = await fetch('/api/math-posts', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ latex: block.latex }),
-        })
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok) {
-          throw new Error(data?.message || `Failed to post math (${res.status})`)
-        }
+      const title = challengeTitleDraft.trim()
+      const audience = challengeAudienceDraft
+      const grade = selectedGrade || normalizeGradeInput((session as any)?.user?.grade as string | undefined) || null
+
+      const res = await fetch('/api/posts', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          prompt: '',
+          imageUrl: null,
+          contentBlocks: latexBlocks,
+          composerMeta: postComposerMetaDraft,
+          audience,
+          maxAttempts: null,
+          grade,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to post math (${res.status})`)
       }
+
+      const createdItem = buildHydratedCreatedPost(data, session, String(viewerId || ''), selectedGrade || null)
+      setTimelineChallenges((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
+      setStudentFeedPosts((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
       
       // Clear composer
       discardRestore()
@@ -3385,7 +3400,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setPostSolveBlocks([])
       setPostSolveText('')
       setPostTypedSolveLatex('')
-      alert('Math posted!')
+      alert('Math posted to timeline!')
     } catch (err: any) {
       alert(err?.message || 'Failed to post math')
     } finally {

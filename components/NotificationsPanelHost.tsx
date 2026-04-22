@@ -69,6 +69,7 @@ export default function NotificationsPanelHost() {
   const [activityFeed, setActivityFeed] = useState<ActivityNotification[]>([])
   const [expandedInviteId, setExpandedInviteId] = useState<string | null>(null)
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null)
+  const [activityActionBusyId, setActivityActionBusyId] = useState<string | null>(null)
   const [newNotificationIds, setNewNotificationIds] = useState<string[]>([])
   const notificationSessionRef = useRef<string>('')
 
@@ -414,7 +415,38 @@ export default function NotificationsPanelHost() {
     setExpandedId(null)
     setExpandedInviteId(null)
     setExpandedRequestId(null)
+    setActivityActionBusyId(null)
   }
+
+  const respondToQbSolutionAccessRequest = useCallback(async (notification: ActivityNotification, action: 'grant' | 'decline') => {
+    const notificationId = String(notification?.id || '')
+    const payload = notification?.data && typeof notification.data === 'object' ? notification.data : {}
+    const threadKey = typeof payload?.threadKey === 'string' ? payload.threadKey : ''
+    const responseId = typeof payload?.responseId === 'string' ? payload.responseId : ''
+    const requestId = typeof payload?.requestId === 'string' ? payload.requestId : ''
+    if (!notificationId || !threadKey || !responseId || !requestId) return
+
+    setActivityActionBusyId(notificationId)
+    try {
+      const res = await fetch(`/api/threads/${encodeURIComponent(threadKey)}/responses/${encodeURIComponent(responseId)}/access`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, requestId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to ${action} request`)
+      }
+
+      await markActivityNotificationRead(notificationId)
+      await loadActionNotifications()
+    } catch (err: any) {
+      alert(err?.message || `Failed to ${action} request`)
+    } finally {
+      setActivityActionBusyId((current) => (current === notificationId ? null : current))
+    }
+  }, [loadActionNotifications, markActivityNotificationRead])
 
   const openNotificationTarget = useCallback((n: ActivityNotification) => {
     const type = String(n?.type || '')
@@ -521,6 +553,10 @@ export default function NotificationsPanelHost() {
       return true
     }
 
+    if (type === 'qb_solution_view_request' || type === 'qb_solution_view_granted' || type === 'qb_solution_view_declined') {
+      return false
+    }
+
     if (type === 'school_manual_entry') {
       if (schoolUserId) {
         closeNotifications()
@@ -555,6 +591,24 @@ export default function NotificationsPanelHost() {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+          </svg>
+        ),
+      }
+    }
+    if (type === 'qb_solution_view_request' || type === 'qb_solution_view_granted' || type === 'qb_solution_view_declined') {
+      return {
+        badgeClass: type === 'qb_solution_view_granted' ? 'bg-emerald-500' : type === 'qb_solution_view_declined' ? 'bg-rose-500' : 'bg-violet-500',
+        icon: type === 'qb_solution_view_granted' ? (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M4 12.5 9 17l11-11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : type === 'qb_solution_view_declined' ? (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        ) : (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 3a4 4 0 0 0-4 4v2H7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-1V7a4 4 0 0 0-4-4Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
           </svg>
         ),
       }
@@ -769,6 +823,9 @@ export default function NotificationsPanelHost() {
                         const actorName = (actor?.name || actor?.email || 'System').trim()
                         const actorInitial = actorName ? actorName.slice(0, 1).toUpperCase() : 'U'
                         const meta = notificationTypeMeta(String(n.type || ''))
+                        const notificationType = String(n.type || '')
+                        const isQbSolutionRequest = notificationType === 'qb_solution_view_request'
+                        const isActionBusy = activityActionBusyId === id
                         return (
                           <div
                             key={id}
@@ -806,6 +863,32 @@ export default function NotificationsPanelHost() {
                                 </div>
                                 <div className="text-xs text-white/80 mt-1 whitespace-pre-wrap break-words">{title}</div>
                                 {body ? <div className="text-xs text-white/70 mt-1 whitespace-pre-wrap break-words">{body}</div> : null}
+                                {isQbSolutionRequest ? (
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary"
+                                      disabled={isActionBusy}
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        void respondToQbSolutionAccessRequest(n, 'grant')
+                                      }}
+                                    >
+                                      {isActionBusy ? 'Working...' : 'Grant once'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-ghost border border-white/20 text-white"
+                                      disabled={isActionBusy}
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        void respondToQbSolutionAccessRequest(n, 'decline')
+                                      }}
+                                    >
+                                      Decline
+                                    </button>
+                                  </div>
+                                ) : null}
                               </div>
                             </div>
                           </div>

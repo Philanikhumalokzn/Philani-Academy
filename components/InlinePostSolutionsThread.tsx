@@ -258,10 +258,24 @@ export default function InlinePostSolutionsThread({
   )
 
   const renderReplyBody = (response: any, args: ResponseRenderArgs) => {
+    const accessControl = response?.accessControl && typeof response.accessControl === 'object'
+      ? response.accessControl
+      : null
+    const isLocked = accessControl?.locked === true
     const postReplyBlocks = normalizePostReplyBlocks(response)
     const fallbackStudentText = String(response?.studentText || '').trim()
     const fallbackLatex = String(response?.latex || '').trim()
     const fallbackLatexHtml = fallbackLatex ? renderKatexDisplayHtml(fallbackLatex) : ''
+
+    if (isLocked) {
+      return (
+        <div className="mt-1 min-w-0 space-y-1">
+          <div className={palette.noContentClass}>
+            {String(accessControl?.message || 'This solution is locked by its owner.')}
+          </div>
+        </div>
+      )
+    }
 
     if (postReplyBlocks.length > 0) {
       return (
@@ -401,6 +415,7 @@ export default function InlinePostSolutionsThread({
     const args: ResponseRenderArgs = { responseId, responseUserId, responseUserName, responseAvatar, isMine }
     const containerProps = getContainerProps?.(response, args) || {}
     const threadMeta = getPostReplyThreadMeta(response)
+    const isLockedResponse = response?.accessControl?.locked === true
     const actions = getResponseActions?.(response, args) || []
     const leadingActions = actions.filter((action) => action.alignment !== 'trailing')
     const trailingActions = actions.filter((action) => action.alignment === 'trailing')
@@ -507,7 +522,7 @@ export default function InlinePostSolutionsThread({
                   </div>
                 ) : null}
 
-                {renderResponseStatus ? renderResponseStatus(response, args) : null}
+                {!isLockedResponse && renderResponseStatus ? renderResponseStatus(response, args) : null}
                 {renderReplyBody(response, args)}
 
                 {actions.length > 0 ? (
@@ -523,7 +538,7 @@ export default function InlinePostSolutionsThread({
                   </div>
                 ) : null}
 
-                {renderResponseFooter ? <div className="mt-3">{renderResponseFooter(response, args)}</div> : null}
+                {!isLockedResponse && renderResponseFooter ? <div className="mt-3">{renderResponseFooter(response, args)}</div> : null}
               </div>
 
               {shouldCollapseChildren ? (

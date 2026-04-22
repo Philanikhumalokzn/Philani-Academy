@@ -2045,6 +2045,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [socialLikeCountByItemKey, setSocialLikeCountByItemKey] = useState<Record<string, number>>({})
   const [socialReplyCountByItemKey, setSocialReplyCountByItemKey] = useState<Record<string, number>>({})
   const [socialShareCountByItemKey, setSocialShareCountByItemKey] = useState<Record<string, number>>({})
+  const [qbSolutionAccessBusyByResponseId, setQbSolutionAccessBusyByResponseId] = useState<Record<string, boolean>>({})
   const [lastSharedSocialItemKey, setLastSharedSocialItemKey] = useState<string | null>(null)
   const [interactiveViewportSavingByResponseId, setInteractiveViewportSavingByResponseId] = useState<Record<string, boolean>>({})
   const [interactiveViewportErrorByResponseId, setInteractiveViewportErrorByResponseId] = useState<Record<string, string>>({})
@@ -9315,7 +9316,48 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     })
   }, [openPostSolveComposer])
 
-  const buildPostReplyActions = useCallback((post: any, response: any, args: ResponseRenderArgs): InlinePostResponseAction[] => {
+  const buildPostReplyActions = (post: any, response: any, args: ResponseRenderArgs): InlinePostResponseAction[] => {
+    const threadKey = String(post?.threadKey || '').trim()
+    const isQbThread = threadKey.startsWith('qb:')
+    const accessControl = response?.accessControl && typeof response.accessControl === 'object'
+      ? response.accessControl
+      : null
+    const lockedState = String(accessControl?.state || 'requestable')
+    const responseBusy = Boolean(qbSolutionAccessBusyByResponseId[args.responseId])
+
+    if (isQbThread && accessControl?.locked === true && !args.isMine) {
+      const canViewOnce = lockedState === 'granted' && Boolean(accessControl?.requestId)
+      return [
+        {
+          label: canViewOnce ? 'View once' : 'Request solution',
+          statusLabel: responseBusy ? 'Working...' : lockedState === 'requested' ? 'Requested' : canViewOnce ? 'View once' : 'Request solution',
+          alignment: 'leading',
+          onClick: () => {
+            if (responseBusy) return
+            if (canViewOnce) {
+              void viewQbSolutionOnce(threadKey, args.responseId, String(accessControl?.requestId || ''))
+              return
+            }
+            if (lockedState === 'requestable') {
+              void requestQbSolutionAccess(threadKey, args.responseId)
+            }
+          },
+          disabled: responseBusy || lockedState === 'requested' || !threadKey,
+          icon: canViewOnce ? (
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+              <path d="M2 12C4.8 7.2 8.13333 4.8 12 4.8C15.8667 4.8 19.2 7.2 22 12C19.2 16.8 15.8667 19.2 12 19.2C8.13333 19.2 4.8 16.8 2 12Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+              <circle cx="12" cy="12" r="2.8" stroke="currentColor" strokeWidth="1.8" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+              <path d="M8 10V7.5C8 5.01472 10.0147 3 12.5 3C14.9853 3 17 5.01472 17 7.5V10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              <rect x="5" y="10" width="14" height="11" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
+            </svg>
+          ),
+        },
+      ]
+    }
+
     const itemKey = `reply:${args.responseId}`
     const replyCount = response?.children?.length ?? 0
 
@@ -9353,7 +9395,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         ),
       },
     ]
-  }, [openReplyComposerForPostResponse, socialLikedItems, socialLikeCountByItemKey, toggleSocialLike])
+  }
 
   useEffect(() => {
     if (!router.isReady) return
@@ -9488,6 +9530,92 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setStudentFeedPosts((prev: any[]) => Array.isArray(prev) ? prev.map((item) => syncFeedPostThreadState(item, safePostId, responses, effectiveCurrentUserId)) : prev)
     setTimelineChallenges((prev: any[]) => Array.isArray(prev) ? prev.map((item) => syncFeedPostThreadState(item, safePostId, responses, effectiveCurrentUserId)) : prev)
   }, [currentUserId, viewerId])
+
+  const patchPostThreadResponse = useCallback((responseId: string, updater: (response: any) => any) => {
+    const safeResponseId = String(responseId || '').trim()
+    if (!safeResponseId) return
+
+    setPostThreadResponses((prev) => (
+      Array.isArray(prev)
+        ? prev.map((response: any) => String(response?.id || '') === safeResponseId ? updater(response) : response)
+        : prev
+    ))
+  }, [])
+
+  async function requestQbSolutionAccess(threadKey: string, responseId: string) {
+    const safeThreadKey = String(threadKey || '').trim()
+    const safeResponseId = String(responseId || '').trim()
+    if (!safeThreadKey.startsWith('qb:') || !safeResponseId) return
+
+    setQbSolutionAccessBusyByResponseId((prev) => ({ ...prev, [safeResponseId]: true }))
+    try {
+      const res = await fetch(`/api/threads/${encodeURIComponent(safeThreadKey)}/responses/${encodeURIComponent(safeResponseId)}/access`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'request' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to request solution access (${res.status})`)
+      }
+
+      patchPostThreadResponse(safeResponseId, (response) => ({
+        ...(response || {}),
+        accessControl: {
+          ...(response?.accessControl && typeof response.accessControl === 'object' ? response.accessControl : {}),
+          locked: true,
+          requestId: String(data?.requestId || response?.accessControl?.requestId || ''),
+          state: data?.state === 'granted' ? 'granted' : 'requested',
+          message: data?.state === 'granted'
+            ? 'Permission granted. Use View once to unlock this solution.'
+            : 'Request sent. Waiting for the owner to grant one-time viewing.',
+        },
+      }))
+    } catch (err: any) {
+      alert(err?.message || 'Failed to request solution access')
+    } finally {
+      setQbSolutionAccessBusyByResponseId((prev) => {
+        const next = { ...prev }
+        delete next[safeResponseId]
+        return next
+      })
+    }
+  }
+
+  async function viewQbSolutionOnce(threadKey: string, responseId: string, requestId: string) {
+    const safeThreadKey = String(threadKey || '').trim()
+    const safeResponseId = String(responseId || '').trim()
+    const safeRequestId = String(requestId || '').trim()
+    if (!safeThreadKey.startsWith('qb:') || !safeResponseId || !safeRequestId) return
+
+    setQbSolutionAccessBusyByResponseId((prev) => ({ ...prev, [safeResponseId]: true }))
+    try {
+      const res = await fetch(`/api/threads/${encodeURIComponent(safeThreadKey)}/responses/${encodeURIComponent(safeResponseId)}/access`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'view', requestId: safeRequestId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.message || `Failed to unlock solution (${res.status})`)
+      }
+      if (!data?.response) {
+        throw new Error('Unlocked solution payload is missing')
+      }
+
+      patchPostThreadResponse(safeResponseId, () => data.response)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to unlock solution')
+    } finally {
+      setQbSolutionAccessBusyByResponseId((prev) => {
+        const next = { ...prev }
+        delete next[safeResponseId]
+        return next
+      })
+    }
+  }
 
   const deleteReplyFromCrudTarget = useCallback(async (target: ReplyCrudTarget) => {
     const responseId = String(target?.response?.id || '')

@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import prisma from '../../../../lib/prisma'
 import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionRequiredResponse } from '../../../../lib/subscription'
+import { getRemixSolutionAccessMapForViewer } from '../../../../lib/remixSolutionAccess'
 
 const MAX_LATEX_LENGTH = 50000
 const MAX_STUDENT_TEXT_LENGTH = 5000
@@ -211,6 +212,30 @@ const updatePostReplyPayloadCanvasScene = (gradingJson: any, scene: Record<strin
   return replaced ? { ...gradingJson, contentBlocks } : null
 }
 
+const getRedactedReplyThreadMeta = (gradingJson: any) => {
+  if (!gradingJson || typeof gradingJson !== 'object') return null
+  const replyThread = gradingJson.replyThread
+  if (!replyThread || typeof replyThread !== 'object') return null
+
+  const parentResponseId = typeof replyThread.parentResponseId === 'string' ? replyThread.parentResponseId : ''
+  const rootResponseId = typeof replyThread.rootResponseId === 'string' ? replyThread.rootResponseId : ''
+  const replyToUserId = typeof replyThread.replyToUserId === 'string' ? replyThread.replyToUserId : ''
+  const replyToUserName = typeof replyThread.replyToUserName === 'string' ? replyThread.replyToUserName : ''
+
+  if (!parentResponseId && !rootResponseId && !replyToUserId && !replyToUserName) return null
+
+  return {
+    kind: POST_REPLY_BLOCKS_KIND,
+    contentBlocks: [],
+    replyThread: {
+      ...(parentResponseId ? { parentResponseId } : {}),
+      ...(rootResponseId ? { rootResponseId } : {}),
+      ...(replyToUserId ? { replyToUserId } : {}),
+      ...(replyToUserName ? { replyToUserName } : {}),
+    },
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const sessionKeyParam = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id
   if (!sessionKeyParam) {
@@ -236,6 +261,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const challengeId = isChallengeSession ? sessionKey.slice('challenge:'.length).trim() : ''
   const isPostSession = sessionKey.startsWith('post:')
   const postId = isPostSession ? sessionKey.slice('post:'.length).trim() : ''
+  const isQbSession = sessionKey.startsWith('qb:')
   let challengeOwnerId: string | null = null
   let challengeMaxAttempts: number | null = null
   let challengeTitle: string | null = null
@@ -317,6 +343,70 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 
   if (req.method === 'GET') {
+    if (isQbSession) {
+      const records = await learnerResponse.findMany({
+        where: { sessionKey: { in: responseThreadKeys } },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatar: true,
+            },
+          },
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 200,
+      })
+
+      const accessByResponseId = await getRemixSolutionAccessMapForViewer(
+        records.map((record: any) => String(record?.id || '')).filter(Boolean),
+        userId,
+      )
+
+      return res.status(200).json({
+        responses: records.map((record: any) => {
+          const responseUserId = String(record?.userId || record?.user?.id || '')
+          const canViewFullResponse = responseUserId === String(userId) || isAdmin || role === 'teacher'
+          const accessSnapshot = accessByResponseId.get(String(record?.id || ''))
+
+          if (canViewFullResponse) {
+            return {
+              ...record,
+              userName: String(record?.user?.name || record?.user?.email || 'Learner'),
+              userAvatar: record?.user?.avatar || null,
+              accessControl: {
+                locked: false,
+                state: responseUserId === String(userId) ? 'owner' : 'visible',
+              },
+            }
+          }
+
+          return {
+            ...record,
+            latex: '',
+            studentText: '',
+            excalidrawScene: null,
+            gradingJson: getRedactedReplyThreadMeta(record?.gradingJson),
+            feedback: null,
+            userName: String(record?.user?.name || record?.user?.email || 'Learner'),
+            userAvatar: record?.user?.avatar || null,
+            accessControl: {
+              locked: true,
+              requestId: accessSnapshot?.requestId || null,
+              state: accessSnapshot?.state || 'requestable',
+              message: accessSnapshot?.state === 'granted'
+                ? 'Permission granted. Use View once to unlock this solution.'
+                : accessSnapshot?.state === 'requested'
+                  ? 'Request sent. Waiting for the owner to grant one-time viewing.'
+                  : 'This solution is locked. Request one-time viewing from the solution owner.',
+            },
+          }
+        }),
+      })
+    }
+
     if (isChallengeSession && challengeId) {
       try {
         const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any

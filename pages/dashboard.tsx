@@ -7384,6 +7384,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               key={String(post.id)}
               id={String(post.id)}
               latex={String(post.latex || '')}
+              authorId={String(post.createdById || '') || null}
               authorName={typeof post.createdByName === 'string' ? post.createdByName : 'Anonymous'}
               createdAt={String(post.createdAt || '')}
             />

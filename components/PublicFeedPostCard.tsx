@@ -42,6 +42,7 @@ export type PublicFeedPostCardProps = {
   onOpenCanvas?: (scene: PublicSolveScene, title: string) => void
   consumeLongPressOpen?: () => boolean
   bodyPointerProps?: Pick<HTMLAttributes<HTMLDivElement>, 'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onPointerCancel' | 'onPointerLeave' | 'onContextMenu'>
+  customBody?: ReactNode
   sideActions?: ReactNode
   actions?: PublicFeedPostAction[]
   children?: ReactNode
@@ -64,6 +65,7 @@ export default function PublicFeedPostCard({
   onOpenCanvas,
   consumeLongPressOpen,
   bodyPointerProps,
+  customBody,
   sideActions,
   actions = [],
   children,
@@ -166,7 +168,7 @@ export default function PublicFeedPostCard({
 
   const handleBodyContextMenu = bodyPointerProps?.onContextMenu
 
-  const body = (
+  const body = customBody ?? (
     <div
       className={onOpen ? 'mt-3 block w-full cursor-pointer text-left' : 'mt-3 block w-full text-left'}
       role={onOpen ? 'button' : undefined}

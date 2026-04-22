@@ -39,6 +39,7 @@ type Props = {
   onParseOnUploadChange: (checked: boolean) => void
   onToggleParsedOpen: () => void
   onSubmit: () => void | Promise<void>
+  onSubmitMath?: () => void | Promise<void>
   onCancelImageEdit: () => void
   onConfirmImageEdit: (file: File) => void | Promise<void>
 
@@ -504,7 +505,21 @@ export default function PostComposerOverlay(props: Props) {
                 imageActionTitle="Camera"
                 imageActionDisabled={posting || uploading}
                 posting={posting}
-                trailingControls={<AudiencePicker audienceDraft={audienceDraft} onAudienceChange={onAudienceChange} />}
+                trailingControls={
+                  <div className="flex items-center gap-2">
+                    <AudiencePicker audienceDraft={audienceDraft} onAudienceChange={onAudienceChange} />
+                    {props.onSubmitMath && composedBlocks.some(b => b.type === 'latex') && (
+                      <button
+                        type="button"
+                        className="rounded-lg bg-purple-500/20 px-2 py-1 text-xs font-semibold text-purple-600 hover:bg-purple-500/30 disabled:opacity-50"
+                        onClick={() => void props.onSubmitMath?.()}
+                        disabled={posting || uploading}
+                      >
+                        Math
+                      </button>
+                    )}
+                  </div>
+                }
                 submitLabel={posting ? (editingPostId ? 'Saving...' : 'Posting...') : (editingPostId ? 'Save' : 'Post')}
                 submitDisabled={posting || uploading || composedBlocks.length === 0}
                 onSubmit={onSubmit}

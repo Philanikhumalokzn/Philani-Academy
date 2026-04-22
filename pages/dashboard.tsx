@@ -3354,6 +3354,45 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setChallengePosting(false)
     }
   }
+
+  async function submitMathPost() {
+    if (status !== 'authenticated') return
+    const latexBlocks = postSolveBlocks.filter(b => b.type === 'latex')
+    if (latexBlocks.length === 0) {
+      alert('No math blocks to post')
+      return
+    }
+
+    setChallengePosting(true)
+    try {
+      for (const block of latexBlocks) {
+        const res = await fetch('/api/math-posts', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ latex: block.latex }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          throw new Error(data?.message || `Failed to post math (${res.status})`)
+        }
+      }
+      
+      // Clear composer
+      discardRestore()
+      closeCreateOverlay()
+      setCreateKind('post')
+      setPostSolveBlocks([])
+      setPostSolveText('')
+      setPostTypedSolveLatex('')
+      alert('Math posted!')
+    } catch (err: any) {
+      alert(err?.message || 'Failed to post math')
+    } finally {
+      setChallengePosting(false)
+    }
+  }
+
   const gradingAttentionStorageKey = useMemo(() => {
     const userKey = session?.user?.email || (session as any)?.user?.id || session?.user?.name || 'anon'
     return `pa:grading-attended-notifications:v1:${userKey}`
@@ -17786,6 +17825,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           onOpenCameraPicker={openPostReplyCameraPicker}
           onOpenGalleryPicker={openPostReplyGalleryPicker}
           onSubmit={() => void postChallenge()}
+          onSubmitMath={() => void submitMathPost()}
           onCancelImageEdit={closePostReplyImageEdit}
           onConfirmImageEdit={(file) => void confirmPostReplyImageEdit(file)}
           onCanvasCancel={() => {

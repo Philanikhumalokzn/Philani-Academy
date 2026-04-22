@@ -169,27 +169,28 @@ export default function PublicFeedPostCard({
   const handleBodyPointerLeave = bodyPointerProps?.onPointerLeave
 
   const handleBodyContextMenu = bodyPointerProps?.onContextMenu
+  const latexOnlyInteractive = !customBody && isLatexOnlyBody
 
   const body = customBody ?? (
     <div
-      className={onOpen ? 'mt-3 block w-full cursor-pointer text-left' : 'mt-3 block w-full text-left'}
-      role={onOpen ? 'button' : undefined}
-      tabIndex={onOpen ? 0 : undefined}
-      onClick={handleBodyClick}
-      onKeyDown={onOpen ? (event) => {
+      className={onOpen && !latexOnlyInteractive ? 'mt-3 block w-full cursor-pointer text-left' : 'mt-3 block w-full text-left'}
+      role={onOpen && !latexOnlyInteractive ? 'button' : undefined}
+      tabIndex={onOpen && !latexOnlyInteractive ? 0 : undefined}
+      onClick={latexOnlyInteractive ? undefined : handleBodyClick}
+      onKeyDown={onOpen && !latexOnlyInteractive ? (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
           onOpen()
         }
       } : undefined}
-      aria-expanded={onOpen ? expanded : undefined}
+      aria-expanded={onOpen && !latexOnlyInteractive ? expanded : undefined}
       data-testid="public-feed-post-body"
-      onPointerDown={handleBodyPointerDown}
-      onPointerMove={handleBodyPointerMove}
-      onPointerUp={handleBodyPointerUp}
-      onPointerCancel={handleBodyPointerCancel}
-      onPointerLeave={handleBodyPointerLeave}
-      onContextMenu={handleBodyContextMenu}
+      onPointerDown={latexOnlyInteractive ? undefined : handleBodyPointerDown}
+      onPointerMove={latexOnlyInteractive ? undefined : handleBodyPointerMove}
+      onPointerUp={latexOnlyInteractive ? undefined : handleBodyPointerUp}
+      onPointerCancel={latexOnlyInteractive ? undefined : handleBodyPointerCancel}
+      onPointerLeave={latexOnlyInteractive ? undefined : handleBodyPointerLeave}
+      onContextMenu={latexOnlyInteractive ? undefined : handleBodyContextMenu}
     >
       <div className="px-4">
         <div className="text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{safeTitle}</div>
@@ -199,7 +200,7 @@ export default function PublicFeedPostCard({
           <MmdPaperViewer mmd={mmdBodyContent} compact />
         </div>
       ) : isLatexOnlyBody ? (
-        <div className="mt-3 px-4 space-y-3">
+        <div className="philani-no-icon-gradient mt-3 px-4 space-y-3">
           {contentRows.map((block, index) => {
             const latex = block.type === 'latex' ? String(block.latex || '').trim() : ''
             const latexHtml = latex ? renderKatexDisplayHtml(latex) : ''
@@ -207,7 +208,7 @@ export default function PublicFeedPostCard({
             return (
               <div
                 key={`${block.id}-${index}`}
-                className="overflow-x-auto text-[#1c1e21]"
+                className="philani-no-icon-gradient overflow-x-auto text-[#1c1e21]"
                 dangerouslySetInnerHTML={{ __html: latexHtml }}
               />
             )

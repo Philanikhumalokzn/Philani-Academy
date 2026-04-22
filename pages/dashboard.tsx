@@ -7094,7 +7094,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           },
                           {
                             key: `${socialItemKey}:reply`,
-                            label: isPost ? 'Reply' : (hasAttempted ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve'),
+                            label: isPost ? 'Solve' : (hasAttempted ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve'),
                             countLabel: isPost
                               ? formatSocialCountLabel((p as any)?.solutionCount, 'Reply', 'Replies')
                               : undefined,

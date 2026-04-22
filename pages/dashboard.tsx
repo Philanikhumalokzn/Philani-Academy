@@ -14527,8 +14527,26 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const compatibleQuestionRemixes = useMemo(() => {
     if (qbSelectedIds.size === 0) return []
-    return questionRemixes.filter((item) => areQuestionRemixSignaturesCompatible(selectedQuestionRemixSignature, item.compatibilitySignature || null))
-  }, [qbSelectedIds.size, questionRemixes, selectedQuestionRemixSignature])
+    return questionRemixes.filter((item) => {
+      const canEditItem = Boolean(
+        isAdmin
+        || (currentUserId
+          && item.createdBy?.id
+          && String(item.createdBy.id) === String(currentUserId))
+      )
+      if (!canEditItem) return false
+      return areQuestionRemixSignaturesCompatible(selectedQuestionRemixSignature, item.compatibilitySignature || null)
+    })
+  }, [currentUserId, isAdmin, qbSelectedIds.size, questionRemixes, selectedQuestionRemixSignature])
+
+  const editableQuestionRemixes = useMemo(() => {
+    return questionRemixes.filter((item) => Boolean(
+      isAdmin
+      || (currentUserId
+        && item.createdBy?.id
+        && String(item.createdBy.id) === String(currentUserId))
+    ))
+  }, [currentUserId, isAdmin, questionRemixes])
 
   const buildSelectedQuestionRemixNamePreview = useCallback(() => {
     const selectedQuestions = qbItems.filter((item: any) => qbSelectedIds.has(String(item?.id || '')))
@@ -14574,12 +14592,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const openQuestionRemixCreate = useCallback(() => {
     if (qbSelectedIds.size === 0) return
-    const compatibleIds = compatibleQuestionRemixes.map((item) => item.id)
+    const editableIds = editableQuestionRemixes.map((item) => item.id)
     setQuestionRemixCreateOpen(true)
     setQuestionRemixCreateError(null)
     setQuestionRemixCreateNewEnabled(true)
     setQuestionRemixCreateExistingIds(
-      questionRemixAppendTargetId && compatibleIds.includes(questionRemixAppendTargetId)
+      questionRemixAppendTargetId && editableIds.includes(questionRemixAppendTargetId)
         ? [questionRemixAppendTargetId]
         : [],
     )
@@ -14588,7 +14606,30 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       name: buildSelectedQuestionRemixNamePreview(),
       suggestedName: buildSelectedQuestionRemixNamePreview(),
     })
-  }, [buildSelectedQuestionRemixNamePreview, compatibleQuestionRemixes, qbSelectedIds.size, questionRemixAppendTargetId])
+  }, [buildSelectedQuestionRemixNamePreview, editableQuestionRemixes, qbSelectedIds.size, questionRemixAppendTargetId])
+
+  const openQuestionRemixCreateForQuestion = useCallback((question: any) => {
+    const questionId = String(question?.id || '').trim()
+    if (!questionId) return
+
+    const editableIds = editableQuestionRemixes.map((item) => item.id)
+    const suggestedName = buildQuestionRemixIntersectionName([question])
+
+    setQbSelectedIds(new Set([questionId]))
+    setQuestionRemixCreateOpen(true)
+    setQuestionRemixCreateError(null)
+    setQuestionRemixCreateNewEnabled(true)
+    setQuestionRemixCreateExistingIds(
+      questionRemixAppendTargetId && editableIds.includes(questionRemixAppendTargetId)
+        ? [questionRemixAppendTargetId]
+        : [],
+    )
+    setQuestionRemixDraft({
+      ...createEmptyQuestionRemixDraft(),
+      name: suggestedName,
+      suggestedName,
+    })
+  }, [editableQuestionRemixes, questionRemixAppendTargetId])
 
   const appendSelectedQuestionsToQuestionRemixTarget = useCallback(async () => {
     const questionIds = Array.from(qbSelectedIds)
@@ -16407,20 +16448,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           : null
 
         return questionRemixAppendTargetId ? (
-          <section className="border-b border-black/10 bg-[#eef5ff] px-4 py-3 flex flex-wrap items-center gap-2">
+          <section className="border-b border-black/10 bg-[#eef5ff] px-4 py-3 flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs font-semibold text-[#1877f2]">
-              Adding to {targetRemix?.name || 'selected remix'}
+              Adding from search into {targetRemix?.name || 'selected remix'} via the `+` button on each result.
             </span>
-            {canCurateQuestionRemixes && qbSelectedIds.size > 0 ? (
-              <button
-                type="button"
-                className="inline-flex h-7 items-center rounded-full bg-[#1877f2] px-3 text-xs font-semibold text-white hover:bg-[#166fe5] disabled:opacity-50"
-                onClick={openQuestionRemixCreate}
-                disabled={qbBulkBusy}
-              >
-                Add {qbSelectedIds.size} selected question{qbSelectedIds.size === 1 ? '' : 's'}
-              </button>
-            ) : null}
             <button
               type="button"
               className="inline-flex h-7 items-center rounded-full border border-[#bfd7ff] bg-white px-3 text-xs font-medium text-[#2457a6] hover:bg-[#f7faff]"
@@ -16444,77 +16475,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       {qbItems.length > 0 ? (
         <>
-          {/* Results header with select-all and count */}
-          <section className="border-b border-black/10 bg-white px-4 py-2 flex items-center gap-3">
-            {canCurateQuestionRemixes ? (
-              <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-[#d5def0] accent-[#1877f2] cursor-pointer"
-                  checked={qbItems.length > 0 && qbSelectedIds.size === qbItems.length}
-                  ref={(el) => { if (el) el.indeterminate = qbSelectedIds.size > 0 && qbSelectedIds.size < qbItems.length }}
-                  onChange={qbToggleSelectAll}
-                  aria-label="Select all results"
-                />
-                <span className="text-xs text-[#65676b]">All</span>
-              </label>
-            ) : null}
-            <div className="flex-1 text-xs text-[#65676b]">{qbTotal} result{qbTotal !== 1 ? 's' : ''} (showing {qbItems.length})</div>
+          <section className="border-b border-black/10 bg-white px-4 py-2">
+            <div className="text-xs text-[#65676b]">{qbTotal} result{qbTotal !== 1 ? 's' : ''} (showing {qbItems.length})</div>
           </section>
-
-          {/* Bulk action toolbar — shown when items are selected */}
-          {canCurateQuestionRemixes && qbSelectedIds.size > 0 ? (
-            <section className="border-b border-black/10 bg-[#fff8e7] px-4 py-2.5 flex flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold text-[#856404] mr-1">{qbSelectedIds.size} selected</span>
-              <button
-                type="button"
-                className="inline-flex h-7 items-center rounded-full bg-[#0f766e] px-3 text-xs font-semibold text-white hover:bg-[#115e59] disabled:opacity-50"
-                onClick={() => void (questionRemixAppendTargetId ? appendSelectedQuestionsToQuestionRemixTarget() : openQuestionRemixCreate())}
-                disabled={qbBulkBusy}
-              >
-                {questionRemixAppendTargetId
-                  ? `Add to ${questionRemixes.find((item) => item.id === questionRemixAppendTargetId)?.name || 'target remix'}`
-                  : 'Add to remix'}
-              </button>
-              {isAdmin ? (
-                <>
-                  <button
-                    type="button"
-                    className="inline-flex h-7 items-center rounded-full bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
-                    onClick={() => void qbBulkDelete()}
-                    disabled={qbBulkBusy}
-                  >
-                    Delete
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex h-7 items-center rounded-full bg-[#1877f2] px-3 text-xs font-semibold text-white hover:bg-[#166fe5] disabled:opacity-50"
-                    onClick={() => void qbBulkPatch({ approved: true })}
-                    disabled={qbBulkBusy}
-                  >
-                    Approve
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-medium text-[#4b5563] hover:bg-[#f0f2f5] disabled:opacity-50"
-                    onClick={() => void qbBulkPatch({ approved: false })}
-                    disabled={qbBulkBusy}
-                  >
-                    Unapprove
-                  </button>
-                </>
-              ) : null}
-              <button
-                type="button"
-                className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-medium text-[#65676b] hover:bg-[#f0f2f5]"
-                onClick={() => setQbSelectedIds(new Set())}
-              >
-                Clear selection
-              </button>
-              {qbBulkBusy ? <span className="text-xs text-[#65676b]">Working…</span> : null}
-              {qbBulkError ? <span className="text-xs text-red-600">{qbBulkError}</span> : null}
-            </section>
-          ) : null}
 
           <ul>
             {qbItems.map((q) => (
@@ -16540,7 +16503,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   pushUrl(q?.imageUrl)
                   return urls
                 })()
-                const isSelected = canCurateQuestionRemixes && qbSelectedIds.has(String(q.id))
                 const isSubquestion = String(q.questionNumber ?? '').includes('.')
                 const renderQuestionContextBlock = (contextQuestion: any, label: string) => {
                   if (!contextQuestion) return null
@@ -16574,7 +16536,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                   return (
                     <div className="mb-2 rounded-xl border border-[#dbe4f3] bg-[#f8fbff] px-3 py-3">
-                      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#5b6b85]">{label}</div>
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#5b6b85]">{label}</div>
+                        {canCurateQuestionRemixes ? (
+                          <button
+                            type="button"
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#c8d9f3] bg-white text-lg font-black leading-none text-[#1877f2] shadow-sm hover:bg-[#eef5ff]"
+                            onClick={() => openQuestionRemixCreateForQuestion(q)}
+                            aria-label={`Add question ${formatQNumLabel(q?.questionNumber)} to remix`}
+                            title="Add to remix"
+                          >
+                            +
+                          </button>
+                        ) : null}
+                      </div>
                       {contextText ? (
                         <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
                           {renderQuestionTextWithInlineLatex(contextText)}
@@ -16641,29 +16616,31 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   )
                 }
 
+                const renderAddButtonHeader = canCurateQuestionRemixes && !q?.rootContext ? (
+                  <div className="mb-2 flex items-center justify-end">
+                    <button
+                      type="button"
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#c8d9f3] bg-white text-lg font-black leading-none text-[#1877f2] shadow-sm hover:bg-[#eef5ff]"
+                      onClick={() => openQuestionRemixCreateForQuestion(q)}
+                      aria-label={`Add question ${formatQNumLabel(q?.questionNumber)} to remix`}
+                      title="Add to remix"
+                    >
+                      +
+                    </button>
+                  </div>
+                ) : null
+
                 return (
                   <li
                     key={q.id}
                     ref={(el) => {
                       qbQuestionItemRefs.current[String(q.id)] = el
                     }}
-                    className={`border-b border-black/10 bg-white px-4 py-3 transition-colors${isSelected ? ' !bg-[#f0f5ff]' : ''}`}
+                    className="border-b border-black/10 bg-white px-4 py-3 transition-colors"
                   >
                     <div className="flex gap-3 items-start">
-                      {/* Row select checkbox */}
-                      {canCurateQuestionRemixes ? (
-                        <div className="flex-shrink-0 pt-0.5">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-[#d5def0] accent-[#1877f2] cursor-pointer"
-                            checked={isSelected}
-                            onChange={() => qbToggleSelect(String(q.id))}
-                            aria-label={`Select question ${String(q.questionNumber)}`}
-                          />
-                        </div>
-                      ) : null}
-
                       <div className="flex-1 min-w-0">
+                        {renderAddButtonHeader}
                         {renderQuestionContextBlock(q?.rootContext, `Question ${getQNumRoot(q?.questionNumber) || q?.questionNumber} preamble`)}
                         {renderQuestionContextBlock(q?.parentContext, `Parent Q${formatQNumLabel(q?.parentContext?.questionNumber)}`)}
 
@@ -19526,27 +19503,27 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             onPointerDown={(event) => event.stopPropagation()}
           >
             <div className="border-b border-[#eef2f7] px-5 py-4">
-              <div className="text-base font-semibold text-[#1c1e21]">Create remix</div>
+              <div className="text-base font-semibold text-[#1c1e21]">Add To Remix</div>
               <div className="mt-1 text-xs text-[#65676b]">{qbSelectedIds.size} selected question{qbSelectedIds.size === 1 ? '' : 's'}</div>
             </div>
             <div className="space-y-4 px-5 py-4">
-              {compatibleQuestionRemixes.length > 0 ? (
-                <div className="space-y-3">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={questionRemixCreateNewEnabled}
-                      onChange={(event) => setQuestionRemixCreateNewEnabled(event.target.checked)}
-                      className="h-4 w-4 rounded border-[#d5def0] accent-[#1877f2]"
-                      disabled={questionRemixCreateBusy}
-                    />
-                    <span className="text-sm font-medium text-[#1c1e21]">Create new remix</span>
-                  </label>
+              <div className="space-y-3">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={questionRemixCreateNewEnabled}
+                    onChange={(event) => setQuestionRemixCreateNewEnabled(event.target.checked)}
+                    className="h-4 w-4 rounded border-[#d5def0] accent-[#1877f2]"
+                    disabled={questionRemixCreateBusy}
+                  />
+                  <span className="text-sm font-medium text-[#1c1e21]">Create remix</span>
+                </label>
 
-                  <div className="rounded-2xl border border-[#eef2f7] bg-[#f7f8fa] px-4 py-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#65676b]">Compatible remixes</div>
+                <div className="rounded-2xl border border-[#eef2f7] bg-[#f7f8fa] px-4 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#65676b]">Available remixes</div>
+                  {editableQuestionRemixes.length > 0 ? (
                     <div className="mt-2 space-y-2">
-                      {compatibleQuestionRemixes.map((item) => {
+                      {editableQuestionRemixes.map((item) => {
                         const checked = questionRemixCreateExistingIds.includes(item.id)
                         return (
                           <label key={item.id} className="flex cursor-pointer items-start gap-3 rounded-xl border border-white bg-white px-3 py-2">
@@ -19570,9 +19547,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         )
                       })}
                     </div>
-                  </div>
+                  ) : (
+                    <div className="mt-2 text-xs text-[#65676b]">No editable remixes yet. Create one above.</div>
+                  )}
                 </div>
-              ) : null}
+              </div>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[#65676b]">Name</label>
@@ -19611,7 +19590,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 onClick={() => void submitQuestionRemixCreate()}
                 disabled={questionRemixCreateBusy}
               >
-                {questionRemixCreateBusy ? 'Creating...' : 'Create remix'}
+                {questionRemixCreateBusy ? 'Saving...' : 'Save'}
               </button>
             </div>
           </div>

@@ -16641,11 +16641,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <div className="flex gap-3 items-start">
                       <div className="flex-1 min-w-0">
                         {renderAddButtonHeader}
-                        {renderQuestionContextBlock(q?.rootContext, `Question ${getQNumRoot(q?.questionNumber) || q?.questionNumber} preamble`)}
-                        {renderQuestionContextBlock(q?.parentContext, `Parent Q${formatQNumLabel(q?.parentContext?.questionNumber)}`)}
+                        {renderQuestionContextBlock(q?.rootContext, `Question ${formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)} preamble`)}
+                        {renderQuestionContextBlock(q?.parentContext, `Parent ${formatQNumLabel(q?.parentContext?.questionNumber)}`)}
 
                         <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <span className="text-xs font-bold text-[#65676b]">Q{q.questionNumber}</span>
+                          <span className="text-xs font-bold text-[#65676b]">{formatQNumLabel(q.questionNumber)}</span>
                           <button
                             type="button"
                             className={`text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563] transition hover:bg-[#e4e7eb]${qbRemixOverlay?.questionId === String(q.id) && qbRemixOverlay.badge === 'year' ? ' ring-2 ring-[#1877f2]/35' : ''}`}

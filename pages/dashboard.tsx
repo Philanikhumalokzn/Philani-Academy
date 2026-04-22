@@ -263,6 +263,20 @@ function createEmptyQuestionRemixDraft(): QuestionRemixDraft {
   }
 }
 
+function orderQuestionRemixes(items: QuestionRemixSummary[]): QuestionRemixSummary[] {
+  const list = Array.isArray(items) ? [...items] : []
+  return list.sort((left, right) => {
+    const leftIsMySolves = String(left?.name || '').trim().toLowerCase() === 'my solves'
+    const rightIsMySolves = String(right?.name || '').trim().toLowerCase() === 'my solves'
+    if (leftIsMySolves && !rightIsMySolves) return -1
+    if (!leftIsMySolves && rightIsMySolves) return 1
+
+    const leftUpdatedAt = left?.updatedAt ? new Date(left.updatedAt).getTime() : 0
+    const rightUpdatedAt = right?.updatedAt ? new Date(right.updatedAt).getTime() : 0
+    return rightUpdatedAt - leftUpdatedAt
+  })
+}
+
 function normalizeQuestionRemixNamePart(value: unknown): string {
   if (typeof value === 'string') return value.trim()
   if (typeof value === 'number' && Number.isFinite(value)) return String(value)
@@ -1160,6 +1174,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   type PostSolveOverlayState = {
     postId: string
     threadKey: string
+    questionId?: string | null
     title: string
     prompt: string
     imageUrl?: string | null
@@ -9141,6 +9156,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setPostSolveModeOverlay({
       postId,
       threadKey,
+      questionId: post?.questionId ? String(post.questionId) : null,
       title: String(post?.title || 'Post'),
       prompt: String(post?.prompt || 'Share your solution for this post.'),
       imageUrl: typeof post?.imageUrl === 'string' ? post.imageUrl : null,
@@ -9617,6 +9633,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }
 
+  async function saveQuestionToMySolves(questionId: string) {
+    const safeQuestionId = String(questionId || '').trim()
+    if (!safeQuestionId) return
+
+    const res = await fetch('/api/question-remixes/my-solves', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questionId: safeQuestionId }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(data?.message || `Failed to save question to My Solves (${res.status})`)
+    }
+  }
+
   const deleteReplyFromCrudTarget = useCallback(async (target: ReplyCrudTarget) => {
     const responseId = String(target?.response?.id || '')
     const threadKey = String(target?.threadKey || '')
@@ -9721,6 +9753,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         throw new Error(data?.message || `Failed to submit reply (${res.status})`)
+      }
+
+      if (String(activeDraft.threadKey || '').startsWith('qb:') && activeDraft.questionId) {
+        await saveQuestionToMySolves(activeDraft.questionId)
       }
 
       applyOwnPostResponseToFeeds(activeDraft, data)
@@ -14447,7 +14483,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       const res = await fetch('/api/question-remixes', { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error((data as any)?.message || `Failed to load remixes (${res.status})`)
-      const items = Array.isArray((data as any)?.items) ? (data as any).items : []
+      const items = orderQuestionRemixes(Array.isArray((data as any)?.items) ? (data as any).items : [])
       setQuestionRemixes(items)
       setSelectedQuestionRemixId((prev) => {
         if (prev && items.some((item: QuestionRemixSummary) => item.id === prev)) return prev

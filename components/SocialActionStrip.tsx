@@ -38,9 +38,14 @@ export default function SocialActionStrip({ actions, className }: SocialActionSt
       <div className="flex items-center gap-1">
         {actions.map((action, index) => {
           const countText = getActionCountText(action)
+          const edgeAlignmentClassName = index === 0
+            ? 'justify-start'
+            : index === actions.length - 1
+              ? 'justify-end'
+              : 'justify-center'
 
           return (
-          <div key={action.key || action.label || String(index)} className="flex min-w-0 flex-1 items-center justify-center gap-1.5">
+          <div key={action.key || action.label || String(index)} className={`flex min-w-0 flex-1 items-center gap-1.5 ${edgeAlignmentClassName}`}>
             {countText ? (
               <button
                 type="button"

@@ -2237,8 +2237,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [questionRemixInviteBusy, setQuestionRemixInviteBusy] = useState(false)
   const [questionRemixInviteResults, setQuestionRemixInviteResults] = useState<QuestionRemixInviteUser[]>([])
   const [questionRemixInviteError, setQuestionRemixInviteError] = useState<string | null>(null)
+  const [questionRemixFocusQuestionId, setQuestionRemixFocusQuestionId] = useState<string | null>(null)
   const questionRemixLongPressTimerRef = useRef<number | null>(null)
   const questionRemixLongPressTriggeredRef = useRef(false)
+  const questionRemixQuestionItemRefs = useRef<Record<string, HTMLLIElement | null>>({})
   const questionRemixCrudTarget = questionRemixCrudTargetId
     ? ((selectedQuestionRemix?.id === questionRemixCrudTargetId ? selectedQuestionRemix : null)
       || questionRemixes.find((item) => item.id === questionRemixCrudTargetId)
@@ -15023,6 +15025,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [booksHubTab, loadQuestionRemixDetail, selectedQuestionRemixId])
 
   useEffect(() => {
+    if (!questionRemixFocusQuestionId) return
+    if (!selectedQuestionRemix?.questions?.some((item: any) => String(item?.id || '') === questionRemixFocusQuestionId)) return
+
+    const timerId = window.setTimeout(() => {
+      const target = questionRemixQuestionItemRefs.current[questionRemixFocusQuestionId]
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+      setQuestionRemixFocusQuestionId(null)
+    }, 80)
+
+    return () => {
+      window.clearTimeout(timerId)
+    }
+  }, [questionRemixFocusQuestionId, selectedQuestionRemix])
+
+  useEffect(() => {
     if (!questionRemixEditOpen) return
     const query = questionRemixInviteQuery.trim()
     if (query.length === 0) {
@@ -16161,8 +16180,31 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       return <div className="px-4 py-4 text-sm text-[#65676b]">Select a remix to view its questions.</div>
     }
 
+    const openQuestionInSourceRemix = (question: any) => {
+      const targetRemixId = typeof question?.sourceRemixId === 'string' && question.sourceRemixId.trim()
+        ? question.sourceRemixId.trim()
+        : selectedQuestionRemix.id
+      const targetQuestionId = typeof question?.id === 'string' ? question.id : String(question?.id || '')
+      if (targetQuestionId) {
+        setQuestionRemixFocusQuestionId(targetQuestionId)
+      }
+      if (targetRemixId && targetRemixId !== selectedQuestionRemix.id) {
+        setSelectedQuestionRemixId(targetRemixId)
+        return
+      }
+      window.setTimeout(() => {
+        const target = targetQuestionId ? questionRemixQuestionItemRefs.current[targetQuestionId] : null
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 0)
+    }
+
     return (
-      <>
+      <div
+        style={{
+          paddingBottom: 'calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 6.5rem)',
+          scrollPaddingBottom: 'calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 6.5rem)',
+        }}
+      >
         <div
           className="border-b border-black/10 px-4 py-4"
           onContextMenu={canEditSelectedQuestionRemix ? (event) => {
@@ -16249,27 +16291,51 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               unwrapQuestionField(q?.latex, ['latex', 'equation', 'math']),
             )
             const cleanText = normalizedQuestion.questionText
+            const sourceLabel = typeof q?.sourceRemixName === 'string' && q.sourceRemixName.trim()
+              ? q.sourceRemixName.trim()
+              : selectedQuestionRemix.name
             return (
-              <li key={q.id} className="border-b border-black/10 px-4 py-3">
-                <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <span className="text-xs font-bold text-[#65676b]">Q{q.questionNumber}</span>
-                  <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.year}</span>
-                  <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.month}</span>
-                  <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">Paper {q.paper}</span>
-                  {q.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{q.topic}</span> : null}
-                </div>
-                <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">{renderQuestionTextWithInlineLatex(cleanText)}</div>
+              <li
+                key={q.id}
+                ref={(el) => {
+                  questionRemixQuestionItemRefs.current[String(q.id)] = el
+                }}
+                className="border-b border-black/10"
+              >
+                <button
+                  type="button"
+                  className="w-full px-4 py-3 text-left transition hover:bg-[#f8fbff] active:bg-[#eef5ff]"
+                  onClick={() => openQuestionInSourceRemix(q)}
+                >
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <span className="text-xs font-bold text-[#65676b]">Q{q.questionNumber}</span>
+                    <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.year}</span>
+                    <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.month}</span>
+                    <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">Paper {q.paper}</span>
+                    {q.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{q.topic}</span> : null}
+                  </div>
+                  <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">{renderQuestionTextWithInlineLatex(cleanText)}</div>
+                  <div className="mt-2 text-[11px] font-medium text-[#1877f2]">
+                    Open in {sourceLabel} {'>'}
+                  </div>
+                </button>
               </li>
             )
           })}
         </ul>
-      </>
+      </div>
     )
   }
 
   const renderQuestionRemixesContent = () => {
     return (
-      <div className="bg-white">
+      <div
+        className="bg-white"
+        style={{
+          paddingBottom: 'calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 6.5rem)',
+          scrollPaddingBottom: 'calc(max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 6.5rem)',
+        }}
+      >
         <section className="border-b border-black/10 bg-white">
           {questionRemixesError ? <div className="border-b border-black/10 px-4 py-3 text-sm text-red-600">{questionRemixesError}</div> : null}
           {questionRemixesLoading ? <div className="px-4 py-4 text-sm text-[#65676b]">Loading remixes...</div> : null}

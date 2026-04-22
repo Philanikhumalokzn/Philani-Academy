@@ -144,6 +144,17 @@ function buildVisibilityWhere(userId: string, role: string, grade: string | null
   return { OR: orConditions }
 }
 
+function getSourceRemixPriority(remix: { audience: string; name: string; createdAt: Date | string }) {
+  const normalizedName = firstNonEmpty(remix.name).toLowerCase()
+  const audienceRank = remix.audience === 'public' ? 0 : remix.audience === 'grade' ? 1 : 2
+  const solvesPenalty = normalizedName === 'my solves' ? 10 : 0
+  const createdAtMs = new Date(remix.createdAt).getTime()
+  return {
+    rank: audienceRank + solvesPenalty,
+    createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : Number.MAX_SAFE_INTEGER,
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const userId = await getUserIdFromReq(req)
   if (!userId) return res.status(401).json({ message: 'Unauthorized' })
@@ -210,6 +221,54 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (!remix) return res.status(404).json({ message: 'Remix not found' })
 
+    const questionIds = remix.questions.map((entry) => entry.questionId)
+    const sourceCandidates = questionIds.length > 0
+      ? await prisma.questionRemix.findMany({
+          where: {
+            id: { not: remix.id },
+            ...visibleWhere,
+            questions: {
+              some: {
+                questionId: { in: questionIds },
+              },
+            },
+          },
+          include: {
+            createdBy: {
+              select: { id: true, name: true, email: true },
+            },
+            questions: {
+              where: {
+                questionId: { in: questionIds },
+              },
+              select: {
+                questionId: true,
+              },
+            },
+          },
+        })
+      : []
+
+    const sourceRemixByQuestionId = new Map<string, { id: string; name: string }>()
+    const sortedSourceCandidates = [...sourceCandidates].sort((left, right) => {
+      const leftPriority = getSourceRemixPriority(left)
+      const rightPriority = getSourceRemixPriority(right)
+      if (leftPriority.rank !== rightPriority.rank) return leftPriority.rank - rightPriority.rank
+      if (leftPriority.createdAtMs !== rightPriority.createdAtMs) return leftPriority.createdAtMs - rightPriority.createdAtMs
+      return left.id.localeCompare(right.id)
+    })
+
+    for (const candidate of sortedSourceCandidates) {
+      for (const entry of candidate.questions) {
+        if (!sourceRemixByQuestionId.has(entry.questionId)) {
+          sourceRemixByQuestionId.set(entry.questionId, {
+            id: candidate.id,
+            name: candidate.name,
+          })
+        }
+      }
+    }
+
     const compatibilitySignature = buildCompatibilitySignature(remix.questions.map((entry) => entry.question))
     const resolvedName = resolveRemixName(
       remix.name,
@@ -234,6 +293,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       invitedGroups: remix.invitedGroups.map((entry) => entry.group),
       compatibilitySignature,
       questions: remix.questions.map((entry) => ({
+        ...(sourceRemixByQuestionId.has(entry.questionId)
+          ? {
+              sourceRemixId: sourceRemixByQuestionId.get(entry.questionId)?.id || null,
+              sourceRemixName: sourceRemixByQuestionId.get(entry.questionId)?.name || '',
+            }
+          : {
+              sourceRemixId: remix.id,
+              sourceRemixName: resolvedName.displayName,
+            }),
         ...entry.question,
         imageUrls: entry.question.imageUrl ? [entry.question.imageUrl] : [],
         sourceTitle: '',

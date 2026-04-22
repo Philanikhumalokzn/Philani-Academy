@@ -203,6 +203,34 @@ function normalizeHierarchyQuestionNumber(value: unknown): string {
   return String(value || '').trim().replace(/^Q/i, '')
 }
 
+function getHierarchyQuestionParts(value: unknown): string[] {
+  const normalized = normalizeHierarchyQuestionNumber(value)
+  if (!normalized) return []
+  return normalized.split('.').map((part) => part.trim()).filter(Boolean)
+}
+
+function getHierarchyRootQuestionNumber(value: unknown): string {
+  const parts = getHierarchyQuestionParts(value)
+  return parts[0] || ''
+}
+
+function getHierarchyParentQuestionNumber(value: unknown): string {
+  const parts = getHierarchyQuestionParts(value)
+  if (parts.length <= 1) return ''
+  return parts.slice(0, -1).join('.')
+}
+
+function buildQuestionScopeKey(item: {
+  sourceId: string | null
+  grade: string
+  year: number
+  month: string
+  paper: number
+}): string {
+  if (item.sourceId) return `source:${item.sourceId}`
+  return `paper:${item.grade}|${item.year}|${item.month}|${item.paper}`
+}
+
 function shuffleInPlace<T>(items: T[]): T[] {
   for (let i = items.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1))
@@ -246,6 +274,55 @@ function buildCompositeRootOmitSet(items: Array<{
   }
 
   return omitIds
+}
+
+function enrichQuestionItem(
+  item: {
+    id: string
+    grade: string
+    year: number
+    month: string
+    paper: number
+    questionNumber: string
+    questionDepth: number
+    topic: string | null
+    cognitiveLevel: number | null
+    marks: number | null
+    questionText: string
+    latex: string | null
+    imageUrl: string | null
+    tableMarkdown: string | null
+    approved: boolean
+    sourceId: string | null
+    createdAt: Date
+  },
+  sourceImageMap: Map<string, Map<string, string[]>>,
+  sourceMarksMap: Map<string, Map<string, number>>,
+  sourceTitleMap: Map<string, string>,
+  sourceUrlMap: Map<string, string>,
+) {
+  const derivedUrls = item.sourceId
+    ? collectInheritedImages(item.questionNumber, sourceImageMap.get(item.sourceId) || new Map<string, string[]>())
+    : []
+
+  const imageUrls: string[] = []
+  pushUniqueUrl(imageUrls, item.imageUrl)
+  for (const url of derivedUrls) pushUniqueUrl(imageUrls, url)
+
+  const resolvedMarks = item.marks ?? (
+    item.sourceId
+      ? pickQuestionMarks(item.questionNumber, sourceMarksMap.get(item.sourceId) || new Map<string, number>())
+      : null
+  )
+
+  return {
+    ...item,
+    marks: resolvedMarks,
+    imageUrl: imageUrls[0] || null,
+    imageUrls,
+    sourceTitle: item.sourceId ? (sourceTitleMap.get(item.sourceId) || null) : null,
+    sourceUrl: item.sourceId ? (sourceUrlMap.get(item.sourceId) || null) : null,
+  }
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -496,28 +573,55 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     sourceMarksMap.set(source.id, buildQuestionMarksMapFromMmd(mmd))
   }
 
+  const contextScopeOr: Prisma.ExamQuestionWhereInput[] = Array.from(new Set(items.map((item) => buildQuestionScopeKey(item)))).map((scopeKey) => {
+    if (scopeKey.startsWith('source:')) {
+      return { sourceId: scopeKey.slice('source:'.length) }
+    }
+    const payload = scopeKey.slice('paper:'.length).split('|')
+    return {
+      grade: normalizeGradeInput(payload[0]) || undefined,
+      year: Number(payload[1]),
+      month: payload[2],
+      paper: Number(payload[3]),
+    }
+  })
+
+  const relatedContextItems = contextScopeOr.length > 0
+    ? await prisma.examQuestion.findMany({
+        where: {
+          ...(approvedOnly ? { approved: true } : {}),
+          OR: contextScopeOr,
+        },
+        orderBy,
+        select: itemSelect,
+      })
+    : []
+
+  const relatedContextByScope = new Map<string, Array<ReturnType<typeof enrichQuestionItem>>>()
+  for (const rawItem of relatedContextItems) {
+    const enriched = enrichQuestionItem(rawItem, sourceImageMap, sourceMarksMap, sourceTitleMap, sourceUrlMap)
+    const scopeKey = buildQuestionScopeKey(rawItem)
+    const list = relatedContextByScope.get(scopeKey) || []
+    list.push(enriched)
+    relatedContextByScope.set(scopeKey, list)
+  }
+
   const enrichedItems = items.map((item) => {
-    const derivedUrls = item.sourceId
-      ? collectInheritedImages(item.questionNumber, sourceImageMap.get(item.sourceId) || new Map<string, string[]>())
-      : []
-
-    const imageUrls: string[] = []
-    pushUniqueUrl(imageUrls, item.imageUrl)
-    for (const url of derivedUrls) pushUniqueUrl(imageUrls, url)
-
-    const resolvedMarks = item.marks ?? (
-      item.sourceId
-        ? pickQuestionMarks(item.questionNumber, sourceMarksMap.get(item.sourceId) || new Map<string, number>())
-        : null
-    )
+    const enriched = enrichQuestionItem(item, sourceImageMap, sourceMarksMap, sourceTitleMap, sourceUrlMap)
+    const scopeItems = relatedContextByScope.get(buildQuestionScopeKey(item)) || []
+    const rootQuestionNumber = getHierarchyRootQuestionNumber(item.questionNumber)
+    const parentQuestionNumber = getHierarchyParentQuestionNumber(item.questionNumber)
+    const rootContext = rootQuestionNumber && rootQuestionNumber !== normalizeHierarchyQuestionNumber(item.questionNumber)
+      ? scopeItems.find((candidate) => normalizeHierarchyQuestionNumber(candidate.questionNumber) === rootQuestionNumber) || null
+      : null
+    const parentContext = parentQuestionNumber && parentQuestionNumber !== rootQuestionNumber && parentQuestionNumber !== normalizeHierarchyQuestionNumber(item.questionNumber)
+      ? scopeItems.find((candidate) => normalizeHierarchyQuestionNumber(candidate.questionNumber) === parentQuestionNumber) || null
+      : null
 
     return {
-      ...item,
-      marks: resolvedMarks,
-      imageUrl: imageUrls[0] || null,
-      imageUrls,
-      sourceTitle: item.sourceId ? (sourceTitleMap.get(item.sourceId) || null) : null,
-      sourceUrl: item.sourceId ? (sourceUrlMap.get(item.sourceId) || null) : null,
+      ...enriched,
+      rootContext,
+      parentContext,
     }
   })
 

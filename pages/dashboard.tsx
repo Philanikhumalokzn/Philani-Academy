@@ -16524,7 +16524,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   unwrapQuestionField(q?.latex, ['latex', 'equation', 'math']),
                 )
                 const cleanText = normalizedQuestion.questionText
-                const cleanLatex = normalizedQuestion.latex
                 const marksLabel = getQuestionMarksLabel(q?.marks, cleanText)
                 const questionImageUrls = (() => {
                   const urls: string[] = []
@@ -16543,6 +16542,104 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 })()
                 const isSelected = canCurateQuestionRemixes && qbSelectedIds.has(String(q.id))
                 const isSubquestion = String(q.questionNumber ?? '').includes('.')
+                const renderQuestionContextBlock = (contextQuestion: any, label: string) => {
+                  if (!contextQuestion) return null
+
+                  const normalizedContext = normalizeExamQuestionContent(
+                    unwrapQuestionField(contextQuestion?.questionText, ['questionText', 'text', 'prompt']),
+                    unwrapQuestionField(contextQuestion?.latex, ['latex', 'equation', 'math']),
+                  )
+                  const contextText = normalizedContext.questionText
+                  const contextImageUrls = (() => {
+                    const urls: string[] = []
+                    const pushUrl = (value: unknown) => {
+                      const url = typeof value === 'string' ? value.trim() : ''
+                      if (!url) return
+                      if (!/^https?:\/\//i.test(url)) return
+                      if (!urls.includes(url)) urls.push(url)
+                    }
+
+                    if (Array.isArray(contextQuestion?.imageUrls)) {
+                      for (const imageUrl of contextQuestion.imageUrls) pushUrl(imageUrl)
+                    }
+                    pushUrl(contextQuestion?.imageUrl)
+                    return urls
+                  })()
+
+                  const contextTable = typeof contextQuestion?.tableMarkdown === 'string'
+                    ? contextQuestion.tableMarkdown.trim()
+                    : ''
+
+                  if (!contextText && contextImageUrls.length === 0 && !contextTable) return null
+
+                  return (
+                    <div className="mb-2 rounded-xl border border-[#dbe4f3] bg-[#f8fbff] px-3 py-3">
+                      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#5b6b85]">{label}</div>
+                      {contextText ? (
+                        <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
+                          {renderQuestionTextWithInlineLatex(contextText)}
+                        </div>
+                      ) : null}
+                      {contextImageUrls.length > 0 ? (
+                        <div className="mt-2 grid gap-2">
+                          {contextImageUrls.map((imageUrl, imageIndex) => (
+                            <div key={`${String(contextQuestion?.id || label)}-ctx-diagram-${imageIndex}`} className="overflow-hidden rounded-lg border border-[#dbe4f3] bg-white">
+                              <img
+                                src={imageUrl}
+                                alt={`Diagram ${imageIndex + 1} for ${label.toLowerCase()}`}
+                                className="max-h-[220px] w-full object-contain"
+                                loading="lazy"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      {contextTable ? (() => {
+                        const tableLines = contextTable.split('\n').map((l: string) => l.trim()).filter((l: string) => l.startsWith('|'))
+                        if (tableLines.length < 2) return null
+                        const parseRow = (line: string) => line.replace(/^\||\|$/g, '').split('|').map((c: string) => c.trim())
+                        const headerCells = parseRow(tableLines[0])
+                        const dataRows = tableLines.slice(2).map(parseRow)
+                        const isSepRow = (row: string[]) => row.length > 0 && row.every((c: string) => /^[-:]+$/.test(c.replace(/\s/g, '')))
+                        const filteredDataRows = dataRows.filter((row: string[]) => !isSepRow(row))
+                        const isSyntheticHeader = headerCells.length > 0 && headerCells.every((cell: string, idx: number) => new RegExp(`^col\\s*${idx + 1}$`, 'i').test(cell))
+                        const isBlankHeader = headerCells.length > 0 && headerCells.every((cell: string) => !cell)
+                        const showHeader = !(isSyntheticHeader || isBlankHeader)
+                        const bodyRows = showHeader
+                          ? filteredDataRows
+                          : (filteredDataRows.length > 0 ? filteredDataRows : [headerCells])
+                        return (
+                          <div className="mt-2 overflow-x-auto border border-[#9aa4b2] bg-white">
+                            <table className="min-w-full border-collapse text-xs text-black">
+                              {showHeader ? (
+                                <thead>
+                                  <tr>
+                                    {headerCells.map((h: string, i: number) => (
+                                      <th key={i} className="border border-[#9aa4b2] px-2 py-1 text-left font-semibold whitespace-nowrap text-black bg-white">
+                                        {renderQuestionTextWithInlineLatex(h)}
+                                      </th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                              ) : null}
+                              <tbody>
+                                {bodyRows.map((row: string[], ri: number) => (
+                                  <tr key={ri}>
+                                    {row.map((cell: string, ci: number) => (
+                                      <td key={ci} className="border border-[#9aa4b2] px-2 py-1 text-black">
+                                        {renderQuestionTextWithInlineLatex(cell)}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )
+                      })() : null}
+                    </div>
+                  )
+                }
 
                 return (
                   <li
@@ -16567,6 +16664,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       ) : null}
 
                       <div className="flex-1 min-w-0">
+                        {renderQuestionContextBlock(q?.rootContext, `Question ${getQNumRoot(q?.questionNumber) || q?.questionNumber} preamble`)}
+                        {renderQuestionContextBlock(q?.parentContext, `Parent Q${formatQNumLabel(q?.parentContext?.questionNumber)}`)}
+
                         <div className="flex flex-wrap items-center gap-2 mb-1">
                           <span className="text-xs font-bold text-[#65676b]">Q{q.questionNumber}</span>
                           <button

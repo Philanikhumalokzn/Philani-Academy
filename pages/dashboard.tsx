@@ -6751,7 +6751,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       ),
                     },
                     {
-                      label: 'Reply',
+                      label: 'Solve',
                       count: (p as any)?.solutionCount ?? 0,
                       countLabel: formatSocialCountLabel((p as any)?.solutionCount, 'Reply', 'Replies'),
                       onClick: () => {
@@ -9267,7 +9267,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             },
             {
               key: `${socialItemKey}:reply`,
-              label: 'Reply',
+              label: 'Solve',
               countLabel: formatSocialCountLabel(replyCount, 'Reply', 'Replies'),
               onClick: () => {
                 void openQbQuestionSolveComposer(question)

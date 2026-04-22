@@ -1788,7 +1788,7 @@ export function PublicUserProfileSurface({
               ),
             },
             {
-              label: 'Reply',
+              label: 'Solve',
               countLabel: formatSocialCountLabel((post as any)?.solutionCount, 'Reply', 'Replies'),
               onClick: () => {
                 void openLocalPostSolveComposer(post)

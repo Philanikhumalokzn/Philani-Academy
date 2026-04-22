@@ -7236,6 +7236,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const itemId = String(item?.id || '')
     if (!itemId) return null
     const itemKey = `${options.kind}:${itemId}`
+    const publicThreadKey = typeof item?.threadKey === 'string' && item.threadKey.trim()
+      ? item.threadKey.trim()
+      : `post:${itemId}`
     if (!options.forceOpen && (expandedSolutionThreadKey !== itemKey || expandedSolutionThreadKind !== options.kind)) return null
 
     const responses = Array.isArray(options.overrideResponses)
@@ -7270,7 +7273,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           getContainerProps={(response, args) => ({
             onPointerDown: (event) => beginReplyLongPress(event as any, {
               kind: options.kind,
-              threadKey: `post:${String(item?.id || '')}`,
+              threadKey: publicThreadKey,
               item,
               response,
               href: options.href,
@@ -7284,7 +7287,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               event.preventDefault()
               openReplyCrudOptions({
                 kind: options.kind,
-                threadKey: `post:${String(item?.id || '')}`,
+                threadKey: publicThreadKey,
                 item,
                 response,
                 href: options.href,
@@ -9251,6 +9254,115 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setChallengeAudienceDraft('public')
     setChallengeMaxAttempts('unlimited')
   }, [buildQbQuestionPostDraft, openCreateChallengeComposer])
+
+  const getQbQuestionReplyCount = (question: any) => {
+    const candidates = [question?.solutionCount, question?.replyCount, question?.responseCount, question?.threadResponseCount]
+    for (const value of candidates) {
+      const normalized = Number(value)
+      if (Number.isFinite(normalized) && normalized >= 0) return normalized
+    }
+    return 0
+  }
+
+  const renderQbQuestionActionButton = (opts: {
+    label: string
+    statusLabel?: string
+    active?: boolean
+    onClick: () => void
+    icon: React.ReactNode
+    disabled?: boolean
+    countLabel?: string
+    onCountClick?: () => void
+  }) => (
+    <div className="flex min-w-0 flex-1 flex-col items-center justify-center">
+      <div className="mb-1 flex h-[14px] items-center">
+        <button
+          type="button"
+          className={`text-[11px] font-semibold leading-none whitespace-nowrap ${
+            opts.countLabel ? 'text-[#65676b] hover:text-[#1877f2]' : 'invisible pointer-events-none'
+          }`}
+          onClick={(event) => {
+            event.stopPropagation()
+            opts.onCountClick?.()
+          }}
+        >
+          {opts.countLabel || '0'}
+        </button>
+      </div>
+      <button
+        type="button"
+        className={`flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em] transition ${opts.active ? 'bg-[#e7f3ff] text-[#1877f2]' : 'text-[#65676b] hover:bg-[#f0f2f5]'} ${opts.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+        onClick={opts.onClick}
+        disabled={opts.disabled}
+      >
+        <span className="shrink-0">{opts.icon}</span>
+        <span className="truncate whitespace-nowrap">{opts.statusLabel || opts.label}</span>
+      </button>
+    </div>
+  )
+
+  const renderQbQuestionSocialActions = (question: any) => {
+    const draft = buildQbQuestionPostDraft(question)
+    const itemId = String(draft.id || question?.id || '').trim()
+    if (!itemId) return null
+
+    const questionId = String(question?.id || '').trim()
+    const socialItemKey = questionId ? `qb-question:${questionId}` : `qb-question:${itemId}`
+    const replyCount = getQbQuestionReplyCount(question)
+
+    return (
+      <>
+        <div className="mt-2 pt-1 text-[#65676b]">
+          <div className="flex items-center gap-1">
+            {renderQbQuestionActionButton({
+              label: 'Like',
+              active: Boolean(socialLikedItems[socialItemKey]),
+              countLabel: formatSocialCountLabel(socialLikeCountByItemKey[socialItemKey], 'Like', 'Likes'),
+              onClick: () => toggleSocialLike(socialItemKey),
+              icon: socialLikedItems[socialItemKey] ? (
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                  <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" />
+                  <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                  <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M6 21H4C3.44772 21 3 20.5523 3 20V10C3 9.44772 3.44772 9 4 9H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              ),
+            })}
+            {renderQbQuestionActionButton({
+              label: 'Reply',
+              countLabel: formatSocialCountLabel(replyCount, 'Reply', 'Replies'),
+              onClick: () => {
+                void openQbQuestionSolveComposer(question)
+              },
+              onCountClick: () => {
+                void openPostThread(draft)
+              },
+              icon: (
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                  <path d="M4 20H8L18.5 9.5C19.3284 8.67157 19.3284 7.32843 18.5 6.5C17.6716 5.67157 16.3284 5.67157 15.5 6.5L5 17V20Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M14.5 7.5L17.5 10.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              ),
+            })}
+            {renderQbQuestionActionButton({
+              label: 'Share',
+              onClick: () => openQbQuestionPostComposer(question),
+              icon: (
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+                  <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M4 19V17C4 13.6863 6.68629 11 10 11H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              ),
+            })}
+          </div>
+        </div>
+        {renderInlineSolutionsThread(draft, { kind: 'post' })}
+      </>
+    )
+  }
 
   const openReplyComposerForPostResponse = useCallback((post: any, response: any) => {
     const responseId = String(response?.id || '').trim()
@@ -16419,22 +16531,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           )
                         ) : null}
 
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-semibold text-[#1877f2] hover:bg-[#f0f5ff]"
-                            onClick={() => openQbQuestionSolveComposer(q)}
-                          >
-                            Solve
-                          </button>
-                          <button
-                            type="button"
-                            className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-semibold text-[#4b5563] hover:bg-[#f8fafc]"
-                            onClick={() => openQbQuestionPostComposer(q)}
-                          >
-                            Post
-                          </button>
-                        </div>
+                        {renderQbQuestionSocialActions(q)}
 
                         {/* Row actions */}
                         <div className="mt-2 flex items-center justify-between gap-2">
@@ -19009,22 +19106,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       {renderQuestionTextWithInlineLatex(rootText)}
                     </div>
                   ) : null}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-semibold text-[#1877f2] hover:bg-[#f0f5ff]"
-                      onClick={() => openQbQuestionSolveComposer(rootItem)}
-                    >
-                      Solve
-                    </button>
-                    <button
-                      type="button"
-                      className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-semibold text-[#4b5563] hover:bg-[#f8fafc]"
-                      onClick={() => openQbQuestionPostComposer(rootItem)}
-                    >
-                      Post
-                    </button>
-                  </div>
+                  {renderQbQuestionSocialActions(rootItem)}
                   {rootImageUrls.length > 0 ? (
                     <div className="grid gap-2">
                       {rootImageUrls.map((url, idx) => (
@@ -19165,22 +19247,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       </div>
                     )
                   ) : null}
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-semibold text-[#1877f2] hover:bg-[#f0f5ff]"
-                      onClick={() => openQbQuestionSolveComposer(contextQ)}
-                    >
-                      Solve
-                    </button>
-                    <button
-                      type="button"
-                      className="inline-flex h-7 items-center rounded-full border border-[#d5def0] bg-white px-3 text-xs font-semibold text-[#4b5563] hover:bg-[#f8fafc]"
-                      onClick={() => openQbQuestionPostComposer(contextQ)}
-                    >
-                      Post
-                    </button>
-                  </div>
+                  {renderQbQuestionSocialActions(contextQ)}
                 </li>
               )
             })}

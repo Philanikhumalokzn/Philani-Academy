@@ -16525,7 +16525,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 )
                 const cleanText = normalizedQuestion.questionText
                 const cleanLatex = normalizedQuestion.latex
-                const latexHtml = cleanLatex ? renderKatexDisplayHtml(cleanLatex) : ''
                 const marksLabel = getQuestionMarksLabel(q?.marks, cleanText)
                 const questionImageUrls = (() => {
                   const urls: string[] = []
@@ -16692,16 +16691,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             </div>
                           )
                         })() : null}
-
-                        {cleanLatex ? (
-                          latexHtml ? (
-                            <div className="mt-2 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-[#1c1e21] leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
-                          ) : (
-                            <div className="mt-2 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
-                              {renderTextWithKatex(cleanLatex)}
-                            </div>
-                          )
-                        ) : null}
 
                         {renderQbQuestionSocialActions(q)}
 

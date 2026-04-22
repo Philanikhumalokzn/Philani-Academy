@@ -100,7 +100,7 @@ type SectionId = typeof DASHBOARD_SECTIONS[number]['id']
 type SectionRole = typeof DASHBOARD_SECTIONS[number]['roles'][number]
 type OverlaySectionId = Exclude<SectionId, 'overview'>
 type DashboardCreateKind = 'quiz' | 'post'
-type StudentMobileTabId = 'timeline' | 'sessions' | 'groups' | 'books' | 'profile'
+type StudentMobileTabId = 'timeline' | 'sessions' | 'groups' | 'books' | 'math' | 'profile'
 type MathDashboardPost = {
   id: string
   latex: string
@@ -2414,8 +2414,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     sessions: HTMLDivElement | null
     groups: HTMLDivElement | null
     books: HTMLDivElement | null
+    math: HTMLDivElement | null
     profile: HTMLDivElement | null
-  }>({ timeline: null, sessions: null, groups: null, books: null, profile: null })
+  }>({ timeline: null, sessions: null, groups: null, books: null, math: null, profile: null })
   const [studentMobileActivePanelHeight, setStudentMobileActivePanelHeight] = useState<number | null>(null)
   const [studentMobileCarouselWidth, setStudentMobileCarouselWidth] = useState(0)
   const [studentMobileDragOffsetPx, setStudentMobileDragOffsetPx] = useState(0)
@@ -4196,15 +4197,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (tab === 'sessions') return 1
     if (tab === 'groups') return 2
     if (tab === 'books') return 3
-    return 4
+    if (tab === 'math') return 4
+    return 5
   }
 
   const studentMobileTabForIndex = (idx: number) =>
-    (idx <= 0 ? 'timeline' : idx === 1 ? 'sessions' : idx === 2 ? 'groups' : idx === 3 ? 'books' : 'profile') as StudentMobileTabId
+    (idx <= 0 ? 'timeline' : idx === 1 ? 'sessions' : idx === 2 ? 'groups' : idx === 3 ? 'books' : idx === 4 ? 'math' : 'profile') as StudentMobileTabId
 
   const studentMobileActiveIndex = studentMobileTabIndex(studentMobileTab)
   const studentMobileVisualIndex = studentMobileCarouselWidth > 0
-    ? Math.max(0, Math.min(4, studentMobileActiveIndex - (studentMobileDragOffsetPx / studentMobileCarouselWidth)))
+    ? Math.max(0, Math.min(5, studentMobileActiveIndex - (studentMobileDragOffsetPx / studentMobileCarouselWidth)))
     : studentMobileActiveIndex
 
   const measureStudentMobilePanelHeight = useCallback((tab: StudentMobileTabId) => {
@@ -4229,7 +4231,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     if (wasHorizontalSwipe) {
       nextIndex = Math.round(projectedIndex)
       nextIndex = Math.max(state.startIndex - 1, Math.min(state.startIndex + 1, nextIndex))
-      nextIndex = Math.max(0, Math.min(4, nextIndex))
+      nextIndex = Math.max(0, Math.min(5, nextIndex))
     }
 
     state.pointerId = null
@@ -6516,6 +6518,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   )
 
   const renderAdminToolsQuickPanel = () => {
+          <button
+            type="button"
+            className="btn btn-ghost text-xs"
+            onClick={() => openStudentQuickOverlay('math')}
+          >
+            Math
+          </button>
     if (!isAdmin) return null
 
     const adminSections = availableSections.filter(s => s.id !== 'overview')
@@ -17259,6 +17268,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
         <div
           ref={el => {
+            studentMobilePanelRefs.current.math = el
+          }}
+          className="w-full flex-none self-start"
+        >
+          <div className="pb-8">{renderStudentMathPanel()}</div>
+        </div>
+
+        <div
+          ref={el => {
             studentMobilePanelRefs.current.profile = el
           }}
           className="w-full flex-none self-start"
@@ -17392,10 +17410,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </div>
 
             <div>
-              <div className="relative grid grid-cols-5 border-b border-black/10 bg-white">
+              <div className="relative grid grid-cols-6 border-b border-black/10 bg-white">
                 <span
                   aria-hidden="true"
-                  className={`pointer-events-none absolute bottom-0 left-0 z-0 h-[3px] w-1/5 rounded-full bg-[#1877f2] ${studentMobileIsDragging ? '' : 'transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]'}`}
+                  className={`pointer-events-none absolute bottom-0 left-0 z-0 h-[3px] w-1/6 rounded-full bg-[#1877f2] ${studentMobileIsDragging ? '' : 'transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]'}`}
                   style={{ transform: `translateX(${studentMobileVisualIndex * 100}%)` }}
                 />
                 <button
@@ -17446,6 +17464,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <path d="M6 5.5C6 4.67157 6.67157 4 7.5 4H18V19H7.5C6.67157 19 6 19.6716 6 20.5V5.5Z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
                     <path d="M6 20H17.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
                     <path d="M9 8H14" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={`relative z-10 flex min-w-0 items-center justify-center px-1 py-3 transition ${studentMobileTab === 'math' ? 'text-[#1c1e21]' : 'text-[#65676b]'}`}
+                  onClick={() => switchMobileTab('math')}
+                  aria-label="Math"
+                  title="Math"
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M4 6h16" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                    <path d="M7 6v12" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                    <path d="M7 18h10" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                    <path d="M12 10l3 4" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+                    <path d="M15 10l-3 4" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
                   </svg>
                 </button>
                 <button

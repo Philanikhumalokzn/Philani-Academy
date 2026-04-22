@@ -16787,7 +16787,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   function renderBooksSurfaceContent() {
     return (
-      <div>
+      <div className="min-h-0 flex flex-col">
         {/* Tab switcher */}
         <section className="border-b border-black/10 bg-white px-4 py-3">
           <div className="inline-flex rounded-full border border-[#d5def0] bg-[#f7f8fa] p-1">
@@ -16829,16 +16829,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
         </section>
 
+        <div
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain [touch-action:pan-y]"
+          style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}
+        >
           {booksHubTab === 'remix' ? renderQuestionBankContent() : null}
           {booksHubTab === 'remixes' ? renderQuestionRemixesContent() : null}
-        {booksHubTab === 'papers' ? renderBooksList('papers') : null}
-        {booksHubTab === 'pdfs' ? renderBooksList('pdfs') : null}
-        {booksHubTab === 'resources' ? (
-          <>
-            {isAdmin ? renderAdminBooksResourcesContent() : null}
-            {renderBooksList('resources')}
-          </>
-        ) : null}
+          {booksHubTab === 'papers' ? renderBooksList('papers') : null}
+          {booksHubTab === 'pdfs' ? renderBooksList('pdfs') : null}
+          {booksHubTab === 'resources' ? (
+            <>
+              {isAdmin ? renderAdminBooksResourcesContent() : null}
+              {renderBooksList('resources')}
+            </>
+          ) : null}
+        </div>
       </div>
     )
   }

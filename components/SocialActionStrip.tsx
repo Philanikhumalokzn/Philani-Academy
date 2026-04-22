@@ -60,7 +60,7 @@ export default function SocialActionStrip({ actions, className }: SocialActionSt
             ) : null}
             <button
               type="button"
-              className={`flex min-w-0 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em] transition ${action.active ? 'bg-[#e7f3ff] text-[#1877f2]' : 'text-[#65676b] hover:bg-[#f0f2f5]'} ${action.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+              className={`flex min-w-0 items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold tracking-[-0.01em] transition ${action.active ? 'text-[#1877f2]' : 'text-[#65676b] hover:bg-[#f0f2f5]'} ${action.disabled ? 'cursor-not-allowed opacity-50' : ''}`}
               onClick={action.onClick}
               disabled={action.disabled}
             >

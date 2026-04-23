@@ -2238,6 +2238,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [questionRemixInviteResults, setQuestionRemixInviteResults] = useState<QuestionRemixInviteUser[]>([])
   const [questionRemixInviteError, setQuestionRemixInviteError] = useState<string | null>(null)
   const [qbFocusedQuestionId, setQbFocusedQuestionId] = useState<string | null>(null)
+  const [qbExpandedQuestionContextIds, setQbExpandedQuestionContextIds] = useState<Set<string>>(new Set())
   const questionRemixLongPressTimerRef = useRef<number | null>(null)
   const questionRemixLongPressTriggeredRef = useRef(false)
   const qbQuestionItemRefs = useRef<Record<string, HTMLLIElement | null>>({})
@@ -14386,6 +14387,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setQbNumber(filters.number)
   }
 
+  const toggleQbQuestionContext = useCallback((questionId: string) => {
+    if (!questionId) return
+    setQbExpandedQuestionContextIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(questionId)) next.delete(questionId)
+      else next.add(questionId)
+      return next
+    })
+  }, [])
+
   const buildQbSearchParams = (filters: QbSearchFilters) => {
     const params = new URLSearchParams()
     if (filters.year) params.set('year', filters.year)
@@ -14435,6 +14446,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       syncQbFilters(filters)
       setQbRemixFilters(null)
       setQbItems(data.items)
+      setQbExpandedQuestionContextIds(new Set())
       setQbTotal(data.total)
       setQbRemixMessage(options?.remixMessage ?? null)
     } catch (err: any) {
@@ -14466,6 +14478,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       syncQbFilters(filters)
       setQbRemixFilters(null)
       setQbItems(data.items)
+      setQbExpandedQuestionContextIds(new Set())
       setQbTotal(data.total)
       setQbRemixMessage('Showing a fresh random remix set across all years, months, papers, topics, and levels.')
     } catch (err: any) {
@@ -15085,6 +15098,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       }
       return
     }
+
+    setQbExpandedQuestionContextIds((prev) => {
+      if (prev.has(qbFocusedQuestionId)) return prev
+      const next = new Set(prev)
+      next.add(qbFocusedQuestionId)
+      return next
+    })
 
     const timerId = window.setTimeout(() => {
       const target = qbQuestionItemRefs.current[qbFocusedQuestionId]
@@ -16529,6 +16549,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   return urls
                 })()
                 const isSubquestion = String(q.questionNumber ?? '').includes('.')
+                const questionContextId = String(q.id)
+                const isQuestionContextExpanded = qbExpandedQuestionContextIds.has(questionContextId)
                 const renderQuestionBadgeRow = (question: any, options?: { includeQuestionNumber?: boolean; includeMetadataBadges?: boolean }) => {
                   const includeQuestionNumber = options?.includeQuestionNumber !== false
                   const includeMetadataBadges = options?.includeMetadataBadges !== false
@@ -16715,29 +16737,45 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <div className="flex gap-3 items-start">
                       <div className="flex-1 min-w-0">
                         <div className="rounded-xl border border-[#dbe4f3] bg-[#f8fbff] px-3 py-3">
-                          {q?.rootContext ? (
-                            <div>
-                              {renderQuestionContextBlock(
-                                q?.rootContext,
-                                <div className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#1c1e21]">QUESTION {formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)}</div>,
-                                `question ${formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)} preamble`
-                              )}
-                            </div>
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between gap-3 text-left"
+                            onClick={() => toggleQbQuestionContext(questionContextId)}
+                            aria-expanded={isQuestionContextExpanded}
+                          >
+                            <span className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#1c1e21]">QUESTION {formatQNumLabel(q?.questionNumber)}</span>
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5b6b85]">{isQuestionContextExpanded ? 'Hide context' : 'Show context'}</span>
+                          </button>
+
+                          {isQuestionContextExpanded ? (
+                            <>
+                              {q?.rootContext ? (
+                                <div className="mt-4">
+                                  {renderQuestionContextBlock(
+                                    q?.rootContext,
+                                    <div className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#1c1e21]">QUESTION {formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)}</div>,
+                                    `question ${formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)} preamble`
+                                  )}
+                                </div>
+                              ) : null}
+
+                              {q?.parentContext ? (
+                                <div className={q?.rootContext ? 'mt-4' : 'mt-4'}>
+                                  {renderQuestionContextBlock(
+                                    q?.parentContext,
+                                    <div className="text-[11px] font-semibold tracking-[0.08em] text-[#5b6b85]">{formatQNumLabel(q?.parentContext?.questionNumber)}</div>,
+                                    `question ${formatQNumLabel(q?.parentContext?.questionNumber)}`
+                                  )}
+                                </div>
+                              ) : null}
+
+                              <div className="mt-4">
+                                {renderQuestionBadgeRow(q, { includeQuestionNumber: true, includeMetadataBadges: true })}
+                              </div>
+                            </>
                           ) : null}
 
-                          {q?.parentContext ? (
-                            <div className={q?.rootContext ? 'mt-4' : ''}>
-                              {renderQuestionContextBlock(
-                                q?.parentContext,
-                                <div className="text-[11px] font-semibold tracking-[0.08em] text-[#5b6b85]">{formatQNumLabel(q?.parentContext?.questionNumber)}</div>,
-                                `question ${formatQNumLabel(q?.parentContext?.questionNumber)}`
-                              )}
-                            </div>
-                          ) : null}
-
-                          <div className={q?.rootContext || q?.parentContext ? 'mt-4' : ''}>
-                            {renderQuestionBadgeRow(q, { includeQuestionNumber: true, includeMetadataBadges: true })}
-
+                          <div className={isQuestionContextExpanded ? 'mt-4' : 'mt-3'}>
                             {isSubquestion ? (
                               <button
                                 type="button"

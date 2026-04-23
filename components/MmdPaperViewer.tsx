@@ -8,6 +8,7 @@ type MmdPaperViewerProps = {
   compact?: boolean
   questionTopicByNumber?: Record<string, string>
   centerInlineMath?: boolean
+  autoScrollToSelectedQuestion?: boolean
 }
 
 type Block =
@@ -545,7 +546,7 @@ function renderMmdText(raw: string) {
   })
 }
 
-export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = false, questionTopicByNumber, centerInlineMath = false }: MmdPaperViewerProps) {
+export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = false, questionTopicByNumber, centerInlineMath = false, autoScrollToSelectedQuestion = true }: MmdPaperViewerProps) {
   const sanitizedMmd = useMemo(() => sanitizeMmdForDisplay(mmd), [mmd])
   const blocks = useMemo(() => buildBlocks(sanitizedMmd), [sanitizedMmd])
   const marksMap = useMemo(() => buildQuestionMarksMapFromMmd(sanitizedMmd), [sanitizedMmd])
@@ -620,6 +621,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
   }, [sanitizedMmd])
 
   useEffect(() => {
+    if (!autoScrollToSelectedQuestion) return
     const selected = normalizedSelectedQuestionNumber.trim()
     if (!selected) return
 
@@ -636,7 +638,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
     }, 120)
 
     return () => window.clearTimeout(timer)
-  }, [normalizedSelectedQuestionNumber, selectedRoot, mmd, renderedHtml, useMathpixRenderer])
+  }, [autoScrollToSelectedQuestion, normalizedSelectedQuestionNumber, selectedRoot, mmd, renderedHtml, useMathpixRenderer])
 
   useEffect(() => {
     if (!useMathpixRenderer || !renderedHtml || typeof document === 'undefined') return

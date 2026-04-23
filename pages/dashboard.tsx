@@ -16704,7 +16704,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           <div className="mt-4">
                             {visibleQuestionMmd ? (
                               <div className="px-0 py-0">
-                                <MmdPaperViewer mmd={visibleQuestionMmd} compact centerInlineMath selectedQuestionNumber={String(q?.questionNumber || '')} />
+                                <MmdPaperViewer mmd={visibleQuestionMmd} compact centerInlineMath autoScrollToSelectedQuestion={false} selectedQuestionNumber={String(q?.questionNumber || '')} />
                               </div>
                             ) : null}
                           </div>

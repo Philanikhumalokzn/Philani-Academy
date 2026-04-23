@@ -16744,7 +16744,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             aria-expanded={isQuestionContextExpanded}
                           >
                             <span className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#1c1e21]">QUESTION {formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)}</span>
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5b6b85]">{isQuestionContextExpanded ? 'Hide context' : 'Show context'}</span>
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5b6b85]">{isQuestionContextExpanded ? 'Show less' : 'Show more'}</span>
                           </button>
 
                           <div className="mt-3">

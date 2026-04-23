@@ -16534,10 +16534,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const cleanText = normalizedQuestion.questionText
                 const marksLabel = getQuestionMarksLabel(q?.marks, cleanText)
                 const isSubquestion = String(q.questionNumber ?? '').includes('.')
-                const questionContextId = String(q.id)
-                const isQuestionContextExpanded = qbExpandedQuestionContextIds.has(questionContextId)
-                const collapsedRootContext = q?.parentContext ? q?.rootContext : null
-                const defaultVisibleContext = q?.parentContext || (isSubquestion ? q?.rootContext : null)
                 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
                 const renderQuestionBadgeRow = (question: any, options?: { includeQuestionNumber?: boolean; includeMetadataBadges?: boolean }) => {
                   const includeQuestionNumber = options?.includeQuestionNumber !== false
@@ -16651,21 +16647,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   return lines.join('\n\n').trim()
                 }
 
+                const ancestorContextMmds = Array.isArray(q?.ancestorContextMmds)
+                  ? q.ancestorContextMmds
+                    .map((slice: unknown) => typeof slice === 'string' ? slice.trim() : '')
+                    .filter(Boolean)
+                  : []
+                const ancestorContextFallbackMmds = Array.isArray(q?.ancestorContexts)
+                  ? q.ancestorContexts
+                    .map((ancestor: any) => buildQuestionMmdSection(ancestor, { includeQuestionNumber: true }))
+                    .filter(Boolean)
+                  : []
                 const visibleQuestionMmd = [
-                  isQuestionContextExpanded && collapsedRootContext
-                    ? (typeof q?.rootContextMmd === 'string' && q.rootContextMmd.trim()
-                      ? q.rootContextMmd.trim()
-                      : buildQuestionMmdSection(collapsedRootContext, { includeQuestionNumber: false }))
-                    : '',
-                  defaultVisibleContext
-                    ? (
-                      typeof q?.parentContextMmd === 'string' && q.parentContextMmd.trim()
-                        ? q.parentContextMmd.trim()
-                        : (!q?.parentContext && typeof q?.rootContextMmd === 'string' && q.rootContextMmd.trim()
-                          ? q.rootContextMmd.trim()
-                          : buildQuestionMmdSection(defaultVisibleContext, { includeQuestionNumber: !!q?.parentContext }))
-                    )
-                    : '',
+                  typeof q?.rootContextMmd === 'string' && q.rootContextMmd.trim()
+                    ? q.rootContextMmd.trim()
+                    : (q?.rootContext ? buildQuestionMmdSection(q.rootContext, { includeQuestionNumber: false }) : ''),
+                  ...(ancestorContextMmds.length > 0 ? ancestorContextMmds : ancestorContextFallbackMmds),
                   typeof q?.questionMmd === 'string' && q.questionMmd.trim()
                     ? q.questionMmd.trim()
                     : buildQuestionMmdSection(q, { includeQuestionNumber: isSubquestion }),
@@ -16697,27 +16693,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <div className="flex gap-3 items-start">
                       <div className="flex-1 min-w-0">
                         <div className="rounded-xl border border-[#dbe4f3] bg-[#f8fbff] px-3 py-3">
-                          {collapsedRootContext ? (
-                            <button
-                              type="button"
-                              className="flex w-full items-center justify-between gap-3 text-left"
-                              onClick={() => toggleQbQuestionContext(questionContextId)}
-                              aria-expanded={isQuestionContextExpanded}
-                            >
-                              <span className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#1c1e21]">QUESTION {formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)}</span>
-                              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5b6b85]">{isQuestionContextExpanded ? 'Show less' : 'Show more'}</span>
-                            </button>
-                          ) : (
-                            <div className="flex w-full items-center justify-between gap-3 text-left">
-                              <span className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#1c1e21]">QUESTION {formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)}</span>
-                            </div>
-                          )}
+                          <div className="flex w-full items-center justify-between gap-3 text-left">
+                            <span className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#1c1e21]">QUESTION {formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)}</span>
+                          </div>
 
                           <div className="mt-3">
                             {renderQuestionBadgeRow(q, { includeQuestionNumber: false, includeMetadataBadges: true })}
                           </div>
 
-                          <div className={isQuestionContextExpanded || defaultVisibleContext ? 'mt-4' : 'mt-3'}>
+                          <div className="mt-4">
                             {visibleQuestionMmd ? (
                               <div className="rounded-lg border border-[#dbe4f3] bg-white px-2 py-2">
                                 <MmdPaperViewer mmd={visibleQuestionMmd} compact selectedQuestionNumber={String(q?.questionNumber || '')} />

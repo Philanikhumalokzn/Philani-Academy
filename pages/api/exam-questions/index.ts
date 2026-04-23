@@ -316,6 +316,16 @@ function getHierarchyParentQuestionNumber(value: unknown): string {
   return parts.slice(0, -1).join('.')
 }
 
+function getHierarchyAncestorQuestionNumbers(value: unknown): string[] {
+  const parts = getHierarchyQuestionParts(value)
+  if (parts.length <= 2) return []
+  const ancestors: string[] = []
+  for (let depth = 2; depth < parts.length; depth += 1) {
+    ancestors.push(parts.slice(0, depth).join('.'))
+  }
+  return ancestors
+}
+
 function compareHierarchyQuestionNumbers(a: unknown, b: unknown): number {
   const aParts = getHierarchyQuestionParts(a)
   const bParts = getHierarchyQuestionParts(b)
@@ -943,6 +953,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const scopeItems = relatedContextByScope.get(buildQuestionScopeKey(item)) || []
     const rootQuestionNumber = getHierarchyRootQuestionNumber(item.questionNumber)
     const parentQuestionNumber = getHierarchyParentQuestionNumber(item.questionNumber)
+    const ancestorQuestionNumbers = getHierarchyAncestorQuestionNumbers(item.questionNumber)
     const normalizedQuestionNumber = normalizeHierarchyQuestionNumber(item.questionNumber)
     const rootCandidate = rootQuestionNumber && rootQuestionNumber !== normalizeHierarchyQuestionNumber(item.questionNumber)
       ? scopeItems.find((candidate) => normalizeHierarchyQuestionNumber(candidate.questionNumber) === rootQuestionNumber) || null
@@ -968,11 +979,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const questionMmd = rootSectionMmd
       ? sliceQuestionBlockFromSection(rootSectionMmd, normalizedQuestionNumber)
       : ''
+    const ancestorContexts = ancestorQuestionNumbers
+      .map((ancestorQuestionNumber) => scopeItems.find((candidate) => normalizeHierarchyQuestionNumber(candidate.questionNumber) === ancestorQuestionNumber) || null)
+      .filter(Boolean)
+    const ancestorContextMmds = ancestorQuestionNumbers
+      .map((ancestorQuestionNumber) => rootSectionMmd ? sliceQuestionBlockFromSection(rootSectionMmd, ancestorQuestionNumber) : '')
+      .filter((slice) => !!String(slice || '').trim())
 
     return {
       ...enriched,
       rootContext,
       parentContext,
+      ancestorContexts,
+      ancestorContextMmds,
       rootContextMmd,
       parentContextMmd,
       questionMmd,

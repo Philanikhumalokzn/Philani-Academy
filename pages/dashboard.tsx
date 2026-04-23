@@ -14877,6 +14877,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }, 420)
   }, [clearQuestionRemixLongPress, openQuestionRemixCrud])
 
+  const armQuestionSearchResultLongPress = useCallback((question: any) => {
+    clearQuestionRemixLongPress()
+    questionRemixLongPressTriggeredRef.current = false
+    questionRemixLongPressTimerRef.current = window.setTimeout(() => {
+      questionRemixLongPressTimerRef.current = null
+      questionRemixLongPressTriggeredRef.current = true
+      openQuestionRemixCreateForQuestion(question)
+    }, 420)
+  }, [clearQuestionRemixLongPress, openQuestionRemixCreateForQuestion])
+
   useEffect(() => {
     return () => {
       clearQuestionRemixLongPress()
@@ -16614,17 +16624,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <div className="mb-2 rounded-xl border border-[#dbe4f3] bg-[#f8fbff] px-3 py-3">
                       <div className="mb-2 flex items-center justify-between gap-3">
                         <div className="min-w-0 flex-1">{headerContent}</div>
-                        {canCurateQuestionRemixes ? (
-                          <button
-                            type="button"
-                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#c8d9f3] bg-white text-lg font-black leading-none text-[#1877f2] shadow-sm hover:bg-[#eef5ff]"
-                            onClick={() => openQuestionRemixCreateForQuestion(q)}
-                            aria-label={`Add question ${formatQNumLabel(q?.questionNumber)} to remix`}
-                            title="Add to remix"
-                          >
-                            +
-                          </button>
-                        ) : null}
                       </div>
                       {contextText ? (
                         <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
@@ -16692,31 +16691,31 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   )
                 }
 
-                const renderAddButtonHeader = canCurateQuestionRemixes && !q?.rootContext ? (
-                  <div className="mb-2 flex items-center justify-end">
-                    <button
-                      type="button"
-                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#c8d9f3] bg-white text-lg font-black leading-none text-[#1877f2] shadow-sm hover:bg-[#eef5ff]"
-                      onClick={() => openQuestionRemixCreateForQuestion(q)}
-                      aria-label={`Add question ${formatQNumLabel(q?.questionNumber)} to remix`}
-                      title="Add to remix"
-                    >
-                      +
-                    </button>
-                  </div>
-                ) : null
-
                 return (
                   <li
                     key={q.id}
                     ref={(el) => {
                       qbQuestionItemRefs.current[String(q.id)] = el
                     }}
+                    onClickCapture={canCurateQuestionRemixes ? (event) => {
+                      if (questionRemixLongPressTriggeredRef.current) {
+                        questionRemixLongPressTriggeredRef.current = false
+                        event.preventDefault()
+                        event.stopPropagation()
+                      }
+                    } : undefined}
+                    onContextMenu={canCurateQuestionRemixes ? (event) => {
+                      event.preventDefault()
+                      openQuestionRemixCreateForQuestion(q)
+                    } : undefined}
+                    onTouchStart={canCurateQuestionRemixes ? () => armQuestionSearchResultLongPress(q) : undefined}
+                    onTouchEnd={canCurateQuestionRemixes ? clearQuestionRemixLongPress : undefined}
+                    onTouchCancel={canCurateQuestionRemixes ? clearQuestionRemixLongPress : undefined}
+                    onTouchMove={canCurateQuestionRemixes ? clearQuestionRemixLongPress : undefined}
                     className="border-b border-black/10 bg-white px-4 py-3 transition-colors"
                   >
                     <div className="flex gap-3 items-start">
                       <div className="flex-1 min-w-0">
-                        {renderAddButtonHeader}
                         {renderQuestionContextBlock(
                           q?.rootContext,
                           renderQuestionBadgeRow(q, { includeQuestionNumber: false, includeMetadataBadges: true }),

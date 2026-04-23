@@ -7,6 +7,7 @@ type MmdPaperViewerProps = {
   selectedQuestionNumber?: string | null
   compact?: boolean
   questionTopicByNumber?: Record<string, string>
+  centerInlineMath?: boolean
 }
 
 type Block =
@@ -544,7 +545,7 @@ function renderMmdText(raw: string) {
   })
 }
 
-export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = false, questionTopicByNumber }: MmdPaperViewerProps) {
+export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = false, questionTopicByNumber, centerInlineMath = false }: MmdPaperViewerProps) {
   const sanitizedMmd = useMemo(() => sanitizeMmdForDisplay(mmd), [mmd])
   const blocks = useMemo(() => buildBlocks(sanitizedMmd), [sanitizedMmd])
   const marksMap = useMemo(() => buildQuestionMarksMapFromMmd(sanitizedMmd), [sanitizedMmd])
@@ -674,7 +675,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
   if (compact) {
     if (useMathpixRenderer && renderedHtml) {
       return (
-        <div className="w-full bg-transparent [&_.katex]:!text-[#1c1e21] [&_.preview]:!max-w-none [&_.preview]:!mx-0 [&_.preview]:!px-0 [&_.preview-content]:!max-w-none [&_.preview-content]:!mx-0 [&_.preview-content]:!px-0 [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden [&_.katex-display]:max-w-full" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+        <div className={`w-full bg-transparent [&_.katex]:!text-[#1c1e21] [&_.preview]:!max-w-none [&_.preview]:!mx-0 [&_.preview]:!px-0 [&_.preview-content]:!max-w-none [&_.preview-content]:!mx-0 [&_.preview-content]:!px-0 [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden [&_.katex-display]:max-w-full${centerInlineMath ? ' [&_.katex]:align-middle' : ''}`} style={{ fontFamily: '"Times New Roman", Times, serif' }}>
           <section className="scroll-mt-24 rounded-xl px-0 py-1">
             <div
               id={contentRootId}
@@ -687,7 +688,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
     }
 
     return (
-      <div className="w-full bg-transparent [&_.katex]:!text-[#1c1e21] [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden [&_.katex-display]:max-w-full" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+      <div className={`w-full bg-transparent [&_.katex]:!text-[#1c1e21] [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden [&_.katex-display]:max-w-full${centerInlineMath ? ' [&_.katex]:align-middle' : ''}`} style={{ fontFamily: '"Times New Roman", Times, serif' }}>
         <div className="space-y-1">
           {blocks.map((block) => {
             const isSelected = !!normalizedSelectedQuestionNumber && block.questionNumber === normalizedSelectedQuestionNumber

@@ -120,6 +120,100 @@ function buildQuestionImageMapFromMmd(mmd: string): Map<string, string[]> {
   return map
 }
 
+function extractQuestionSectionsFromMmd(mmd: string): Map<string, string> {
+  const sections = new Map<string, string>()
+  const lines = String(mmd || '').split(/\r?\n/)
+  let currentRoot = ''
+  let bucket: string[] = []
+
+  const flush = () => {
+    if (!currentRoot) return
+    const block = bucket.join('\n').trim()
+    if (block) sections.set(currentRoot, block)
+  }
+
+  for (const rawLine of lines) {
+    const line = String(rawLine || '')
+    const trimmed = line.trim()
+    const headingMatch = trimmed.match(/(?:\\section\*\{\s*QUESTION\s+(\d+)\s*\}|^QUESTION\s+(\d+)\b)/i)
+
+    if (headingMatch?.[1] || headingMatch?.[2]) {
+      flush()
+      currentRoot = String(headingMatch[1] || headingMatch[2] || '').trim()
+      bucket = [line]
+      continue
+    }
+
+    if (!currentRoot) continue
+    bucket.push(line)
+  }
+
+  flush()
+  return sections
+}
+
+function escapeRegExp(value: string): string {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function buildRootPreambleMmdFromSection(sectionMmd: string, rootQuestionNumber: string): string {
+  const lines = String(sectionMmd || '').split(/\r?\n/)
+  if (lines.length === 0) return ''
+
+  let firstSubIndex = lines.findIndex((line, idx) => idx > 0 && new RegExp(`^${escapeRegExp(rootQuestionNumber)}\\.\\d+\\b`).test(String(line || '').trim()))
+  if (firstSubIndex < 0) firstSubIndex = lines.length
+
+  const slice = lines.slice(0, firstSubIndex)
+  if (slice.length === 0) return ''
+
+  const headingPattern = new RegExp(`^(?:\\section\*\{\s*QUESTION\s+${escapeRegExp(rootQuestionNumber)}\s*\}|QUESTION\s+${escapeRegExp(rootQuestionNumber)}\b)\s*`, 'i')
+  const firstLine = String(slice[0] || '').replace(headingPattern, '').trim()
+  const body = [firstLine, ...slice.slice(1)]
+    .filter((line, index) => index > 0 || !!String(line || '').trim())
+    .join('\n')
+    .trim()
+
+  return body
+}
+
+function sliceQuestionBlockFromSection(sectionMmd: string, questionNumber: string): string {
+  const target = normalizeHierarchyQuestionNumber(questionNumber)
+  if (!target) return ''
+
+  const lines = String(sectionMmd || '').split(/\r?\n/)
+  if (lines.length === 0) return ''
+
+  const startPattern = new RegExp(`^Q?${escapeRegExp(target)}\\b`)
+  const numberedPattern = /^Q?((?:\d+)(?:\.\d+){0,6})\b/
+  const questionHeadingPattern = /(?:^|\s)QUESTION\s+\d+\b/i
+
+  let start = -1
+  for (let index = 0; index < lines.length; index += 1) {
+    if (startPattern.test(String(lines[index] || '').trim())) {
+      start = index
+      break
+    }
+  }
+
+  if (start < 0) return ''
+
+  let end = lines.length
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const trimmed = String(lines[index] || '').trim()
+    if (!trimmed) continue
+    if (questionHeadingPattern.test(trimmed)) {
+      end = index
+      break
+    }
+    if (numberedPattern.test(trimmed)) {
+      end = index
+      break
+    }
+  }
+
+  return lines.slice(start, end).join('\n').trim()
+}
+
 function collectInheritedImages(questionNumber: string, map: Map<string, string[]>): string[] {
   const urls: string[] = []
   const parts = String(questionNumber || '').split('.').filter(Boolean)
@@ -782,6 +876,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const sourceTitleMap = new Map<string, string>()
   const sourceUrlMap = new Map<string, string>()
   const sourceMmdMap = new Map<string, string>()
+  const sourceSectionMap = new Map<string, Map<string, string>>()
   for (const source of sources) {
     sourceTitleMap.set(source.id, String(source.title || '').trim())
     if (source.url) sourceUrlMap.set(source.id, String(source.url).trim())
@@ -794,7 +889,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const mmd = typeof parsed?.raw?.mmd === 'string' ? parsed.raw.mmd : ''
-  sourceMmdMap.set(source.id, mmd)
+    sourceMmdMap.set(source.id, mmd)
+    sourceSectionMap.set(source.id, extractQuestionSectionsFromMmd(mmd))
     const fromMmd = buildQuestionImageMapFromMmd(mmd)
     for (const [qNum, urls] of fromMmd.entries()) {
       const existing = combined.get(qNum) || []
@@ -847,6 +943,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const scopeItems = relatedContextByScope.get(buildQuestionScopeKey(item)) || []
     const rootQuestionNumber = getHierarchyRootQuestionNumber(item.questionNumber)
     const parentQuestionNumber = getHierarchyParentQuestionNumber(item.questionNumber)
+    const normalizedQuestionNumber = normalizeHierarchyQuestionNumber(item.questionNumber)
     const rootCandidate = rootQuestionNumber && rootQuestionNumber !== normalizeHierarchyQuestionNumber(item.questionNumber)
       ? scopeItems.find((candidate) => normalizeHierarchyQuestionNumber(candidate.questionNumber) === rootQuestionNumber) || null
       : null
@@ -859,11 +956,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const parentContext = parentQuestionNumber && parentQuestionNumber !== rootQuestionNumber && parentQuestionNumber !== normalizeHierarchyQuestionNumber(item.questionNumber)
       ? scopeItems.find((candidate) => normalizeHierarchyQuestionNumber(candidate.questionNumber) === parentQuestionNumber) || null
       : null
+    const rootSectionMmd = item.sourceId && rootQuestionNumber
+      ? sourceSectionMap.get(item.sourceId)?.get(rootQuestionNumber) || ''
+      : ''
+    const rootContextMmd = rootQuestionNumber && rootQuestionNumber !== normalizedQuestionNumber
+      ? buildRootPreambleMmdFromSection(rootSectionMmd, rootQuestionNumber)
+      : ''
+    const parentContextMmd = parentQuestionNumber && parentQuestionNumber !== rootQuestionNumber && parentQuestionNumber !== normalizedQuestionNumber
+      ? sliceQuestionBlockFromSection(rootSectionMmd, parentQuestionNumber)
+      : ''
+    const questionMmd = rootSectionMmd
+      ? sliceQuestionBlockFromSection(rootSectionMmd, normalizedQuestionNumber)
+      : ''
 
     return {
       ...enriched,
       rootContext,
       parentContext,
+      rootContextMmd,
+      parentContextMmd,
+      questionMmd,
     }
   })
 

@@ -16533,21 +16533,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 )
                 const cleanText = normalizedQuestion.questionText
                 const marksLabel = getQuestionMarksLabel(q?.marks, cleanText)
-                const questionImageUrls = (() => {
-                  const urls: string[] = []
-                  const pushUrl = (value: unknown) => {
-                    const url = typeof value === 'string' ? value.trim() : ''
-                    if (!url) return
-                    if (!/^https?:\/\//i.test(url)) return
-                    if (!urls.includes(url)) urls.push(url)
-                  }
-
-                  if (Array.isArray(q?.imageUrls)) {
-                    for (const imageUrl of q.imageUrls) pushUrl(imageUrl)
-                  }
-                  pushUrl(q?.imageUrl)
-                  return urls
-                })()
                 const isSubquestion = String(q.questionNumber ?? '').includes('.')
                 const questionContextId = String(q.id)
                 const isQuestionContextExpanded = qbExpandedQuestionContextIds.has(questionContextId)
@@ -16668,12 +16653,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                 const visibleQuestionMmd = [
                   isQuestionContextExpanded && collapsedRootContext
-                    ? buildQuestionMmdSection(collapsedRootContext, { includeQuestionNumber: false })
+                    ? (typeof q?.rootContextMmd === 'string' && q.rootContextMmd.trim()
+                      ? q.rootContextMmd.trim()
+                      : buildQuestionMmdSection(collapsedRootContext, { includeQuestionNumber: false }))
                     : '',
                   defaultVisibleContext
-                    ? buildQuestionMmdSection(defaultVisibleContext, { includeQuestionNumber: !!q?.parentContext })
+                    ? (
+                      typeof q?.parentContextMmd === 'string' && q.parentContextMmd.trim()
+                        ? q.parentContextMmd.trim()
+                        : (!q?.parentContext && typeof q?.rootContextMmd === 'string' && q.rootContextMmd.trim()
+                          ? q.rootContextMmd.trim()
+                          : buildQuestionMmdSection(defaultVisibleContext, { includeQuestionNumber: !!q?.parentContext }))
+                    )
                     : '',
-                  buildQuestionMmdSection(q, { includeQuestionNumber: isSubquestion }),
+                  typeof q?.questionMmd === 'string' && q.questionMmd.trim()
+                    ? q.questionMmd.trim()
+                    : buildQuestionMmdSection(q, { includeQuestionNumber: isSubquestion }),
                 ].filter(Boolean).join('\n\n')
 
                 return (

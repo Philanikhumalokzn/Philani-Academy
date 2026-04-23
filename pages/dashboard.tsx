@@ -16621,10 +16621,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   if (!contextText && contextImageUrls.length === 0 && !contextTable) return null
 
                   return (
-                    <div className="mb-2 rounded-xl border border-[#dbe4f3] bg-[#f8fbff] px-3 py-3">
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <div className="min-w-0 flex-1">{headerContent}</div>
-                      </div>
+                    <>
+                      {headerContent ? <div className="mb-2 min-w-0">{headerContent}</div> : null}
                       {contextText ? (
                         <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
                           {renderQuestionTextWithInlineLatex(contextText)}
@@ -16687,7 +16685,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           </div>
                         )
                       })() : null}
-                    </div>
+                    </>
                   )
                 }
 
@@ -16716,93 +16714,106 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   >
                     <div className="flex gap-3 items-start">
                       <div className="flex-1 min-w-0">
-                        {renderQuestionContextBlock(
-                          q?.rootContext,
-                          renderQuestionBadgeRow(q, { includeQuestionNumber: false, includeMetadataBadges: true }),
-                          `question ${formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)} preamble`
-                        )}
-                        {renderQuestionContextBlock(
-                          q?.parentContext,
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#5b6b85]">Parent {formatQNumLabel(q?.parentContext?.questionNumber)}</div>,
-                          `parent ${formatQNumLabel(q?.parentContext?.questionNumber)}`
-                        )}
-
-                        {renderQuestionBadgeRow(q, { includeQuestionNumber: true, includeMetadataBadges: !q?.rootContext })}
-
-                        {isSubquestion ? (
-                          <button
-                            type="button"
-                            className="w-full text-left text-sm text-[#1c1e21] whitespace-pre-wrap break-words rounded-lg border border-transparent hover:border-[#dbe4f3] hover:bg-[#f8fbff] px-2 py-1 -mx-2 transition-colors cursor-pointer active:bg-[#eef5ff]"
-                            onClick={() => void openPaperContext(q)}
-                            title="Tap to view this question in its full paper context"
-                          >
-                            {renderQuestionTextWithInlineLatex(cleanText)}
-                            <span className="block mt-1 text-[10px] text-[#1877f2] opacity-60">tap to view in context ↗</span>
-                          </button>
-                        ) : (
-                          <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
-                            {renderQuestionTextWithInlineLatex(cleanText)}
-                          </div>
-                        )}
-
-                        {questionImageUrls.length > 0 ? (
-                          <div className="mt-2 grid gap-2">
-                            {questionImageUrls.map((imageUrl, imageIndex) => (
-                              <div key={`${String(q.id)}-diagram-${imageIndex}`} className="overflow-hidden rounded-lg border border-[#dbe4f3] bg-[#f8fbff]">
-                                <img
-                                  src={imageUrl}
-                                  alt={`Diagram ${imageIndex + 1} for question ${String(q.questionNumber)}`}
-                                  className="max-h-[280px] w-full object-contain"
-                                  loading="lazy"
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        ) : null}
-
-                        {q.tableMarkdown ? (() => {
-                          const tableLines = String(q.tableMarkdown).split('\n').map((l: string) => l.trim()).filter((l: string) => l.startsWith('|'))
-                          if (tableLines.length < 2) return null
-                          const parseRow = (line: string) => line.replace(/^\||\|$/g, '').split('|').map((c: string) => c.trim())
-                          const headerCells = parseRow(tableLines[0])
-                          const dataRows = tableLines.slice(2).map(parseRow)
-                          const isSepRow = (row: string[]) => row.length > 0 && row.every((c: string) => /^[-:]+$/.test(c.replace(/\s/g, '')))
-                          const filteredDataRows = dataRows.filter((row: string[]) => !isSepRow(row))
-                          const isSyntheticHeader = headerCells.length > 0 && headerCells.every((cell: string, idx: number) => new RegExp(`^col\\s*${idx + 1}$`, 'i').test(cell))
-                          const isBlankHeader = headerCells.length > 0 && headerCells.every((cell: string) => !cell)
-                          const showHeader = !(isSyntheticHeader || isBlankHeader)
-                          const bodyRows = showHeader
-                            ? filteredDataRows
-                            : (filteredDataRows.length > 0 ? filteredDataRows : [headerCells])
-                          return (
-                            <div className="mt-2 overflow-x-auto border border-[#9aa4b2] bg-white">
-                              <table className="min-w-full border-collapse text-xs text-black">
-                                {showHeader ? (
-                                  <thead>
-                                    <tr>
-                                      {headerCells.map((h: string, i: number) => (
-                                        <th key={i} className="border border-[#9aa4b2] px-2 py-1 text-left font-semibold whitespace-nowrap text-black bg-white">
-                                          {renderQuestionTextWithInlineLatex(h)}
-                                        </th>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                ) : null}
-                                <tbody>
-                                  {bodyRows.map((row: string[], ri: number) => (
-                                    <tr key={ri}>
-                                      {row.map((cell: string, ci: number) => (
-                                        <td key={ci} className="border border-[#9aa4b2] px-2 py-1 text-black">
-                                          {renderQuestionTextWithInlineLatex(cell)}
-                                        </td>
-                                      ))}
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
+                        <div className="rounded-xl border border-[#dbe4f3] bg-[#f8fbff] px-3 py-3">
+                          {q?.rootContext ? (
+                            <div>
+                              {renderQuestionContextBlock(
+                                q?.rootContext,
+                                renderQuestionBadgeRow(q, { includeQuestionNumber: false, includeMetadataBadges: true }),
+                                `question ${formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)} preamble`
+                              )}
                             </div>
-                          )
-                        })() : null}
+                          ) : null}
+
+                          {q?.parentContext ? (
+                            <div className={q?.rootContext ? 'mt-4' : ''}>
+                              {renderQuestionContextBlock(
+                                q?.parentContext,
+                                <div className="text-[11px] font-semibold tracking-[0.08em] text-[#5b6b85]">{formatQNumLabel(q?.parentContext?.questionNumber)}</div>,
+                                `question ${formatQNumLabel(q?.parentContext?.questionNumber)}`
+                              )}
+                            </div>
+                          ) : null}
+
+                          <div className={q?.rootContext || q?.parentContext ? 'mt-4' : ''}>
+                            {renderQuestionBadgeRow(q, { includeQuestionNumber: true, includeMetadataBadges: !q?.rootContext })}
+
+                            {isSubquestion ? (
+                              <button
+                                type="button"
+                                className="w-full text-left text-sm text-[#1c1e21] whitespace-pre-wrap break-words rounded-lg border border-transparent hover:border-[#dbe4f3] hover:bg-white px-2 py-1 -mx-2 transition-colors cursor-pointer active:bg-[#eef5ff]"
+                                onClick={() => void openPaperContext(q)}
+                                title="Tap to view this question in its full paper context"
+                              >
+                                {renderQuestionTextWithInlineLatex(cleanText)}
+                                <span className="block mt-1 text-[10px] text-[#1877f2] opacity-60">tap to view in context ↗</span>
+                              </button>
+                            ) : (
+                              <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
+                                {renderQuestionTextWithInlineLatex(cleanText)}
+                              </div>
+                            )}
+
+                            {questionImageUrls.length > 0 ? (
+                              <div className="mt-2 grid gap-2">
+                                {questionImageUrls.map((imageUrl, imageIndex) => (
+                                  <div key={`${String(q.id)}-diagram-${imageIndex}`} className="overflow-hidden rounded-lg border border-[#dbe4f3] bg-white">
+                                    <img
+                                      src={imageUrl}
+                                      alt={`Diagram ${imageIndex + 1} for question ${String(q.questionNumber)}`}
+                                      className="max-h-[280px] w-full object-contain"
+                                      loading="lazy"
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+
+                            {q.tableMarkdown ? (() => {
+                              const tableLines = String(q.tableMarkdown).split('\n').map((l: string) => l.trim()).filter((l: string) => l.startsWith('|'))
+                              if (tableLines.length < 2) return null
+                              const parseRow = (line: string) => line.replace(/^\||\|$/g, '').split('|').map((c: string) => c.trim())
+                              const headerCells = parseRow(tableLines[0])
+                              const dataRows = tableLines.slice(2).map(parseRow)
+                              const isSepRow = (row: string[]) => row.length > 0 && row.every((c: string) => /^[-:]+$/.test(c.replace(/\s/g, '')))
+                              const filteredDataRows = dataRows.filter((row: string[]) => !isSepRow(row))
+                              const isSyntheticHeader = headerCells.length > 0 && headerCells.every((cell: string, idx: number) => new RegExp(`^col\\s*${idx + 1}$`, 'i').test(cell))
+                              const isBlankHeader = headerCells.length > 0 && headerCells.every((cell: string) => !cell)
+                              const showHeader = !(isSyntheticHeader || isBlankHeader)
+                              const bodyRows = showHeader
+                                ? filteredDataRows
+                                : (filteredDataRows.length > 0 ? filteredDataRows : [headerCells])
+                              return (
+                                <div className="mt-2 overflow-x-auto border border-[#9aa4b2] bg-white">
+                                  <table className="min-w-full border-collapse text-xs text-black">
+                                    {showHeader ? (
+                                      <thead>
+                                        <tr>
+                                          {headerCells.map((h: string, i: number) => (
+                                            <th key={i} className="border border-[#9aa4b2] px-2 py-1 text-left font-semibold whitespace-nowrap text-black bg-white">
+                                              {renderQuestionTextWithInlineLatex(h)}
+                                            </th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                    ) : null}
+                                    <tbody>
+                                      {bodyRows.map((row: string[], ri: number) => (
+                                        <tr key={ri}>
+                                          {row.map((cell: string, ci: number) => (
+                                            <td key={ci} className="border border-[#9aa4b2] px-2 py-1 text-black">
+                                              {renderQuestionTextWithInlineLatex(cell)}
+                                            </td>
+                                          ))}
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )
+                            })() : null}
+                          </div>
+                        </div>
 
                         {renderQbQuestionSocialActions(q)}
 

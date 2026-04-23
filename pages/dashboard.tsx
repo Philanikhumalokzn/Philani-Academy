@@ -16748,7 +16748,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           </button>
 
                           <div className="mt-3">
-                            {renderQuestionBadgeRow(q, { includeQuestionNumber: isSubquestion, includeMetadataBadges: true })}
+                            {renderQuestionBadgeRow(q, { includeQuestionNumber: false, includeMetadataBadges: true })}
                           </div>
 
                           {isQuestionContextExpanded ? (
@@ -16783,6 +16783,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 onClick={() => void openPaperContext(q)}
                                 title="Tap to view this question in its full paper context"
                               >
+                                <span className="font-semibold text-[#65676b]">{formatQNumLabel(q?.questionNumber)} </span>
                                 {renderQuestionTextWithInlineLatex(cleanText)}
                                 <span className="block mt-1 text-[10px] text-[#1877f2] opacity-60">tap to view in context ↗</span>
                               </button>

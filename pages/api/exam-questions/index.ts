@@ -166,7 +166,7 @@ function buildRootPreambleMmdFromSection(sectionMmd: string, rootQuestionNumber:
   const slice = lines.slice(0, firstSubIndex)
   if (slice.length === 0) return ''
 
-  const headingPattern = new RegExp(`^(?:\\section\*\{\s*QUESTION\s+${escapeRegExp(rootQuestionNumber)}\s*\}|QUESTION\s+${escapeRegExp(rootQuestionNumber)}\b)\s*`, 'i')
+  const headingPattern = new RegExp(`^(?:\\section\*\{\\s*QUESTION\\s+${escapeRegExp(rootQuestionNumber)}\\s*\}|QUESTION\\s+${escapeRegExp(rootQuestionNumber)}\\b)\\s*`, 'i')
   const firstLine = String(slice[0] || '').replace(headingPattern, '').trim()
   const body = [firstLine, ...slice.slice(1)]
     .filter((line, index) => index > 0 || !!String(line || '').trim())

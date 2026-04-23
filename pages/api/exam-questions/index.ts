@@ -220,6 +220,19 @@ function getHierarchyParentQuestionNumber(value: unknown): string {
   return parts.slice(0, -1).join('.')
 }
 
+function compareHierarchyQuestionNumbers(a: unknown, b: unknown): number {
+  const aParts = getHierarchyQuestionParts(a)
+  const bParts = getHierarchyQuestionParts(b)
+
+  for (let i = 0; i < Math.max(aParts.length, bParts.length); i += 1) {
+    const aPart = Number(aParts[i] ?? 0)
+    const bPart = Number(bParts[i] ?? 0)
+    if (aPart !== bPart) return aPart - bPart
+  }
+
+  return String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' })
+}
+
 function buildQuestionScopeKey(item: {
   sourceId: string | null
   grade: string
@@ -241,39 +254,73 @@ function shuffleInPlace<T>(items: T[]): T[] {
   return items
 }
 
-function buildCompositeRootOmitSet(items: Array<{
+function shapeCompositeRootItems<T extends {
   id: string
   sourceId: string | null
+  grade: string
   year: number
   month: string
   paper: number
   questionNumber: string
   questionDepth: number
-}>): Set<string> {
-  const omitIds = new Set<string>()
-  const groups = new Map<string, string[]>()
+}>(items: T[], scopeItems: T[]): T[] {
+  const matchedByScope = new Map<string, T[]>()
+  const scopeByScope = new Map<string, T[]>()
 
   for (const item of items) {
-    const normalized = normalizeHierarchyQuestionNumber(item.questionNumber)
-    if (!normalized) continue
-    const groupKey = [item.sourceId || '', item.year, item.month, item.paper].join('|')
-    const list = groups.get(groupKey) || []
-    list.push(normalized)
-    groups.set(groupKey, list)
+    const scopeKey = buildQuestionScopeKey(item)
+    const list = matchedByScope.get(scopeKey) || []
+    list.push(item)
+    matchedByScope.set(scopeKey, list)
   }
 
+  for (const item of scopeItems) {
+    const scopeKey = buildQuestionScopeKey(item)
+    const list = scopeByScope.get(scopeKey) || []
+    list.push(item)
+    scopeByScope.set(scopeKey, list)
+  }
+
+  const shapedItems: T[] = []
+
   for (const item of items) {
-    if (item.questionDepth !== 0) continue
     const normalized = normalizeHierarchyQuestionNumber(item.questionNumber)
-    if (!normalized) continue
-    const groupKey = [item.sourceId || '', item.year, item.month, item.paper].join('|')
-    const siblings = groups.get(groupKey) || []
-    if (siblings.some((candidate) => candidate !== normalized && candidate.startsWith(`${normalized}.`))) {
-      omitIds.add(item.id)
+    if (!normalized || item.questionDepth !== 0) {
+      shapedItems.push(item)
+      continue
     }
+
+    const scopeKey = buildQuestionScopeKey(item)
+    const matchedSiblings = matchedByScope.get(scopeKey) || []
+    const availableScopeItems = scopeByScope.get(scopeKey) || []
+    const descendantsInScope = availableScopeItems
+      .filter((candidate) => {
+        const candidateNumber = normalizeHierarchyQuestionNumber(candidate.questionNumber)
+        return candidateNumber !== normalized && candidateNumber.startsWith(`${normalized}.`)
+      })
+      .sort((left, right) => compareHierarchyQuestionNumbers(left.questionNumber, right.questionNumber))
+
+    if (descendantsInScope.length === 0) {
+      shapedItems.push(item)
+      continue
+    }
+
+    const matchedDescendantExists = matchedSiblings.some((candidate) => {
+      if (candidate.id === item.id) return false
+      const candidateNumber = normalizeHierarchyQuestionNumber(candidate.questionNumber)
+      return candidateNumber.startsWith(`${normalized}.`)
+    })
+
+    if (matchedDescendantExists) {
+      continue
+    }
+
+    const directChildren = descendantsInScope.filter((candidate) => getHierarchyParentQuestionNumber(candidate.questionNumber) === normalized)
+    const preferredBranchItem = directChildren[0] || descendantsInScope[0]
+    shapedItems.push(preferredBranchItem)
   }
 
-  return omitIds
+  return shapedItems.filter((item, index, array) => array.findIndex((candidate) => candidate.id === item.id) === index)
 }
 
 function enrichQuestionItem(
@@ -515,8 +562,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       orderBy,
       select: itemSelect,
     })
-    const omitIds = hideCompositeRoots ? buildCompositeRootOmitSet(allItems) : new Set<string>()
-    const filteredItems = allItems.filter((item) => !omitIds.has(item.id))
+    const contextScopeOr: Prisma.ExamQuestionWhereInput[] = Array.from(new Set(allItems.map((item) => buildQuestionScopeKey(item)))).map((scopeKey) => {
+      if (scopeKey.startsWith('source:')) {
+        return { sourceId: scopeKey.slice('source:'.length) }
+      }
+      const payload = scopeKey.slice('paper:'.length).split('|')
+      return {
+        grade: normalizeGradeInput(payload[0]) || undefined,
+        year: Number(payload[1]),
+        month: payload[2],
+        paper: Number(payload[3]),
+      }
+    })
+
+    const relatedContextItems = contextScopeOr.length > 0
+      ? await prisma.examQuestion.findMany({
+          where: {
+            ...(approvedOnly ? { approved: true } : {}),
+            OR: contextScopeOr,
+          },
+          orderBy,
+          select: itemSelect,
+        })
+      : []
+
+    const filteredItems = hideCompositeRoots ? shapeCompositeRootItems(allItems, relatedContextItems) : allItems
     const orderedItems = randomize ? shuffleInPlace([...filteredItems]) : filteredItems
     total = orderedItems.length
     items = orderedItems.slice(skip, skip + take)

@@ -16752,30 +16752,28 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           </div>
 
                           {isQuestionContextExpanded ? (
-                            <>
-                              {q?.rootContext ? (
-                                <div className="mt-4">
-                                  {renderQuestionContextBlock(
-                                    q?.rootContext,
-                                    null,
-                                    `question ${formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)} preamble`
-                                  )}
-                                </div>
-                              ) : null}
-
-                              {q?.parentContext ? (
-                                <div className={q?.rootContext ? 'mt-4' : 'mt-4'}>
-                                  {renderQuestionContextBlock(
-                                    q?.parentContext,
-                                    <div className="text-[11px] font-semibold tracking-[0.08em] text-[#5b6b85]">{formatQNumLabel(q?.parentContext?.questionNumber)}</div>,
-                                    `question ${formatQNumLabel(q?.parentContext?.questionNumber)}`
-                                  )}
-                                </div>
-                              ) : null}
-                            </>
+                            q?.rootContext ? (
+                              <div className="mt-4">
+                                {renderQuestionContextBlock(
+                                  q?.rootContext,
+                                  null,
+                                  `question ${formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)} preamble`
+                                )}
+                              </div>
+                            ) : null
                           ) : null}
 
-                          <div className={isQuestionContextExpanded ? 'mt-4' : 'mt-3'}>
+                          {q?.parentContext ? (
+                            <div className="mt-4">
+                              {renderQuestionContextBlock(
+                                q?.parentContext,
+                                <div className="text-[11px] font-semibold tracking-[0.08em] text-[#5b6b85]">{formatQNumLabel(q?.parentContext?.questionNumber)}</div>,
+                                `question ${formatQNumLabel(q?.parentContext?.questionNumber)}`
+                              )}
+                            </div>
+                          ) : null}
+
+                          <div className={isQuestionContextExpanded || q?.parentContext ? 'mt-4' : 'mt-3'}>
                             {isSubquestion ? (
                               <button
                                 type="button"

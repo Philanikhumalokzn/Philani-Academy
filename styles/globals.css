@@ -36,6 +36,25 @@
   vertical-align: baseline !important;
 }
 
+/* Mathpix inline math defaults to inline-flex with zero line-height, which lifts formulas in running text. */
+.math-inline {
+  display: inline-block !important;
+  max-width: 100%;
+  vertical-align: baseline !important;
+}
+
+.math-inline mjx-container {
+  display: inline-block !important;
+  line-height: 1 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  vertical-align: baseline !important;
+}
+
+.math-inline[data-overflow='visible'] mjx-container {
+  overflow: visible !important;
+}
+
 .philani-gradient-outline,
 .philani-gradient-outline-soft {
   border: 1px solid transparent !important;

@@ -15149,6 +15149,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return String(value ?? '').trim().replace(/^Q+/i, '')
   }
 
+  const formatMonthBadgeLabel = (value: unknown): string => {
+    const raw = String(value ?? '').trim()
+    return raw ? raw.slice(0, 3) : ''
+  }
+
+  const formatPaperBadgeLabel = (value: unknown): string => {
+    const raw = String(value ?? '').trim()
+    return raw ? `P${raw.replace(/^PAPER\s*/i, '')}` : ''
+  }
+
+  const formatLevelBadgeLabel = (value: unknown): string => {
+    const raw = String(value ?? '').trim()
+    return raw ? `Lvl ${raw.replace(/^LEVEL\s*/i, '')}` : ''
+  }
+
   const compareQNum = (a: string, b: string): number => {
     const pa = getQNumParts(a)
     const pb = getQNumParts(b)
@@ -16349,8 +16364,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <span className="text-xs font-bold text-[#65676b]">Q{q.questionNumber}</span>
                     <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.year}</span>
-                    <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.month}</span>
-                    <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">Paper {q.paper}</span>
+                    <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{formatMonthBadgeLabel(q.month)}</span>
+                    <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{formatPaperBadgeLabel(q.paper)}</span>
                     {q.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{q.topic}</span> : null}
                   </div>
                   <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">{renderQuestionTextWithInlineLatex(cleanText)}</div>
@@ -16660,7 +16675,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             onClick={(event) => openQbRemixOverlay(q, 'month', event.currentTarget)}
                             title="Remix this result by changing the exam month"
                           >
-                            {q.month}
+                            {formatMonthBadgeLabel(q.month)}
                           </button>
                           <button
                             type="button"
@@ -16668,7 +16683,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             onClick={(event) => openQbRemixOverlay(q, 'paper', event.currentTarget)}
                             title="Remix this result by changing the paper"
                           >
-                            Paper {q.paper}
+                            {formatPaperBadgeLabel(q.paper)}
                           </button>
                           {q.topic ? (
                             <button
@@ -16687,7 +16702,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               onClick={(event) => openQbRemixOverlay(q, 'level', event.currentTarget)}
                               title="Remix this result by changing the cognitive level"
                             >
-                              Level {q.cognitiveLevel}
+                              {formatLevelBadgeLabel(q.cognitiveLevel)}
                             </button>
                           ) : null}
                           {marksLabel ? <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{marksLabel}</span> : null}
@@ -19452,7 +19467,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <span className="text-xs font-bold text-[#65676b]">Q{contextQ.questionNumber}</span>
                     {contextQ.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{contextQ.topic}</span> : null}
-                    {contextQ.cognitiveLevel ? <span className="text-xs rounded-full bg-[#fff3cd] px-2 py-0.5 text-[#856404]">Level {contextQ.cognitiveLevel}</span> : null}
+                    {contextQ.cognitiveLevel ? <span className="text-xs rounded-full bg-[#fff3cd] px-2 py-0.5 text-[#856404]">{formatLevelBadgeLabel(contextQ.cognitiveLevel)}</span> : null}
                     {contextMarksLabel ? <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{contextMarksLabel}</span> : null}
                     {isFocus ? <span className="text-xs rounded-full bg-[#dce9ff] px-2 py-0.5 text-[#1d4ed8]">Selected result</span> : null}
                   </div>

@@ -16719,7 +16719,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             <div>
                               {renderQuestionContextBlock(
                                 q?.rootContext,
-                                renderQuestionBadgeRow(q, { includeQuestionNumber: false, includeMetadataBadges: true }),
+                                <div className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#1c1e21]">QUESTION {formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)}</div>,
                                 `question ${formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)} preamble`
                               )}
                             </div>
@@ -16736,7 +16736,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           ) : null}
 
                           <div className={q?.rootContext || q?.parentContext ? 'mt-4' : ''}>
-                            {renderQuestionBadgeRow(q, { includeQuestionNumber: true, includeMetadataBadges: !q?.rootContext })}
+                            {renderQuestionBadgeRow(q, { includeQuestionNumber: true, includeMetadataBadges: true })}
 
                             {isSubquestion ? (
                               <button

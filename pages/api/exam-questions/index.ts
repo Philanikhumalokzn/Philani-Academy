@@ -3,6 +3,8 @@ import { getToken } from 'next-auth/jwt'
 import type { Prisma } from '@prisma/client'
 import prisma from '../../../lib/prisma'
 import { normalizeGradeInput } from '../../../lib/grades'
+import { normalizeExamQuestionContent } from '../../../lib/questionMath'
+import { buildRootPreambleBlocksFromMmd } from '../resources/extract-questions'
 
 export const config = {
   api: { bodyParser: { sizeLimit: '64kb' } },
@@ -372,6 +374,81 @@ function enrichQuestionItem(
   }
 }
 
+function buildSyntheticRootPreambleItem(
+  item: {
+    id: string
+    grade: string
+    year: number
+    month: string
+    paper: number
+    topic: string | null
+    cognitiveLevel: number | null
+    marks: number | null
+    approved: boolean
+    sourceId: string | null
+    createdAt: Date
+  },
+  rootQuestionNumber: string,
+  sourceMmd: string,
+): {
+  id: string
+  grade: string
+  year: number
+  month: string
+  paper: number
+  questionNumber: string
+  questionDepth: number
+  topic: string | null
+  cognitiveLevel: number | null
+  marks: number | null
+  questionText: string
+  latex: string | null
+  imageUrl: string | null
+  imageUrls: string[]
+  tableMarkdown: string | null
+  approved: boolean
+  sourceId: string | null
+  sourceTitle: string | null
+  sourceUrl: string | null
+  createdAt: Date
+} | null {
+  const rootBlocks = buildRootPreambleBlocksFromMmd(sourceMmd)
+  const rootBlock = rootBlocks.get(rootQuestionNumber)
+  if (!rootBlock) return null
+
+  const normalized = normalizeExamQuestionContent(String(rootBlock.preambleText || ''), '')
+  const questionText = normalized.questionText
+  const imageUrls = Array.isArray(rootBlock.imageUrls) ? rootBlock.imageUrls.filter((url) => /^https?:\/\//i.test(String(url || '').trim())) : []
+  const tableMarkdown = typeof rootBlock.tableMarkdown === 'string' && rootBlock.tableMarkdown.trim()
+    ? rootBlock.tableMarkdown.trim()
+    : null
+
+  if (!questionText && imageUrls.length === 0 && !tableMarkdown) return null
+
+  return {
+    id: `${String(item.sourceId || 'paper')}::root-preamble::${rootQuestionNumber}`,
+    grade: item.grade,
+    year: item.year,
+    month: item.month,
+    paper: item.paper,
+    questionNumber: rootQuestionNumber,
+    questionDepth: 0,
+    topic: item.topic,
+    cognitiveLevel: item.cognitiveLevel,
+    marks: item.marks,
+    questionText,
+    latex: null,
+    imageUrl: imageUrls[0] || null,
+    imageUrls,
+    tableMarkdown,
+    approved: item.approved,
+    sourceId: item.sourceId,
+    sourceTitle: null,
+    sourceUrl: null,
+    createdAt: item.createdAt,
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const token = await getToken({ req })
   const role = ((token as any)?.role as string | undefined) || 'student'
@@ -617,6 +694,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const sourceMarksMap = new Map<string, Map<string, number>>()
   const sourceTitleMap = new Map<string, string>()
   const sourceUrlMap = new Map<string, string>()
+  const sourceMmdMap = new Map<string, string>()
   for (const source of sources) {
     sourceTitleMap.set(source.id, String(source.title || '').trim())
     if (source.url) sourceUrlMap.set(source.id, String(source.url).trim())
@@ -629,6 +707,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const mmd = typeof parsed?.raw?.mmd === 'string' ? parsed.raw.mmd : ''
+  sourceMmdMap.set(source.id, mmd)
     const fromMmd = buildQuestionImageMapFromMmd(mmd)
     for (const [qNum, urls] of fromMmd.entries()) {
       const existing = combined.get(qNum) || []
@@ -681,8 +760,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const scopeItems = relatedContextByScope.get(buildQuestionScopeKey(item)) || []
     const rootQuestionNumber = getHierarchyRootQuestionNumber(item.questionNumber)
     const parentQuestionNumber = getHierarchyParentQuestionNumber(item.questionNumber)
+    const syntheticRootContext = rootQuestionNumber && rootQuestionNumber !== normalizeHierarchyQuestionNumber(item.questionNumber) && item.sourceId
+      ? buildSyntheticRootPreambleItem(enriched, rootQuestionNumber, sourceMmdMap.get(item.sourceId) || '')
+      : null
     const rootContext = rootQuestionNumber && rootQuestionNumber !== normalizeHierarchyQuestionNumber(item.questionNumber)
-      ? scopeItems.find((candidate) => normalizeHierarchyQuestionNumber(candidate.questionNumber) === rootQuestionNumber) || null
+      ? (syntheticRootContext || scopeItems.find((candidate) => normalizeHierarchyQuestionNumber(candidate.questionNumber) === rootQuestionNumber) || null)
       : null
     const parentContext = parentQuestionNumber && parentQuestionNumber !== rootQuestionNumber && parentQuestionNumber !== normalizeHierarchyQuestionNumber(item.questionNumber)
       ? scopeItems.find((candidate) => normalizeHierarchyQuestionNumber(candidate.questionNumber) === parentQuestionNumber) || null

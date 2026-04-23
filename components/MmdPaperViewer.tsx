@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { renderQuestionTextWithInlineLatex } from '../lib/renderQuestionText'
 import { renderKatexDisplayHtml } from '../lib/latexRender'
 
@@ -550,6 +550,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
   const marksMap = useMemo(() => buildQuestionMarksMapFromMmd(sanitizedMmd), [sanitizedMmd])
   const [renderedHtml, setRenderedHtml] = useState('')
   const [useMathpixRenderer, setUseMathpixRenderer] = useState(false)
+  const contentRootId = useId().replace(/:/g, '-')
   const normalizedSelectedQuestionNumber = stripQuestionPrefix(String(selectedQuestionNumber || ''))
   const selectedRoot = normalizedSelectedQuestionNumber.split('.').filter(Boolean)[0] || ''
 
@@ -638,7 +639,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
 
   useEffect(() => {
     if (!useMathpixRenderer || !renderedHtml || typeof document === 'undefined') return
-    const root = document.getElementById('mmd-paper-viewer-content')
+    const root = document.getElementById(contentRootId)
     if (!root) return
 
     const nodes = Array.from(root.querySelectorAll<HTMLElement>('.mmd-question-heading, .mmd-question-subpart'))
@@ -664,13 +665,27 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
       badge.style.fontWeight = '600'
       node.appendChild(badge)
     }
-  }, [marksMap, renderedHtml, useMathpixRenderer])
+  }, [contentRootId, marksMap, renderedHtml, useMathpixRenderer])
 
   if (!String(mmd || '').trim()) {
     return <div className="px-4 py-6 text-sm text-slate-500">No MMD document is available for this paper.</div>
   }
 
   if (compact) {
+    if (useMathpixRenderer && renderedHtml) {
+      return (
+        <div className="w-full bg-transparent [&_.katex]:!text-[#1c1e21] [&_.preview]:!max-w-none [&_.preview]:!mx-0 [&_.preview]:!px-0 [&_.preview-content]:!max-w-none [&_.preview-content]:!mx-0 [&_.preview-content]:!px-0 [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden [&_.katex-display]:max-w-full" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+          <section className="scroll-mt-24 rounded-xl px-0 py-1">
+            <div
+              id={contentRootId}
+              className="text-[13px] leading-[1.35] text-stone-900 [&_.katex]:text-stone-900 [&_p]:my-1.5 [&_.mmd-question-heading]:font-bold [&_.mmd-question-heading]:tracking-[0.06em] [&_.mmd-question-subpart]:mt-3 [&_.mmd-question-subpart]:text-[13px] [&_.mmd-table-wrap]:my-1.5 [&_.mmd-table-wrap]:max-w-full [&_.mmd-table-wrap]:overflow-x-auto [&_table]:!border-collapse [&_table]:text-[12px] [&_table]:!border [&_table]:!border-solid [&_table]:!border-stone-500 [&_table]:!text-slate-900 [&_table]:!bg-white [&_.mmd-compact-table]:w-max [&_.mmd-compact-table]:min-w-full [&_.table_tabular]:!border [&_.table_tabular]:!border-solid [&_.table_tabular]:!border-stone-500 [&_.table_tabular]:!bg-white [&_tr]:!border-stone-500 [&_td]:!border [&_td]:!border-solid [&_td]:!border-stone-500 [&_td]:!bg-white [&_td]:!text-slate-900 [&_td]:px-1.5 [&_td]:py-0.5 [&_td]:leading-tight [&_th]:!border [&_th]:!border-solid [&_th]:!border-stone-500 [&_th]:!bg-white [&_th]:!text-slate-900 [&_th]:px-1.5 [&_th]:py-0.5 [&_th]:leading-tight [&_.mmd-row-title]:whitespace-nowrap [&_.mmd-row-title]:font-medium"
+              dangerouslySetInnerHTML={{ __html: renderedHtml }}
+            />
+          </section>
+        </div>
+      )
+    }
+
     return (
       <div className="w-full bg-transparent [&_.katex]:!text-[#1c1e21] [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden [&_.katex-display]:max-w-full" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
         <div className="space-y-1">
@@ -795,7 +810,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
           {useMathpixRenderer && renderedHtml ? (
             <section className="scroll-mt-24 rounded-xl px-0 py-1">
               <div
-                id="mmd-paper-viewer-content"
+                id={contentRootId}
                 className="text-[13px] leading-[1.35] text-stone-900 [&_.katex]:text-stone-900 [&_.preview]:!max-w-none [&_.preview]:!mx-0 [&_.preview]:!px-0 [&_.preview-content]:!max-w-none [&_.preview-content]:!mx-0 [&_.preview-content]:!px-0 [&_p]:my-1.5 [&_.mmd-question-subpart]:mt-3 [&_.mmd-table-wrap]:my-1.5 [&_.mmd-table-wrap]:max-w-full [&_.mmd-table-wrap]:overflow-x-auto [&_table]:!border-collapse [&_table]:text-[12px] [&_table]:!border [&_table]:!border-solid [&_table]:!border-stone-500 [&_table]:!text-slate-900 [&_table]:!bg-white [&_.mmd-compact-table]:w-max [&_.mmd-compact-table]:min-w-full [&_.table_tabular]:!border [&_.table_tabular]:!border-solid [&_.table_tabular]:!border-stone-500 [&_.table_tabular]:!bg-white [&_tr]:!border-stone-500 [&_td]:!border [&_td]:!border-solid [&_td]:!border-stone-500 [&_td]:!bg-white [&_td]:!text-slate-900 [&_td]:px-1.5 [&_td]:py-0.5 [&_td]:leading-tight [&_th]:!border [&_th]:!border-solid [&_th]:!border-stone-500 [&_th]:!bg-white [&_th]:!text-slate-900 [&_th]:px-1.5 [&_th]:py-0.5 [&_th]:leading-tight [&_.mmd-row-title]:whitespace-nowrap [&_.mmd-row-title]:font-medium"
                 dangerouslySetInnerHTML={{ __html: renderedHtml }}
               />

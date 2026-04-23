@@ -16553,6 +16553,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const isQuestionContextExpanded = qbExpandedQuestionContextIds.has(questionContextId)
                 const collapsedRootContext = q?.parentContext ? q?.rootContext : null
                 const defaultVisibleContext = q?.parentContext || (isSubquestion ? q?.rootContext : null)
+                const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
                 const renderQuestionBadgeRow = (question: any, options?: { includeQuestionNumber?: boolean; includeMetadataBadges?: boolean }) => {
                   const includeQuestionNumber = options?.includeQuestionNumber !== false
                   const includeMetadataBadges = options?.includeMetadataBadges !== false
@@ -16614,15 +16615,32 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   )
                 }
 
-                const renderQuestionContextBlock = (contextQuestion: any, headerContent: any, label: string) => {
-                  if (!contextQuestion) return null
+                const buildQuestionMmdSection = (question: any, options?: { includeQuestionNumber?: boolean }) => {
+                  if (!question) return ''
 
-                  const normalizedContext = normalizeExamQuestionContent(
-                    unwrapQuestionField(contextQuestion?.questionText, ['questionText', 'text', 'prompt']),
-                    unwrapQuestionField(contextQuestion?.latex, ['latex', 'equation', 'math']),
+                  const normalizedQuestion = normalizeExamQuestionContent(
+                    unwrapQuestionField(question?.questionText, ['questionText', 'text', 'prompt']),
+                    unwrapQuestionField(question?.latex, ['latex', 'equation', 'math']),
                   )
-                  const contextText = normalizedContext.questionText
-                  const contextImageUrls = (() => {
+                  const qNum = typeof question?.questionNumber === 'string' ? question.questionNumber.trim() : ''
+                  const includeQuestionNumber = options?.includeQuestionNumber !== false && !!qNum
+                  let text = normalizedQuestion.questionText.trim()
+
+                  if (text && qNum) {
+                    text = text.replace(new RegExp(`^QUESTION\\s+${escapeRegExp(qNum)}\\b[:.\\-\\s]*`, 'i'), '').trim()
+                  }
+
+                  const lines: string[] = []
+                  if (text) {
+                    if (includeQuestionNumber) {
+                      const scopedPattern = new RegExp(`^${escapeRegExp(qNum)}\\b(?:[.)-]?\\s*)?`, 'i')
+                      lines.push(scopedPattern.test(text) ? text : `${qNum} ${text}`.trim())
+                    } else {
+                      lines.push(text)
+                    }
+                  }
+
+                  const imageUrls = (() => {
                     const urls: string[] = []
                     const pushUrl = (value: unknown) => {
                       const url = typeof value === 'string' ? value.trim() : ''
@@ -16631,87 +16649,32 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       if (!urls.includes(url)) urls.push(url)
                     }
 
-                    if (Array.isArray(contextQuestion?.imageUrls)) {
-                      for (const imageUrl of contextQuestion.imageUrls) pushUrl(imageUrl)
+                    if (Array.isArray(question?.imageUrls)) {
+                      for (const imageUrl of question.imageUrls) pushUrl(imageUrl)
                     }
-                    pushUrl(contextQuestion?.imageUrl)
+                    pushUrl(question?.imageUrl)
                     return urls
                   })()
 
-                  const contextTable = typeof contextQuestion?.tableMarkdown === 'string'
-                    ? contextQuestion.tableMarkdown.trim()
-                    : ''
+                  for (const [imageIndex, imageUrl] of imageUrls.entries()) {
+                    lines.push(`![Diagram ${imageIndex + 1}](${imageUrl})`)
+                  }
 
-                  if (!contextText && contextImageUrls.length === 0 && !contextTable) return null
+                  const tableMarkdown = typeof question?.tableMarkdown === 'string' ? question.tableMarkdown.trim() : ''
+                  if (tableMarkdown) lines.push(tableMarkdown)
 
-                  return (
-                    <>
-                      {headerContent ? <div className="mb-2 min-w-0">{headerContent}</div> : null}
-                      {contextText ? (
-                        <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
-                          {renderQuestionTextWithInlineLatex(contextText)}
-                        </div>
-                      ) : null}
-                      {contextImageUrls.length > 0 ? (
-                        <div className="mt-2 grid gap-2">
-                          {contextImageUrls.map((imageUrl, imageIndex) => (
-                            <div key={`${String(contextQuestion?.id || label)}-ctx-diagram-${imageIndex}`} className="overflow-hidden rounded-lg border border-[#dbe4f3] bg-white">
-                              <img
-                                src={imageUrl}
-                                alt={`Diagram ${imageIndex + 1} for ${label.toLowerCase()}`}
-                                className="max-h-[220px] w-full object-contain"
-                                loading="lazy"
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                      {contextTable ? (() => {
-                        const tableLines = contextTable.split('\n').map((l: string) => l.trim()).filter((l: string) => l.startsWith('|'))
-                        if (tableLines.length < 2) return null
-                        const parseRow = (line: string) => line.replace(/^\||\|$/g, '').split('|').map((c: string) => c.trim())
-                        const headerCells = parseRow(tableLines[0])
-                        const dataRows = tableLines.slice(2).map(parseRow)
-                        const isSepRow = (row: string[]) => row.length > 0 && row.every((c: string) => /^[-:]+$/.test(c.replace(/\s/g, '')))
-                        const filteredDataRows = dataRows.filter((row: string[]) => !isSepRow(row))
-                        const isSyntheticHeader = headerCells.length > 0 && headerCells.every((cell: string, idx: number) => new RegExp(`^col\\s*${idx + 1}$`, 'i').test(cell))
-                        const isBlankHeader = headerCells.length > 0 && headerCells.every((cell: string) => !cell)
-                        const showHeader = !(isSyntheticHeader || isBlankHeader)
-                        const bodyRows = showHeader
-                          ? filteredDataRows
-                          : (filteredDataRows.length > 0 ? filteredDataRows : [headerCells])
-                        return (
-                          <div className="mt-2 overflow-x-auto border border-[#9aa4b2] bg-white">
-                            <table className="min-w-full border-collapse text-xs text-black">
-                              {showHeader ? (
-                                <thead>
-                                  <tr>
-                                    {headerCells.map((h: string, i: number) => (
-                                      <th key={i} className="border border-[#9aa4b2] px-2 py-1 text-left font-semibold whitespace-nowrap text-black bg-white">
-                                        {renderQuestionTextWithInlineLatex(h)}
-                                      </th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                              ) : null}
-                              <tbody>
-                                {bodyRows.map((row: string[], ri: number) => (
-                                  <tr key={ri}>
-                                    {row.map((cell: string, ci: number) => (
-                                      <td key={ci} className="border border-[#9aa4b2] px-2 py-1 text-black">
-                                        {renderQuestionTextWithInlineLatex(cell)}
-                                      </td>
-                                    ))}
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )
-                      })() : null}
-                    </>
-                  )
+                  return lines.join('\n\n').trim()
                 }
+
+                const visibleQuestionMmd = [
+                  isQuestionContextExpanded && collapsedRootContext
+                    ? buildQuestionMmdSection(collapsedRootContext, { includeQuestionNumber: false })
+                    : '',
+                  defaultVisibleContext
+                    ? buildQuestionMmdSection(defaultVisibleContext, { includeQuestionNumber: !!q?.parentContext })
+                    : '',
+                  buildQuestionMmdSection(q, { includeQuestionNumber: isSubquestion }),
+                ].filter(Boolean).join('\n\n')
 
                 return (
                   <li
@@ -16759,106 +16722,23 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             {renderQuestionBadgeRow(q, { includeQuestionNumber: false, includeMetadataBadges: true })}
                           </div>
 
-                          {isQuestionContextExpanded ? (
-                            collapsedRootContext ? (
-                              <div className="mt-4">
-                                {renderQuestionContextBlock(
-                                  collapsedRootContext,
-                                  null,
-                                  `question ${formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)} preamble`
-                                )}
-                              </div>
-                            ) : null
-                          ) : null}
-
-                          {defaultVisibleContext ? (
-                            <div className="mt-4">
-                              {renderQuestionContextBlock(
-                                defaultVisibleContext,
-                                q?.parentContext
-                                  ? <div className="text-[11px] font-semibold tracking-[0.08em] text-[#5b6b85]">{formatQNumLabel(q?.parentContext?.questionNumber)}</div>
-                                  : null,
-                                `question ${formatQNumLabel(defaultVisibleContext?.questionNumber)}`
-                              )}
-                            </div>
-                          ) : null}
-
                           <div className={isQuestionContextExpanded || defaultVisibleContext ? 'mt-4' : 'mt-3'}>
-                            {isSubquestion ? (
-                              <button
-                                type="button"
-                                className="w-full text-left text-sm text-[#1c1e21] whitespace-pre-wrap break-words rounded-lg border border-transparent hover:border-[#dbe4f3] hover:bg-white px-2 py-1 -mx-2 transition-colors cursor-pointer active:bg-[#eef5ff]"
-                                onClick={() => void openPaperContext(q)}
-                                title="Tap to view this question in its full paper context"
-                              >
-                                <span className="font-semibold text-[#65676b]">{formatQNumLabel(q?.questionNumber)} </span>
-                                {renderQuestionTextWithInlineLatex(cleanText)}
-                                <span className="block mt-1 text-[10px] text-[#1877f2] opacity-60">tap to view in context ↗</span>
-                              </button>
-                            ) : (
-                              <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">
-                                {renderQuestionTextWithInlineLatex(cleanText)}
-                              </div>
-                            )}
-
-                            {questionImageUrls.length > 0 ? (
-                              <div className="mt-2 grid gap-2">
-                                {questionImageUrls.map((imageUrl, imageIndex) => (
-                                  <div key={`${String(q.id)}-diagram-${imageIndex}`} className="overflow-hidden rounded-lg border border-[#dbe4f3] bg-white">
-                                    <img
-                                      src={imageUrl}
-                                      alt={`Diagram ${imageIndex + 1} for question ${String(q.questionNumber)}`}
-                                      className="max-h-[280px] w-full object-contain"
-                                      loading="lazy"
-                                    />
-                                  </div>
-                                ))}
+                            {visibleQuestionMmd ? (
+                              <div className="rounded-lg border border-[#dbe4f3] bg-white px-2 py-2">
+                                <MmdPaperViewer mmd={visibleQuestionMmd} compact selectedQuestionNumber={String(q?.questionNumber || '')} />
                               </div>
                             ) : null}
 
-                            {q.tableMarkdown ? (() => {
-                              const tableLines = String(q.tableMarkdown).split('\n').map((l: string) => l.trim()).filter((l: string) => l.startsWith('|'))
-                              if (tableLines.length < 2) return null
-                              const parseRow = (line: string) => line.replace(/^\||\|$/g, '').split('|').map((c: string) => c.trim())
-                              const headerCells = parseRow(tableLines[0])
-                              const dataRows = tableLines.slice(2).map(parseRow)
-                              const isSepRow = (row: string[]) => row.length > 0 && row.every((c: string) => /^[-:]+$/.test(c.replace(/\s/g, '')))
-                              const filteredDataRows = dataRows.filter((row: string[]) => !isSepRow(row))
-                              const isSyntheticHeader = headerCells.length > 0 && headerCells.every((cell: string, idx: number) => new RegExp(`^col\\s*${idx + 1}$`, 'i').test(cell))
-                              const isBlankHeader = headerCells.length > 0 && headerCells.every((cell: string) => !cell)
-                              const showHeader = !(isSyntheticHeader || isBlankHeader)
-                              const bodyRows = showHeader
-                                ? filteredDataRows
-                                : (filteredDataRows.length > 0 ? filteredDataRows : [headerCells])
-                              return (
-                                <div className="mt-2 overflow-x-auto border border-[#9aa4b2] bg-white">
-                                  <table className="min-w-full border-collapse text-xs text-black">
-                                    {showHeader ? (
-                                      <thead>
-                                        <tr>
-                                          {headerCells.map((h: string, i: number) => (
-                                            <th key={i} className="border border-[#9aa4b2] px-2 py-1 text-left font-semibold whitespace-nowrap text-black bg-white">
-                                              {renderQuestionTextWithInlineLatex(h)}
-                                            </th>
-                                          ))}
-                                        </tr>
-                                      </thead>
-                                    ) : null}
-                                    <tbody>
-                                      {bodyRows.map((row: string[], ri: number) => (
-                                        <tr key={ri}>
-                                          {row.map((cell: string, ci: number) => (
-                                            <td key={ci} className="border border-[#9aa4b2] px-2 py-1 text-black">
-                                              {renderQuestionTextWithInlineLatex(cell)}
-                                            </td>
-                                          ))}
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              )
-                            })() : null}
+                            {isSubquestion ? (
+                              <button
+                                type="button"
+                                className="mt-2 block text-[10px] text-[#1877f2] opacity-70 hover:opacity-100"
+                                onClick={() => void openPaperContext(q)}
+                                title="Tap to view this question in its full paper context"
+                              >
+                                tap to view in context ↗
+                              </button>
+                            ) : null}
                           </div>
                         </div>
 

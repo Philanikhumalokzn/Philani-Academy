@@ -16757,7 +16757,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 <div className="mt-4">
                                   {renderQuestionContextBlock(
                                     q?.rootContext,
-                                    <div className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#1c1e21]">QUESTION {formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)}</div>,
+                                    null,
                                     `question ${formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)} preamble`
                                   )}
                                 </div>

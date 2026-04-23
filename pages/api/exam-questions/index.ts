@@ -449,6 +449,93 @@ function buildSyntheticRootPreambleItem(
   }
 }
 
+function buildFallbackRootPreambleFromRootRecord(
+  rootCandidate: {
+    id: string
+    grade: string
+    year: number
+    month: string
+    paper: number
+    questionNumber: string
+    questionDepth: number
+    topic: string | null
+    cognitiveLevel: number | null
+    marks: number | null
+    questionText: string
+    latex: string | null
+    imageUrl: string | null
+    imageUrls?: string[]
+    tableMarkdown: string | null
+    approved: boolean
+    sourceId: string | null
+    sourceTitle?: string | null
+    sourceUrl?: string | null
+    createdAt: Date
+  },
+  rootQuestionNumber: string,
+): {
+  id: string
+  grade: string
+  year: number
+  month: string
+  paper: number
+  questionNumber: string
+  questionDepth: number
+  topic: string | null
+  cognitiveLevel: number | null
+  marks: number | null
+  questionText: string
+  latex: string | null
+  imageUrl: string | null
+  imageUrls: string[]
+  tableMarkdown: string | null
+  approved: boolean
+  sourceId: string | null
+  sourceTitle: string | null
+  sourceUrl: string | null
+  createdAt: Date
+} | null {
+  const rawText = String(rootCandidate.questionText || '').trim()
+  const directChildPattern = new RegExp(`(^|\\s)${rootQuestionNumber}\\s*\\.\\s*\\d+\\b`, 'i')
+  const match = directChildPattern.exec(rawText)
+  const preambleSlice = match && typeof match.index === 'number'
+    ? rawText.slice(0, match.index).trim()
+    : rawText
+  const normalized = normalizeExamQuestionContent(preambleSlice, '')
+  const questionText = normalized.questionText
+  const imageUrls = Array.isArray(rootCandidate.imageUrls)
+    ? rootCandidate.imageUrls.filter((url) => /^https?:\/\//i.test(String(url || '').trim()))
+    : (rootCandidate.imageUrl ? [rootCandidate.imageUrl] : [])
+  const tableMarkdown = typeof rootCandidate.tableMarkdown === 'string' && rootCandidate.tableMarkdown.trim()
+    ? rootCandidate.tableMarkdown.trim()
+    : null
+
+  if (!questionText && imageUrls.length === 0 && !tableMarkdown) return null
+
+  return {
+    id: `${String(rootCandidate.id)}::fallback-root-preamble`,
+    grade: rootCandidate.grade,
+    year: rootCandidate.year,
+    month: rootCandidate.month,
+    paper: rootCandidate.paper,
+    questionNumber: rootQuestionNumber,
+    questionDepth: 0,
+    topic: rootCandidate.topic,
+    cognitiveLevel: rootCandidate.cognitiveLevel,
+    marks: rootCandidate.marks,
+    questionText,
+    latex: null,
+    imageUrl: imageUrls[0] || null,
+    imageUrls,
+    tableMarkdown,
+    approved: rootCandidate.approved,
+    sourceId: rootCandidate.sourceId,
+    sourceTitle: rootCandidate.sourceTitle || null,
+    sourceUrl: rootCandidate.sourceUrl || null,
+    createdAt: rootCandidate.createdAt,
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const token = await getToken({ req })
   const role = ((token as any)?.role as string | undefined) || 'student'
@@ -760,11 +847,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const scopeItems = relatedContextByScope.get(buildQuestionScopeKey(item)) || []
     const rootQuestionNumber = getHierarchyRootQuestionNumber(item.questionNumber)
     const parentQuestionNumber = getHierarchyParentQuestionNumber(item.questionNumber)
+    const rootCandidate = rootQuestionNumber && rootQuestionNumber !== normalizeHierarchyQuestionNumber(item.questionNumber)
+      ? scopeItems.find((candidate) => normalizeHierarchyQuestionNumber(candidate.questionNumber) === rootQuestionNumber) || null
+      : null
     const syntheticRootContext = rootQuestionNumber && rootQuestionNumber !== normalizeHierarchyQuestionNumber(item.questionNumber) && item.sourceId
       ? buildSyntheticRootPreambleItem(enriched, rootQuestionNumber, sourceMmdMap.get(item.sourceId) || '')
       : null
     const rootContext = rootQuestionNumber && rootQuestionNumber !== normalizeHierarchyQuestionNumber(item.questionNumber)
-      ? (syntheticRootContext || null)
+      ? (syntheticRootContext || (rootCandidate ? buildFallbackRootPreambleFromRootRecord(rootCandidate, rootQuestionNumber) : null) || null)
       : null
     const parentContext = parentQuestionNumber && parentQuestionNumber !== rootQuestionNumber && parentQuestionNumber !== normalizeHierarchyQuestionNumber(item.questionNumber)
       ? scopeItems.find((candidate) => normalizeHierarchyQuestionNumber(candidate.questionNumber) === parentQuestionNumber) || null

@@ -16703,7 +16703,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                           <div className="mt-4">
                             {visibleQuestionMmd ? (
-                              <div className="rounded-lg border border-[#dbe4f3] bg-white px-2 py-2">
+                              <div className="px-0 py-0">
                                 <MmdPaperViewer mmd={visibleQuestionMmd} compact selectedQuestionNumber={String(q?.questionNumber || '')} />
                               </div>
                             ) : null}

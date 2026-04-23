@@ -16707,17 +16707,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 <MmdPaperViewer mmd={visibleQuestionMmd} compact selectedQuestionNumber={String(q?.questionNumber || '')} />
                               </div>
                             ) : null}
-
-                            {isSubquestion ? (
-                              <button
-                                type="button"
-                                className="mt-2 block text-[10px] text-[#1877f2] opacity-70 hover:opacity-100"
-                                onClick={() => void openPaperContext(q)}
-                                title="Tap to view this question in its full paper context"
-                              >
-                                tap to view in context ↗
-                              </button>
-                            ) : null}
                           </div>
                         </div>
 

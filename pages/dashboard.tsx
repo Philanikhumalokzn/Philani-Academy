@@ -16551,6 +16551,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const isSubquestion = String(q.questionNumber ?? '').includes('.')
                 const questionContextId = String(q.id)
                 const isQuestionContextExpanded = qbExpandedQuestionContextIds.has(questionContextId)
+                const collapsedRootContext = q?.parentContext ? q?.rootContext : null
+                const defaultVisibleContext = q?.parentContext || (isSubquestion ? q?.rootContext : null)
                 const renderQuestionBadgeRow = (question: any, options?: { includeQuestionNumber?: boolean; includeMetadataBadges?: boolean }) => {
                   const includeQuestionNumber = options?.includeQuestionNumber !== false
                   const includeMetadataBadges = options?.includeMetadataBadges !== false
@@ -16737,25 +16739,31 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <div className="flex gap-3 items-start">
                       <div className="flex-1 min-w-0">
                         <div className="rounded-xl border border-[#dbe4f3] bg-[#f8fbff] px-3 py-3">
-                          <button
-                            type="button"
-                            className="flex w-full items-center justify-between gap-3 text-left"
-                            onClick={() => toggleQbQuestionContext(questionContextId)}
-                            aria-expanded={isQuestionContextExpanded}
-                          >
-                            <span className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#1c1e21]">QUESTION {formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)}</span>
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5b6b85]">{isQuestionContextExpanded ? 'Show less' : 'Show more'}</span>
-                          </button>
+                          {collapsedRootContext ? (
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between gap-3 text-left"
+                              onClick={() => toggleQbQuestionContext(questionContextId)}
+                              aria-expanded={isQuestionContextExpanded}
+                            >
+                              <span className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#1c1e21]">QUESTION {formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)}</span>
+                              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5b6b85]">{isQuestionContextExpanded ? 'Show less' : 'Show more'}</span>
+                            </button>
+                          ) : (
+                            <div className="flex w-full items-center justify-between gap-3 text-left">
+                              <span className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#1c1e21]">QUESTION {formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)}</span>
+                            </div>
+                          )}
 
                           <div className="mt-3">
                             {renderQuestionBadgeRow(q, { includeQuestionNumber: false, includeMetadataBadges: true })}
                           </div>
 
                           {isQuestionContextExpanded ? (
-                            q?.rootContext ? (
+                            collapsedRootContext ? (
                               <div className="mt-4">
                                 {renderQuestionContextBlock(
-                                  q?.rootContext,
+                                  collapsedRootContext,
                                   null,
                                   `question ${formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)} preamble`
                                 )}
@@ -16763,17 +16771,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             ) : null
                           ) : null}
 
-                          {q?.parentContext ? (
+                          {defaultVisibleContext ? (
                             <div className="mt-4">
                               {renderQuestionContextBlock(
-                                q?.parentContext,
-                                <div className="text-[11px] font-semibold tracking-[0.08em] text-[#5b6b85]">{formatQNumLabel(q?.parentContext?.questionNumber)}</div>,
-                                `question ${formatQNumLabel(q?.parentContext?.questionNumber)}`
+                                defaultVisibleContext,
+                                q?.parentContext
+                                  ? <div className="text-[11px] font-semibold tracking-[0.08em] text-[#5b6b85]">{formatQNumLabel(q?.parentContext?.questionNumber)}</div>
+                                  : null,
+                                `question ${formatQNumLabel(defaultVisibleContext?.questionNumber)}`
                               )}
                             </div>
                           ) : null}
 
-                          <div className={isQuestionContextExpanded || q?.parentContext ? 'mt-4' : 'mt-3'}>
+                          <div className={isQuestionContextExpanded || defaultVisibleContext ? 'mt-4' : 'mt-3'}>
                             {isSubquestion ? (
                               <button
                                 type="button"

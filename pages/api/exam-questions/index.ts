@@ -764,7 +764,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ? buildSyntheticRootPreambleItem(enriched, rootQuestionNumber, sourceMmdMap.get(item.sourceId) || '')
       : null
     const rootContext = rootQuestionNumber && rootQuestionNumber !== normalizeHierarchyQuestionNumber(item.questionNumber)
-      ? (syntheticRootContext || scopeItems.find((candidate) => normalizeHierarchyQuestionNumber(candidate.questionNumber) === rootQuestionNumber) || null)
+      ? (syntheticRootContext || null)
       : null
     const parentContext = parentQuestionNumber && parentQuestionNumber !== rootQuestionNumber && parentQuestionNumber !== normalizeHierarchyQuestionNumber(item.questionNumber)
       ? scopeItems.find((candidate) => normalizeHierarchyQuestionNumber(candidate.questionNumber) === parentQuestionNumber) || null

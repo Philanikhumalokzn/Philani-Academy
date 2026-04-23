@@ -103,7 +103,7 @@ export function renderTextWithKatex(
       return (
         <span
           key={`k-${idx}`}
-          className={n.display ? 'block my-1' : 'inline'}
+          className={n.display ? 'block my-1' : 'philani-inline-katex'}
           dangerouslySetInnerHTML={{ __html: html }}
         />
       )

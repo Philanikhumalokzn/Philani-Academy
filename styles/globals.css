@@ -8,9 +8,27 @@
   --philani-ui-icon-shadow: drop-shadow(0 6px 12px rgba(14, 165, 233, 0.18));
 }
 
-/* Keep inline KaTeX sitting on the text baseline in search results and MMD views. */
+/* Normalize inline KaTeX so it sits on the sentence line instead of appearing lifted. */
 .katex {
-  vertical-align: baseline !important;
+  font-size: 1em !important;
+  line-height: inherit !important;
+}
+
+.philani-inline-katex,
+.katex:not(.katex-display .katex) {
+  display: inline-flex;
+  align-items: baseline;
+  vertical-align: -0.08em !important;
+}
+
+.philani-inline-katex > .katex,
+.katex:not(.katex-display .katex) {
+  vertical-align: 0 !important;
+}
+
+.katex .base,
+.katex .strut {
+  line-height: inherit;
 }
 
 .katex-display,

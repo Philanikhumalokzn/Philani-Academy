@@ -16743,9 +16743,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             onClick={() => toggleQbQuestionContext(questionContextId)}
                             aria-expanded={isQuestionContextExpanded}
                           >
-                            <span className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#1c1e21]">QUESTION {formatQNumLabel(q?.questionNumber)}</span>
+                            <span className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#1c1e21]">QUESTION {formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)}</span>
                             <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#5b6b85]">{isQuestionContextExpanded ? 'Hide context' : 'Show context'}</span>
                           </button>
+
+                          <div className="mt-3">
+                            {renderQuestionBadgeRow(q, { includeQuestionNumber: isSubquestion, includeMetadataBadges: true })}
+                          </div>
 
                           {isQuestionContextExpanded ? (
                             <>
@@ -16768,10 +16772,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                   )}
                                 </div>
                               ) : null}
-
-                              <div className="mt-4">
-                                {renderQuestionBadgeRow(q, { includeQuestionNumber: true, includeMetadataBadges: true })}
-                              </div>
                             </>
                           ) : null}
 

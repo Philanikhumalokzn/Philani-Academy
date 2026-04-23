@@ -16519,7 +16519,68 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   return urls
                 })()
                 const isSubquestion = String(q.questionNumber ?? '').includes('.')
-                const renderQuestionContextBlock = (contextQuestion: any, label: string) => {
+                const renderQuestionBadgeRow = (question: any, options?: { includeQuestionNumber?: boolean; includeMetadataBadges?: boolean }) => {
+                  const includeQuestionNumber = options?.includeQuestionNumber !== false
+                  const includeMetadataBadges = options?.includeMetadataBadges !== false
+
+                  return (
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      {includeQuestionNumber ? <span className="text-xs font-bold text-[#65676b]">{formatQNumLabel(question?.questionNumber)}</span> : null}
+                      {includeMetadataBadges ? (
+                        <>
+                          <button
+                            type="button"
+                            className={`text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563] transition hover:bg-[#e4e7eb]${qbRemixOverlay?.questionId === String(question?.id) && qbRemixOverlay.badge === 'year' ? ' ring-2 ring-[#1877f2]/35' : ''}`}
+                            onClick={(event) => openQbRemixOverlay(question, 'year', event.currentTarget)}
+                            title="Remix this result by changing the year"
+                          >
+                            {question?.year}
+                          </button>
+                          <button
+                            type="button"
+                            className={`text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563] transition hover:bg-[#e4e7eb]${qbRemixOverlay?.questionId === String(question?.id) && qbRemixOverlay.badge === 'month' ? ' ring-2 ring-[#1877f2]/35' : ''}`}
+                            onClick={(event) => openQbRemixOverlay(question, 'month', event.currentTarget)}
+                            title="Remix this result by changing the exam month"
+                          >
+                            {formatMonthBadgeLabel(question?.month)}
+                          </button>
+                          <button
+                            type="button"
+                            className={`text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563] transition hover:bg-[#e4e7eb]${qbRemixOverlay?.questionId === String(question?.id) && qbRemixOverlay.badge === 'paper' ? ' ring-2 ring-[#1877f2]/35' : ''}`}
+                            onClick={(event) => openQbRemixOverlay(question, 'paper', event.currentTarget)}
+                            title="Remix this result by changing the paper"
+                          >
+                            {formatPaperBadgeLabel(question?.paper)}
+                          </button>
+                          {question?.topic ? (
+                            <button
+                              type="button"
+                              className={`text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2] transition hover:bg-[#dcefff]${qbRemixOverlay?.questionId === String(question?.id) && qbRemixOverlay.badge === 'topic' ? ' ring-2 ring-[#1877f2]/35' : ''}`}
+                              onClick={(event) => openQbRemixOverlay(question, 'topic', event.currentTarget)}
+                              title="Remix this result by changing the topic"
+                            >
+                              {question.topic}
+                            </button>
+                          ) : null}
+                          {question?.cognitiveLevel ? (
+                            <button
+                              type="button"
+                              className={`text-xs rounded-full bg-[#fff3cd] px-2 py-0.5 text-[#856404] transition hover:bg-[#ffe9a6]${qbRemixOverlay?.questionId === String(question?.id) && qbRemixOverlay.badge === 'level' ? ' ring-2 ring-[#d4a72c]/35' : ''}`}
+                              onClick={(event) => openQbRemixOverlay(question, 'level', event.currentTarget)}
+                              title="Remix this result by changing the cognitive level"
+                            >
+                              {formatLevelBadgeLabel(question.cognitiveLevel)}
+                            </button>
+                          ) : null}
+                          {marksLabel ? <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{marksLabel}</span> : null}
+                          {isAdmin && !question?.approved ? <span className="text-xs rounded-full bg-red-100 px-2 py-0.5 text-red-600">Unapproved</span> : null}
+                        </>
+                      ) : null}
+                    </div>
+                  )
+                }
+
+                const renderQuestionContextBlock = (contextQuestion: any, headerContent: any, label: string) => {
                   if (!contextQuestion) return null
 
                   const normalizedContext = normalizeExamQuestionContent(
@@ -16552,7 +16613,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   return (
                     <div className="mb-2 rounded-xl border border-[#dbe4f3] bg-[#f8fbff] px-3 py-3">
                       <div className="mb-2 flex items-center justify-between gap-3">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#5b6b85]">{label}</div>
+                        <div className="min-w-0 flex-1">{headerContent}</div>
                         {canCurateQuestionRemixes ? (
                           <button
                             type="button"
@@ -16656,58 +16717,18 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <div className="flex gap-3 items-start">
                       <div className="flex-1 min-w-0">
                         {renderAddButtonHeader}
-                        {renderQuestionContextBlock(q?.rootContext, `Question ${formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)} preamble`)}
-                        {renderQuestionContextBlock(q?.parentContext, `Parent ${formatQNumLabel(q?.parentContext?.questionNumber)}`)}
+                        {renderQuestionContextBlock(
+                          q?.rootContext,
+                          renderQuestionBadgeRow(q, { includeQuestionNumber: false, includeMetadataBadges: true }),
+                          `question ${formatQNumLabel(getQNumRoot(q?.questionNumber) || q?.questionNumber)} preamble`
+                        )}
+                        {renderQuestionContextBlock(
+                          q?.parentContext,
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#5b6b85]">Parent {formatQNumLabel(q?.parentContext?.questionNumber)}</div>,
+                          `parent ${formatQNumLabel(q?.parentContext?.questionNumber)}`
+                        )}
 
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <span className="text-xs font-bold text-[#65676b]">{formatQNumLabel(q.questionNumber)}</span>
-                          <button
-                            type="button"
-                            className={`text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563] transition hover:bg-[#e4e7eb]${qbRemixOverlay?.questionId === String(q.id) && qbRemixOverlay.badge === 'year' ? ' ring-2 ring-[#1877f2]/35' : ''}`}
-                            onClick={(event) => openQbRemixOverlay(q, 'year', event.currentTarget)}
-                            title="Remix this result by changing the year"
-                          >
-                            {q.year}
-                          </button>
-                          <button
-                            type="button"
-                            className={`text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563] transition hover:bg-[#e4e7eb]${qbRemixOverlay?.questionId === String(q.id) && qbRemixOverlay.badge === 'month' ? ' ring-2 ring-[#1877f2]/35' : ''}`}
-                            onClick={(event) => openQbRemixOverlay(q, 'month', event.currentTarget)}
-                            title="Remix this result by changing the exam month"
-                          >
-                            {formatMonthBadgeLabel(q.month)}
-                          </button>
-                          <button
-                            type="button"
-                            className={`text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563] transition hover:bg-[#e4e7eb]${qbRemixOverlay?.questionId === String(q.id) && qbRemixOverlay.badge === 'paper' ? ' ring-2 ring-[#1877f2]/35' : ''}`}
-                            onClick={(event) => openQbRemixOverlay(q, 'paper', event.currentTarget)}
-                            title="Remix this result by changing the paper"
-                          >
-                            {formatPaperBadgeLabel(q.paper)}
-                          </button>
-                          {q.topic ? (
-                            <button
-                              type="button"
-                              className={`text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2] transition hover:bg-[#dcefff]${qbRemixOverlay?.questionId === String(q.id) && qbRemixOverlay.badge === 'topic' ? ' ring-2 ring-[#1877f2]/35' : ''}`}
-                              onClick={(event) => openQbRemixOverlay(q, 'topic', event.currentTarget)}
-                              title="Remix this result by changing the topic"
-                            >
-                              {q.topic}
-                            </button>
-                          ) : null}
-                          {q.cognitiveLevel ? (
-                            <button
-                              type="button"
-                              className={`text-xs rounded-full bg-[#fff3cd] px-2 py-0.5 text-[#856404] transition hover:bg-[#ffe9a6]${qbRemixOverlay?.questionId === String(q.id) && qbRemixOverlay.badge === 'level' ? ' ring-2 ring-[#d4a72c]/35' : ''}`}
-                              onClick={(event) => openQbRemixOverlay(q, 'level', event.currentTarget)}
-                              title="Remix this result by changing the cognitive level"
-                            >
-                              {formatLevelBadgeLabel(q.cognitiveLevel)}
-                            </button>
-                          ) : null}
-                          {marksLabel ? <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{marksLabel}</span> : null}
-                          {isAdmin && !q.approved ? <span className="text-xs rounded-full bg-red-100 px-2 py-0.5 text-red-600">Unapproved</span> : null}
-                        </div>
+                        {renderQuestionBadgeRow(q, { includeQuestionNumber: true, includeMetadataBadges: !q?.rootContext })}
 
                         {isSubquestion ? (
                           <button

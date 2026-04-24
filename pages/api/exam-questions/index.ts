@@ -278,6 +278,11 @@ function scoreExamQuestionSearch(
     tableMarkdown: string | null
   },
   parsed: ParsedExamQuestionSearch,
+  sourceContext?: {
+    questionMmd?: string
+    rootSectionMmd?: string
+    sourceMmd?: string
+  },
 ) {
   const normalizedQuestion = normalizeExamQuestionContent(item.questionText, item.latex)
   const questionNumber = normalizeHierarchyQuestionNumber(item.questionNumber)
@@ -285,14 +290,21 @@ function scoreExamQuestionSearch(
   const monthKey = normalizeSearchValue(item.month)
   const topicKey = normalizeSearchValue(item.topic || '')
   const topicTokens = uniqStrings(tokenizeSearchValue(item.topic || ''))
-  const textTokens = uniqStrings(tokenizeSearchValue(`${normalizedQuestion.questionText} ${item.latex || ''} ${item.tableMarkdown || ''}`)).slice(0, 200)
+  const sourceQuestionMmd = String(sourceContext?.questionMmd || '')
+  const sourceRootSectionMmd = String(sourceContext?.rootSectionMmd || '')
+  const sourceMmd = String(sourceContext?.sourceMmd || '')
+  const textTokens = uniqStrings(tokenizeSearchValue(`${normalizedQuestion.questionText} ${item.latex || ''} ${item.tableMarkdown || ''} ${sourceQuestionMmd} ${sourceRootSectionMmd}`)).slice(0, 260)
+  const sourceTokens = uniqStrings(tokenizeSearchValue(sourceMmd)).slice(0, 320)
   const metaTokens = uniqStrings(tokenizeSearchValue(`${item.year} ${item.month} paper ${item.paper} p${item.paper} ${item.topic || ''} level ${item.cognitiveLevel ?? ''} ${questionNumber}`))
   const phraseFields = [
     normalizeSearchValue(normalizedQuestion.questionText),
     normalizeSearchValue(item.latex || ''),
     normalizeSearchValue(item.tableMarkdown || ''),
+    normalizeSearchValue(sourceQuestionMmd),
+    normalizeSearchValue(sourceRootSectionMmd),
     normalizeSearchValue(`${item.year} ${item.month} paper ${item.paper} ${item.topic || ''} level ${item.cognitiveLevel ?? ''} ${questionNumber}`),
   ]
+  const sourcePhraseField = normalizeSearchValue(sourceMmd)
 
   let score = 0
   let exactStructuredMatches = 0
@@ -302,6 +314,10 @@ function scoreExamQuestionSearch(
 
   if (parsed.normalized.length >= 3 && phraseFields.some((field) => field.includes(parsed.normalized))) {
     score += 15
+    phraseMatch = true
+  }
+  if (!phraseMatch && parsed.normalized.length >= 4 && sourcePhraseField.includes(parsed.normalized)) {
+    score += 10
     phraseMatch = true
   }
 
@@ -348,7 +364,8 @@ function scoreExamQuestionSearch(
     )
     const metaStrength = getBestSearchTokenStrength(token, metaTokens)
     const textStrength = getBestSearchTokenStrength(token, textTokens)
-    const bestStrength = Math.max(structureStrength, metaStrength, textStrength)
+    const sourceStrength = getBestSearchTokenStrength(token, sourceTokens)
+    const bestStrength = Math.max(structureStrength, metaStrength, textStrength, sourceStrength)
     if (bestStrength <= 0) continue
 
     if (structureStrength === 1) {
@@ -372,7 +389,14 @@ function scoreExamQuestionSearch(
       continue
     }
 
-    score += Math.max(structureStrength * 8, metaStrength * 7, textStrength * 6)
+    if (sourceStrength === 1) {
+      score += 7
+      exactTokenMatches += 1
+      coveredDimensions.add('sourceMmd')
+      continue
+    }
+
+    score += Math.max(structureStrength * 8, metaStrength * 7, textStrength * 6, sourceStrength * 4.5)
   }
 
   score += coveredDimensions.size * 3
@@ -1245,8 +1269,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : []
 
     const candidateItems = hideCompositeRoots ? shapeCompositeRootItems(allItems, relatedContextItems) : allItems
+    const candidateSourceIds = Array.from(new Set(candidateItems.map((item) => String(item.sourceId || '')).filter(Boolean)))
+    const candidateSources = candidateSourceIds.length
+      ? await prisma.resourceBankItem.findMany({
+          where: { id: { in: candidateSourceIds } },
+          select: { id: true, parsedJson: true },
+        })
+      : []
+    const candidateSourceMmdMap = new Map<string, string>()
+    const candidateSourceSectionMap = new Map<string, Map<string, string>>()
+    for (const source of candidateSources) {
+      const parsed = source.parsedJson as any
+      const mmd = typeof parsed?.raw?.mmd === 'string' ? parsed.raw.mmd : ''
+      candidateSourceMmdMap.set(source.id, mmd)
+      candidateSourceSectionMap.set(source.id, extractQuestionSectionsFromMmd(mmd))
+    }
     const scoredItems = candidateItems
-      .map((item) => ({ item, ranking: scoreExamQuestionSearch(item, parsedSearch) }))
+      .map((item) => {
+        const normalizedQuestionNumber = normalizeHierarchyQuestionNumber(item.questionNumber)
+        const rootQuestionNumber = getHierarchyRootQuestionNumber(item.questionNumber)
+        const rootSectionMmd = item.sourceId && rootQuestionNumber
+          ? candidateSourceSectionMap.get(item.sourceId)?.get(rootQuestionNumber) || ''
+          : ''
+        const questionMmd = rootSectionMmd
+          ? sliceQuestionBlockFromSection(rootSectionMmd, normalizedQuestionNumber)
+          : ''
+        return {
+          item,
+          ranking: scoreExamQuestionSearch(item, parsedSearch, {
+            questionMmd,
+            rootSectionMmd,
+            sourceMmd: item.sourceId ? candidateSourceMmdMap.get(item.sourceId) || '' : '',
+          }),
+        }
+      })
       .filter(({ ranking }) => ranking.score >= (parsedSearch.freeTokens.length > 0 ? 4 : 1) || ranking.exactStructuredMatches > 0 || ranking.phraseMatch)
       .sort((left, right) => {
         if (right.ranking.score !== left.ranking.score) return right.ranking.score - left.ranking.score

@@ -16690,44 +16690,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     </div>
   )
 
-  const renderAdminBooksResourcesContent = () => (
-    <div>
-      <section className="border-b border-black/10 bg-white px-4 py-4">
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
-          <button
-            type="button"
-            className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] transition hover:bg-[#eef2f7]"
-            onClick={() => {
-              setChallengeParseOnUpload(true)
-              openCreateChallengeComposer()
-            }}
-          >
-            New Post With Parse
-          </button>
-          <button
-            type="button"
-            className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] transition hover:bg-[#eef2f7]"
-            onClick={() => {
-              void fetchBooksForGrade()
-            }}
-            disabled={booksLoading}
-          >
-            {booksLoading ? 'Refreshing...' : 'Refresh Learning Hub'}
-          </button>
-          <button
-            type="button"
-            className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] transition hover:bg-[#eef2f7]"
-            onClick={() => {
-              setBooksHubTab('resources')
-            }}
-          >
-            View Shared Resources
-          </button>
-        </div>
-      </section>
-    </div>
-  )
-
   function renderBooksSurfaceContent() {
     const showBooksSearch = booksHubTab === 'papers' || booksHubTab === 'pdfs'
     return (
@@ -16766,7 +16728,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <button
               type="button"
               className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'resources' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
-              onClick={() => setBooksHubTab('resources')}
+              onClick={() => {
+                setBooksOverlayOpen(false)
+                void router.push('/resource-bank')
+              }}
             >
               Resources
             </button>
@@ -16819,12 +16784,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         {booksHubTab === 'remixes' ? renderQuestionRemixesContent() : null}
         {booksHubTab === 'papers' ? renderBooksList('papers') : null}
         {booksHubTab === 'pdfs' ? renderBooksList('pdfs') : null}
-        {booksHubTab === 'resources' ? (
-          <>
-            {isAdmin ? renderAdminBooksResourcesContent() : null}
-            {renderBooksList('resources')}
-          </>
-        ) : null}
+        {booksHubTab === 'resources' ? renderBooksList('resources') : null}
       </div>
     )
   }

@@ -73,6 +73,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         sourceId,
         title: String(source?.title || '').trim() || fallbackTitle,
         sourceUrl: typeof source?.url === 'string' ? source.url : null,
+        parsedJson: parsed,
       }
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item))

@@ -103,7 +103,6 @@ type DashboardCreateKind = 'quiz' | 'post'
 type StudentMobileTabId = 'timeline' | 'sessions' | 'groups' | 'books' | 'profile'
 type QbRemixBadge = 'year' | 'month' | 'paper' | 'topic' | 'level'
 type QbSearchFilters = {
-  query: string
   year: string
   month: string
   paper: string
@@ -308,7 +307,6 @@ function buildQuestionRemixCompatibilitySignature(items: any[]): QuestionRemixCo
 
 function questionRemixCompatibilitySignatureToFilters(signature?: QuestionRemixCompatibilitySignature | null): QbSearchFilters {
   return {
-    query: '',
     year: signature?.year || '',
     month: signature?.month || '',
     paper: signature?.paper || '',
@@ -370,6 +368,7 @@ type BooksPaperItem = {
   sourceId: string
   title: string
   sourceUrl?: string | null
+  parsedJson?: any | null
 }
 
 type LibraryGradeItem = {
@@ -2127,10 +2126,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [booksError, setBooksError] = useState<string | null>(null)
   const [booksItems, setBooksItems] = useState<ResourceBankItem[]>([])
   const [booksPaperItems, setBooksPaperItems] = useState<BooksPaperItem[]>([])
+  const [booksSearchQuery, setBooksSearchQuery] = useState('')
 
   // Remix state
-  const [qbQuery, setQbQuery] = useState<string>('')
-  const [qbQueryDraft, setQbQueryDraft] = useState<string>('')
   const [qbYear, setQbYear] = useState<string>('')
   const [qbMonth, setQbMonth] = useState<string>('')
   const [qbPaper, setQbPaper] = useState<string>('')
@@ -2145,7 +2143,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [qbRemixMessage, setQbRemixMessage] = useState<string | null>(null)
   const [qbRemixOverlay, setQbRemixOverlay] = useState<QbRemixOverlayState | null>(null)
   const [qbRemixFilters, setQbRemixFilters] = useState<QbSearchFilters | null>(null)
-  const qbLiveSearchTimeoutRef = useRef<number | null>(null)
   const qbSearchRequestSeqRef = useRef(0)
   const qbRemixOverlayRef = useRef<HTMLDivElement | null>(null)
   const qbRemixGestureRef = useRef<{ startX: number; startY: number; dragging: boolean }>({ startX: 0, startY: 0, dragging: false })
@@ -4334,6 +4331,67 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return booksItems.filter((item) => !isMmdPaperResource(item) && !isPdfResource(item))
   }, [booksItems, isMmdPaperResource, isPdfResource])
 
+  const normalizeBooksSearchValue = useCallback((value: unknown) => {
+    return String(value || '')
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }, [])
+
+  const buildParsedJsonSearchText = useCallback((parsedJson: any) => {
+    if (!parsedJson || typeof parsedJson !== 'object') return ''
+    const linesText = Array.isArray(parsedJson?.lines)
+      ? parsedJson.lines
+          .slice(0, 200)
+          .map((line: any) => [line?.text, line?.latex, line?.latex_styled, line?.latex_simplified].filter(Boolean).join(' '))
+          .join(' ')
+      : ''
+    return [parsedJson?.text, parsedJson?.latex, parsedJson?.raw?.mmd, linesText].filter(Boolean).join(' ')
+  }, [])
+
+  const matchesBooksSearch = useCallback((query: string, values: unknown[]) => {
+    const rawQuery = String(query || '').trim()
+    if (!rawQuery) return true
+    const rawHaystack = values.map((value) => String(value || '')).filter(Boolean).join(' ')
+    const normalizedHaystack = normalizeBooksSearchValue(rawHaystack)
+    try {
+      const regex = new RegExp(rawQuery, 'i')
+      if (regex.test(rawHaystack) || regex.test(normalizedHaystack)) return true
+    } catch {
+      // Fall through to token matching.
+    }
+    const tokens = normalizeBooksSearchValue(rawQuery).split(' ').filter(Boolean)
+    return tokens.length === 0 || tokens.every((token) => normalizedHaystack.includes(token))
+  }, [normalizeBooksSearchValue])
+
+  const filteredBooksPaperItems = useMemo(() => {
+    const query = booksSearchQuery.trim()
+    if (!query) return booksPaperItems
+    return booksPaperItems.filter((item) => matchesBooksSearch(query, [
+      item.title,
+      item.grade,
+      item.year,
+      item.month,
+      item.paper,
+      buildParsedJsonSearchText(item.parsedJson),
+    ]))
+  }, [booksPaperItems, booksSearchQuery, buildParsedJsonSearchText, matchesBooksSearch])
+
+  const filteredBooksPdfItems = useMemo(() => {
+    const query = booksSearchQuery.trim()
+    const pdfItems = getBooksHubItems('pdfs')
+    if (!query) return pdfItems
+    return pdfItems.filter((item) => matchesBooksSearch(query, [
+      item.title,
+      item.tag,
+      item.filename,
+      item.grade,
+      buildParsedJsonSearchText(item.parsedJson),
+    ]))
+  }, [booksSearchQuery, buildParsedJsonSearchText, getBooksHubItems, matchesBooksSearch])
+
   const getLibraryGradeSourceLabel = useCallback((sourceType: LibraryGradeItem['sourceType']) => {
     if (sourceType === 'assignment') return 'Assignment'
     if (sourceType === 'post_solution') return 'Post solution'
@@ -5092,19 +5150,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [isDocSavedOffline])
 
   const renderBooksPaperList = useCallback(() => {
-    const emptyLabel = 'No MMD documents available for this grade yet.'
+    const emptyLabel = booksSearchQuery.trim()
+      ? 'No MMD papers matched this search yet.'
+      : 'No MMD documents available for this grade yet.'
 
     return (
       <>
         {booksError ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-red-600">{booksError}</section> : null}
         {booksLoading ? <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">Loading...</section> : null}
-        {!booksLoading && !booksError && booksPaperItems.length === 0 ? (
+        {!booksLoading && !booksError && filteredBooksPaperItems.length === 0 ? (
           <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">{emptyLabel}</section>
         ) : null}
 
-        {booksPaperItems.length > 0 ? (
+        {filteredBooksPaperItems.length > 0 ? (
           <ul className="divide-y divide-black/10 bg-white">
-            {booksPaperItems.map((item) => (
+            {filteredBooksPaperItems.map((item) => (
               <li key={item.id}>
                 <button
                   type="button"
@@ -5122,14 +5182,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         ) : null}
       </>
     )
-  }, [booksError, booksLoading, booksPaperItems, openPaperContext])
+  }, [booksError, booksLoading, booksSearchQuery, filteredBooksPaperItems, openPaperContext])
 
   const renderBooksList = useCallback((tab: 'papers' | 'pdfs' | 'resources') => {
     if (tab === 'papers') return renderBooksPaperList()
 
-    const visibleItems = getBooksHubItems(tab)
+    const visibleItems = tab === 'pdfs' ? filteredBooksPdfItems : getBooksHubItems(tab)
     const emptyLabel = tab === 'pdfs'
-        ? 'No PDFs available yet.'
+        ? (booksSearchQuery.trim() ? 'No PDFs matched this search yet.' : 'No PDFs available yet.')
         : 'No resources available yet.'
 
     return (
@@ -5207,7 +5267,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         ) : null}
       </>
     )
-  }, [booksError, booksLoading, getBooksHubItems, gradeToLabel, isDocSavedOffline, isPdfResource, offlineDocErrorByUrl, offlineDocSavingUrls, openPdfViewer, removeDocOffline, renderBooksPaperList, saveDocOffline])
+  }, [booksError, booksLoading, booksSearchQuery, filteredBooksPdfItems, getBooksHubItems, gradeToLabel, isDocSavedOffline, isPdfResource, offlineDocErrorByUrl, offlineDocSavingUrls, openPdfViewer, removeDocOffline, renderBooksPaperList, saveDocOffline])
 
   const handlePdfPostCapture = useCallback((file: File, snapshot?: PdfViewerSnapshot) => {
     queueRestore(() => {
@@ -14385,8 +14445,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const renderQuestionTextWithInlineLatex = renderQuestionTextWithInlineLatexShared
 
   const syncQbFilters = (filters: QbSearchFilters) => {
-    setQbQuery(filters.query)
-    setQbQueryDraft(filters.query)
     setQbYear(filters.year)
     setQbMonth(filters.month)
     setQbPaper(filters.paper)
@@ -14407,17 +14465,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const buildQbSearchParams = (filters: QbSearchFilters) => {
     const params = new URLSearchParams()
-    const trimmedQuery = filters.query.trim()
-    if (trimmedQuery) {
-      params.set('query', trimmedQuery)
-    } else {
-      if (filters.year) params.set('year', filters.year)
-      if (filters.month) params.set('month', filters.month)
-      if (filters.paper) params.set('paper', filters.paper)
-      if (filters.topic) params.set('topic', filters.topic)
-      if (filters.level) params.set('cognitiveLevel', filters.level)
-      if (filters.number) params.set('questionNumber', filters.number)
-    }
+    if (filters.year) params.set('year', filters.year)
+    if (filters.month) params.set('month', filters.month)
+    if (filters.paper) params.set('paper', filters.paper)
+    if (filters.topic) params.set('topic', filters.topic)
+    if (filters.level) params.set('cognitiveLevel', filters.level)
+    if (filters.number) params.set('questionNumber', filters.number)
     params.set('hideCompositeRoots', '1')
     params.set('take', '50')
     return params
@@ -14436,7 +14489,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }
 
   const getCurrentQbFilters = (): QbSearchFilters => ({
-    query: qbQuery,
     year: qbYear,
     month: qbMonth,
     paper: qbPaper,
@@ -14479,7 +14531,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const loadRandomRemixResults = async () => {
     const filters: QbSearchFilters = {
-      query: '',
       year: '',
       month: '',
       paper: '',
@@ -14947,7 +14998,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }
 
   const buildQbQuestionSeedFilters = (q: any): QbSearchFilters => ({
-    query: '',
     year: String(q?.year || ''),
     month: String(q?.month || ''),
     paper: String(q?.paper || ''),
@@ -15011,7 +15061,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const seed = buildQbRemixSeedFilters(q)
     const requested: QbSearchFilters = {
       ...seed,
-      query: '',
       [badge]: nextValue,
       number: '',
     }
@@ -15066,32 +15115,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       }
     }
   }
-
-  useEffect(() => {
-    if (booksHubTab !== 'remix') return
-
-    const nextQuery = qbQueryDraft.trim()
-    const appliedQuery = qbQuery.trim()
-    if (!qbSearched && !nextQuery) return
-    if (nextQuery === appliedQuery) return
-
-    if (qbLiveSearchTimeoutRef.current) {
-      window.clearTimeout(qbLiveSearchTimeoutRef.current)
-      qbLiveSearchTimeoutRef.current = null
-    }
-
-    qbLiveSearchTimeoutRef.current = window.setTimeout(() => {
-      qbLiveSearchTimeoutRef.current = null
-      void searchQuestionBank({ query: nextQuery })
-    }, nextQuery ? 180 : 120)
-
-    return () => {
-      if (qbLiveSearchTimeoutRef.current) {
-        window.clearTimeout(qbLiveSearchTimeoutRef.current)
-        qbLiveSearchTimeoutRef.current = null
-      }
-    }
-  }, [booksHubTab, qbQuery, qbQueryDraft, qbSearched])
 
   useEffect(() => {
     if (!qbRemixOverlay) return
@@ -16335,7 +16358,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const openQuestionInRemixResults = (question: any) => {
       const targetQuestionId = typeof question?.id === 'string' ? question.id : String(question?.id || '')
       const filters: QbSearchFilters = {
-        query: '',
         year: typeof question?.year === 'number' ? String(question.year) : String(question?.year || ''),
         month: typeof question?.month === 'string' ? question.month : '',
         paper: typeof question?.paper === 'number' ? String(question.paper) : String(question?.paper || ''),
@@ -16547,53 +16569,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const renderQuestionBankContent = () => (
     <div>
       {(() => {
-        const liveQuery = qbQueryDraft.trim()
-        const countLabel = qbLoading
-          ? 'Searching...'
-          : `${qbTotal} result${qbTotal !== 1 ? 's' : ''}${qbItems.length > 0 ? ` (showing ${qbItems.length})` : ''}`
-
-        return (
-          <section className="border-b border-black/10 bg-white px-4 py-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 rounded-full border border-[#d6e4ff] bg-[#f7faff] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
-                  <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4 shrink-0 text-[#2457a6]">
-                    <path d="M13.5 12.3l3.9 3.9-1.2 1.2-3.9-3.9a6 6 0 1 1 1.2-1.2ZM8.5 13a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Z" fill="currentColor" />
-                  </svg>
-                  <input
-                    type="text"
-                    value={qbQueryDraft}
-                    onChange={(event) => setQbQueryDraft(event.target.value)}
-                    placeholder="Regex remix search: 2024 nov p1 trig q6.2"
-                    className="h-7 min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-[#1c1e21] outline-none placeholder:text-[#7b87a4]"
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    spellCheck={false}
-                  />
-                  {qbQueryDraft ? (
-                    <button
-                      type="button"
-                      className="inline-flex h-6 items-center rounded-full bg-white px-2.5 text-[11px] font-semibold text-[#2457a6] shadow-sm hover:bg-[#eef5ff]"
-                      onClick={() => setQbQueryDraft('')}
-                    >
-                      Clear
-                    </button>
-                  ) : null}
-                </div>
-                <div className="mt-1 text-[11px] text-[#6b7280]">
-                  {liveQuery
-                    ? 'Live regex search is overriding the selected remix pills right now.'
-                    : 'Type anything here to override the selected remix pills with a live fuzzy search.'}
-                </div>
-              </div>
-              <div className="shrink-0 text-right text-xs text-[#65676b]">{countLabel}</div>
-            </div>
-          </section>
-        )
-      })()}
-
-      {(() => {
         const targetRemix = questionRemixAppendTargetId
           ? questionRemixes.find((item) => item.id === questionRemixAppendTargetId) || null
           : null
@@ -16620,14 +16595,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       {qbSearched && !qbLoading && qbItems.length === 0 ? (
         <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">
-          {qbQueryDraft.trim() || qbQuery.trim()
-            ? 'No questions matched this live search. Clear the search pill or broaden the remix pills.'
-            : 'No questions found for these filters. Try broadening your search.'}
+          No questions found for these filters. Try broadening your search.
         </section>
       ) : null}
 
       {qbItems.length > 0 ? (
         <>
+          <section className="border-b border-black/10 bg-white px-4 py-2">
+            <div className="text-xs text-[#65676b]">{qbTotal} result{qbTotal !== 1 ? 's' : ''} (showing {qbItems.length})</div>
+          </section>
+
           <ul>
             {qbItems.map((q) => (
               (() => {
@@ -16967,6 +16944,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   )
 
   function renderBooksSurfaceContent() {
+    const showBooksSearch = booksHubTab === 'papers' || booksHubTab === 'pdfs'
     return (
       <div>
         {/* Tab switcher */}
@@ -17009,6 +16987,48 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </button>
           </div>
         </section>
+
+        {showBooksSearch ? (
+          <section className="border-b border-black/10 bg-white px-4 py-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 rounded-full border border-[#d6e4ff] bg-[#f7faff] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                  <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4 shrink-0 text-[#2457a6]">
+                    <path d="M13.5 12.3l3.9 3.9-1.2 1.2-3.9-3.9a6 6 0 1 1 1.2-1.2ZM8.5 13a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Z" fill="currentColor" />
+                  </svg>
+                  <input
+                    type="text"
+                    value={booksSearchQuery}
+                    onChange={(event) => setBooksSearchQuery(event.target.value)}
+                    placeholder={booksHubTab === 'papers' ? 'Search papers, MMD content, extracted questions' : 'Search PDFs and parsed content'}
+                    className="h-7 min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-[#1c1e21] outline-none placeholder:text-[#7b87a4]"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                  />
+                  {booksSearchQuery ? (
+                    <button
+                      type="button"
+                      className="inline-flex h-6 items-center rounded-full bg-white px-2.5 text-[11px] font-semibold text-[#2457a6] shadow-sm hover:bg-[#eef5ff]"
+                      onClick={() => setBooksSearchQuery('')}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+                <div className="mt-1 text-[11px] text-[#6b7280]">
+                  Regex works when valid. Otherwise the search falls back to token matching across titles and parsed content.
+                </div>
+              </div>
+              <div className="shrink-0 text-right text-xs text-[#65676b]">
+                {booksHubTab === 'papers'
+                  ? `${filteredBooksPaperItems.length} paper${filteredBooksPaperItems.length === 1 ? '' : 's'}`
+                  : `${filteredBooksPdfItems.length} PDF${filteredBooksPdfItems.length === 1 ? '' : 's'}`}
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {booksHubTab === 'remix' ? renderQuestionBankContent() : null}
         {booksHubTab === 'remixes' ? renderQuestionRemixesContent() : null}

@@ -18,7 +18,7 @@ function parseMaxAttempts(value: unknown) {
 function clampAudience(audience: unknown) {
   const v = typeof audience === 'string' ? audience.trim().toLowerCase() : ''
   if (v === 'public' || v === 'grade' || v === 'private') return v
-  return 'public'
+  return 'grade'
 }
 
 function isMissingSocialPostsTableError(err: unknown) {
@@ -106,6 +106,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!post) return res.status(404).json({ message: 'Post not found' })
 
   const isOwner = requesterId === String(post.createdById)
+  const requesterGrade = normalizeGradeInput(await getUserGrade(req))
+
+  if (req.method === 'GET' && !isOwner && !isPrivileged) {
+    const audience = clampAudience(post.audience)
+    if (audience === 'private') return res.status(403).json({ message: 'Forbidden' })
+    if (audience === 'public') {
+      const creatorRole = String(post?.createdBy?.role || '').toLowerCase()
+      if (creatorRole !== 'admin' && creatorRole !== 'teacher') {
+        return res.status(403).json({ message: 'Forbidden' })
+      }
+    }
+    if (audience === 'grade') {
+      const postGrade = normalizeGradeInput(post.grade)
+      const creatorGrade = normalizeGradeInput(post?.createdBy?.grade)
+      if (!requesterGrade || !postGrade || requesterGrade !== postGrade || !creatorGrade || creatorGrade !== requesterGrade) {
+        return res.status(403).json({ message: 'Forbidden' })
+      }
+    }
+  }
 
   if (req.method === 'DELETE') {
     if (!isOwner && !isPrivileged) return res.status(403).json({ message: 'Forbidden' })
@@ -169,9 +188,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (hasImageUrl) updateData.imageUrl = nextImageUrl
 
     if (hasAudience) {
-      updateData.audience = clampAudience(body.audience)
-      const tokenGrade = normalizeGradeInput(await getUserGrade(req))
-      updateData.grade = updateData.audience === 'grade' ? tokenGrade : null
+      const requestedAudience = clampAudience(body.audience)
+      const nextAudience = (!isPrivileged && requestedAudience === 'public') ? 'grade' : requestedAudience
+      updateData.audience = nextAudience
+      updateData.grade = nextAudience === 'grade' ? requesterGrade : null
+      if (nextAudience === 'grade' && !updateData.grade) {
+        return res.status(400).json({ message: 'Your account must have a valid grade to post to My grade.' })
+      }
     }
 
     if (hasAttemptsOpen) {

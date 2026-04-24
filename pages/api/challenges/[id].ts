@@ -10,7 +10,7 @@ const MAX_IMAGE_URL_LENGTH = 2000
 function clampAudience(audience: unknown) {
   const v = typeof audience === 'string' ? audience.trim().toLowerCase() : ''
   if (v === 'public' || v === 'grade' || v === 'private') return v
-  return 'public'
+  return 'grade'
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -67,6 +67,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!challenge) return res.status(404).json({ message: 'Challenge not found' })
 
   const isOwner = requesterId === String(challenge.createdById)
+  const requesterGrade = normalizeGradeInput(await getUserGrade(req))
 
   if (req.method === 'DELETE') {
     if (!isOwner && !isPrivileged) return res.status(403).json({ message: 'Forbidden' })
@@ -125,7 +126,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (hasAudience) {
-      updateData.audience = clampAudience(body.audience)
+      const requestedAudience = clampAudience(body.audience)
+      const nextAudience = (!isPrivileged && requestedAudience === 'public') ? 'grade' : requestedAudience
+      updateData.audience = nextAudience
+      if (nextAudience === 'grade') {
+        updateData.grade = requesterGrade || normalizeGradeInput(challenge.grade) || null
+        if (!updateData.grade) {
+          return res.status(400).json({ message: 'Your account must have a valid grade to post to My grade.' })
+        }
+      }
     }
 
     if (hasMaxAttempts) {
@@ -163,7 +172,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (nextAudience === 'grade') {
       const currentGrade = normalizeGradeInput(challenge.grade)
       if (!currentGrade) {
-        const requesterGrade = normalizeGradeInput(await getUserGrade(req))
         if (requesterGrade) updateData.grade = requesterGrade
       }
     }
@@ -246,9 +254,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (audience === 'grade') {
-      const requesterGrade = normalizeGradeInput(await getUserGrade(req))
       const challengeGrade = normalizeGradeInput(challenge.grade)
-      if (!requesterGrade || !challengeGrade || requesterGrade !== challengeGrade) {
+      const creatorGrade = normalizeGradeInput(challenge?.createdBy?.grade)
+      if (!requesterGrade || !challengeGrade || requesterGrade !== challengeGrade || !creatorGrade || creatorGrade !== requesterGrade) {
+        return res.status(403).json({ message: 'Forbidden' })
+      }
+    }
+
+    if (audience === 'public') {
+      const creatorRole = String(challenge?.createdBy?.role || '').toLowerCase()
+      if (creatorRole !== 'admin' && creatorRole !== 'teacher') {
         return res.status(403).json({ message: 'Forbidden' })
       }
     }

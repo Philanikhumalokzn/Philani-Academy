@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../lib/prisma'
-import { getUserGrade, getUserIdFromReq } from '../../../lib/auth'
+import { getUserGrade, getUserIdFromReq, getUserRole } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { buildSocialPostComposerFields, type SocialPostComposerMeta } from '../../../lib/postComposerContent'
 import { normalizePostReplyBlocks } from '../../../lib/postReplyComposer'
@@ -45,6 +45,8 @@ function isMissingSocialPostsTableError(err: unknown) {
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const userId = await getUserIdFromReq(req)
   if (!userId) return res.status(401).json({ message: 'Unauthorized' })
+  const role = (await getUserRole(req)) || 'student'
+  const canUsePublicAudience = role === 'admin' || role === 'teacher'
 
   const socialPost = (prisma as any).socialPost as typeof prisma extends { socialPost: infer T } ? T : any
 
@@ -59,12 +61,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const structuredFields = buildSocialPostComposerFields(composerBlocks, parseComposerMeta(body.composerMeta))
     const storedPrompt = hasStructuredComposer ? structuredFields.storedPrompt : prompt
     const imageUrl = hasStructuredComposer ? structuredFields.primaryImageUrl : explicitImageUrl
-    const audienceRaw = typeof body.audience === 'string' ? body.audience.trim().toLowerCase() : 'public'
-    const audience = AUDIENCES.has(audienceRaw) ? audienceRaw : 'public'
+    const audienceRaw = typeof body.audience === 'string' ? body.audience.trim().toLowerCase() : 'grade'
+    const requestedAudience = AUDIENCES.has(audienceRaw) ? audienceRaw : 'grade'
+    const audience = !canUsePublicAudience && requestedAudience === 'public' ? 'grade' : requestedAudience
     const maxAttempts = parseMaxAttempts(body.maxAttempts)
     const tokenGrade = normalizeGradeInput(await getUserGrade(req))
     const bodyGrade = normalizeGradeInput(typeof body.grade === 'string' ? body.grade : undefined)
-    const grade = bodyGrade || tokenGrade || null
+    const grade = audience === 'grade'
+      ? (tokenGrade || bodyGrade || null)
+      : (bodyGrade || tokenGrade || null)
+
+    if (audience === 'grade' && !grade) {
+      return res.status(400).json({ message: 'Your account must have a valid grade to post to My grade.' })
+    }
 
     if (!storedPrompt && !imageUrl && composerBlocks.length === 0) {
       return res.status(400).json({ message: 'Either text or an image is required' })

@@ -215,7 +215,7 @@ export function PublicUserProfileSurface({
 
   const [postComposerOpen, setPostComposerOpen] = useState(false)
   const [editingOwnedPostId, setEditingOwnedPostId] = useState<string | null>(null)
-  const [postAudienceDraft, setPostAudienceDraft] = useState<PostComposerAudience>('public')
+  const [postAudienceDraft, setPostAudienceDraft] = useState<PostComposerAudience>('grade')
   const [postTitleDraft, setPostTitleDraft] = useState('')
   const [postMaxAttemptsDraft, setPostMaxAttemptsDraft] = useState<string>('unlimited')
   const [postParseOnUpload, setPostParseOnUpload] = useState(false)
@@ -291,6 +291,7 @@ export function PublicUserProfileSurface({
 
   const sessionPlatformRole = normalizePlatformRole((session as any)?.user?.role)
   const currentLessonRoleProfile = useMemo(() => createLessonRoleProfile({ platformRole: sessionPlatformRole }), [sessionPlatformRole])
+  const canUsePublicAudience = currentLessonRoleProfile.platformRole === 'admin' || currentLessonRoleProfile.platformRole === 'teacher'
   const currentViewerId = String(viewerId || (session as any)?.user?.id || '')
   const currentViewerName = String(session?.user?.name || session?.user?.email || 'You')
   const currentViewerAvatarUrl = resolveImageUrl(String((session as any)?.user?.avatar || (session as any)?.user?.image || '')) || null
@@ -365,6 +366,7 @@ export function PublicUserProfileSurface({
     setPostReplyImageEditFile(null)
     setPostParsedJsonText(null)
     setPostParsedOpen(false)
+    setPostAudienceDraft('grade')
     setPostComposerOpen(true)
   }, [requestDashboardCreatePostComposer])
 
@@ -377,8 +379,9 @@ export function PublicUserProfileSurface({
   const openEditOwnedPostComposer = useCallback((post: ProfilePost) => {
     const id = post?.id ? String(post.id) : ''
     if (!id) return
-    const audienceRaw = typeof post?.audience === 'string' ? post.audience : 'public'
-    const audience = (audienceRaw === 'public' || audienceRaw === 'grade' || audienceRaw === 'private') ? audienceRaw : 'public'
+    const audienceRaw = typeof post?.audience === 'string' ? post.audience : 'grade'
+    const audienceNormalized = (audienceRaw === 'public' || audienceRaw === 'grade' || audienceRaw === 'private') ? audienceRaw : 'grade'
+    const audience = !canUsePublicAudience && audienceNormalized === 'public' ? 'grade' : audienceNormalized
     setEditingOwnedPostId(id)
     setPostTitleDraft(String(post?.title || ''))
     setPostAudienceDraft(audience)
@@ -397,7 +400,7 @@ export function PublicUserProfileSurface({
     setPostParsedJsonText(null)
     setPostParsedOpen(false)
     setPostComposerOpen(true)
-  }, [])
+  }, [canUsePublicAudience])
 
   const submitOwnedPost = useCallback(async () => {
     if (status !== 'authenticated') return
@@ -461,7 +464,7 @@ export function PublicUserProfileSurface({
 
       closeOwnedPostComposer()
       setPostTitleDraft('')
-      setPostAudienceDraft('public')
+      setPostAudienceDraft('grade')
       setPostMaxAttemptsDraft('unlimited')
       setPostParsedJsonText(null)
       setPostParsedOpen(false)
@@ -2220,13 +2223,14 @@ export function PublicUserProfileSurface({
         viewerId={currentViewerId}
         gradeLabel={activeGradeLabel}
         roleProfile={currentLessonRoleProfile}
+        allowPublicAudience={canUsePublicAudience}
         imageSourceSheetOpen={postReplyImageSourceSheetOpen}
         cameraInputRef={postReplyCameraInputRef}
         galleryInputRef={postReplyGalleryInputRef}
         textareaRef={postSolveTextareaRef}
         onClose={closeOwnedPostComposer}
         onTitleChange={setPostTitleDraft}
-        onAudienceChange={setPostAudienceDraft}
+        onAudienceChange={(value) => setPostAudienceDraft(!canUsePublicAudience && value === 'public' ? 'grade' : value)}
         onMaxAttemptsChange={setPostMaxAttemptsDraft}
         onParseOnUploadChange={setPostParseOnUpload}
         onToggleParsedOpen={() => setPostParsedOpen((value) => !value)}

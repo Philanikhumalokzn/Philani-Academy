@@ -1260,7 +1260,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [challengeAudiencePickerOpen, setChallengeAudiencePickerOpen] = useState(false)
   const [challengeTitleDraft, setChallengeTitleDraft] = useState('')
   const [challengePromptDraft, setChallengePromptDraft] = useState('')
-  const [challengeAudienceDraft, setChallengeAudienceDraft] = useState<'public' | 'grade' | 'private'>('public')
+  const [challengeAudienceDraft, setChallengeAudienceDraft] = useState<'public' | 'grade' | 'private'>('grade')
   const [challengeMaxAttempts, setChallengeMaxAttempts] = useState<string>('unlimited')
   const [challengeImageUrl, setChallengeImageUrl] = useState<string | null>(null)
   const [postComposerMetaDraft, setPostComposerMetaDraft] = useState<SocialPostComposerMeta | null>(null)
@@ -1290,6 +1290,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setPostComposerMetaDraft(null)
     setChallengeParsedJsonText(null)
     setChallengeParsedOpen(false)
+    setChallengeAudienceDraft('grade')
     setCreateOverlayOpen(true)
   }, [])
 
@@ -3347,7 +3348,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setCreateKind('post')
       setChallengeTitleDraft('')
       setChallengePromptDraft('')
-      setChallengeAudienceDraft('public')
+      setChallengeAudienceDraft('grade')
       setChallengeMaxAttempts('unlimited')
       setChallengeImageUrl(null)
       setPostComposerMetaDraft(null)
@@ -5494,8 +5495,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       return
     }
 
-    const audienceRaw = typeof c?.audience === 'string' ? c.audience : 'public'
-    const audience = (audienceRaw === 'public' || audienceRaw === 'grade' || audienceRaw === 'private') ? audienceRaw : 'public'
+    const audienceRaw = typeof c?.audience === 'string' ? c.audience : 'grade'
+    const audienceNormalized = (audienceRaw === 'public' || audienceRaw === 'grade' || audienceRaw === 'private') ? audienceRaw : 'grade'
+    const audience = !isTeacherOrAdminUser && audienceNormalized === 'public' ? 'grade' : audienceNormalized
 
     setCreateKind('quiz')
     setEditingChallengeId(id)
@@ -5513,14 +5515,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setSelectedSubmissionUserId(null)
     setSelectedSubmissionDetail(null)
     setCreateOverlayOpen(true)
-  }, [selectedChallengeData, selectedChallengeId])
+  }, [isTeacherOrAdminUser, selectedChallengeData, selectedChallengeId])
 
   const openEditPostComposer = useCallback((post: any) => {
     const id = post?.id ? String(post.id) : ''
     if (!id) return
 
-    const audienceRaw = typeof post?.audience === 'string' ? post.audience : 'public'
-    const audience = (audienceRaw === 'public' || audienceRaw === 'grade' || audienceRaw === 'private') ? audienceRaw : 'public'
+    const audienceRaw = typeof post?.audience === 'string' ? post.audience : 'grade'
+    const audienceNormalized = (audienceRaw === 'public' || audienceRaw === 'grade' || audienceRaw === 'private') ? audienceRaw : 'grade'
+    const audience = !isTeacherOrAdminUser && audienceNormalized === 'public' ? 'grade' : audienceNormalized
 
     setCreateKind('post')
     setEditingChallengeId(null)
@@ -5543,7 +5546,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setChallengeParsedJsonText(null)
     setChallengeParsedOpen(false)
     setCreateOverlayOpen(true)
-  }, [])
+  }, [isTeacherOrAdminUser])
 
   const deleteChallenge = useCallback(async (challengeId: string) => {
     const id = challengeId ? String(challengeId) : ''
@@ -17912,13 +17915,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           viewerId={viewerId || ''}
           gradeLabel={activeGradeLabel}
           roleProfile={currentLessonRoleProfile}
+          allowPublicAudience={isTeacherOrAdminUser}
           imageSourceSheetOpen={postReplyImageSourceSheetOpen}
           cameraInputRef={postReplyCameraInputRef}
           galleryInputRef={postReplyGalleryInputRef}
           textareaRef={postSolveTextareaRef}
           onClose={closeCreateOverlay}
           onTitleChange={setChallengeTitleDraft}
-          onAudienceChange={setChallengeAudienceDraft}
+          onAudienceChange={(value) => setChallengeAudienceDraft(!isTeacherOrAdminUser && value === 'public' ? 'grade' : value)}
           onMaxAttemptsChange={setChallengeMaxAttempts}
           onParseOnUploadChange={setChallengeParseOnUpload}
           onToggleParsedOpen={() => setChallengeParsedOpen((value) => !value)}
@@ -18176,14 +18180,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       aria-label="Change audience"
                       title="Change audience"
                     >
-                      {challengeAudienceDraft === 'public' ? (
+                      {challengeAudienceDraft === 'public' && isTeacherOrAdminUser ? (
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                           <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z" stroke="currentColor" strokeWidth="2" />
                           <path d="M2 12h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                           <path d="M12 2c3.5 3.2 3.5 16.8 0 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                           <path d="M12 2c-3.5 3.2-3.5 16.8 0 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                         </svg>
-                      ) : challengeAudienceDraft === 'grade' ? (
+                      ) : challengeAudienceDraft === 'grade' || !isTeacherOrAdminUser ? (
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                           <path d="M16 11c1.66 0 3-1.34 3-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3Z" stroke="currentColor" strokeWidth="2" />
                           <path d="M8 11c1.66 0 3-1.34 3-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3Z" stroke="currentColor" strokeWidth="2" />
@@ -18203,24 +18207,26 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                     {challengeAudiencePickerOpen ? (
                       <div className="absolute right-0 bottom-full mb-2 w-48 rounded-2xl border border-black/10 bg-white shadow-[0_20px_40px_rgba(15,23,42,0.15)] overflow-hidden">
-                        <button
-                          type="button"
-                          className={`w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-slate-50 ${challengeAudienceDraft === 'public' ? 'bg-slate-50' : ''}`}
-                          onClick={() => {
-                            setChallengeAudienceDraft('public')
-                            setChallengeAudiencePickerOpen(false)
-                          }}
-                        >
-                          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-black/10 bg-slate-50 text-slate-700">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                              <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z" stroke="currentColor" strokeWidth="2" />
-                              <path d="M2 12h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                              <path d="M12 2c3.5 3.2 3.5 16.8 0 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                              <path d="M12 2c-3.5 3.2-3.5 16.8 0 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                            </svg>
-                          </span>
-                          <span className="text-slate-700">Public</span>
-                        </button>
+                        {isTeacherOrAdminUser ? (
+                          <button
+                            type="button"
+                            className={`w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-slate-50 ${challengeAudienceDraft === 'public' ? 'bg-slate-50' : ''}`}
+                            onClick={() => {
+                              setChallengeAudienceDraft('public')
+                              setChallengeAudiencePickerOpen(false)
+                            }}
+                          >
+                            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-black/10 bg-slate-50 text-slate-700">
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z" stroke="currentColor" strokeWidth="2" />
+                                <path d="M2 12h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                <path d="M12 2c3.5 3.2 3.5 16.8 0 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                <path d="M12 2c-3.5 3.2-3.5 16.8 0 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                              </svg>
+                            </span>
+                            <span className="text-slate-700">Public</span>
+                          </button>
+                        ) : null}
 
                         <button
                           type="button"

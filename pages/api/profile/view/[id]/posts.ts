@@ -25,7 +25,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const target = await prisma.user.findUnique({
       where: { id: targetId },
-      select: { id: true, grade: true },
+      select: { id: true, grade: true, role: true },
     }).catch(() => null)
     if (!target) return res.status(404).json({ message: 'User not found' })
 
@@ -36,9 +36,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const where: any = { createdById: targetId }
     if (!isPrivileged && !isSelf) {
-      const or: any[] = [{ audience: 'public' }]
-      if (requesterGrade) or.push({ audience: 'grade', grade: requesterGrade })
-      where.OR = or
+      const or: any[] = []
+      if (String(target.role || '').toLowerCase() === 'admin' || String(target.role || '').toLowerCase() === 'teacher') {
+        or.push({ audience: 'public' })
+      }
+      if (requesterGrade) {
+        or.push({ audience: 'grade', grade: requesterGrade, createdBy: { grade: requesterGrade } })
+      }
+      where.OR = or.length > 0 ? or : [{ id: '__never__' }]
     }
 
     let items: any[] = []

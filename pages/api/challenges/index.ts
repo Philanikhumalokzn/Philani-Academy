@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../lib/prisma'
-import { getUserGrade, getUserIdFromReq } from '../../../lib/auth'
+import { getUserGrade, getUserIdFromReq, getUserRole } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
 
 const MAX_TITLE_LENGTH = 120
@@ -12,6 +12,8 @@ const AUDIENCES = new Set(['public', 'grade', 'private'])
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const userId = await getUserIdFromReq(req)
   if (!userId) return res.status(401).json({ message: 'Unauthorized' })
+  const role = (await getUserRole(req)) || 'student'
+  const canUsePublicAudience = role === 'admin' || role === 'teacher'
 
   // Schema contains UserChallenge but some Prisma clients in this repo are generated stale.
   const userChallenge = (prisma as any).userChallenge as typeof prisma extends { userChallenge: infer T } ? T : any
@@ -25,12 +27,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const requestedPrompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
     const prompt = requestedPrompt.slice(0, MAX_PROMPT_LENGTH)
 
-    const audienceRaw = typeof body.audience === 'string' ? body.audience.trim().toLowerCase() : 'public'
-    const audience = AUDIENCES.has(audienceRaw) ? audienceRaw : 'public'
+    const audienceRaw = typeof body.audience === 'string' ? body.audience.trim().toLowerCase() : 'grade'
+    const requestedAudience = AUDIENCES.has(audienceRaw) ? audienceRaw : 'grade'
+    const audience = !canUsePublicAudience && requestedAudience === 'public' ? 'grade' : requestedAudience
 
     const tokenGrade = normalizeGradeInput(await getUserGrade(req))
     const bodyGrade = normalizeGradeInput(typeof body.grade === 'string' ? body.grade : undefined)
-    const grade = bodyGrade || tokenGrade || null
+    const grade = audience === 'grade'
+      ? (tokenGrade || bodyGrade || null)
+      : (bodyGrade || tokenGrade || null)
+
+    if (audience === 'grade' && !grade) {
+      return res.status(400).json({ message: 'Your account must have a valid grade to post to My grade.' })
+    }
 
     const maxAttempts = (typeof body.maxAttempts === 'number' && body.maxAttempts > 0) 
       ? Math.min(100, Math.max(1, Math.floor(body.maxAttempts)))

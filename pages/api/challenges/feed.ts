@@ -62,17 +62,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (!isPrivileged && !onlyFollowing) {
-    // Students: allow grade posts for their grade (classmates).
-    // For public posts, restrict to a reasonable “circle” (following, groupmates, staff).
     where.OR = [
-      ...(requesterGrade ? [{ audience: 'grade', grade: requesterGrade }] : []),
-      ...(publicCircleIds.length ? [{ audience: 'public', createdById: { in: publicCircleIds } }] : []),
+      ...(requesterGrade ? [{ audience: 'grade', grade: requesterGrade, createdBy: { grade: requesterGrade } }] : []),
+      { audience: 'public', createdBy: { role: { in: ['admin', 'teacher'] } } },
     ]
   } else if (!isPrivileged && onlyFollowing) {
-    // Follow-only mode: already restricted by createdById above; keep the grade rule for safety.
     where.OR = [
-      { audience: 'public' },
-      ...(requesterGrade ? [{ audience: 'grade', grade: requesterGrade }] : []),
+      { audience: 'public', createdBy: { role: { in: ['admin', 'teacher'] } } },
+      ...(requesterGrade ? [{ audience: 'grade', grade: requesterGrade, createdBy: { grade: requesterGrade } }] : []),
     ]
   }
 

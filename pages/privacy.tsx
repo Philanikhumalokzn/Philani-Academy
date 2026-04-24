@@ -35,7 +35,7 @@ export default function PrivacyNotice() {
       <div className="mx-auto max-w-4xl space-y-8">
         <section className="hero flex-col gap-6">
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
-            <NavArrows backHref="/dashboard" />
+            <NavArrows backHref="/dashboard" forwardHref={undefined} />
             <div className="flex flex-wrap gap-2 text-xs">
               <span className="board-chip">Updated 22 Nov 2025</span>
               <span className="board-chip">POPIA compliant</span>

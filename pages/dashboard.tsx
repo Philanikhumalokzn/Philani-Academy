@@ -16718,11 +16718,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             type="button"
             className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] transition hover:bg-[#eef2f7]"
             onClick={() => {
-              setBooksOverlayOpen(false)
-              void router.push('/resource-bank')
+              setBooksHubTab('resources')
             }}
           >
-            Open Resources Workspace
+            View Shared Resources
           </button>
         </div>
       </section>
@@ -16767,10 +16766,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <button
               type="button"
               className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'resources' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
-              onClick={() => {
-                setBooksOverlayOpen(false)
-                void router.push('/resource-bank')
-              }}
+              onClick={() => setBooksHubTab('resources')}
             >
               Resources
             </button>

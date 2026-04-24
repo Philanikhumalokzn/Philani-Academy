@@ -16670,7 +16670,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             </button>
                           ) : null}
                           {marksLabel ? <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{marksLabel}</span> : null}
-                          {isAdmin && !question?.approved ? <span className="text-xs rounded-full bg-red-100 px-2 py-0.5 text-red-600">Unapproved</span> : null}
                         </>
                       ) : null}
                     </div>

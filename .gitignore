@@ -1,4 +1,5 @@
 node_modules
+.idea/
 .env
 .env.local
 .env.e2e.local
@@ -7,12 +8,28 @@ node_modules
 .next
 .vercel
 backups/
+.tmp_*.js
 
 .vercel
 
 # Local build artifacts/logs
 build*.log
 *.tsbuildinfo
+build_*.txt
+next_build_*.txt
+queue_build_*.txt
+watch_build_*.txt
+tsc-output*.txt
+playwright-*.log
+test-results/
+vercel_whoami.txt
+verify-keyboard-top-display.log
+
+# Archived copies and local helper sandboxes
+Philani-Academy-main/
+Philani-Academy-work-merge-6c0f264/
+gemini-quickstart-js/
+resend-email-tester/
 
 # Keep independent repo out of Philani index
 Bhanoyi-Secondary-School-Website/

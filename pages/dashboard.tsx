@@ -93,7 +93,7 @@ const DASHBOARD_SECTIONS = [
   { id: 'groups', label: 'Groups', description: 'Classmates & groupmates', roles: ['admin', 'teacher', 'student'] },
   { id: 'discover', label: 'Discover', description: 'Find people & join groups', roles: ['admin', 'teacher', 'student'] },
   { id: 'users', label: 'Learners', description: 'Manage enrolments', roles: ['admin'] },
-  { id: 'billing', label: 'Billing', description: 'Subscription plans', roles: ['admin'] }
+  { id: 'users', label: 'Users', description: 'Manage users', roles: ['admin'] }
 ] as const
 
 type SectionId = typeof DASHBOARD_SECTIONS[number]['id']
@@ -1571,15 +1571,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [newPassword, setNewPassword] = useState('')
   const [newRole, setNewRole] = useState('student')
   const [newGrade, setNewGrade] = useState<GradeValue | ''>('')
-  const [plans, setPlans] = useState<any[]>([])
-  const [planName, setPlanName] = useState('')
-  const [planAmount, setPlanAmount] = useState<number | ''>('')
-  const [plansLoading, setPlansLoading] = useState(false)
-  const [editingPlanId, setEditingPlanId] = useState<string | null>(null)
-  const [editPlanName, setEditPlanName] = useState('')
-  const [editPlanAmount, setEditPlanAmount] = useState<number | ''>('')
-  const [editPlanActive, setEditPlanActive] = useState(false)
-  const [planSaving, setPlanSaving] = useState(false)
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [expandedAnnouncementId, setExpandedAnnouncementId] = useState<string | null>(null)
   const [announcementsLoading, setAnnouncementsLoading] = useState(false)
@@ -1913,11 +1904,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const materialsRequestIdRef = useRef(0)
   const latexSavesRequestIdRef = useRef(0)
-
-  const [subscriptionActive, setSubscriptionActive] = useState<boolean | null>(null)
-  const [subscriptionGatingEnabled, setSubscriptionGatingEnabled] = useState<boolean | null>(null)
-  const [subscriptionGatingSaving, setSubscriptionGatingSaving] = useState(false)
-  const [subscriptionGatingError, setSubscriptionGatingError] = useState<string | null>(null)
 
   const [sessionDetailsOpen, setSessionDetailsOpen] = useState(false)
   const [sessionDetailsIds, setSessionDetailsIds] = useState<string[]>([])
@@ -2641,8 +2627,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const isTestStudent = useMemo(() => isSpecialTestStudentEmail(session?.user?.email || ''), [session?.user?.email])
   const learnerNotesLabel = 'Notes'
   const learnerNotesLabelLower = 'notes'
-  const effectiveSubscriptionGatingEnabled = subscriptionGatingEnabled ?? true
-  const isSubscriptionBlocked = isLearner && effectiveSubscriptionGatingEnabled && subscriptionActive === false
   const currentViewerId = String(viewerId || (session as any)?.user?.id || '')
   const currentViewerPostAuthor = useMemo(() => ({
     id: currentViewerId,
@@ -3599,52 +3583,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [])
 
-  useEffect(() => {
-    if (status !== 'authenticated') {
-      setSubscriptionActive(null)
-      setSubscriptionGatingEnabled(null)
-      setSubscriptionGatingError(null)
-      return
-    }
-    let cancelled = false
-    fetch('/api/subscription/status', { credentials: 'same-origin' })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (cancelled) return
-        const gatingEnabled = typeof data?.gatingEnabled === 'boolean' ? data.gatingEnabled : true
-        setSubscriptionGatingEnabled(gatingEnabled)
-        setSubscriptionActive(isLearner ? Boolean(data?.active) : true)
-      })
-      .catch(() => {
-        if (cancelled) return
-        // Fail closed for learners.
-        setSubscriptionGatingEnabled(true)
-        setSubscriptionActive(isLearner ? false : true)
-      })
-    return () => { cancelled = true }
-  }, [status, isLearner])
-
-  const updateSubscriptionGating = useCallback(async (enabled: boolean) => {
-    setSubscriptionGatingSaving(true)
-    setSubscriptionGatingError(null)
-    try {
-      const res = await fetch('/api/subscription/gating', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ enabled })
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(data?.message || 'Failed to update gating')
-      }
-      setSubscriptionGatingEnabled(Boolean(data?.enabled))
-    } catch (err: any) {
-      setSubscriptionGatingError(err?.message || 'Failed to update gating')
-    } finally {
-      setSubscriptionGatingSaving(false)
-    }
-  }, [])
   const canUploadMaterials = currentLessonRoleProfile.capabilities.canAuthorLessons
   const ownerEmail = process.env.NEXT_PUBLIC_OWNER_EMAIL || process.env.OWNER_EMAIL
   const isOwnerUser = Boolean(((session as any)?.user?.email && ownerEmail && (session as any)?.user?.email === ownerEmail) || isAdmin)
@@ -3821,7 +3759,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
 
     if (isAdmin) {
-      const allowed: SectionId[] = ['live', 'announcements', 'sessions', 'groups', 'discover', 'users', 'billing']
+      const allowed: SectionId[] = ['live', 'announcements', 'sessions', 'groups', 'discover', 'users']
       const next = allowed.find(x => x === normalized)
       if (next) openDashboardOverlay(next as OverlaySectionId)
     }
@@ -3882,10 +3820,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       return
     }
 
-    if (isSubscriptionBlocked) {
-      alert('A subscription is required to use session resources.')
-      return
-    }
     const nextSessionId = sessionId ?? activeSessionId
     if (!nextSessionId) {
       alert('Select a session before opening the canvas so your work is saved to the correct session.')
@@ -3946,7 +3880,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       }
       return [...prev, baseWindow]
     })
-  }, [canLaunchCanvasOverlay, isSubscriptionBlocked, activeSessionId, liveOverlayOpen, overlayBounds.height, overlayBounds.width, gradeReady, activeGradeLabel, clampWindowPosition, getNextWindowZ])
+  }, [canLaunchCanvasOverlay, activeSessionId, liveOverlayOpen, overlayBounds.height, overlayBounds.width, gradeReady, activeGradeLabel, clampWindowPosition, getNextWindowZ])
 
   const showLessonAuthoringCanvasWindow = useCallback((opts: { phaseKey: LessonPhaseKey; pointId: string }) => {
     if (!isTeacherOrAdminUser) {
@@ -4022,17 +3956,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [activeSessionId, sessionById, sessions])
 
   const openLiveForSession = useCallback((sessionId: string) => {
-    if (isSubscriptionBlocked) {
-      alert('A subscription is required to join sessions.')
-      return
-    }
     setActiveSessionId(sessionId)
     setCloseLiveOverlayOnCanvasClose(false)
     setLiveOverlayDismissed(false)
     setLiveOverlayOpen(true)
     // Chrome should start hidden; it is revealed by tapping the top display.
     setLiveOverlayChromeVisible(false)
-  }, [isSubscriptionBlocked])
+  }, [])
 
   const openHeroLive = useCallback(() => {
     const sessionId = pickCurrentOrNextSessionId()
@@ -10843,94 +10773,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [isAdmin])
 
   useEffect(() => {
-    // fetch plans for admins
-    if (isAdmin) {
-      fetchPlans()
-    }
     // Mark window global for JitsiRoom so it can disable prejoin for owner quickly
     try {
       const isOwner = ((session as any)?.user?.email === process.env.NEXT_PUBLIC_OWNER_EMAIL) || isAdmin
       ;(window as any).__JITSI_IS_OWNER__ = Boolean(isOwner)
     } catch (e) {}
   }, [isAdmin, session])
-  async function fetchPlans() {
-    setPlansLoading(true)
-    try {
-      const res = await fetch('/api/plans', { credentials: 'same-origin' })
-      if (res.ok) {
-        const data = await res.json()
-        setPlans(data || [])
-      }
-    } catch (err) {
-      // ignore for now
-    } finally {
-      setPlansLoading(false)
-    }
-  }
-
-  function resetPlanEdit() {
-    setEditingPlanId(null)
-    setEditPlanName('')
-    setEditPlanAmount('')
-    setEditPlanActive(false)
-    setPlanSaving(false)
-  }
-
-  function beginEditPlan(plan: any) {
-    setEditingPlanId(plan.id)
-    setEditPlanName(plan.name || '')
-    setEditPlanAmount(typeof plan.amount === 'number' ? plan.amount : '')
-    setEditPlanActive(Boolean(plan.active))
-    setPlanSaving(false)
-  }
-
-  async function savePlanChanges() {
-    if (!editingPlanId) return
-    const trimmedName = editPlanName.trim()
-    if (!trimmedName) {
-      alert('Plan name is required')
-      return
-    }
-    if (editPlanAmount === '' || editPlanAmount === null) {
-      alert('Plan amount is required (cents)')
-      return
-    }
-    const amountValue = typeof editPlanAmount === 'string' ? parseInt(editPlanAmount, 10) : editPlanAmount
-    if (!Number.isFinite(amountValue) || amountValue <= 0) {
-      alert('Plan amount must be greater than zero (in cents)')
-      return
-    }
-    if (amountValue < 500) {
-      alert('PayFast subscriptions require at least 500 cents (R5.00)')
-      return
-    }
-    setPlanSaving(true)
-    try {
-      const res = await fetch(`/api/plans/${editingPlanId}`, {
-        method: 'PATCH',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: trimmedName,
-          amount: amountValue,
-          active: editPlanActive
-        })
-      })
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        alert(data?.message || `Failed to update plan (${res.status})`)
-        return
-      }
-
-      resetPlanEdit()
-      fetchPlans()
-    } catch (err: any) {
-      alert(err?.message || 'Network error while updating plan')
-    } finally {
-      setPlanSaving(false)
-    }
-  }
 
   const renderGradeWorkspaceCard = () => (
     <div className="card dashboard-card space-y-3">
@@ -10992,7 +10840,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       </dl>
       <div className="flex flex-col sm:flex-row items-start gap-2">
         <button type="button" className="btn btn-ghost" onClick={openOwnDashboardProfile}>Update profile</button>
-        <Link href="/subscribe" className="btn btn-primary">Manage subscription</Link>
       </div>
     </>
   )
@@ -11255,7 +11102,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const resolvedCurrentLesson = resolvedCurrentLessonId ? sessionById.get(resolvedCurrentLessonId) : null
 
     const renderSessionFocusCard = (session: any) => {
-      const isJoinDisabled = !canLaunchCanvasOverlay || isSubscriptionBlocked
+      const isJoinDisabled = !canLaunchCanvasOverlay
       const lessonTitle = typeof session?.title === 'string' && session.title.trim() ? session.title.trim() : 'Current lesson'
       const lessonThumb = typeof session?.thumbnailUrl === 'string' && session.thumbnailUrl.trim() ? session.thumbnailUrl.trim() : ''
       const sessionEnd = (session as any)?.endsAt || session?.startsAt
@@ -11340,7 +11187,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 type="button"
                 className="btn btn-ghost session-focus-secondary-button"
                 onClick={() => openSessionDetails([String(session.id)], 0, 'assignments')}
-                disabled={isSubscriptionBlocked}
               >
                 Assignments
               </button>
@@ -11784,35 +11630,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
         <div className="card space-y-3">
           <h2 className="text-lg font-semibold text-center">Upcoming lessons</h2>
-          {isAdmin && (
-            <div className="p-3 border border-white/10 rounded bg-white/5 space-y-2">
-              <div className="font-medium">Subscription gating</div>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={effectiveSubscriptionGatingEnabled}
-                  disabled={subscriptionGatingSaving || subscriptionGatingEnabled === null}
-                  onChange={(e) => updateSubscriptionGating(e.target.checked)}
-                />
-                <span>Require an active subscription for learners to join sessions and view assignments</span>
-              </label>
-              {subscriptionGatingEnabled === null && (
-                <div className="text-xs muted">Loading current setting...</div>
-              )}
-              {subscriptionGatingError && (
-                <div className="text-sm text-red-600">{subscriptionGatingError}</div>
-              )}
-            </div>
-          )}
-          {isSubscriptionBlocked && (
-            <div className="p-3 border border-white/10 rounded bg-white/5">
-              <div className="font-medium">Subscription required</div>
-              <div className="text-sm muted">Subscribe to join sessions and access assignments.</div>
-              <div className="mt-2">
-                <a className="btn btn-primary" href="/subscribe">Subscribe</a>
-              </div>
-            </div>
-          )}
           {sessionsError ? (
             <div className="text-sm text-red-600">{sessionsError}</div>
           ) : sortedSessions.length === 0 ? (
@@ -11824,7 +11641,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   type="button"
                   className="btn btn-ghost justify-center"
                   onClick={() => openPastSessionsList(pastSessionIds)}
-                  disabled={isSubscriptionBlocked}
                 >
                   Past lessons
                 </button>
@@ -11848,7 +11664,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           type="button"
                           className={`btn justify-center justify-self-start ${canCreateSession ? '' : 'btn-primary'}`}
                           onClick={() => openLiveForSession(s.id)}
-                          disabled={isSubscriptionBlocked}
                         >
                           Open class
                         </button>
@@ -11865,7 +11680,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           type="button"
                           className="btn justify-center justify-self-start"
                           onClick={() => showCanvasWindow(s.id)}
-                          disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
+                          disabled={!canLaunchCanvasOverlay}
                         >
                           Canvas
                         </button>
@@ -11873,7 +11688,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           href={s.joinUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className={`justify-self-start text-sm font-semibold text-white/70 hover:text-white ${isSubscriptionBlocked ? ' pointer-events-none opacity-50' : ''}`}
+                          className="justify-self-start text-sm font-semibold text-white/70 hover:text-white"
                         >
                           Link
                         </a>
@@ -11881,7 +11696,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           type="button"
                           className="justify-self-start text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
                           onClick={() => openSessionDetails([String(s.id)], 0, 'assignments')}
-                          disabled={isSubscriptionBlocked}
                         >
                           Assignments
                         </button>
@@ -11909,7 +11723,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           type="button"
                           className="btn"
                           onClick={() => openLiveForSession(s.id)}
-                          disabled={isSubscriptionBlocked}
                         >
                           Open class
                         </button>
@@ -11926,7 +11739,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           type="button"
                           className="btn"
                           onClick={() => showCanvasWindow(s.id)}
-                          disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
+                          disabled={!canLaunchCanvasOverlay}
                         >
                           Canvas
                         </button>
@@ -11934,7 +11747,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           href={s.joinUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className={`text-sm font-semibold text-white/70 hover:text-white ${isSubscriptionBlocked ? ' pointer-events-none opacity-50' : ''}`}
+                          className="text-sm font-semibold text-white/70 hover:text-white"
                         >
                           Link
                         </a>
@@ -11942,7 +11755,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           type="button"
                           className="text-sm font-semibold text-white/70 hover:text-white disabled:opacity-50"
                           onClick={() => openSessionDetails([String(s.id)], 0, 'assignments')}
-                          disabled={isSubscriptionBlocked}
                         >
                           Assignments
                         </button>
@@ -12108,7 +11920,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           if (selectedAssignmentId) fetchAssignmentDetails(expandedSessionId, selectedAssignmentId)
                         }
                       }}
-                      disabled={isSubscriptionBlocked}
                     >
                       Assignments
                     </button>
@@ -12119,7 +11930,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         setSessionDetailsTab('responses')
                         if (expandedSessionId) fetchMyResponses(expandedSessionId)
                       }}
-                      disabled={!canLaunchCanvasOverlay || isSubscriptionBlocked}
+                      disabled={!canLaunchCanvasOverlay}
                     >
                       Quizzes
                     </button>
@@ -13707,99 +13518,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     </div>
   )
 
-  const BillingSection = () => (
-    <div className="space-y-6">
-      <div className="card space-y-3">
-        <h2 className="text-lg font-semibold">Create subscription plan</h2>
-        <div className="space-y-2">
-          <input className="input" placeholder="Plan name" value={planName} onChange={e => setPlanName(e.target.value)} />
-          <input className="input" placeholder="Amount (cents)" type="number" value={planAmount as any} onChange={e => setPlanAmount(e.target.value ? parseInt(e.target.value, 10) : '')} />
-          <div className="text-xs muted">PayFast subscriptions are billed in ZAR.</div>
-          <div>
-            <button className="btn btn-primary" onClick={async () => {
-              if (!planName || !planAmount) return alert('Name and amount required')
-              if (typeof planAmount === 'number' && planAmount < 500) {
-                alert('PayFast subscriptions require at least 500 cents (R5.00)')
-                return
-              }
-              try {
-                const res = await fetch('/api/payfast/create-plan', {
-                  method: 'POST',
-                  credentials: 'same-origin',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ name: planName, amount: planAmount })
-                })
-
-                if (!res.ok) {
-                  const data = await res.json().catch(() => ({}))
-                  return alert(data?.message || `Failed to create PayFast plan (${res.status})`)
-                }
-
-                setPlanName('')
-                setPlanAmount('')
-                fetchPlans()
-                alert('Plan created')
-              } catch (err: any) {
-                alert(err?.message || 'Network error')
-              }
-            }}>Create plan</button>
-          </div>
-        </div>
-      </div>
-
-      <div className="card space-y-3">
-        <h2 className="text-lg font-semibold">Existing plans</h2>
-        {plansLoading ? <div className="text-sm muted">Loading...</div> : (
-          plans.length === 0 ? <div className="text-sm muted">No plans found.</div> : (
-            <ul className="space-y-2">
-              {plans.map(p => (
-                <li key={p.id} className="p-2 border rounded">
-                  {editingPlanId === p.id ? (
-                    <div className="space-y-2">
-                      <input className="input" value={editPlanName} onChange={e => setEditPlanName(e.target.value)} placeholder="Plan name" />
-                      <input className="input" type="number" value={editPlanAmount as any} onChange={e => setEditPlanAmount(e.target.value ? parseInt(e.target.value, 10) : '')} placeholder="Amount (cents)" />
-                      <div className="text-sm muted">Currency: {(p.currency || 'zar').toUpperCase()}</div>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" checked={editPlanActive} onChange={e => setEditPlanActive(e.target.checked)} />
-                        <span>Active</span>
-                      </label>
-                      <div className="flex gap-2">
-                        <button className="btn btn-primary" onClick={savePlanChanges} disabled={planSaving}>
-                          {planSaving ? 'Saving...' : 'Save changes'}
-                        </button>
-                        <button className="btn btn-ghost" onClick={resetPlanEdit} disabled={planSaving}>Cancel</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-medium">{p.name}</div>
-                        <div className="text-sm muted">{(p.amount / 100).toFixed(2)} {p.currency?.toUpperCase()} {p.active ? '(active)' : '(inactive)'}</div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button className="btn btn-ghost" onClick={() => beginEditPlan(p)}>Edit</button>
-                        <button className="btn btn-danger" onClick={async () => {
-                          if (!confirm('Delete plan?')) return
-                          try {
-                            const res = await fetch(`/api/plans`, { method: 'DELETE', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id }) })
-                            if (res.ok) fetchPlans()
-                            else alert('Failed to delete')
-                          } catch (err) {
-                            alert('Network error')
-                          }
-                        }}>Delete</button>
-                      </div>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )
-        )}
-      </div>
-    </div>
-  )
-
   const renderSection = (id: SectionId) => {
     switch (id) {
       case 'live':
@@ -14342,8 +14060,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         )
       case 'users':
         return <UsersSection />
-      case 'billing':
-        return <BillingSection />
       default:
         return <OverviewSection />
     }
@@ -17558,7 +17274,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       section.id === 'announcements' || section.id === 'sessions' || section.id === 'groups' || section.id === 'discover'
     )
     const mobileAdminSections = availableSections.filter(section =>
-      section.id === 'live' || section.id === 'users' || section.id === 'billing'
+      section.id === 'live' || section.id === 'users'
     )
     const discoverAvailable = mobilePrimarySections.some(section => section.id === 'discover')
 

@@ -8,7 +8,6 @@ import { put } from '@vercel/blob'
 import prisma from '../../../../lib/prisma'
 import { normalizeGradeInput } from '../../../../lib/grades'
 import { computeFileSha256Hex, upsertResourceBankItem } from '../../../../lib/resourceBank'
-import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionRequiredResponse } from '../../../../lib/subscription'
 
 export const config = {
   api: {
@@ -73,17 +72,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (tokenGrade !== sessionGrade) return res.status(403).json({ message: 'Access to this session is restricted to its grade' })
   } else if (role !== 'admin') {
     return res.status(403).json({ message: 'Forbidden' })
-  }
-
-  if (role === 'student') {
-    const gatingEnabled = await isSubscriptionGatingEnabled()
-    if (gatingEnabled) {
-      const status = await getUserSubscriptionStatus(authUserId)
-      if (!status.active) {
-        const denied = subscriptionRequiredResponse()
-        return res.status(denied.status).json(denied.body)
-      }
-    }
   }
 
   if (req.method === 'GET') {

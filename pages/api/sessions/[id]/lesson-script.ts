@@ -2,7 +2,6 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import prisma from '../../../../lib/prisma'
 import { normalizeGradeInput } from '../../../../lib/grades'
-import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionRequiredResponse } from '../../../../lib/subscription'
 
 type LessonScriptSource = 'override' | 'template-version' | 'template-current' | 'none'
 
@@ -105,17 +104,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (role === 'teacher' || role === 'student') {
     if (!tokenGrade) return res.status(403).json({ message: 'Grade not configured' })
     if (session.grade !== tokenGrade) return res.status(403).json({ message: 'Forbidden for this grade' })
-  }
-
-  if (role === 'student') {
-    const gatingEnabled = await isSubscriptionGatingEnabled()
-    if (gatingEnabled) {
-      const status = await getUserSubscriptionStatus(authUserId)
-      if (!status.active) {
-        const denied = subscriptionRequiredResponse()
-        return res.status(denied.status).json(denied.body)
-      }
-    }
   }
 
   if (req.method === 'GET') {

@@ -46,8 +46,8 @@ export default function HelpPage() {
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white">
             <p className="text-xs uppercase tracking-[0.25em] text-blue-200">Quick links</p>
-            <p className="mt-2 font-semibold text-white"><Link className="text-blue-200 underline" href="/profile">Profile</Link> and <Link className="text-blue-200 underline" href="/subscribe">Subscribe</Link></p>
-            <p className="mt-1 text-white/80">Review account details, plans, and access.</p>
+            <p className="mt-2 font-semibold text-white"><Link className="text-blue-200 underline" href="/profile">Profile</Link></p>
+            <p className="mt-1 text-white/80">Review account details and access.</p>
           </div>
         </div>
 

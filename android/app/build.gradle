@@ -1,14 +1,37 @@
 apply plugin: 'com.android.application'
 
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { stream ->
+        localProperties.load(stream)
+    }
+}
+
+def releaseSigningValue = { String key ->
+    def localValue = localProperties.getProperty(key)
+    if (localValue != null && localValue.toString().trim()) {
+        return localValue.toString().trim()
+    }
+    if (project.hasProperty(key)) {
+        def projectValue = project.property(key)
+        if (projectValue != null && projectValue.toString().trim()) {
+            return projectValue.toString().trim()
+        }
+    }
+    return null
+}
+
 android {
     namespace = "com.philani.academy"
     compileSdk = rootProject.ext.compileSdkVersion
+    
     defaultConfig {
         applicationId "com.philani.academy"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,9 +39,28 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+
+    signingConfigs {
+        release {
+            def releaseStoreFile = releaseSigningValue('RELEASE_STORE_FILE')
+            def releaseStorePassword = releaseSigningValue('RELEASE_STORE_PASSWORD')
+            def releaseKeyAlias = releaseSigningValue('RELEASE_KEY_ALIAS')
+            def releaseKeyPassword = releaseSigningValue('RELEASE_KEY_PASSWORD')
+
+            if (releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword) {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            minifyEnabled false
+            signingConfig signingConfigs.release
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }

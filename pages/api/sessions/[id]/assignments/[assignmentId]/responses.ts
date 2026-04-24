@@ -2,7 +2,6 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import prisma from '../../../../../../lib/prisma'
 import { normalizeGradeInput } from '../../../../../../lib/grades'
-import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionRequiredResponse } from '../../../../../../lib/subscription'
 import { isSpecialTestStudentEmail } from '../../../../../../lib/testUsers'
 
 const MAX_LATEX_LENGTH = 50000
@@ -39,17 +38,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (tokenGrade !== sessionRecord.grade) return res.status(403).json({ message: 'Access to this session is restricted to its grade' })
   } else if (role !== 'admin') {
     return res.status(403).json({ message: 'Forbidden' })
-  }
-
-  if (role === 'student') {
-    const gatingEnabled = await isSubscriptionGatingEnabled()
-    if (gatingEnabled) {
-      const status = await getUserSubscriptionStatus(authUserId)
-      if (!status.active) {
-        const denied = subscriptionRequiredResponse()
-        return res.status(denied.status).json(denied.body)
-      }
-    }
   }
 
   const assignmentId = String(assignmentIdParam).trim().slice(0, MAX_ASSIGNMENT_ID_LENGTH)

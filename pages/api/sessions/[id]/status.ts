@@ -2,7 +2,6 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../../lib/prisma'
 import { getToken } from 'next-auth/jwt'
 import { normalizeGradeInput } from '../../../../lib/grades'
-import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionRequiredResponse } from '../../../../lib/subscription'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') return res.status(405).end()
@@ -39,17 +38,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!sessionGrade) return res.status(403).json({ message: 'Forbidden: session grade missing' })
     if (!userGrade) return res.status(403).json({ message: 'Forbidden: learner grade missing' })
     if (sessionGrade !== userGrade) return res.status(403).json({ message: 'Forbidden: grade mismatch' })
-  }
-
-  if (role === 'student') {
-    const gatingEnabled = await isSubscriptionGatingEnabled()
-    if (gatingEnabled) {
-      const status = await getUserSubscriptionStatus(authUserId)
-      if (!status.active) {
-        const denied = subscriptionRequiredResponse()
-        return res.status(denied.status).json(denied.body)
-      }
-    }
   }
 
   const jitsiActive = (rec as any)?.jitsiActive ?? false

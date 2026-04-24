@@ -1,7 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import prisma from '../../../../lib/prisma'
-import { getUserSubscriptionStatus, isSubscriptionGatingEnabled, subscriptionRequiredResponse } from '../../../../lib/subscription'
 import { getRemixSolutionAccessMapForViewer } from '../../../../lib/remixSolutionAccess'
 
 const MAX_LATEX_LENGTH = 50000
@@ -324,18 +323,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     || postSolutionsVisible === true
     || postMaxAttempts !== null
   )
-
-  // Subscription gating: learners must be subscribed to access session content.
-  if (!isAdmin && role === 'student') {
-    const gatingEnabled = await isSubscriptionGatingEnabled()
-    if (gatingEnabled) {
-      const status = await getUserSubscriptionStatus(userId)
-      if (!status.active) {
-        const denied = subscriptionRequiredResponse()
-        return res.status(denied.status).json(denied.body)
-      }
-    }
-  }
 
   // Some environments may have a stale/generated Prisma client type surface.
   // The schema contains `LearnerResponse`, but TS may not see `prisma.learnerResponse` yet.

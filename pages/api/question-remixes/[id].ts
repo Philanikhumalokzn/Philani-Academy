@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
+import type { Prisma } from '@prisma/client'
 import prisma from '../../../lib/prisma'
 import { getUserIdFromReq, getUserRole } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
@@ -126,10 +127,10 @@ async function getViewerContext(userId: string, role: string) {
   }
 }
 
-function buildVisibilityWhere(userId: string, role: string, grade: string | null | undefined, groupIds: string[]) {
+function buildVisibilityWhere(userId: string, role: string, grade: string | null | undefined, groupIds: string[]): Prisma.QuestionRemixWhereInput | null {
   if (!grade) return null
 
-  if (role === 'admin') return { grade }
+  if (role === 'admin') return { grade: grade as any }
 
   const orConditions: any[] = [
     { createdById: userId },
@@ -138,14 +139,14 @@ function buildVisibilityWhere(userId: string, role: string, grade: string | null
   ]
 
   if (grade) {
-    orConditions.push({ audience: 'grade', grade })
+    orConditions.push({ audience: 'grade', grade: grade as any })
   }
   if (groupIds.length > 0) {
     orConditions.push({ invitedGroups: { some: { groupId: { in: groupIds } } } })
   }
 
   return {
-    grade,
+    grade: grade as any,
     OR: orConditions,
   }
 }

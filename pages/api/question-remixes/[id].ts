@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '../../../lib/prisma'
 import { getUserIdFromReq, getUserRole } from '../../../lib/auth'
+import { normalizeGradeInput } from '../../../lib/grades'
 import { buildSuggestedRemixName, resolveRemixName, type RemixNameSignature } from '../../../lib/remixNames'
 
 const VALID_AUDIENCES = new Set(['private', 'grade', 'public'])
@@ -126,7 +127,9 @@ async function getViewerContext(userId: string, role: string) {
 }
 
 function buildVisibilityWhere(userId: string, role: string, grade: string | null | undefined, groupIds: string[]) {
-  if (role === 'admin') return {}
+  if (!grade) return null
+
+  if (role === 'admin') return { grade }
 
   const orConditions: any[] = [
     { createdById: userId },
@@ -141,7 +144,10 @@ function buildVisibilityWhere(userId: string, role: string, grade: string | null
     orConditions.push({ invitedGroups: { some: { groupId: { in: groupIds } } } })
   }
 
-  return { OR: orConditions }
+  return {
+    grade,
+    OR: orConditions,
+  }
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -153,7 +159,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const role = (await getUserRole(req)) || 'student'
   const context = await getViewerContext(userId, role)
-  const visibleWhere = buildVisibilityWhere(userId, role, context.viewer?.grade ? String(context.viewer.grade) : null, context.groupIds)
+  const viewerGrade = normalizeGradeInput(context.viewer?.grade ? String(context.viewer.grade) : undefined)
+  const requestedGrade = normalizeGradeInput(typeof req.query.grade === 'string' ? req.query.grade : undefined)
+  const scopeGrade = role === 'admin' ? (requestedGrade || viewerGrade) : viewerGrade
+  if (!scopeGrade) return res.status(400).json({ message: 'Grade is required' })
+  const visibleWhere = buildVisibilityWhere(userId, role, scopeGrade, context.groupIds)
+  if (!visibleWhere) return res.status(400).json({ message: 'Grade is required' })
 
   if (req.method === 'GET') {
     const remix = await prisma.questionRemix.findFirst({
@@ -244,8 +255,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'PATCH') {
-    const remix = await prisma.questionRemix.findUnique({
-      where: { id: remixId },
+    const remix = await prisma.questionRemix.findFirst({
+      where: { id: remixId, grade: scopeGrade },
       include: {
         invitedUsers: { select: { userId: true } },
         invitedGroups: { select: { groupId: true } },
@@ -305,10 +316,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       questionIds.length > 0
         ? prisma.examQuestion.findMany({
             where: { id: { in: questionIds } },
-            select: { id: true, year: true, month: true, paper: true, topic: true, cognitiveLevel: true },
+            select: { id: true, grade: true, year: true, month: true, paper: true, topic: true, cognitiveLevel: true },
           })
         : Promise.resolve([]),
     ])
+
+    if (appendedQuestions.some((item) => String(item.grade) !== String(scopeGrade))) {
+      return res.status(400).json({ message: 'All selected questions must match the active grade scope' })
+    }
 
     const allowedUserIds = validUsers.map((item) => item.id)
     const allowedGroupIds = membershipRows.map((item) => item.groupId)
@@ -460,8 +475,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'DELETE') {
-    const remix = await prisma.questionRemix.findUnique({
-      where: { id: remixId },
+    const remix = await prisma.questionRemix.findFirst({
+      where: { id: remixId, grade: scopeGrade },
       select: {
         id: true,
         createdById: true,

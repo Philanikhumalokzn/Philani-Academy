@@ -13,6 +13,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const role = ((token as any)?.role as string | undefined) || 'student'
   const tokenGrade = normalizeGradeInput((token as any)?.grade as string | undefined)
+  const requestedGrade = normalizeGradeInput(typeof req.query.grade === 'string' ? req.query.grade : undefined)
+  const scopeGrade = role === 'admin' ? (requestedGrade || tokenGrade) : tokenGrade
+  if (!scopeGrade) return res.status(400).json({ message: 'Grade is required' })
 
   if (req.method !== 'GET') {
     res.setHeader('Allow', ['GET'])
@@ -34,9 +37,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!item) return res.status(404).json({ message: 'Not found' })
 
-  if (role !== 'admin') {
-    if (!tokenGrade) return res.status(403).json({ message: 'Grade not configured for this account' })
-    if (tokenGrade !== item.grade) return res.status(403).json({ message: 'Forbidden' })
+  if (scopeGrade !== item.grade) {
+    return res.status(403).json({ message: 'Forbidden' })
   }
 
   return res.status(200).json(item)

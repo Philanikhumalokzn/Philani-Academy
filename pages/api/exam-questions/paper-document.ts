@@ -21,12 +21,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const requestedMonth = typeof req.query.month === 'string' ? req.query.month.trim() : ''
   const requestedPaper = typeof req.query.paper === 'string' ? parseInt(req.query.paper, 10) : NaN
 
-  const where: Record<string, unknown> = {}
+  const scopeGrade = role === 'admin' ? (requestedGrade || tokenGrade) : tokenGrade
+  if (!scopeGrade) {
+    return res.status(400).json({ message: 'Grade is required' })
+  }
+
+  const where: Record<string, unknown> = { grade: scopeGrade }
   if (requestedSourceId) {
     where.sourceId = requestedSourceId
   } else {
-    const grade = role === 'admin' ? requestedGrade : tokenGrade
-    if (grade) where.grade = grade
     if (Number.isFinite(requestedYear)) where.year = requestedYear
     if (requestedMonth) where.month = requestedMonth
     if (Number.isFinite(requestedPaper)) where.paper = requestedPaper
@@ -34,7 +37,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (role !== 'admin') {
     where.approved = true
-    if (tokenGrade) where.grade = tokenGrade
   }
 
   const visibleQuestion = await prisma.examQuestion.findFirst({

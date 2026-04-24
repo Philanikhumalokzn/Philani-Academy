@@ -129,7 +129,9 @@ async function getViewerContext(userId: string, role: string) {
 }
 
 function buildVisibilityWhere(userId: string, role: string, grade: string | null | undefined, groupIds: string[]) {
-  if (role === 'admin') return {}
+  if (!grade) return null
+
+  if (role === 'admin') return { grade }
 
   const orConditions: any[] = [
     { createdById: userId },
@@ -144,7 +146,10 @@ function buildVisibilityWhere(userId: string, role: string, grade: string | null
     orConditions.push({ invitedGroups: { some: { groupId: { in: groupIds } } } })
   }
 
-  return { OR: orConditions }
+  return {
+    grade,
+    OR: orConditions,
+  }
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -155,7 +160,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method === 'GET') {
     const context = await getViewerContext(userId, role)
-    const visibleWhere = buildVisibilityWhere(userId, role, context.viewer?.grade ? String(context.viewer.grade) : null, context.groupIds)
+    const viewerGrade = normalizeGradeInput(context.viewer?.grade ? String(context.viewer.grade) : undefined)
+    const requestedGrade = normalizeGradeInput(typeof req.query.grade === 'string' ? req.query.grade : undefined)
+    const scopeGrade = role === 'admin' ? (requestedGrade || viewerGrade) : viewerGrade
+    if (!scopeGrade) return res.status(400).json({ message: 'Grade is required' })
+    const visibleWhere = buildVisibilityWhere(userId, role, scopeGrade, context.groupIds)
+    if (!visibleWhere) return res.status(400).json({ message: 'Grade is required' })
     const remixes = await prisma.questionRemix.findMany({
       where: visibleWhere,
       orderBy: { updatedAt: 'desc' },
@@ -254,7 +264,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const inviteNote = asTrimmedString(req.body?.inviteNote, 2000)
     const audienceRaw = asTrimmedString(req.body?.audience, 20).toLowerCase()
     const audience = VALID_AUDIENCES.has(audienceRaw) ? audienceRaw : 'private'
-    const requestedGrade = normalizeGradeInput(asTrimmedString(req.body?.grade, 24) || undefined)
     const questionIds = asIdList(req.body?.questionIds, 120)
     const invitedUserIds = asIdList(req.body?.invitedUserIds, 120).filter((id) => id !== userId)
     const invitedGroupIds = asIdList(req.body?.invitedGroupIds, 60)
@@ -280,6 +289,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!context.viewer) return res.status(404).json({ message: 'User not found' })
     if (questions.length !== questionIds.length) return res.status(400).json({ message: 'Some selected questions no longer exist' })
 
+    const viewerGrade = normalizeGradeInput(context.viewer?.grade ? String(context.viewer.grade) : undefined)
+    const requestedScopeGrade = normalizeGradeInput(asTrimmedString(req.body?.grade, 24) || undefined)
+    const scopeGrade = role === 'admin' ? (requestedScopeGrade || viewerGrade) : viewerGrade
+    if (!scopeGrade) return res.status(400).json({ message: 'Grade is required' })
+
     const compatibilitySignature = buildCompatibilitySignature(questions)
     const suggestedName = buildSuggestedRemixName(compatibilitySignature)
     const manualNameRequested = isRequestedNameManual(requestedName, suggestedName)
@@ -291,7 +305,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const uniqueGrades = Array.from(new Set(questions.map((item) => String(item.grade))))
     const derivedGrade = uniqueGrades.length === 1 ? normalizeGradeInput(uniqueGrades[0]) : null
-    const grade = requestedGrade || derivedGrade || null
+    if (!derivedGrade || derivedGrade !== scopeGrade) {
+      return res.status(400).json({ message: 'All selected questions must match the active grade scope' })
+    }
+    const grade = scopeGrade
 
     if (audience === 'grade' && !grade) {
       return res.status(400).json({ message: 'Grade audience requires a single remix grade' })

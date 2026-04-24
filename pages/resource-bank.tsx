@@ -292,13 +292,19 @@ export default function ResourceBankPage() {
   const openParsedViewer = async (item: ResourceBankItem) => {
     const id = String(item?.id || '')
     if (!id) return
+    const scopeGrade = effectiveGrade || item?.grade
+    if (!scopeGrade) {
+      setParsedViewerText('Grade not configured for this account')
+      return
+    }
     setParsedViewerOpen(true)
     setParsedViewerLoading(true)
     setParsedViewerTitle(toDisplayFileName(item?.title) || item?.title || 'Parsed')
     setParsedViewerText('')
     setParsedViewerJson(null)
     try {
-      const res = await fetch(`/api/resources/${encodeURIComponent(id)}/parsed`, { credentials: 'same-origin' })
+      const params = new URLSearchParams({ grade: String(scopeGrade) })
+      const res = await fetch(`/api/resources/${encodeURIComponent(id)}/parsed?${params.toString()}`, { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.message || `Failed to load parsed data (${res.status})`)
 
@@ -389,9 +395,15 @@ export default function ResourceBankPage() {
   const handleDownloadLatex = async (item: ResourceBankItem) => {
     const id = String(item?.id || '')
     if (!id) return
+    const scopeGrade = effectiveGrade || item?.grade
+    if (!scopeGrade) {
+      setError('Grade not configured for this account')
+      return
+    }
     setError(null)
     try {
-      const res = await fetch(`/api/resources/${encodeURIComponent(id)}/parsed`, { credentials: 'same-origin' })
+      const params = new URLSearchParams({ grade: String(scopeGrade) })
+      const res = await fetch(`/api/resources/${encodeURIComponent(id)}/parsed?${params.toString()}`, { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.message || `Failed to load parsed data (${res.status})`)
 
@@ -573,8 +585,11 @@ export default function ResourceBankPage() {
     setReviewOpen(true)
     setReviewLoading(true)
     try {
+      const scopeGrade = effectiveGrade || item?.grade
+      if (!scopeGrade) throw new Error('Grade not configured for this account')
+      const params = new URLSearchParams({ sourceId: String(item.id), take: '200', grade: String(scopeGrade) })
       const res = await fetch(
-        `/api/exam-questions?sourceId=${encodeURIComponent(item.id)}&take=200`,
+        `/api/exam-questions?${params.toString()}`,
         { credentials: 'same-origin' },
       )
       const data = await res.json().catch(() => ({}))

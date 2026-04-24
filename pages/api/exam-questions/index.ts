@@ -1148,9 +1148,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const q = req.query
 
-  // Grade: admins can query any grade, students are confined to their own
+  // Grade scoping is mandatory for all users, including admins.
   const requestedGrade = normalizeGradeInput(q.grade as string)
-  const grade = role === 'admin' ? (requestedGrade || undefined) : (tokenGrade || undefined)
+  const grade = requestedGrade || tokenGrade || undefined
+  if (!grade) {
+    return res.status(400).json({ message: 'Grade is required' })
+  }
 
   const year = q.year ? parseInt(String(q.year), 10) : undefined
   const month = q.month ? String(q.month) : undefined
@@ -1167,8 +1170,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const take = Math.min(100, Math.max(1, parseInt(String(q.take || '50'), 10)))
   const skip = (page - 1) * take
 
-  const where: any = {}
-  if (grade) where.grade = grade
+  const where: any = { grade }
   if (sourceId) where.sourceId = sourceId
   if (approvedOnly) where.approved = true
   if (!searchQuery) {

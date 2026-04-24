@@ -14231,6 +14231,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const buildQbSearchParams = (filters: QbSearchFilters) => {
     const params = new URLSearchParams()
+    if (selectedGrade) params.set('grade', selectedGrade)
     if (filters.year) params.set('year', filters.year)
     if (filters.month) params.set('month', filters.month)
     if (filters.paper) params.set('paper', filters.paper)
@@ -14334,10 +14335,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const loadQuestionRemixes = useCallback(async () => {
     if (status !== 'authenticated') return
+    if (!selectedGrade) {
+      setQuestionRemixes([])
+      return
+    }
     setQuestionRemixesLoading(true)
     setQuestionRemixesError(null)
     try {
-      const res = await fetch('/api/question-remixes', { credentials: 'same-origin' })
+      const params = new URLSearchParams({ grade: selectedGrade })
+      const res = await fetch(`/api/question-remixes?${params.toString()}`, { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error((data as any)?.message || `Failed to load remixes (${res.status})`)
       const items = orderQuestionRemixes(Array.isArray((data as any)?.items) ? (data as any).items : [])
@@ -14352,7 +14358,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setQuestionRemixesLoading(false)
     }
-  }, [status])
+  }, [selectedGrade, status])
 
   const loadQuestionRemixDetail = useCallback(async (remixId: string) => {
     if (!remixId) {
@@ -14363,7 +14369,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setSelectedQuestionRemixLoading(true)
     setSelectedQuestionRemixError(null)
     try {
-      const res = await fetch(`/api/question-remixes/${encodeURIComponent(remixId)}`, { credentials: 'same-origin' })
+      const params = new URLSearchParams()
+      if (selectedGrade) params.set('grade', selectedGrade)
+      const suffix = params.toString() ? `?${params.toString()}` : ''
+      const res = await fetch(`/api/question-remixes/${encodeURIComponent(remixId)}${suffix}`, { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error((data as any)?.message || `Failed to load remix (${res.status})`)
       setSelectedQuestionRemix(data as QuestionRemixDetail)
@@ -14373,7 +14382,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setSelectedQuestionRemixLoading(false)
     }
-  }, [])
+  }, [selectedGrade])
 
   const selectedQuestionRemixSignature = useMemo(
     () => buildQuestionRemixCompatibilitySignature(qbItems.filter((item: any) => qbSelectedIds.has(String(item?.id || '')))),
@@ -14500,7 +14509,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setQbBulkBusy(true)
     setQbBulkError(null)
     try {
-      const res = await fetch(`/api/question-remixes/${encodeURIComponent(questionRemixAppendTargetId)}`, {
+      const params = new URLSearchParams()
+      if (selectedGrade) params.set('grade', selectedGrade)
+      const suffix = params.toString() ? `?${params.toString()}` : ''
+      const res = await fetch(`/api/question-remixes/${encodeURIComponent(questionRemixAppendTargetId)}${suffix}`, {
         method: 'PATCH',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -14518,7 +14530,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setQbBulkBusy(false)
     }
-  }, [loadQuestionRemixes, openQuestionRemixCreate, qbSelectedIds, questionRemixAppendTargetId])
+  }, [loadQuestionRemixes, openQuestionRemixCreate, qbSelectedIds, questionRemixAppendTargetId, selectedGrade])
 
   const openQuestionRemixEdit = useCallback((remixId: string) => {
     const source = (selectedQuestionRemix?.id === remixId ? selectedQuestionRemix : null)
@@ -14573,6 +14585,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: questionRemixDraft.name.trim(),
+            grade: selectedGrade,
             questionIds,
           }),
         })
@@ -14582,7 +14595,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       }
 
       for (const remixId of questionRemixCreateExistingIds) {
-        const res = await fetch(`/api/question-remixes/${encodeURIComponent(remixId)}`, {
+        const params = new URLSearchParams()
+        if (selectedGrade) params.set('grade', selectedGrade)
+        const suffix = params.toString() ? `?${params.toString()}` : ''
+        const res = await fetch(`/api/question-remixes/${encodeURIComponent(remixId)}${suffix}`, {
           method: 'PATCH',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
@@ -14605,7 +14621,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setQuestionRemixCreateBusy(false)
     }
-  }, [closeQuestionRemixCreate, loadQuestionRemixes, qbSelectedIds, questionRemixCreateExistingIds, questionRemixCreateNewEnabled, questionRemixDraft])
+  }, [closeQuestionRemixCreate, loadQuestionRemixes, qbSelectedIds, questionRemixCreateExistingIds, questionRemixCreateNewEnabled, questionRemixDraft, selectedGrade])
 
   const toggleQuestionRemixCreateExisting = useCallback((remixId: string) => {
     setQuestionRemixCreateExistingIds((prev) => (
@@ -14634,7 +14650,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setQuestionRemixCrudBusy(true)
     setQuestionRemixCrudError(null)
     try {
-      const res = await fetch(`/api/question-remixes/${encodeURIComponent(questionRemixCrudTargetId)}`, {
+      const params = new URLSearchParams()
+      if (selectedGrade) params.set('grade', selectedGrade)
+      const suffix = params.toString() ? `?${params.toString()}` : ''
+      const res = await fetch(`/api/question-remixes/${encodeURIComponent(questionRemixCrudTargetId)}${suffix}`, {
         method: 'DELETE',
         credentials: 'same-origin',
       })
@@ -14659,7 +14678,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setQuestionRemixCrudBusy(false)
     }
-  }, [closeQuestionRemixCrud, closeQuestionRemixEdit, loadQuestionRemixes, questionRemixAppendTargetId, questionRemixCrudTargetId, questionRemixEditTargetId, selectedQuestionRemixId])
+  }, [closeQuestionRemixCrud, closeQuestionRemixEdit, loadQuestionRemixes, questionRemixAppendTargetId, questionRemixCrudTargetId, questionRemixEditTargetId, selectedGrade, selectedQuestionRemixId])
 
   const submitQuestionRemixEdit = useCallback(async () => {
     if (!questionRemixEditTargetId) {
@@ -14679,7 +14698,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setQuestionRemixEditBusy(true)
     setQuestionRemixEditError(null)
     try {
-      const res = await fetch(`/api/question-remixes/${encodeURIComponent(questionRemixEditTargetId)}`, {
+      const params = new URLSearchParams()
+      if (selectedGrade) params.set('grade', selectedGrade)
+      const suffix = params.toString() ? `?${params.toString()}` : ''
+      const res = await fetch(`/api/question-remixes/${encodeURIComponent(questionRemixEditTargetId)}${suffix}`, {
         method: 'PATCH',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -14695,7 +14717,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setQuestionRemixEditBusy(false)
     }
-  }, [closeQuestionRemixEdit, loadQuestionRemixDetail, loadQuestionRemixes, questionRemixDraft, questionRemixEditTargetId])
+  }, [closeQuestionRemixEdit, loadQuestionRemixDetail, loadQuestionRemixes, questionRemixDraft, questionRemixEditTargetId, selectedGrade])
 
   const toggleQuestionRemixInviteUser = useCallback((userId: string) => {
     setQuestionRemixDraft((prev) => ({
@@ -15163,6 +15185,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       if (q.sourceId) {
         params.set('sourceId', String(q.sourceId))
         paperDocParams.set('sourceId', String(q.sourceId))
+        if (q.grade) {
+          params.set('grade', String(q.grade))
+          paperDocParams.set('grade', String(q.grade))
+        } else if (selectedGrade) {
+          params.set('grade', selectedGrade)
+          paperDocParams.set('grade', selectedGrade)
+        }
       } else {
         params.set('grade', q.grade)
         params.set('year', String(q.year))

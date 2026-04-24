@@ -15,6 +15,8 @@ export type FeedPost = {
     sourceId?: string | null
     questionId?: string | null
     questionNumber?: string | null
+    remixMmd?: string | null
+    remixSelectedQuestionNumber?: string | null
   } | null
   hasStructuredContent?: boolean
   grade?: string | null

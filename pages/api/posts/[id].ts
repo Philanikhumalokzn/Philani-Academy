@@ -33,12 +33,16 @@ function parseComposerMeta(value: unknown): SocialPostComposerMeta | null {
   const sourceId = typeof raw.sourceId === 'string' ? raw.sourceId.trim() : ''
   const questionId = typeof raw.questionId === 'string' ? raw.questionId.trim() : ''
   const questionNumber = typeof raw.questionNumber === 'string' ? raw.questionNumber.trim() : ''
-  if (!origin && !sourceId && !questionId && !questionNumber) return null
+  const remixMmd = typeof raw.remixMmd === 'string' ? raw.remixMmd.trim() : ''
+  const remixSelectedQuestionNumber = typeof raw.remixSelectedQuestionNumber === 'string' ? raw.remixSelectedQuestionNumber.trim() : ''
+  if (!origin && !sourceId && !questionId && !questionNumber && !remixMmd && !remixSelectedQuestionNumber) return null
   return {
     ...(origin ? { origin } : {}),
     ...(sourceId ? { sourceId } : {}),
     ...(questionId ? { questionId } : {}),
     ...(questionNumber ? { questionNumber } : {}),
+    ...(remixMmd ? { remixMmd } : {}),
+    ...(remixSelectedQuestionNumber ? { remixSelectedQuestionNumber } : {}),
   }
 }
 

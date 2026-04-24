@@ -8,6 +8,8 @@ export type SocialPostComposerMeta = {
   sourceId?: string | null
   questionId?: string | null
   questionNumber?: string | null
+  remixMmd?: string | null
+  remixSelectedQuestionNumber?: string | null
 }
 
 type SocialPostComposerEnvelope = {
@@ -34,12 +36,16 @@ function normalizeComposerMeta(meta: SocialPostComposerMeta | null | undefined):
   const sourceId = typeof meta.sourceId === 'string' ? meta.sourceId.trim() : ''
   const questionId = typeof meta.questionId === 'string' ? meta.questionId.trim() : ''
   const questionNumber = typeof meta.questionNumber === 'string' ? meta.questionNumber.trim() : ''
-  if (!origin && !sourceId && !questionId && !questionNumber) return null
+  const remixMmd = typeof meta.remixMmd === 'string' ? meta.remixMmd.trim() : ''
+  const remixSelectedQuestionNumber = typeof meta.remixSelectedQuestionNumber === 'string' ? meta.remixSelectedQuestionNumber.trim() : ''
+  if (!origin && !sourceId && !questionId && !questionNumber && !remixMmd && !remixSelectedQuestionNumber) return null
   return {
     ...(origin ? { origin } : {}),
     ...(sourceId ? { sourceId } : {}),
     ...(questionId ? { questionId } : {}),
     ...(questionNumber ? { questionNumber } : {}),
+    ...(remixMmd ? { remixMmd } : {}),
+    ...(remixSelectedQuestionNumber ? { remixSelectedQuestionNumber } : {}),
   }
 }
 

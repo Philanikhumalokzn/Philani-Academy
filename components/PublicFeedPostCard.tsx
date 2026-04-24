@@ -24,6 +24,8 @@ export type PublicFeedPostCardProps = {
     sourceId?: string | null
     questionId?: string | null
     questionNumber?: string | null
+    remixMmd?: string | null
+    remixSelectedQuestionNumber?: string | null
   } | null
   expanded?: boolean
   onOpen?: () => void
@@ -71,13 +73,15 @@ export default function PublicFeedPostCard({
   const showAuthorNameTick = authorVerified && !hasAvatar
   const normalizedBlocks = Array.isArray(contentBlocks) && contentBlocks.length > 0 ? normalizePostReplyBlocks(contentBlocks) : []
   const enableMmdBodyViewer = String(composerMeta?.origin || '') === 'qb-question-post'
+  const remixMmd = enableMmdBodyViewer ? String(composerMeta?.remixMmd || '').trim() : ''
+  const remixSelectedQuestionNumber = enableMmdBodyViewer ? String(composerMeta?.remixSelectedQuestionNumber || composerMeta?.questionNumber || '').trim() : ''
   const contentRows = normalizedBlocks.length > 0
     ? normalizedBlocks
     : [
         ...(safePrompt ? [{ id: '__legacy_text__', type: 'text', text: safePrompt } as PostReplyBlock] : []),
         ...(safeImageUrl ? [{ id: '__legacy_image__', type: 'image', imageUrl: safeImageUrl } as PostReplyBlock] : []),
       ]
-  const mmdBodyContent = enableMmdBodyViewer
+  const mmdBodyContent = remixMmd || (enableMmdBodyViewer
     ? contentRows
         .map((block) => {
           if (block.type === 'text') return String(block.text || '').trim()
@@ -98,7 +102,7 @@ export default function PublicFeedPostCard({
         })
         .filter(Boolean)
         .join('\n\n')
-    : ''
+      : '')
   const isLatexOnlyBody = !enableMmdBodyViewer && contentRows.length > 0 && contentRows.every((block) => block.type === 'latex')
 
   const openResolvedImageViewer = useCallback((url: string, titleText: string) => {
@@ -157,7 +161,13 @@ export default function PublicFeedPostCard({
       </div>
       {enableMmdBodyViewer && mmdBodyContent ? (
         <div className="mt-2 px-3">
-          <MmdPaperViewer mmd={mmdBodyContent} compact />
+          <MmdPaperViewer
+            mmd={mmdBodyContent}
+            compact
+            centerInlineMath
+            autoScrollToSelectedQuestion={false}
+            selectedQuestionNumber={remixSelectedQuestionNumber || undefined}
+          />
         </div>
       ) : contentRows.map((block, index) => {
         const spacingClassName = index === 0 ? 'mt-1.5' : 'mt-3'

@@ -47,7 +47,7 @@ import { renderQuestionTextWithInlineLatex as renderQuestionTextWithInlineLatexS
 import { toDisplayFileName } from '../lib/fileName'
 import { useTapToPeek } from '../lib/useTapToPeek'
 import { useOverlayRestore } from '../lib/overlayRestore'
-import { buildSocialPostComposerFields } from '../lib/postComposerContent'
+import { buildSocialPostComposerFields, type SocialPostComposerMeta } from '../lib/postComposerContent'
 import { applyOwnFeedPostResponse, syncFeedPostThreadState } from '../lib/feedContract'
 import { usePostLongPressCrud, type PostCrudTarget } from '../lib/postCrud'
 import { buildHydratedCreatedPost, patchFeedPost } from '../lib/postComposerShared'
@@ -1263,7 +1263,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [challengeAudienceDraft, setChallengeAudienceDraft] = useState<'public' | 'grade' | 'private'>('public')
   const [challengeMaxAttempts, setChallengeMaxAttempts] = useState<string>('unlimited')
   const [challengeImageUrl, setChallengeImageUrl] = useState<string | null>(null)
-  const [postComposerMetaDraft, setPostComposerMetaDraft] = useState<{ origin?: string; sourceId?: string | null; questionId?: string | null; questionNumber?: string | null } | null>(null)
+  const [postComposerMetaDraft, setPostComposerMetaDraft] = useState<SocialPostComposerMeta | null>(null)
   const [challengeParseOnUpload, setChallengeParseOnUpload] = useState(false)
   const [challengeParsedJsonText, setChallengeParsedJsonText] = useState<string | null>(null)
   const [challengeParsedOpen, setChallengeParsedOpen] = useState(false)
@@ -2061,6 +2061,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [socialLikeCountByItemKey, setSocialLikeCountByItemKey] = useState<Record<string, number>>({})
   const [socialReplyCountByItemKey, setSocialReplyCountByItemKey] = useState<Record<string, number>>({})
   const [socialShareCountByItemKey, setSocialShareCountByItemKey] = useState<Record<string, number>>({})
+  const [qbPostingToTimelineByItemKey, setQbPostingToTimelineByItemKey] = useState<Record<string, boolean>>({})
   const [qbSolutionAccessBusyByResponseId, setQbSolutionAccessBusyByResponseId] = useState<Record<string, boolean>>({})
   const [lastSharedSocialItemKey, setLastSharedSocialItemKey] = useState<string | null>(null)
   const [interactiveViewportSavingByResponseId, setInteractiveViewportSavingByResponseId] = useState<Record<string, boolean>>({})
@@ -9292,23 +9293,63 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     void openPostSolveComposer(draft)
   }, [buildQbQuestionPostDraft, openPostSolveComposer])
 
-  const openQbQuestionPostComposer = useCallback((question: any) => {
+  const postQbQuestionToTimeline = useCallback(async (question: any, options?: { visibleQuestionMmd?: string | null }) => {
     const draft = buildQbQuestionPostDraft(question)
-    openCreateChallengeComposer()
-    setChallengeTitleDraft(String(draft.title || ''))
-    setChallengePromptDraft(String(draft.prompt || ''))
-    setPostSolveBlocks(Array.isArray(draft.contentBlocks) ? draft.contentBlocks : [])
-    setPostSolveText('')
-    setChallengeImageUrl(typeof draft.imageUrl === 'string' ? draft.imageUrl : null)
-    setPostComposerMetaDraft({
+    const questionId = String(draft.questionId || question?.id || draft.id || '').trim()
+    const socialItemKey = questionId ? `qb-question:${questionId}` : `qb-question:${String(draft.id || '').trim()}`
+    if (!socialItemKey || qbPostingToTimelineByItemKey[socialItemKey]) return
+
+    const composerMeta: SocialPostComposerMeta = {
       origin: 'qb-question-post',
       sourceId: draft.sourceId || null,
       questionId: draft.questionId || null,
       questionNumber: draft.questionNumber || null,
-    })
-    setChallengeAudienceDraft('public')
-    setChallengeMaxAttempts('unlimited')
-  }, [buildQbQuestionPostDraft, openCreateChallengeComposer])
+      remixMmd: typeof options?.visibleQuestionMmd === 'string' ? options.visibleQuestionMmd.trim() || null : null,
+      remixSelectedQuestionNumber: draft.questionNumber || null,
+    }
+
+    setQbPostingToTimelineByItemKey((prev) => ({ ...prev, [socialItemKey]: true }))
+    try {
+      const res = await fetch('/api/posts', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: String(draft.title || ''),
+          prompt: String(draft.prompt || ''),
+          imageUrl: typeof draft.imageUrl === 'string' ? draft.imageUrl : null,
+          contentBlocks: Array.isArray(draft.contentBlocks) ? draft.contentBlocks : [],
+          composerMeta,
+          audience: 'public',
+          maxAttempts: null,
+          grade: selectedGrade || normalizeGradeInput((session as any)?.user?.grade as string | undefined) || null,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data?.message || `Failed to post (${res.status})`)
+        return
+      }
+
+      const createdItem = buildHydratedCreatedPost(data, session, String(viewerId || ''), selectedGrade || null)
+      setTimelineChallenges((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
+      setStudentFeedPosts((prev: any[]) => sortDashboardItemsByCreatedAt([createdItem, ...(Array.isArray(prev) ? prev : [])]))
+      setSocialShareCountByItemKey((prev) => ({
+        ...prev,
+        [socialItemKey]: (prev[socialItemKey] ?? 0) + 1,
+      }))
+      markSocialShareHandled(socialItemKey)
+      alert('Posted to timeline')
+    } catch (err: any) {
+      alert(err?.message || 'Failed to post')
+    } finally {
+      setQbPostingToTimelineByItemKey((prev) => {
+        const next = { ...prev }
+        delete next[socialItemKey]
+        return next
+      })
+    }
+  }, [buildQbQuestionPostDraft, markSocialShareHandled, qbPostingToTimelineByItemKey, selectedGrade, session, viewerId])
 
   const getQbQuestionReplyCount = (question: any) => {
     const candidates = [question?.solutionCount, question?.replyCount, question?.responseCount, question?.threadResponseCount]
@@ -9319,7 +9360,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return 0
   }
 
-  const renderQbQuestionSocialActions = (question: any) => {
+  const renderQbQuestionSocialActions = (question: any, options?: { visibleQuestionMmd?: string | null }) => {
     const draft = buildQbQuestionPostDraft(question)
     const itemId = String(draft.id || question?.id || '').trim()
     if (!itemId) return null
@@ -9371,7 +9412,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             {
               key: `${socialItemKey}:share`,
               label: 'Share',
-              onClick: () => openQbQuestionPostComposer(question),
+              statusLabel: qbPostingToTimelineByItemKey[socialItemKey] ? 'Posting...' : lastSharedSocialItemKey === socialItemKey ? 'Posted' : undefined,
+              onClick: () => {
+                void postQbQuestionToTimeline(question, {
+                  visibleQuestionMmd: typeof options?.visibleQuestionMmd === 'string' ? options.visibleQuestionMmd : null,
+                })
+              },
+              disabled: qbPostingToTimelineByItemKey[socialItemKey],
               icon: (
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
                   <path d="M14 5L20 11L14 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -16790,7 +16837,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           </div>
                         </div>
 
-                        {renderQbQuestionSocialActions(q)}
+                        {renderQbQuestionSocialActions(q, { visibleQuestionMmd })}
 
                         {/* Row actions */}
                         <div className="mt-2 flex items-center justify-between gap-2">

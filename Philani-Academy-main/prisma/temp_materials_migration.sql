@@ -1,2 +1,0 @@
--- Placeholder file intentionally left empty. LessonMaterial migration added in
--- prisma/migrations/20251113132000_add_lesson_materials/migration.sql.

@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://philani-academy.vercel.app/sitemap.xml

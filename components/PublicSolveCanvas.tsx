@@ -213,25 +213,10 @@ export function PublicSolvePromptReferenceLayer({
 
   if (presentation === 'background') {
     return (
-      <div className="relative isolate flex min-h-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.96))]" data-testid="public-solve-reference-layer">
-        <div
-          data-testid="public-solve-reference-viewport"
-          className="absolute inset-0 z-[1] overflow-auto"
-          style={{ pointerEvents: 'none' }}
-        >
-          <div className="mx-auto min-h-full w-full max-w-3xl px-5 py-6 pb-28 sm:px-8" style={promptDocumentStyle}>
-            <article
-              data-testid="public-solve-reference-card"
-              className="overflow-hidden rounded-[24px] border border-black/10 bg-white text-left shadow-[0_18px_40px_rgba(15,23,42,0.08)]"
-            >
-              {promptCardInner}
-            </article>
-          </div>
-        </div>
-
+      <div className="relative isolate flex min-h-0 flex-1 flex-col overflow-hidden bg-transparent" data-testid="public-solve-reference-layer">
         <div
           data-testid="public-solve-reference-workspace"
-          className="relative z-[2] min-h-0 flex-1"
+          className="relative z-[1] min-h-0 flex-1"
           style={{ pointerEvents: 'auto' }}
         >
           {children}
@@ -338,7 +323,7 @@ export function PublicSolveOpacityWorkspace({
   authorAvatarUrl,
   referenceBody,
   children,
-  canvasLabel = 'Adjust to see post',
+  canvasLabel = 'Reveal page',
   outerClassName = '',
   contentPaddingClassName = 'relative flex-1 min-h-0 px-3 py-2 sm:px-6 sm:py-4',
   frameClassName = 'relative flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.10)]',
@@ -425,6 +410,8 @@ export function PublicSolveOpacityWorkspace({
 
   const canvasOpacity = canvasOpacityPercent / 100
   const resolvedSliderVisible = sliderVisible && chromeVisible
+  const frameOpacity = referencePresentation === 'background' ? canvasOpacity : 1
+  const workspaceOpacity = referencePresentation === 'background' ? 1 : canvasOpacity
 
   return (
     <div className={`flex h-full flex-col ${outerClassName}`.trim()}>
@@ -451,14 +438,20 @@ export function PublicSolveOpacityWorkspace({
               step={1}
               value={canvasOpacityPercent}
               onChange={(event) => setCanvasOpacityPercent(Number(event.target.value || 0))}
-              aria-label="Prompt blend"
+              aria-label="Overlay opacity"
               className="h-32 w-5 cursor-pointer bg-transparent [-webkit-appearance:slider-vertical] [appearance:slider-vertical]"
             />
             <div className="text-[10px] font-semibold text-slate-500">{canvasOpacityPercent}%</div>
           </div>
         </div>
 
-        <div className={frameClassName}>
+        <div
+          className={frameClassName}
+          style={{
+            opacity: frameOpacity,
+            transition: 'opacity 160ms ease',
+          }}
+        >
           <PublicSolvePromptReferenceLayer
             title={title}
             prompt={prompt}
@@ -471,7 +464,7 @@ export function PublicSolveOpacityWorkspace({
             <div
               className={canvasSurfaceClassName}
               style={{
-                opacity: canvasOpacity,
+                opacity: workspaceOpacity,
                 transition: 'opacity 160ms ease',
               }}
             >
@@ -1537,6 +1530,7 @@ export function PublicSolveComposer({
   const [isEraserActive, setIsEraserActive] = useState(false)
   const showFullscreenClose = Boolean(fullscreenCanvas && onCancel)
   const showFooterCancel = Boolean(onCancel) && !showFullscreenClose
+  const revealsBackgroundPage = referencePresentation === 'background'
 
   const clearCanvasChromeRevealTimeout = useCallback(() => {
     if (canvasChromeRevealTimeoutRef.current) {
@@ -1768,7 +1762,7 @@ export function PublicSolveComposer({
   }, [composerInstanceKey, fullscreenCanvas, isReady, syncHistoryActionState])
 
   return (
-    <div className={`relative flex h-full min-h-0 flex-col bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_32%),linear-gradient(180deg,#eef4ff_0%,#f8fbff_28%,#ffffff_100%)] text-slate-900 ${fullscreenCanvas ? 'overflow-hidden' : ''}`.trim()}>
+    <div className={`relative flex h-full min-h-0 flex-col ${revealsBackgroundPage ? 'bg-transparent' : 'bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_32%),linear-gradient(180deg,#eef4ff_0%,#f8fbff_28%,#ffffff_100%)]'} text-slate-900 ${fullscreenCanvas ? 'overflow-hidden' : ''}`.trim()}>
       {showFullscreenClose ? (
         <button
           type="button"
@@ -1793,12 +1787,14 @@ export function PublicSolveComposer({
         resetKey={composerInstanceKey}
         outerClassName="bg-transparent"
         contentPaddingClassName={fullscreenCanvas ? 'relative flex-1 min-h-0 px-0 py-0' : undefined}
-        frameClassName={fullscreenCanvas ? 'relative flex h-full min-h-0 flex-col overflow-hidden rounded-none border-0 bg-white shadow-none' : undefined}
-        canvasSurfaceClassName={fullscreenCanvas ? 'flex h-full min-h-0 flex-col bg-white' : undefined}
+        frameClassName={fullscreenCanvas
+          ? `relative flex h-full min-h-0 flex-col overflow-hidden rounded-none border-0 ${revealsBackgroundPage ? 'bg-white/88 backdrop-blur-md' : 'bg-white'} shadow-none`
+          : undefined}
+        canvasSurfaceClassName={fullscreenCanvas ? `flex h-full min-h-0 flex-col ${revealsBackgroundPage ? 'bg-white/88' : 'bg-white'}` : undefined}
         referencePresentation={referencePresentation}
         chromeVisible={canvasChromeVisible}
       >
-        <div ref={canvasShellRef} className="relative min-h-0 flex-1 bg-white" style={{ touchAction: 'none' }}>
+        <div ref={canvasShellRef} className={`relative min-h-0 flex-1 ${revealsBackgroundPage ? 'bg-white/88' : 'bg-white'}`} style={{ touchAction: 'none' }}>
           <LessonStyledExcalidraw
             key={`public-solve-composer-${composerInstanceKey}`}
             className={`h-full ${fullscreenCanvas ? 'philani-excalidraw-safe-fullscreen' : ''} ${fullscreenCanvas && !canvasChromeVisible ? 'philani-excalidraw-chrome-hidden' : ''}`.trim()}
@@ -1837,7 +1833,7 @@ export function PublicSolveComposer({
         </div>
       </PublicSolveOpacityWorkspace>
 
-      <div className={`border-t border-slate-200 bg-white/92 px-4 py-3 backdrop-blur-xl sm:px-6 ${fullscreenCanvas ? 'pb-[calc(var(--app-safe-bottom)+0.9rem)] pt-3' : ''}`.trim()}>
+      <div className={`border-t ${revealsBackgroundPage ? 'border-slate-200/75 bg-white/78' : 'border-slate-200 bg-white/92'} px-4 py-3 backdrop-blur-xl sm:px-6 ${fullscreenCanvas ? 'pb-[calc(var(--app-safe-bottom)+0.9rem)] pt-3' : ''}`.trim()}>
         <div className={fullscreenCanvas ? 'grid grid-cols-[1fr_auto_1fr] items-center gap-3' : 'flex items-center justify-between gap-3'}>
           {fullscreenCanvas ? (
             <div className="inline-flex items-center overflow-hidden rounded-full border border-slate-200 bg-white shadow-sm justify-self-start">

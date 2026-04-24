@@ -479,8 +479,8 @@ export default function PostReplyComposerOverlays({
 
       {canvasOverlay ? (
         <OverlayPortal>
-          <div className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.58)] backdrop-blur-sm p-0" role="dialog" aria-modal="true" aria-label="Post solve canvas">
-            <div className="mx-auto flex h-full w-full max-w-none flex-col overflow-hidden rounded-none border-0 bg-white shadow-none">
+          <div className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.14)] backdrop-blur-[1px] p-0" role="dialog" aria-modal="true" aria-label="Post solve canvas">
+            <div className="mx-auto flex h-full w-full max-w-none flex-col overflow-hidden rounded-none border-0 bg-transparent shadow-none">
               <PublicSolveComposer
                 title={canvasOverlay.title}
                 prompt={canvasOverlay.prompt}
@@ -510,11 +510,11 @@ export default function PostReplyComposerOverlays({
 
       {typedOverlay ? (
         <OverlayPortal>
-          <div className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.7)] backdrop-blur-sm p-0 sm:p-4" role="dialog" aria-modal="true" aria-label="Typed post response">
+          <div className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.14)] backdrop-blur-[1px] p-0 sm:p-4" role="dialog" aria-modal="true" aria-label="Typed post response">
             {(() => {
               const typedPostActionsVisible = !isMobile || typedChromeVisible
               return (
-                <div className="relative mx-auto flex h-full w-full max-w-none sm:max-w-7xl flex-col overflow-hidden rounded-none sm:rounded-[32px] border-0 sm:border sm:border-white/15 bg-transparent sm:bg-[#030712] shadow-none sm:shadow-[0_30px_80px_rgba(2,6,23,0.36)]">
+                <div className="relative mx-auto flex h-full w-full max-w-none sm:max-w-7xl flex-col overflow-hidden rounded-none sm:rounded-[32px] border-0 sm:border sm:border-white/15 bg-transparent shadow-none sm:shadow-[0_30px_80px_rgba(2,6,23,0.18)]">
                   <div className={`pointer-events-none absolute inset-0 z-[5] live-window--canvas ${typedPostActionsVisible ? 'live-window--chrome-visible' : ''}`}>
                     <div className="live-window__header" style={{ top: 'calc(10px + max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)))', left: 'calc(12px + max(var(--app-safe-left, 0px), env(safe-area-inset-left, 0px)))', right: 'calc(12px + max(var(--app-safe-right, 0px), env(safe-area-inset-right, 0px)))' }}>
                       <button type="button" className="pointer-events-auto rounded-full border border-white/15 bg-white/6 px-3 py-1.5 text-[0.85rem] font-semibold leading-none text-white transition hover:bg-white/10 disabled:opacity-50" onClick={onSubmitTyped} disabled={submitting || !String(typedLatex || '').trim()}>

@@ -16,6 +16,378 @@ const VALID_TOPICS = [
   'Calculus', 'Sequences and Series', 'Polynomials', 'Other',
 ]
 
+const SEARCH_STOPWORDS = new Set([
+  'the', 'a', 'an', 'and', 'or', 'of', 'to', 'for', 'in', 'on', 'with',
+  'find', 'determine', 'calculate', 'question', 'questions', 'exam', 'grade',
+])
+
+const SEARCH_MONTH_ALIASES = [
+  ['jan', 'January'],
+  ['january', 'January'],
+  ['feb', 'February'],
+  ['february', 'February'],
+  ['mar', 'March'],
+  ['march', 'March'],
+  ['apr', 'April'],
+  ['april', 'April'],
+  ['may', 'May'],
+  ['jun', 'June'],
+  ['june', 'June'],
+  ['jul', 'July'],
+  ['july', 'July'],
+  ['aug', 'August'],
+  ['august', 'August'],
+  ['sep', 'September'],
+  ['sept', 'September'],
+  ['september', 'September'],
+  ['oct', 'October'],
+  ['october', 'October'],
+  ['nov', 'November'],
+  ['november', 'November'],
+  ['dec', 'December'],
+  ['december', 'December'],
+] as const
+
+const SEARCH_TOPIC_ALIASES = [
+  ['algebra', 'Algebra'],
+  ['function', 'Functions'],
+  ['functions', 'Functions'],
+  ['number pattern', 'Number Patterns'],
+  ['number patterns', 'Number Patterns'],
+  ['pattern', 'Number Patterns'],
+  ['patterns', 'Number Patterns'],
+  ['finance', 'Finance'],
+  ['trig', 'Trigonometry'],
+  ['trigonometry', 'Trigonometry'],
+  ['euclid', 'Euclidean Geometry'],
+  ['euclidean geometry', 'Euclidean Geometry'],
+  ['analytical geometry', 'Analytical Geometry'],
+  ['analytic geometry', 'Analytical Geometry'],
+  ['coordinate geometry', 'Analytical Geometry'],
+  ['stats', 'Statistics'],
+  ['statistics', 'Statistics'],
+  ['prob', 'Probability'],
+  ['probability', 'Probability'],
+  ['calc', 'Calculus'],
+  ['calculus', 'Calculus'],
+  ['sequence', 'Sequences and Series'],
+  ['sequences', 'Sequences and Series'],
+  ['series', 'Sequences and Series'],
+  ['sequences and series', 'Sequences and Series'],
+  ['polynomial', 'Polynomials'],
+  ['polynomials', 'Polynomials'],
+  ['other', 'Other'],
+] as const
+
+type ParsedExamQuestionSearch = {
+  normalized: string
+  tokens: string[]
+  freeTokens: string[]
+  year: number | null
+  month: { key: string; value: string } | null
+  paper: number | null
+  level: number | null
+  questionNumber: string
+  topic: { key: string; value: string } | null
+}
+
+const SEARCH_MONTH_LOOKUP = new Map<string, { key: string; value: string }>(
+  SEARCH_MONTH_ALIASES.map(([alias, value]) => [alias, { key: value.toLowerCase(), value }]),
+)
+
+const SEARCH_TOPIC_LOOKUP = new Map<string, { key: string; value: string }>(
+  [...VALID_TOPICS.map((topic) => [topic, topic] as const), ...SEARCH_TOPIC_ALIASES].map(([alias, value]) => [
+    normalizeSearchValue(alias),
+    { key: normalizeSearchValue(value), value },
+  ]),
+)
+
+const SEARCH_TOPIC_KEYS = Array.from(SEARCH_TOPIC_LOOKUP.keys()).sort((left, right) => right.length - left.length)
+
+function normalizeSearchValue(value: unknown): string {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9.\s]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function tokenizeSearchValue(value: unknown): string[] {
+  return normalizeSearchValue(value).split(' ').filter(Boolean)
+}
+
+function uniqStrings(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)))
+}
+
+function extractSearchQuestionNumber(value: string): string {
+  const normalized = normalizeSearchValue(value)
+  const explicitMatch = normalized.match(/\b(?:question|q|no)\s*(\d+(?:\.\d+){0,6})\b/)
+  if (explicitMatch?.[1]) return normalizeHierarchyQuestionNumber(explicitMatch[1])
+  const dottedToken = normalized.split(' ').find((token) => /^\d+\.\d+(?:\.\d+){0,5}$/.test(token))
+  if (dottedToken) return normalizeHierarchyQuestionNumber(dottedToken)
+  return ''
+}
+
+function parseExamQuestionSearchQuery(query: string): ParsedExamQuestionSearch {
+  const normalized = normalizeSearchValue(query)
+  const tokens = tokenizeSearchValue(normalized)
+  const yearMatch = normalized.match(/\b(19\d{2}|20\d{2})\b/)
+  const paperMatch = normalized.match(/\b(?:paper|p)\s*([123])\b/) || normalized.match(/\bp([123])\b/)
+  const levelMatch = normalized.match(/\b(?:level|l|cognitive)\s*([1-7])\b/) || normalized.match(/\bl([1-7])\b/)
+
+  let month: { key: string; value: string } | null = null
+  for (const token of tokens) {
+    const hit = SEARCH_MONTH_LOOKUP.get(token)
+    if (hit) {
+      month = hit
+      break
+    }
+  }
+
+  let topic: { key: string; value: string } | null = null
+  for (const topicKey of SEARCH_TOPIC_KEYS) {
+    if (!normalized.includes(topicKey)) continue
+    const hit = SEARCH_TOPIC_LOOKUP.get(topicKey)
+    if (hit) {
+      topic = hit
+      break
+    }
+  }
+
+  const questionNumber = extractSearchQuestionNumber(normalized)
+  const blockedTokens = new Set<string>()
+  if (yearMatch?.[1]) blockedTokens.add(yearMatch[1])
+  if (paperMatch?.[1]) {
+    blockedTokens.add(`p${paperMatch[1]}`)
+    blockedTokens.add(`paper${paperMatch[1]}`)
+  }
+  if (levelMatch?.[1]) {
+    blockedTokens.add(`l${levelMatch[1]}`)
+    blockedTokens.add(`level${levelMatch[1]}`)
+  }
+  if (month?.key) blockedTokens.add(month.key)
+  if (questionNumber) blockedTokens.add(questionNumber)
+  if (topic?.key) {
+    for (const token of topic.key.split(' ')) blockedTokens.add(token)
+  }
+
+  const freeTokens = tokens.filter((token) => {
+    if (token.length <= 1) return false
+    if (SEARCH_STOPWORDS.has(token)) return false
+    if (blockedTokens.has(token)) return false
+    return true
+  })
+
+  return {
+    normalized,
+    tokens,
+    freeTokens,
+    year: yearMatch?.[1] ? Number(yearMatch[1]) : null,
+    month,
+    paper: paperMatch?.[1] ? Number(paperMatch[1]) : null,
+    level: levelMatch?.[1] ? Number(levelMatch[1]) : null,
+    questionNumber,
+    topic,
+  }
+}
+
+function isSingleTransposition(a: string, b: string): boolean {
+  if (a.length !== b.length || a.length < 2) return false
+  let firstMismatch = -1
+  let secondMismatch = -1
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] === b[index]) continue
+    if (firstMismatch < 0) {
+      firstMismatch = index
+      continue
+    }
+    if (secondMismatch < 0) {
+      secondMismatch = index
+      continue
+    }
+    return false
+  }
+  return firstMismatch >= 0
+    && secondMismatch === firstMismatch + 1
+    && a[firstMismatch] === b[secondMismatch]
+    && a[secondMismatch] === b[firstMismatch]
+}
+
+function boundedLevenshtein(a: string, b: string, maxDistance: number): number {
+  if (Math.abs(a.length - b.length) > maxDistance) return maxDistance + 1
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index)
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i]
+    let rowMin = current[0]
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      const value = Math.min(
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + cost,
+      )
+      current.push(value)
+      rowMin = Math.min(rowMin, value)
+    }
+    if (rowMin > maxDistance) return maxDistance + 1
+    for (let j = 0; j < current.length; j += 1) previous[j] = current[j]
+  }
+  return previous[b.length]
+}
+
+function getSearchTokenStrength(queryToken: string, candidateToken: string): number {
+  if (!queryToken || !candidateToken) return 0
+  if (queryToken === candidateToken) return 1
+
+  const numericHeavy = /\d/.test(queryToken) || /\d/.test(candidateToken)
+  if ((queryToken.length >= 3 || candidateToken.length >= 3) && (candidateToken.startsWith(queryToken) || queryToken.startsWith(candidateToken))) {
+    return 0.72
+  }
+  if (numericHeavy) return 0
+  if (queryToken[0] !== candidateToken[0]) return 0
+  if (Math.abs(queryToken.length - candidateToken.length) > 2) return 0
+  if (isSingleTransposition(queryToken, candidateToken)) return 0.55
+
+  const maxDistance = queryToken.length >= 8 ? 2 : 1
+  return boundedLevenshtein(queryToken, candidateToken, maxDistance) <= maxDistance ? 0.45 : 0
+}
+
+function getBestSearchTokenStrength(queryToken: string, candidateTokens: string[]): number {
+  let best = 0
+  for (const candidateToken of candidateTokens) {
+    const strength = getSearchTokenStrength(queryToken, candidateToken)
+    if (strength > best) best = strength
+    if (best === 1) return best
+  }
+  return best
+}
+
+function scoreExamQuestionSearch(
+  item: {
+    year: number
+    month: string
+    paper: number
+    questionNumber: string
+    topic: string | null
+    cognitiveLevel: number | null
+    questionText: string
+    latex: string | null
+    tableMarkdown: string | null
+  },
+  parsed: ParsedExamQuestionSearch,
+) {
+  const normalizedQuestion = normalizeExamQuestionContent(item.questionText, item.latex)
+  const questionNumber = normalizeHierarchyQuestionNumber(item.questionNumber)
+  const questionNumberParts = questionNumber ? uniqStrings([questionNumber, ...questionNumber.split('.').filter(Boolean)]) : []
+  const monthKey = normalizeSearchValue(item.month)
+  const topicKey = normalizeSearchValue(item.topic || '')
+  const topicTokens = uniqStrings(tokenizeSearchValue(item.topic || ''))
+  const textTokens = uniqStrings(tokenizeSearchValue(`${normalizedQuestion.questionText} ${item.latex || ''} ${item.tableMarkdown || ''}`)).slice(0, 200)
+  const metaTokens = uniqStrings(tokenizeSearchValue(`${item.year} ${item.month} paper ${item.paper} p${item.paper} ${item.topic || ''} level ${item.cognitiveLevel ?? ''} ${questionNumber}`))
+  const phraseFields = [
+    normalizeSearchValue(normalizedQuestion.questionText),
+    normalizeSearchValue(item.latex || ''),
+    normalizeSearchValue(item.tableMarkdown || ''),
+    normalizeSearchValue(`${item.year} ${item.month} paper ${item.paper} ${item.topic || ''} level ${item.cognitiveLevel ?? ''} ${questionNumber}`),
+  ]
+
+  let score = 0
+  let exactStructuredMatches = 0
+  let exactTokenMatches = 0
+  let phraseMatch = false
+  const coveredDimensions = new Set<string>()
+
+  if (parsed.normalized.length >= 3 && phraseFields.some((field) => field.includes(parsed.normalized))) {
+    score += 15
+    phraseMatch = true
+  }
+
+  if (parsed.year && item.year === parsed.year) {
+    score += 20
+    exactStructuredMatches += 1
+    coveredDimensions.add('year')
+  }
+  if (parsed.month?.key && monthKey === parsed.month.key) {
+    score += 20
+    exactStructuredMatches += 1
+    coveredDimensions.add('month')
+  }
+  if (parsed.paper && item.paper === parsed.paper) {
+    score += 20
+    exactStructuredMatches += 1
+    coveredDimensions.add('paper')
+  }
+  if (parsed.level && item.cognitiveLevel === parsed.level) {
+    score += 20
+    exactStructuredMatches += 1
+    coveredDimensions.add('level')
+  }
+  if (parsed.topic?.value && item.topic === parsed.topic.value) {
+    score += 20
+    exactStructuredMatches += 1
+    coveredDimensions.add('topic')
+  }
+  if (parsed.questionNumber) {
+    if (questionNumber === parsed.questionNumber) {
+      score += 35
+      exactStructuredMatches += 1
+      coveredDimensions.add('questionNumber')
+    } else if (questionNumber.startsWith(`${parsed.questionNumber}.`) || parsed.questionNumber.startsWith(`${questionNumber}.`)) {
+      score += 18
+      coveredDimensions.add('questionNumber')
+    }
+  }
+
+  for (const token of parsed.freeTokens) {
+    const structureStrength = Math.max(
+      getBestSearchTokenStrength(token, topicTokens),
+      getBestSearchTokenStrength(token, questionNumberParts),
+    )
+    const metaStrength = getBestSearchTokenStrength(token, metaTokens)
+    const textStrength = getBestSearchTokenStrength(token, textTokens)
+    const bestStrength = Math.max(structureStrength, metaStrength, textStrength)
+    if (bestStrength <= 0) continue
+
+    if (structureStrength === 1) {
+      score += 12
+      exactTokenMatches += 1
+      coveredDimensions.add(topicKey ? 'topic' : 'questionText')
+      continue
+    }
+
+    if (metaStrength === 1) {
+      score += 9
+      exactTokenMatches += 1
+      coveredDimensions.add('meta')
+      continue
+    }
+
+    if (textStrength === 1) {
+      score += 8
+      exactTokenMatches += 1
+      coveredDimensions.add('questionText')
+      continue
+    }
+
+    score += Math.max(structureStrength * 8, metaStrength * 7, textStrength * 6)
+  }
+
+  score += coveredDimensions.size * 3
+  if (parsed.freeTokens.length > 0 && exactStructuredMatches === 0 && exactTokenMatches === 0 && !phraseMatch) {
+    score -= 5
+  }
+
+  return {
+    score,
+    exactStructuredMatches,
+    exactTokenMatches,
+    phraseMatch,
+  }
+}
+
 function pushUniqueUrl(target: string[], value: unknown) {
   const url = typeof value === 'string' ? value.trim() : ''
   if (!url) return
@@ -762,6 +1134,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const topic = q.topic ? String(q.topic) : undefined
   const cognitiveLevel = q.cognitiveLevel ? parseInt(String(q.cognitiveLevel), 10) : undefined
   const questionNumber = q.questionNumber ? String(q.questionNumber) : undefined
+  const searchQuery = String(q.query || '').trim()
   const sourceId = q.sourceId ? String(q.sourceId) : undefined
   const hideCompositeRoots = ['1', 'true', 'yes'].includes(String(q.hideCompositeRoots || '').toLowerCase())
   const randomize = ['1', 'true', 'yes'].includes(String(q.random || '').toLowerCase())
@@ -772,14 +1145,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const where: any = {}
   if (grade) where.grade = grade
-  if (year && Number.isFinite(year)) where.year = year
-  if (month) where.month = month
-  if (paper && Number.isFinite(paper)) where.paper = paper
-  if (topic) where.topic = topic
-  if (cognitiveLevel && Number.isFinite(cognitiveLevel)) where.cognitiveLevel = cognitiveLevel
-  if (questionNumber) where.questionNumber = { startsWith: questionNumber }
   if (sourceId) where.sourceId = sourceId
   if (approvedOnly) where.approved = true
+  if (!searchQuery) {
+    if (year && Number.isFinite(year)) where.year = year
+    if (month) where.month = month
+    if (paper && Number.isFinite(paper)) where.paper = paper
+    if (topic) where.topic = topic
+    if (cognitiveLevel && Number.isFinite(cognitiveLevel)) where.cognitiveLevel = cognitiveLevel
+    if (questionNumber) where.questionNumber = { startsWith: questionNumber }
+  }
 
   const itemSelect = {
     id: true,
@@ -829,7 +1204,64 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     createdAt: Date
   }> = []
 
-  if (hideCompositeRoots || randomize) {
+  if (searchQuery) {
+    const parsedSearch = parseExamQuestionSearchQuery(searchQuery)
+    const searchWhere: Prisma.ExamQuestionWhereInput = { ...where }
+    if (parsedSearch.year) searchWhere.year = parsedSearch.year
+    if (parsedSearch.month?.value) searchWhere.month = parsedSearch.month.value
+    if (parsedSearch.paper) searchWhere.paper = parsedSearch.paper
+    if (parsedSearch.level) searchWhere.cognitiveLevel = parsedSearch.level
+    if (parsedSearch.topic?.value) searchWhere.topic = parsedSearch.topic.value
+    if (parsedSearch.questionNumber) searchWhere.questionNumber = { startsWith: parsedSearch.questionNumber }
+
+    const allItems = await prisma.examQuestion.findMany({
+      where: searchWhere,
+      orderBy,
+      select: itemSelect,
+    })
+
+    const contextScopeOr: Prisma.ExamQuestionWhereInput[] = Array.from(new Set(allItems.map((item) => buildQuestionScopeKey(item)))).map((scopeKey) => {
+      if (scopeKey.startsWith('source:')) {
+        return { sourceId: scopeKey.slice('source:'.length) }
+      }
+      const payload = scopeKey.slice('paper:'.length).split('|')
+      return {
+        grade: normalizeGradeInput(payload[0]) || undefined,
+        year: Number(payload[1]),
+        month: payload[2],
+        paper: Number(payload[3]),
+      }
+    })
+
+    const relatedContextItems = contextScopeOr.length > 0
+      ? await prisma.examQuestion.findMany({
+          where: {
+            ...(approvedOnly ? { approved: true } : {}),
+            OR: contextScopeOr,
+          },
+          orderBy,
+          select: itemSelect,
+        })
+      : []
+
+    const candidateItems = hideCompositeRoots ? shapeCompositeRootItems(allItems, relatedContextItems) : allItems
+    const scoredItems = candidateItems
+      .map((item) => ({ item, ranking: scoreExamQuestionSearch(item, parsedSearch) }))
+      .filter(({ ranking }) => ranking.score >= (parsedSearch.freeTokens.length > 0 ? 4 : 1) || ranking.exactStructuredMatches > 0 || ranking.phraseMatch)
+      .sort((left, right) => {
+        if (right.ranking.score !== left.ranking.score) return right.ranking.score - left.ranking.score
+        if (right.ranking.exactStructuredMatches !== left.ranking.exactStructuredMatches) return right.ranking.exactStructuredMatches - left.ranking.exactStructuredMatches
+        if (right.ranking.exactTokenMatches !== left.ranking.exactTokenMatches) return right.ranking.exactTokenMatches - left.ranking.exactTokenMatches
+        if (left.ranking.phraseMatch !== right.ranking.phraseMatch) return left.ranking.phraseMatch ? -1 : 1
+        if (right.item.year !== left.item.year) return right.item.year - left.item.year
+        if (left.item.month !== right.item.month) return left.item.month.localeCompare(right.item.month, undefined, { sensitivity: 'base' })
+        if (left.item.paper !== right.item.paper) return left.item.paper - right.item.paper
+        return compareHierarchyQuestionNumbers(left.item.questionNumber, right.item.questionNumber)
+      })
+
+    total = scoredItems.length
+    items = scoredItems.slice(skip, skip + take).map(({ item }) => item)
+  } else if (hideCompositeRoots || randomize) {
     const allItems = await prisma.examQuestion.findMany({
       where,
       orderBy,

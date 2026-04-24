@@ -103,6 +103,7 @@ type DashboardCreateKind = 'quiz' | 'post'
 type StudentMobileTabId = 'timeline' | 'sessions' | 'groups' | 'books' | 'profile'
 type QbRemixBadge = 'year' | 'month' | 'paper' | 'topic' | 'level'
 type QbSearchFilters = {
+  query: string
   year: string
   month: string
   paper: string
@@ -307,6 +308,7 @@ function buildQuestionRemixCompatibilitySignature(items: any[]): QuestionRemixCo
 
 function questionRemixCompatibilitySignatureToFilters(signature?: QuestionRemixCompatibilitySignature | null): QbSearchFilters {
   return {
+    query: '',
     year: signature?.year || '',
     month: signature?.month || '',
     paper: signature?.paper || '',
@@ -2127,6 +2129,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [booksPaperItems, setBooksPaperItems] = useState<BooksPaperItem[]>([])
 
   // Remix state
+  const [qbQuery, setQbQuery] = useState<string>('')
+  const [qbQueryDraft, setQbQueryDraft] = useState<string>('')
   const [qbYear, setQbYear] = useState<string>('')
   const [qbMonth, setQbMonth] = useState<string>('')
   const [qbPaper, setQbPaper] = useState<string>('')
@@ -2141,6 +2145,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [qbRemixMessage, setQbRemixMessage] = useState<string | null>(null)
   const [qbRemixOverlay, setQbRemixOverlay] = useState<QbRemixOverlayState | null>(null)
   const [qbRemixFilters, setQbRemixFilters] = useState<QbSearchFilters | null>(null)
+  const qbLiveSearchTimeoutRef = useRef<number | null>(null)
+  const qbSearchRequestSeqRef = useRef(0)
   const qbRemixOverlayRef = useRef<HTMLDivElement | null>(null)
   const qbRemixGestureRef = useRef<{ startX: number; startY: number; dragging: boolean }>({ startX: 0, startY: 0, dragging: false })
   // Paper context sheet state (View in paper)
@@ -14379,6 +14385,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const renderQuestionTextWithInlineLatex = renderQuestionTextWithInlineLatexShared
 
   const syncQbFilters = (filters: QbSearchFilters) => {
+    setQbQuery(filters.query)
+    setQbQueryDraft(filters.query)
     setQbYear(filters.year)
     setQbMonth(filters.month)
     setQbPaper(filters.paper)
@@ -14399,12 +14407,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const buildQbSearchParams = (filters: QbSearchFilters) => {
     const params = new URLSearchParams()
-    if (filters.year) params.set('year', filters.year)
-    if (filters.month) params.set('month', filters.month)
-    if (filters.paper) params.set('paper', filters.paper)
-    if (filters.topic) params.set('topic', filters.topic)
-    if (filters.level) params.set('cognitiveLevel', filters.level)
-    if (filters.number) params.set('questionNumber', filters.number)
+    const trimmedQuery = filters.query.trim()
+    if (trimmedQuery) {
+      params.set('query', trimmedQuery)
+    } else {
+      if (filters.year) params.set('year', filters.year)
+      if (filters.month) params.set('month', filters.month)
+      if (filters.paper) params.set('paper', filters.paper)
+      if (filters.topic) params.set('topic', filters.topic)
+      if (filters.level) params.set('cognitiveLevel', filters.level)
+      if (filters.number) params.set('questionNumber', filters.number)
+    }
     params.set('hideCompositeRoots', '1')
     params.set('take', '50')
     return params
@@ -14423,6 +14436,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }
 
   const getCurrentQbFilters = (): QbSearchFilters => ({
+    query: qbQuery,
     year: qbYear,
     month: qbMonth,
     paper: qbPaper,
@@ -14436,6 +14450,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       ...getCurrentQbFilters(),
       ...(overrides || {}),
     }
+    const requestSeq = ++qbSearchRequestSeqRef.current
     setQbLoading(true)
     setQbError(null)
     setQbSearched(true)
@@ -14443,6 +14458,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setQbBulkError(null)
     try {
       const data = await fetchQuestionBankResults(filters)
+      if (requestSeq !== qbSearchRequestSeqRef.current) return
       syncQbFilters(filters)
       setQbRemixFilters(null)
       setQbItems(data.items)
@@ -14450,16 +14466,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setQbTotal(data.total)
       setQbRemixMessage(options?.remixMessage ?? null)
     } catch (err: any) {
+      if (requestSeq !== qbSearchRequestSeqRef.current) return
       setQbError(err?.message || 'Search failed')
       setQbItems([])
       setQbTotal(0)
     } finally {
-      setQbLoading(false)
+      if (requestSeq === qbSearchRequestSeqRef.current) {
+        setQbLoading(false)
+      }
     }
   }
 
   const loadRandomRemixResults = async () => {
     const filters: QbSearchFilters = {
+      query: '',
       year: '',
       month: '',
       paper: '',
@@ -14467,6 +14487,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       level: '',
       number: '',
     }
+    const requestSeq = ++qbSearchRequestSeqRef.current
     setQbRemixOverlay(null)
     setQbLoading(true)
     setQbError(null)
@@ -14475,6 +14496,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setQbBulkError(null)
     try {
       const data = await fetchQuestionBankResults(filters, { randomize: true })
+      if (requestSeq !== qbSearchRequestSeqRef.current) return
       syncQbFilters(filters)
       setQbRemixFilters(null)
       setQbItems(data.items)
@@ -14482,11 +14504,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setQbTotal(data.total)
       setQbRemixMessage('Showing a fresh random remix set across all years, months, papers, topics, and levels.')
     } catch (err: any) {
+      if (requestSeq !== qbSearchRequestSeqRef.current) return
       setQbError(err?.message || 'Remix search failed')
       setQbItems([])
       setQbTotal(0)
     } finally {
-      setQbLoading(false)
+      if (requestSeq === qbSearchRequestSeqRef.current) {
+        setQbLoading(false)
+      }
     }
   }
 
@@ -14922,6 +14947,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }
 
   const buildQbQuestionSeedFilters = (q: any): QbSearchFilters => ({
+    query: '',
     year: String(q?.year || ''),
     month: String(q?.month || ''),
     paper: String(q?.paper || ''),
@@ -14985,10 +15011,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const seed = buildQbRemixSeedFilters(q)
     const requested: QbSearchFilters = {
       ...seed,
+      query: '',
       [badge]: nextValue,
       number: '',
     }
 
+    const requestSeq = ++qbSearchRequestSeqRef.current
     setQbRemixOverlay(null)
     setQbLoading(true)
     setQbError(null)
@@ -14999,6 +15027,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     try {
       let candidate = { ...requested }
       let result = await fetchQuestionBankResults(candidate)
+      if (requestSeq !== qbSearchRequestSeqRef.current) return
       const relaxed: QbRemixBadge[] = []
 
       if (result.total === 0) {
@@ -15007,6 +15036,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           candidate = { ...candidate, [softKey]: '' }
           relaxed.push(softKey)
           result = await fetchQuestionBankResults(candidate)
+          if (requestSeq !== qbSearchRequestSeqRef.current) return
           if (result.total > 0) break
         }
       }
@@ -15026,13 +15056,42 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         setQbRemixMessage('Remix search found no matches even after relaxing inherited badges.')
       }
     } catch (err: any) {
+      if (requestSeq !== qbSearchRequestSeqRef.current) return
       setQbError(err?.message || 'Remix search failed')
       setQbItems([])
       setQbTotal(0)
     } finally {
-      setQbLoading(false)
+      if (requestSeq === qbSearchRequestSeqRef.current) {
+        setQbLoading(false)
+      }
     }
   }
+
+  useEffect(() => {
+    if (booksHubTab !== 'remix') return
+
+    const nextQuery = qbQueryDraft.trim()
+    const appliedQuery = qbQuery.trim()
+    if (!qbSearched && !nextQuery) return
+    if (nextQuery === appliedQuery) return
+
+    if (qbLiveSearchTimeoutRef.current) {
+      window.clearTimeout(qbLiveSearchTimeoutRef.current)
+      qbLiveSearchTimeoutRef.current = null
+    }
+
+    qbLiveSearchTimeoutRef.current = window.setTimeout(() => {
+      qbLiveSearchTimeoutRef.current = null
+      void searchQuestionBank({ query: nextQuery })
+    }, nextQuery ? 180 : 120)
+
+    return () => {
+      if (qbLiveSearchTimeoutRef.current) {
+        window.clearTimeout(qbLiveSearchTimeoutRef.current)
+        qbLiveSearchTimeoutRef.current = null
+      }
+    }
+  }, [booksHubTab, qbQuery, qbQueryDraft, qbSearched])
 
   useEffect(() => {
     if (!qbRemixOverlay) return
@@ -16276,6 +16335,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const openQuestionInRemixResults = (question: any) => {
       const targetQuestionId = typeof question?.id === 'string' ? question.id : String(question?.id || '')
       const filters: QbSearchFilters = {
+        query: '',
         year: typeof question?.year === 'number' ? String(question.year) : String(question?.year || ''),
         month: typeof question?.month === 'string' ? question.month : '',
         paper: typeof question?.paper === 'number' ? String(question.paper) : String(question?.paper || ''),
@@ -16486,6 +16546,52 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const renderQuestionBankContent = () => (
     <div>
+      {(() => {
+        const liveQuery = qbQueryDraft.trim()
+        const countLabel = qbLoading
+          ? 'Searching...'
+          : `${qbTotal} result${qbTotal !== 1 ? 's' : ''}${qbItems.length > 0 ? ` (showing ${qbItems.length})` : ''}`
+
+        return (
+          <section className="border-b border-black/10 bg-white px-4 py-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 rounded-full border border-[#d6e4ff] bg-[#f7faff] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                  <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4 shrink-0 text-[#2457a6]">
+                    <path d="M13.5 12.3l3.9 3.9-1.2 1.2-3.9-3.9a6 6 0 1 1 1.2-1.2ZM8.5 13a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Z" fill="currentColor" />
+                  </svg>
+                  <input
+                    type="text"
+                    value={qbQueryDraft}
+                    onChange={(event) => setQbQueryDraft(event.target.value)}
+                    placeholder="Regex remix search: 2024 nov p1 trig q6.2"
+                    className="h-7 min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-[#1c1e21] outline-none placeholder:text-[#7b87a4]"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                  />
+                  {qbQueryDraft ? (
+                    <button
+                      type="button"
+                      className="inline-flex h-6 items-center rounded-full bg-white px-2.5 text-[11px] font-semibold text-[#2457a6] shadow-sm hover:bg-[#eef5ff]"
+                      onClick={() => setQbQueryDraft('')}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+                <div className="mt-1 text-[11px] text-[#6b7280]">
+                  {liveQuery
+                    ? 'Live regex search is overriding the selected remix pills right now.'
+                    : 'Type anything here to override the selected remix pills with a live fuzzy search.'}
+                </div>
+              </div>
+              <div className="shrink-0 text-right text-xs text-[#65676b]">{countLabel}</div>
+            </div>
+          </section>
+        )
+      })()}
 
       {(() => {
         const targetRemix = questionRemixAppendTargetId
@@ -16514,16 +16620,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       {qbSearched && !qbLoading && qbItems.length === 0 ? (
         <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">
-          No questions found for these filters. Try broadening your search.
+          {qbQueryDraft.trim() || qbQuery.trim()
+            ? 'No questions matched this live search. Clear the search pill or broaden the remix pills.'
+            : 'No questions found for these filters. Try broadening your search.'}
         </section>
       ) : null}
 
       {qbItems.length > 0 ? (
         <>
-          <section className="border-b border-black/10 bg-white px-4 py-2">
-            <div className="text-xs text-[#65676b]">{qbTotal} result{qbTotal !== 1 ? 's' : ''} (showing {qbItems.length})</div>
-          </section>
-
           <ul>
             {qbItems.map((q) => (
               (() => {

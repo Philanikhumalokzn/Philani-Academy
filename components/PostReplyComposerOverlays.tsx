@@ -479,7 +479,7 @@ export default function PostReplyComposerOverlays({
 
       {canvasOverlay ? (
         <OverlayPortal>
-          <div className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.14)] backdrop-blur-[1px] p-0" role="dialog" aria-modal="true" aria-label="Post solve canvas">
+          <div className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.14)] p-0" role="dialog" aria-modal="true" aria-label="Post solve canvas">
             <div className="mx-auto flex h-full w-full max-w-none flex-col overflow-hidden rounded-none border-0 bg-transparent shadow-none">
               <PublicSolveComposer
                 title={canvasOverlay.title}
@@ -510,7 +510,7 @@ export default function PostReplyComposerOverlays({
 
       {typedOverlay ? (
         <OverlayPortal>
-          <div className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.14)] backdrop-blur-[1px] p-0 sm:p-4" role="dialog" aria-modal="true" aria-label="Typed post response">
+          <div className="fixed inset-0 z-[68] bg-[rgba(2,6,23,0.14)] p-0 sm:p-4" role="dialog" aria-modal="true" aria-label="Typed post response">
             {(() => {
               const typedPostActionsVisible = !isMobile || typedChromeVisible
               return (

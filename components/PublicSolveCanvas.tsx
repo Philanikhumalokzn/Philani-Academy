@@ -1788,7 +1788,7 @@ export function PublicSolveComposer({
         outerClassName="bg-transparent"
         contentPaddingClassName={fullscreenCanvas ? 'relative flex-1 min-h-0 px-0 py-0' : undefined}
         frameClassName={fullscreenCanvas
-          ? `relative flex h-full min-h-0 flex-col overflow-hidden rounded-none border-0 ${revealsBackgroundPage ? 'bg-white/88 backdrop-blur-md' : 'bg-white'} shadow-none`
+          ? `relative flex h-full min-h-0 flex-col overflow-hidden rounded-none border-0 ${revealsBackgroundPage ? 'bg-white/88' : 'bg-white'} shadow-none`
           : undefined}
         canvasSurfaceClassName={fullscreenCanvas ? `flex h-full min-h-0 flex-col ${revealsBackgroundPage ? 'bg-white/88' : 'bg-white'}` : undefined}
         referencePresentation={referencePresentation}
@@ -1833,7 +1833,7 @@ export function PublicSolveComposer({
         </div>
       </PublicSolveOpacityWorkspace>
 
-      <div className={`border-t ${revealsBackgroundPage ? 'border-slate-200/75 bg-white/78' : 'border-slate-200 bg-white/92'} px-4 py-3 backdrop-blur-xl sm:px-6 ${fullscreenCanvas ? 'pb-[calc(var(--app-safe-bottom)+0.9rem)] pt-3' : ''}`.trim()}>
+      <div className={`border-t ${revealsBackgroundPage ? 'border-slate-200/75 bg-white/78' : 'border-slate-200 bg-white/92'} px-4 py-3 ${revealsBackgroundPage ? '' : 'backdrop-blur-xl'} sm:px-6 ${fullscreenCanvas ? 'pb-[calc(var(--app-safe-bottom)+0.9rem)] pt-3' : ''}`.trim()}>
         <div className={fullscreenCanvas ? 'grid grid-cols-[1fr_auto_1fr] items-center gap-3' : 'flex items-center justify-between gap-3'}>
           {fullscreenCanvas ? (
             <div className="inline-flex items-center overflow-hidden rounded-full border border-slate-200 bg-white shadow-sm justify-self-start">

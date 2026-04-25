@@ -29,7 +29,7 @@ import ZoomableImageOverlay from '../components/ZoomableImageOverlay'
 import ScriptPhotosEditor from '../components/ScriptPhotosEditor'
 import BottomSheet from '../components/BottomSheet'
 import InlinePostSolutionsThread, { type InlinePostResponseAction, type ResponseRenderArgs } from '../components/InlinePostSolutionsThread'
-import PostReplyComposerOverlays from '../components/PostReplyComposerOverlays'
+import PostReplyComposerOverlays, { PostReplyComposerSurface } from '../components/PostReplyComposerOverlays'
 import PostCrudBottomSheet from '../components/PostCrudBottomSheet'
 import ReplyCrudBottomSheet from '../components/ReplyCrudBottomSheet'
 import { PublicUserProfileSurface } from './u/[id]'
@@ -1839,9 +1839,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [])
 
   useEffect(() => {
-    if (!postSolveModeOverlay) return
+    if (!(postSolveModeOverlay || postThreadOverlay || (createOverlayOpen && createKind === 'post'))) return
     resizePostSolveTextarea()
-  }, [postSolveModeOverlay, postSolveText, resizePostSolveTextarea])
+  }, [createKind, createOverlayOpen, postSolveModeOverlay, postSolveText, postThreadOverlay, resizePostSolveTextarea])
 
   useEffect(() => {
       if (!router.isReady) return
@@ -2762,6 +2762,34 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     role: String((session as any)?.user?.role || ''),
     grade: selectedGrade || normalizeGradeInput((session as any)?.user?.grade as string | undefined) || null,
   }), [currentViewerId, effectiveAvatarUrl, learnerName, selectedGrade, session])
+  const createPostReplyComposerDraft = useMemo<PostSolveOverlayState | null>(() => {
+    if (!(createOverlayOpen && createKind === 'post')) return null
+    return {
+      postId: editingPostId || 'draft-post',
+      threadKey: editingPostId ? `post:${editingPostId}` : 'post:draft-post',
+      title: challengeTitleDraft || 'Post',
+      prompt: String(postSolveText || '').trim(),
+      imageUrl: null,
+      authorName: String(session?.user?.name || session?.user?.email || 'You'),
+      authorAvatarUrl: learnerAvatarUrl,
+      postContentBlocks: composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget),
+    }
+  }, [challengeTitleDraft, composePostSolveBlocksWithDraftText, createKind, createOverlayOpen, editingPostId, learnerAvatarUrl, postSolveBlocks, postSolveEditingTarget, postSolveText, session])
+  const threadReplyComposerDraft = useMemo<PostSolveOverlayState | null>(() => {
+    if (!postThreadOverlay) return null
+    return {
+      postId: String(postThreadOverlay.postId || postThreadOverlay.id || ''),
+      threadKey: String(postThreadOverlay.threadKey || `post:${String(postThreadOverlay.postId || postThreadOverlay.id || '')}`),
+      title: String(postThreadOverlay.title || 'Post'),
+      prompt: String(postThreadOverlay.prompt || 'Share your reply.'),
+      imageUrl: typeof postThreadOverlay.imageUrl === 'string' ? postThreadOverlay.imageUrl : null,
+      authorName: currentViewerPostAuthor.name,
+      authorAvatarUrl: currentViewerPostAuthor.avatar,
+      postContentBlocks: composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget),
+      postRecord: postThreadOverlay,
+    }
+  }, [composePostSolveBlocksWithDraftText, currentViewerPostAuthor.avatar, currentViewerPostAuthor.name, postSolveBlocks, postSolveEditingTarget, postSolveText, postThreadOverlay])
+  const activePostReplyComposerDraft = postSolveModeOverlay || threadReplyComposerDraft || createPostReplyComposerDraft
   const hydrateOwnPostFeedItem = useCallback((item: any) => ({
     ...(item || {}),
     kind: 'post',
@@ -10044,7 +10072,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [openPostSolveComposer, router])
 
   const submitPostTextSolve = useCallback(async () => {
-    const activeDraft = postSolveModeOverlay
+    const activeDraft = activePostReplyComposerDraft
     if (!activeDraft?.postId || !activeDraft?.threadKey) return
     const draftText = String(postSolveText || '')
     const replyThreadMeta = activeDraft.replyTarget ? {
@@ -10115,7 +10143,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setPostSolveSubmitting(false)
     }
-  }, [applyOwnPostResponseToFeeds, buildPostReplyPayloadFromBlocks, openPostThread, postSolveBlocks, postSolveModeOverlay, postSolveText])
+  }, [activePostReplyComposerDraft, applyOwnPostResponseToFeeds, buildPostReplyPayloadFromBlocks, openPostThread, postSolveBlocks, postSolveText])
 
   const submitPostSolve = useCallback(async (scene: any) => {
     const activeDraft = postSolveOverlay || postSolvePreviewOverlay?.draft || null
@@ -10249,16 +10277,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       return
     }
     setComposerBlockCrudTarget(null)
-    const activeComposerDraft = postSolveModeOverlay || ((createOverlayOpen && createKind === 'post') ? {
-      postId: editingPostId || 'draft-post',
-      threadKey: editingPostId ? `post:${editingPostId}` : 'post:draft-post',
-      title: challengeTitleDraft || 'Post',
-      prompt: String(postSolveText || '').trim(),
-      imageUrl: null,
-      authorName: String(session?.user?.name || session?.user?.email || 'You'),
-      authorAvatarUrl: String((session as any)?.user?.avatar || ''),
-      postContentBlocks: composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget),
-    } : null)
+    const activeComposerDraft = activePostReplyComposerDraft
     if (!activeComposerDraft) return
 
     const target: ComposerBlockEditTarget = { blockId: block.id, type: block.type, index }
@@ -10291,7 +10310,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
 
     openPostImageViewer(block.imageUrl, 'Reply attachment')
-  }, [challengeTitleDraft, composePostSolveBlocksWithDraftText, createKind, createOverlayOpen, editingPostId, focusPostSolveTextarea, openHandwrittenPostSolveComposer, openPostImageViewer, openTypedPostSolveComposer, postSolveBlocks, postSolveEditingTarget, postSolveModeOverlay, postSolveText, session])
+  }, [activePostReplyComposerDraft, focusPostSolveTextarea, openHandwrittenPostSolveComposer, openPostImageViewer, openTypedPostSolveComposer])
 
   const openHandwrittenLessonSolveComposer = useCallback((draft: LessonSolveOverlayState | null) => {
     if (!draft) return
@@ -21784,8 +21803,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           setComposerBlockCrudTarget(null)
         }}
         onCloseBlockCrud={() => setComposerBlockCrudTarget(null)}
-        onOpenTyped={() => openTypedPostSolveComposer(postSolveModeOverlay, 'keyboard')}
-        onOpenHandwritten={() => openHandwrittenPostSolveComposer(postSolveModeOverlay)}
+        onOpenTyped={() => openTypedPostSolveComposer(activePostReplyComposerDraft, 'keyboard')}
+        onOpenHandwritten={() => openHandwrittenPostSolveComposer(activePostReplyComposerDraft)}
         onOpenImagePicker={openPostReplyImagePicker}
         onSubmitText={() => void submitPostTextSolve()}
         onImagePicked={onPostReplyImagePicked}
@@ -21838,6 +21857,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             setPostThreadOverlay(null)
             setPostThreadError(null)
             setPostThreadResponses([])
+            setPostSolveModeOverlay(null)
+            setPostSolveOverlay(null)
+            setPostTypedSolveOverlay(null)
+            setPostSolveBlocks([])
+            setPostSolveText('')
+            setPostSolveEditingTarget(null)
+            setComposerBlockCrudTarget(null)
+            setPostSolveError(null)
+            setPostReplyImageSourceSheetOpen(false)
           }}
           backdrop
           closeOnBackdrop
@@ -21848,95 +21876,116 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           style={{
             maxHeight: 'calc(100dvh - max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) - max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) - 5rem)',
           }}
-          contentClassName="min-h-0 p-0 overflow-y-auto overscroll-contain"
-          rightActions={(
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={() => {
-                void openPostSolveComposer(postThreadOverlay)
-              }}
-            >
-              Reply
-            </button>
-          )}
+          contentClassName="min-h-0 flex flex-col p-0 overflow-hidden overscroll-contain"
         >
-          <div className="space-y-3 p-4" style={{ WebkitOverflowScrolling: 'touch' }}>
-            {postThreadOverlay.prompt ? (
-              <div className="rounded-2xl border border-black/10 bg-slate-50 p-3 text-sm text-slate-700">
-                {postThreadOverlay.prompt}
-              </div>
-            ) : null}
-            {postThreadOverlay.imageUrl ? (
-              <button
-                type="button"
-                className="block w-full overflow-hidden rounded-2xl border border-black/10 bg-white text-left"
-                onClick={() => openPostImageViewer(postThreadOverlay.imageUrl as string, `${postThreadOverlay.title || 'Post'} image`)}
-              >
-                <img src={postThreadOverlay.imageUrl} alt="Post attachment" className="max-h-[320px] w-full object-contain" />
-              </button>
-            ) : null}
-            <div className="min-h-[200px]">
-              <InlinePostSolutionsThread
-                loading={postThreadLoading}
-                error={postThreadError}
-                responses={postThreadResponses}
-                currentUserId={String(currentUserId || viewerId || '')}
-                theme="light"
-                inlineCanvasMode="static"
-                getContainerProps={(response, args) => {
-                  if (!args.isMine) {
-                    return { style: { touchAction: 'pan-y' } }
-                  }
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <div className="space-y-3 p-4">
+              {postThreadOverlay.prompt ? (
+                <div className="rounded-2xl border border-black/10 bg-slate-50 p-3 text-sm text-slate-700">
+                  {postThreadOverlay.prompt}
+                </div>
+              ) : null}
+              {postThreadOverlay.imageUrl ? (
+                <button
+                  type="button"
+                  className="block w-full overflow-hidden rounded-2xl border border-black/10 bg-white text-left"
+                  onClick={() => openPostImageViewer(postThreadOverlay.imageUrl as string, `${postThreadOverlay.title || 'Post'} image`)}
+                >
+                  <img src={postThreadOverlay.imageUrl} alt="Post attachment" className="max-h-[320px] w-full object-contain" />
+                </button>
+              ) : null}
+              <div className="min-h-[200px]">
+                <InlinePostSolutionsThread
+                  loading={postThreadLoading}
+                  error={postThreadError}
+                  responses={postThreadResponses}
+                  currentUserId={String(currentUserId || viewerId || '')}
+                  theme="light"
+                  inlineCanvasMode="static"
+                  getContainerProps={(response, args) => {
+                    if (!args.isMine) {
+                      return { style: { touchAction: 'pan-y' } }
+                    }
 
-                  return {
-                    style: { touchAction: 'pan-y' },
-                    onPointerDown: (event) => beginReplyLongPress(event as any, {
-                      kind: 'post',
-                      threadKey: String(postThreadOverlay?.threadKey || `post:${String(postThreadOverlay?.postId || '')}`),
-                      item: postThreadOverlay,
-                      response,
-                    }),
-                    onPointerMove: moveReplyLongPress as any,
-                    onPointerUp: clearReplyLongPress as any,
-                    onPointerCancel: clearReplyLongPress as any,
-                    onPointerLeave: clearReplyLongPress as any,
-                    onContextMenu: (event) => {
-                      event.preventDefault()
-                      openReplyCrudOptions({
+                    return {
+                      style: { touchAction: 'pan-y' },
+                      onPointerDown: (event) => beginReplyLongPress(event as any, {
                         kind: 'post',
                         threadKey: String(postThreadOverlay?.threadKey || `post:${String(postThreadOverlay?.postId || '')}`),
                         item: postThreadOverlay,
                         response,
-                      })
-                    },
-                  }
-                }}
-                renderResponseStatus={(response, args) => {
-                  const viewportSaving = Boolean(interactiveViewportSavingByResponseId[args.responseId])
-                  const viewportError = String(interactiveViewportErrorByResponseId[args.responseId] || '').trim()
-                  if (!(args.isMine && response?.excalidrawScene && (viewportError || viewportSaving))) return null
-                  return (
-                    <div className="mt-1 text-[11px] font-medium text-slate-500">
-                      {viewportError ? viewportError : 'Saving view...'}
-                    </div>
-                  )
-                }}
-                getResponseActions={(response, args) => buildPostReplyActions(postThreadOverlay, response, args)}
-                onOpenImageBlock={(imageUrl, args) => openPostImageViewer(imageUrl, `${args.responseUserName} attachment`)}
-                onOpenCanvasBlock={(response, args, scene) => {
-                  const responseId = String(args.responseId || '')
-                  const responseUserId = String(response?.userId || response?.user?.id || '')
-                  const isOwner = responseUserId === String(currentUserId || viewerId || '') && Boolean(responseId)
-                  openPostCanvasViewer(
-                    scene,
-                    `${args.responseUserName} canvas`,
-                    postThreadOverlay?.title || 'Canvas viewer',
-                    isOwner
-                      ? (nextScene) => queueInteractiveViewportSave(String(postThreadOverlay?.threadKey || ''), responseId, nextScene)
-                      : undefined,
-                  )
-                }}
+                      }),
+                      onPointerMove: moveReplyLongPress as any,
+                      onPointerUp: clearReplyLongPress as any,
+                      onPointerCancel: clearReplyLongPress as any,
+                      onPointerLeave: clearReplyLongPress as any,
+                      onContextMenu: (event) => {
+                        event.preventDefault()
+                        openReplyCrudOptions({
+                          kind: 'post',
+                          threadKey: String(postThreadOverlay?.threadKey || `post:${String(postThreadOverlay?.postId || '')}`),
+                          item: postThreadOverlay,
+                          response,
+                        })
+                      },
+                    }
+                  }}
+                  renderResponseStatus={(response, args) => {
+                    const viewportSaving = Boolean(interactiveViewportSavingByResponseId[args.responseId])
+                    const viewportError = String(interactiveViewportErrorByResponseId[args.responseId] || '').trim()
+                    if (!(args.isMine && response?.excalidrawScene && (viewportError || viewportSaving))) return null
+                    return (
+                      <div className="mt-1 text-[11px] font-medium text-slate-500">
+                        {viewportError ? viewportError : 'Saving view...'}
+                      </div>
+                    )
+                  }}
+                  getResponseActions={(response, args) => buildPostReplyActions(postThreadOverlay, response, args)}
+                  onOpenImageBlock={(imageUrl, args) => openPostImageViewer(imageUrl, `${args.responseUserName} attachment`)}
+                  onOpenCanvasBlock={(response, args, scene) => {
+                    const responseId = String(args.responseId || '')
+                    const responseUserId = String(response?.userId || response?.user?.id || '')
+                    const isOwner = responseUserId === String(currentUserId || viewerId || '') && Boolean(responseId)
+                    openPostCanvasViewer(
+                      scene,
+                      `${args.responseUserName} canvas`,
+                      postThreadOverlay?.title || 'Canvas viewer',
+                      isOwner
+                        ? (nextScene) => queueInteractiveViewportSave(String(postThreadOverlay?.threadKey || ''), responseId, nextScene)
+                        : undefined,
+                    )
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="shrink-0 border-t border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f0f6ff_100%)] px-4 pt-3 sm:px-5 sm:pt-4">
+            {postSolveError ? (
+              <div className="mb-3 rounded-2xl border border-red-200 bg-red-50/95 px-4 py-3 text-sm font-medium text-red-700 shadow-[0_12px_28px_rgba(220,38,38,0.12)]">
+                {postSolveError}
+              </div>
+            ) : null}
+            <div className="max-h-[min(18rem,42dvh)] min-h-0 overflow-hidden">
+              <PostReplyComposerSurface
+                blocks={postSolveBlocks}
+                draftText={postSolveText}
+                editingTarget={postSolveEditingTarget}
+                viewerName={currentViewerPostAuthor.name}
+                submitting={postSolveSubmitting}
+                imageUploading={postReplyImageUploading}
+                textareaRef={postSolveTextareaRef}
+                onDraftTextChange={setPostSolveText}
+                onOpenTyped={() => openTypedPostSolveComposer(activePostReplyComposerDraft, 'keyboard')}
+                onOpenHandwritten={() => openHandwrittenPostSolveComposer(activePostReplyComposerDraft)}
+                onOpenImagePicker={openPostReplyImagePicker}
+                onSubmitText={() => void submitPostTextSolve()}
+                onEditBlock={editComposerBlock}
+                onDeleteBlock={deleteComposerBlock}
+                onCanvasViewportChange={updateComposerCanvasViewport}
+                onBeginBlockLongPress={beginComposerBlockLongPress}
+                onMoveBlockLongPress={moveComposerBlockLongPress}
+                onClearBlockLongPress={clearComposerBlockLongPress}
+                onOpenBlockCrudOptions={openComposerBlockCrudOptions}
               />
             </div>
           </div>

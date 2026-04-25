@@ -21860,7 +21860,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </button>
           )}
         >
-          <div className="space-y-3 p-4">
+          <div className="space-y-3 p-4" style={{ WebkitOverflowScrolling: 'touch' }}>
             {postThreadOverlay.prompt ? (
               <div className="rounded-2xl border border-black/10 bg-slate-50 p-3 text-sm text-slate-700">
                 {postThreadOverlay.prompt}
@@ -21883,28 +21883,34 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 currentUserId={String(currentUserId || viewerId || '')}
                 theme="light"
                 inlineCanvasMode="static"
-                getContainerProps={(response, args) => ({
-                  onPointerDown: (event) => beginReplyLongPress(event as any, {
-                    kind: 'post',
-                    threadKey: String(postThreadOverlay?.threadKey || `post:${String(postThreadOverlay?.postId || '')}`),
-                    item: postThreadOverlay,
-                    response,
-                  }),
-                  onPointerMove: moveReplyLongPress as any,
-                  onPointerUp: clearReplyLongPress as any,
-                  onPointerCancel: clearReplyLongPress as any,
-                  onPointerLeave: clearReplyLongPress as any,
-                  onContextMenu: (event) => {
-                    if (!args.isMine) return
-                    event.preventDefault()
-                    openReplyCrudOptions({
+                getContainerProps={(response, args) => {
+                  if (!args.isMine) {
+                    return { style: { touchAction: 'pan-y' } }
+                  }
+
+                  return {
+                    style: { touchAction: 'pan-y' },
+                    onPointerDown: (event) => beginReplyLongPress(event as any, {
                       kind: 'post',
                       threadKey: String(postThreadOverlay?.threadKey || `post:${String(postThreadOverlay?.postId || '')}`),
                       item: postThreadOverlay,
                       response,
-                    })
-                  },
-                })}
+                    }),
+                    onPointerMove: moveReplyLongPress as any,
+                    onPointerUp: clearReplyLongPress as any,
+                    onPointerCancel: clearReplyLongPress as any,
+                    onPointerLeave: clearReplyLongPress as any,
+                    onContextMenu: (event) => {
+                      event.preventDefault()
+                      openReplyCrudOptions({
+                        kind: 'post',
+                        threadKey: String(postThreadOverlay?.threadKey || `post:${String(postThreadOverlay?.postId || '')}`),
+                        item: postThreadOverlay,
+                        response,
+                      })
+                    },
+                  }
+                }}
                 renderResponseStatus={(response, args) => {
                   const viewportSaving = Boolean(interactiveViewportSavingByResponseId[args.responseId])
                   const viewportError = String(interactiveViewportErrorByResponseId[args.responseId] || '').trim()

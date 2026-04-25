@@ -40,6 +40,9 @@ export type FeedPost = {
   myAttemptCount?: number
   usesAttemptRules?: boolean
   solutionCount?: number
+  likeCount?: number
+  shareCount?: number
+  likedByMe?: boolean
   threadKey: string
 }
 
@@ -103,7 +106,13 @@ export function buildFeedPostActionState(item: Partial<FeedPost> | null | undefi
   }
 }
 
-export function enrichFeedPosts(items: any[], ownResponseByKey: Map<string, any>, attemptCountByKey: Map<string, number>, solutionCounts: Map<string, number>): FeedPost[] {
+export function enrichFeedPosts(
+  items: any[],
+  ownResponseByKey: Map<string, any>,
+  attemptCountByKey: Map<string, number>,
+  solutionCounts: Map<string, number>,
+  interactionStateByPostId?: Map<string, { likeCount: number; shareCount: number; likedByMe: boolean }>,
+): FeedPost[] {
   return items.map((item: any) => ({
     ...hydrateSocialPostRecord(item),
     kind: 'post',
@@ -113,6 +122,9 @@ export function enrichFeedPosts(items: any[], ownResponseByKey: Map<string, any>
     myAttemptCount: attemptCountByKey.get(`post:${item.id}`) || 0,
     usesAttemptRules: isAttemptScopedFeedPost(item),
     solutionCount: solutionCounts.get(`post:${item.id}`) || 0,
+    likeCount: interactionStateByPostId?.get(String(item.id))?.likeCount || 0,
+    shareCount: interactionStateByPostId?.get(String(item.id))?.shareCount || 0,
+    likedByMe: interactionStateByPostId?.get(String(item.id))?.likedByMe || false,
   }))
 }
 

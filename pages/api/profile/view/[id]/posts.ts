@@ -3,6 +3,7 @@ import prisma from '../../../../../lib/prisma'
 import { getUserGrade, getUserIdFromReq, getUserRole } from '../../../../../lib/auth'
 import { enrichFeedPosts, FEED_POST_SELECT } from '../../../../../lib/feedContract'
 import { normalizeGradeInput } from '../../../../../lib/grades'
+import { getSocialPostInteractionState } from '../../../../../lib/socialPostInteractions'
 
 function isMissingSocialPostsTableError(err: unknown) {
   const message = err instanceof Error ? err.message : String(err || '')
@@ -103,8 +104,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       attemptCountByKey.set(key, Number(row?._count?.id || 0))
     }
 
+    const interactionStateByPostId = await getSocialPostInteractionState(items.map((item: any) => String(item?.id || '')), requesterId || null)
+
     return res.status(200).json({
-      posts: enrichFeedPosts(items, ownResponseByKey, attemptCountByKey, solutionCounts),
+      posts: enrichFeedPosts(items, ownResponseByKey, attemptCountByKey, solutionCounts, interactionStateByPostId),
     })
   } catch (err: any) {
     console.error('[/api/profile/view/[id]/posts]', err)

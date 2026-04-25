@@ -1184,7 +1184,24 @@ export function PublicUserProfileSurface({
       const res = await fetch(`/api/profile/view/${encodeURIComponent(userId)}/posts`, { credentials: 'same-origin', cache: 'no-store' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data?.message || 'Failed to load posts')
-      setPosts(Array.isArray(data?.posts) ? data.posts : [])
+      const nextPosts = Array.isArray(data?.posts) ? data.posts : []
+      setPosts(nextPosts)
+
+      const nextLikedByKey: Record<string, boolean> = {}
+      const nextLikeCounts: Record<string, number> = {}
+      const nextShareCounts: Record<string, number> = {}
+      for (const item of nextPosts) {
+        const postId = String(item?.id || '').trim()
+        if (!postId) continue
+        const itemKey = `post:${postId}`
+        nextLikedByKey[itemKey] = Boolean(item?.likedByMe)
+        nextLikeCounts[itemKey] = Math.max(0, Number(item?.likeCount || 0))
+        nextShareCounts[itemKey] = Math.max(0, Number(item?.shareCount || 0))
+      }
+
+      setLikedPostKeys((current) => ({ ...current, ...nextLikedByKey }))
+      setProfileLikeCountByItemKey((current) => ({ ...current, ...nextLikeCounts }))
+      setProfileShareCountByItemKey((current) => ({ ...current, ...nextShareCounts }))
     } catch (err: any) {
       setPosts([])
       setPostsError(err?.message || 'Failed to load posts')
@@ -1642,6 +1659,52 @@ export function PublicUserProfileSurface({
     })
   }, [])
 
+  const applyProfilePostInteractionState = useCallback((itemKey: string, state: any) => {
+    if (!itemKey || !state || typeof state !== 'object') return
+    const likeCount = Math.max(0, Number(state.likeCount || 0))
+    const shareCount = Math.max(0, Number(state.shareCount || 0))
+    const likedByMe = Boolean(state.likedByMe)
+    setLikedPostKeys((current) => ({ ...current, [itemKey]: likedByMe }))
+    setProfileLikeCountByItemKey((current) => ({ ...current, [itemKey]: likeCount }))
+    setProfileShareCountByItemKey((current) => ({ ...current, [itemKey]: shareCount }))
+  }, [])
+
+  const persistProfilePostLike = useCallback(async (postId: string, itemKey: string) => {
+    const safePostId = String(postId || '').trim()
+    if (!safePostId || !itemKey) return
+    try {
+      const res = await fetch(`/api/posts/${encodeURIComponent(safePostId)}/interactions`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'LIKE', action: 'toggle' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to update like (${res.status})`)
+      applyProfilePostInteractionState(itemKey, data)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to update like')
+    }
+  }, [applyProfilePostInteractionState])
+
+  const persistProfilePostShare = useCallback(async (postId: string, itemKey: string) => {
+    const safePostId = String(postId || '').trim()
+    if (!safePostId || !itemKey) return
+    try {
+      const res = await fetch(`/api/posts/${encodeURIComponent(safePostId)}/interactions`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'SHARE', action: 'set', value: true }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to update share (${res.status})`)
+      applyProfilePostInteractionState(itemKey, data)
+    } catch {
+      // Sharing should still work even if metrics persistence fails.
+    }
+  }, [applyProfilePostInteractionState])
+
   const markProfileShareHandled = useCallback((itemKey: string) => {
     if (!itemKey) return
     setLastSharedPostKey(itemKey)
@@ -1779,7 +1842,9 @@ export function PublicUserProfileSurface({
               label: 'Like',
               active: Boolean(likedPostKeys[itemKey]),
               countLabel: formatSocialCountLabel(profileLikeCountByItemKey[itemKey], 'Like', 'Likes'),
-              onClick: () => toggleProfileLike(itemKey),
+              onClick: () => {
+                void persistProfilePostLike(postId, itemKey)
+              },
               icon: likedPostKeys[itemKey] ? (
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
                   <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" />
@@ -1813,10 +1878,7 @@ export function PublicUserProfileSurface({
               countLabel: formatSocialCountLabel(profileShareCountByItemKey[itemKey], 'Share', 'Shares'),
               statusLabel: lastSharedPostKey === itemKey ? 'Copied' : undefined,
               onClick: () => {
-                setProfileShareCountByItemKey((current) => ({
-                  ...current,
-                  [itemKey]: (current[itemKey] ?? 0) + 1,
-                }))
+                void persistProfilePostShare(postId, itemKey)
                 void shareProfilePost({
                   itemKey,
                   title: String(post.title || '').trim() || 'Post',

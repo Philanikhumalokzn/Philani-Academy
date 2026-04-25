@@ -77,6 +77,7 @@ model User {
   pushDevices PushDevice[]
   challenges UserChallenge[]
   socialPosts SocialPost[]
+  socialPostInteractions SocialPostInteraction[]
   createdQuestionRemixes QuestionRemix[] @relation("QuestionRemixCreatedBy")
   receivedQuestionRemixes QuestionRemixUser[]
 
@@ -84,6 +85,11 @@ model User {
   following UserFollow[] @relation("UserFollowing")
 
   resourceBankItems ResourceBankItem[]
+}
+
+enum SocialPostInteractionKind {
+  LIKE
+  SHARE
 }
 
 model School {
@@ -723,10 +729,26 @@ model SocialPost {
   updatedAt   DateTime @updatedAt
 
   createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  interactions SocialPostInteraction[]
 
   @@index([createdById, createdAt])
   @@index([grade, createdAt])
   @@index([audience, createdAt])
+}
+
+model SocialPostInteraction {
+  id        String                    @id @default(cuid())
+  postId    String
+  userId    String
+  kind      SocialPostInteractionKind
+  createdAt DateTime                  @default(now())
+
+  post      SocialPost                @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId, kind])
+  @@index([postId, kind, createdAt])
+  @@index([userId, kind, createdAt])
 }
 
 model Diagram {

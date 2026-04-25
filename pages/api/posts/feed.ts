@@ -3,6 +3,7 @@ import prisma from '../../../lib/prisma'
 import { getUserGrade, getUserIdFromReq, getUserRole } from '../../../lib/auth'
 import { enrichFeedPosts, FEED_POST_SELECT } from '../../../lib/feedContract'
 import { normalizeGradeInput } from '../../../lib/grades'
+import { getSocialPostInteractionState } from '../../../lib/socialPostInteractions'
 
 function buildCanonicalQbQuestionMmd(question: {
   questionNumber?: string | null
@@ -152,7 +153,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     attemptCountByKey.set(key, Number(row?._count?.id || 0))
   }
 
-  const hydratedPosts = enrichFeedPosts(items, ownResponseByKey, attemptCountByKey, solutionCounts)
+  const interactionStateByPostId = await getSocialPostInteractionState(items.map((item: any) => String(item?.id || '')), requesterId)
+  const hydratedPosts = enrichFeedPosts(items, ownResponseByKey, attemptCountByKey, solutionCounts, interactionStateByPostId)
 
   const qbQuestionIds = Array.from(new Set(
     hydratedPosts

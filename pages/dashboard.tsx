@@ -5450,7 +5450,27 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           ...(Array.isArray(challengeData?.posts) ? challengeData.posts.map((item: any) => ({ ...item, kind: 'challenge' })) : []),
           ...(Array.isArray(postData?.posts) ? postData.posts.map((item: any) => ({ ...item, kind: 'post' })) : []),
         ])
-        if (!cancelled) setStudentFeedPosts(posts)
+        if (!cancelled) {
+          setStudentFeedPosts(posts)
+
+          const nextLikedByItemKey: Record<string, boolean> = {}
+          const nextLikeCounts: Record<string, number> = {}
+          const nextShareCounts: Record<string, number> = {}
+
+          for (const item of posts) {
+            if (String(item?.kind || '') !== 'post') continue
+            const postId = String(item?.id || '').trim()
+            if (!postId) continue
+            const itemKey = `post:${postId}`
+            nextLikedByItemKey[itemKey] = Boolean(item?.likedByMe)
+            nextLikeCounts[itemKey] = Math.max(0, Number(item?.likeCount || 0))
+            nextShareCounts[itemKey] = Math.max(0, Number(item?.shareCount || 0))
+          }
+
+          setSocialLikedItems((prev) => ({ ...prev, ...nextLikedByItemKey }))
+          setSocialLikeCountByItemKey((prev) => ({ ...prev, ...nextLikeCounts }))
+          setSocialShareCountByItemKey((prev) => ({ ...prev, ...nextShareCounts }))
+        }
       } catch (err: any) {
         if (!cancelled) {
           setStudentFeedError(err?.message || 'Unable to load posts')
@@ -6875,7 +6895,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       active: Boolean(socialLikedItems[socialItemKey]),
                       count: socialLikeCountByItemKey[socialItemKey] ?? 0,
                       countLabel: formatSocialCountLabel(socialLikeCountByItemKey[socialItemKey], 'Like', 'Likes'),
-                      onClick: () => toggleSocialLike(socialItemKey),
+                      onClick: () => {
+                        if (!itemId) return
+                        void persistPostLike(itemId, socialItemKey)
+                      },
                       icon: socialLikedItems[socialItemKey] ? (
                         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
                           <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" />
@@ -6918,11 +6941,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           text: prompt || title,
                           path: `/dashboard?postId=${encodeURIComponent(itemId)}`,
                         })
-                        // Increment share count
-                        setSocialShareCountByItemKey(prev => ({
-                          ...prev,
-                          [socialItemKey]: (prev[socialItemKey] ?? 0) + 1,
-                        }))
+                        if (itemId) void persistPostShare(itemId, socialItemKey)
                       },
                       disabled: !itemId,
                       icon: (
@@ -7218,7 +7237,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                             label: 'Like',
                             active: Boolean(socialLikedItems[socialItemKey]),
                             countLabel: formatSocialCountLabel(socialLikeCountByItemKey[socialItemKey], 'Like', 'Likes'),
-                            onClick: () => toggleSocialLike(socialItemKey),
+                            onClick: () => {
+                              if (isPost && itemId) {
+                                void persistPostLike(itemId, socialItemKey)
+                                return
+                              }
+                              toggleSocialLike(socialItemKey)
+                            },
                             icon: socialLikedItems[socialItemKey] ? (
                               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
                                 <path d="M14 9V5.5C14 4.11929 12.8807 3 11.5 3C10.714 3 9.97327 3.36856 9.5 4L6 9V21H17.18C18.1402 21 18.9724 20.3161 19.1604 19.3744L20.7604 11.3744C21.0098 10.1275 20.0557 9 18.7841 9H14Z" />
@@ -7273,6 +7298,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 text: prompt || title,
                                 path: isPost ? `/dashboard?postId=${encodeURIComponent(itemId)}` : href,
                               })
+                              if (isPost && itemId) {
+                                void persistPostShare(itemId, socialItemKey)
+                                return
+                              }
                               setSocialShareCountByItemKey((prev) => ({
                                 ...prev,
                                 [socialItemKey]: (prev[socialItemKey] ?? 0) + 1,
@@ -8985,6 +9014,52 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     })
   }, [socialLikedItems])
 
+  const applyPostInteractionState = useCallback((itemKey: string, state: any) => {
+    if (!itemKey || !state || typeof state !== 'object') return
+    const likeCount = Math.max(0, Number(state.likeCount || 0))
+    const shareCount = Math.max(0, Number(state.shareCount || 0))
+    const likedByMe = Boolean(state.likedByMe)
+    setSocialLikedItems((prev) => ({ ...prev, [itemKey]: likedByMe }))
+    setSocialLikeCountByItemKey((prev) => ({ ...prev, [itemKey]: likeCount }))
+    setSocialShareCountByItemKey((prev) => ({ ...prev, [itemKey]: shareCount }))
+  }, [])
+
+  const persistPostLike = useCallback(async (postId: string, itemKey: string) => {
+    const safePostId = String(postId || '').trim()
+    if (!safePostId || !itemKey) return
+    try {
+      const res = await fetch(`/api/posts/${encodeURIComponent(safePostId)}/interactions`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'LIKE', action: 'toggle' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to update like (${res.status})`)
+      applyPostInteractionState(itemKey, data)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to update like')
+    }
+  }, [applyPostInteractionState])
+
+  const persistPostShare = useCallback(async (postId: string, itemKey: string) => {
+    const safePostId = String(postId || '').trim()
+    if (!safePostId || !itemKey) return
+    try {
+      const res = await fetch(`/api/posts/${encodeURIComponent(safePostId)}/interactions`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'SHARE', action: 'set', value: true }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to update share (${res.status})`)
+      applyPostInteractionState(itemKey, data)
+    } catch {
+      // Sharing should still work even if metrics persistence fails.
+    }
+  }, [applyPostInteractionState])
+
   const markSocialShareHandled = useCallback((itemKey: string) => {
     if (!itemKey) return
     setLastSharedSocialItemKey(itemKey)
@@ -9061,9 +9136,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [])
 
   const openPostThread = useCallback(async (post: any, options?: { forceOpen?: boolean }) => {
-    const postId = String(post?.id || '')
-    const threadKey = typeof post?.threadKey === 'string' ? post.threadKey : `post:${postId}`
-    if (!postId || !threadKey) return
+    const postId = String(post?.id || '').trim()
+    const threadKey = `post:${postId}`
+    if (!postId) return
 
     const nextKey = `post:${postId}`
     if (!options?.forceOpen && expandedSolutionThreadKey === nextKey && expandedSolutionThreadKind === 'post') {
@@ -9083,7 +9158,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setPostThreadResponses(responses)
     } catch (err: any) {
       setPostThreadResponses([])
-      setPostThreadError(err?.message || 'Failed to load solutions')
+      setPostThreadError(err?.message || 'Unable to load post solutions')
     } finally {
       setPostThreadLoading(false)
     }

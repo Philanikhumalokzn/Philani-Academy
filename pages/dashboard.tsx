@@ -21856,88 +21856,90 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           }}
           contentClassName="min-h-0 flex flex-col p-0 overflow-hidden overscroll-contain"
         >
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
-            <div className="space-y-3 p-4">
-              {postThreadOverlay.prompt ? (
-                <div className="rounded-2xl border border-black/10 bg-slate-50 p-3 text-sm text-slate-700">
-                  {postThreadOverlay.prompt}
-                </div>
-              ) : null}
-              {postThreadOverlay.imageUrl ? (
-                <button
-                  type="button"
-                  className="block w-full overflow-hidden rounded-2xl border border-black/10 bg-white text-left"
-                  onClick={() => openPostImageViewer(postThreadOverlay.imageUrl as string, `${postThreadOverlay.title || 'Post'} image`)}
-                >
-                  <img src={postThreadOverlay.imageUrl} alt="Post attachment" className="max-h-[320px] w-full object-contain" />
-                </button>
-              ) : null}
-              <div className="min-h-[200px]">
-                <InlinePostSolutionsThread
-                  loading={postThreadLoading}
-                  error={postThreadError}
-                  responses={postThreadResponses}
-                  currentUserId={String(currentUserId || viewerId || '')}
-                  theme="light"
-                  inlineCanvasMode="static"
-                  getContainerProps={(response, args) => {
-                    if (!args.isMine) {
-                      return { style: { touchAction: 'pan-y' } }
-                    }
+          {(postThreadLoading || Boolean(postThreadError) || (Array.isArray(postThreadResponses) && postThreadResponses.length > 0)) ? (
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+              <div className="space-y-3 p-4">
+                {postThreadOverlay.prompt ? (
+                  <div className="rounded-2xl border border-black/10 bg-slate-50 p-3 text-sm text-slate-700">
+                    {postThreadOverlay.prompt}
+                  </div>
+                ) : null}
+                {postThreadOverlay.imageUrl ? (
+                  <button
+                    type="button"
+                    className="block w-full overflow-hidden rounded-2xl border border-black/10 bg-white text-left"
+                    onClick={() => openPostImageViewer(postThreadOverlay.imageUrl as string, `${postThreadOverlay.title || 'Post'} image`)}
+                  >
+                    <img src={postThreadOverlay.imageUrl} alt="Post attachment" className="max-h-[320px] w-full object-contain" />
+                  </button>
+                ) : null}
+                <div className="min-h-[200px]">
+                  <InlinePostSolutionsThread
+                    loading={postThreadLoading}
+                    error={postThreadError}
+                    responses={postThreadResponses}
+                    currentUserId={String(currentUserId || viewerId || '')}
+                    theme="light"
+                    inlineCanvasMode="static"
+                    getContainerProps={(response, args) => {
+                      if (!args.isMine) {
+                        return { style: { touchAction: 'pan-y' } }
+                      }
 
-                    return {
-                      style: { touchAction: 'pan-y' },
-                      onPointerDown: (event) => beginReplyLongPress(event as any, {
-                        kind: 'post',
-                        threadKey: String(postThreadOverlay?.threadKey || `post:${String(postThreadOverlay?.postId || '')}`),
-                        item: postThreadOverlay,
-                        response,
-                      }),
-                      onPointerMove: moveReplyLongPress as any,
-                      onPointerUp: clearReplyLongPress as any,
-                      onPointerCancel: clearReplyLongPress as any,
-                      onPointerLeave: clearReplyLongPress as any,
-                      onContextMenu: (event) => {
-                        event.preventDefault()
-                        openReplyCrudOptions({
+                      return {
+                        style: { touchAction: 'pan-y' },
+                        onPointerDown: (event) => beginReplyLongPress(event as any, {
                           kind: 'post',
                           threadKey: String(postThreadOverlay?.threadKey || `post:${String(postThreadOverlay?.postId || '')}`),
                           item: postThreadOverlay,
                           response,
-                        })
-                      },
-                    }
-                  }}
-                  renderResponseStatus={(response, args) => {
-                    const viewportSaving = Boolean(interactiveViewportSavingByResponseId[args.responseId])
-                    const viewportError = String(interactiveViewportErrorByResponseId[args.responseId] || '').trim()
-                    if (!(args.isMine && response?.excalidrawScene && (viewportError || viewportSaving))) return null
-                    return (
-                      <div className="mt-1 text-[11px] font-medium text-slate-500">
-                        {viewportError ? viewportError : 'Saving view...'}
-                      </div>
-                    )
-                  }}
-                  getResponseActions={(response, args) => buildPostReplyActions(postThreadOverlay, response, args)}
-                  onOpenImageBlock={(imageUrl, args) => openPostImageViewer(imageUrl, `${args.responseUserName} attachment`)}
-                  onOpenCanvasBlock={(response, args, scene) => {
-                    const responseId = String(args.responseId || '')
-                    const responseUserId = String(response?.userId || response?.user?.id || '')
-                    const isOwner = responseUserId === String(currentUserId || viewerId || '') && Boolean(responseId)
-                    openPostCanvasViewer(
-                      scene,
-                      `${args.responseUserName} canvas`,
-                      postThreadOverlay?.title || 'Canvas viewer',
-                      isOwner
-                        ? (nextScene) => queueInteractiveViewportSave(String(postThreadOverlay?.threadKey || ''), responseId, nextScene)
-                        : undefined,
-                    )
-                  }}
-                />
+                        }),
+                        onPointerMove: moveReplyLongPress as any,
+                        onPointerUp: clearReplyLongPress as any,
+                        onPointerCancel: clearReplyLongPress as any,
+                        onPointerLeave: clearReplyLongPress as any,
+                        onContextMenu: (event) => {
+                          event.preventDefault()
+                          openReplyCrudOptions({
+                            kind: 'post',
+                            threadKey: String(postThreadOverlay?.threadKey || `post:${String(postThreadOverlay?.postId || '')}`),
+                            item: postThreadOverlay,
+                            response,
+                          })
+                        },
+                      }
+                    }}
+                    renderResponseStatus={(response, args) => {
+                      const viewportSaving = Boolean(interactiveViewportSavingByResponseId[args.responseId])
+                      const viewportError = String(interactiveViewportErrorByResponseId[args.responseId] || '').trim()
+                      if (!(args.isMine && response?.excalidrawScene && (viewportError || viewportSaving))) return null
+                      return (
+                        <div className="mt-1 text-[11px] font-medium text-slate-500">
+                          {viewportError ? viewportError : 'Saving view...'}
+                        </div>
+                      )
+                    }}
+                    getResponseActions={(response, args) => buildPostReplyActions(postThreadOverlay, response, args)}
+                    onOpenImageBlock={(imageUrl, args) => openPostImageViewer(imageUrl, `${args.responseUserName} attachment`)}
+                    onOpenCanvasBlock={(response, args, scene) => {
+                      const responseId = String(args.responseId || '')
+                      const responseUserId = String(response?.userId || response?.user?.id || '')
+                      const isOwner = responseUserId === String(currentUserId || viewerId || '') && Boolean(responseId)
+                      openPostCanvasViewer(
+                        scene,
+                        `${args.responseUserName} canvas`,
+                        postThreadOverlay?.title || 'Canvas viewer',
+                        isOwner
+                          ? (nextScene) => queueInteractiveViewportSave(String(postThreadOverlay?.threadKey || ''), responseId, nextScene)
+                          : undefined,
+                      )
+                    }}
+                  />
+                </div>
               </div>
             </div>
-          </div>
-          <div className="shrink-0 border-t border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f0f6ff_100%)] px-4 pt-3 sm:px-5 sm:pt-4">
+          ) : null}
+          <div className={`shrink-0 bg-[linear-gradient(180deg,#fbfcff_0%,#f0f6ff_100%)] px-4 pt-3 sm:px-5 sm:pt-4 ${(postThreadLoading || Boolean(postThreadError) || (Array.isArray(postThreadResponses) && postThreadResponses.length > 0)) ? 'border-t border-slate-200' : ''}`.trim()}>
             {postSolveError ? (
               <div className="mb-3 rounded-2xl border border-red-200 bg-red-50/95 px-4 py-3 text-sm font-medium text-red-700 shadow-[0_12px_28px_rgba(220,38,38,0.12)]">
                 {postSolveError}

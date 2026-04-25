@@ -21897,11 +21897,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           {(postThreadLoading || Boolean(postThreadError) || (Array.isArray(postThreadResponses) && postThreadResponses.length > 0)) ? (
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
               <div className="space-y-3 p-4">
-                {postThreadOverlay.prompt ? (
-                  <div className="rounded-2xl border border-black/10 bg-slate-50 p-3 text-sm text-slate-700">
-                    {postThreadOverlay.prompt}
-                  </div>
-                ) : null}
                 {postThreadOverlay.imageUrl ? (
                   <button
                     type="button"

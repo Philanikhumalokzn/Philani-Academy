@@ -138,7 +138,7 @@ export function PostReplyComposerSurface({
       ) : null}
 
       <div className="min-h-0 overflow-y-auto overscroll-contain pb-4">
-        <div className="philani-gradient-outline-soft [--philani-outline-fill:#ffffff] min-w-0 rounded-[28px] px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+        <div className="philani-gradient-outline-soft [--philani-outline-fill:#f8fafc] min-w-0 rounded-full px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
           {composerVisibleBlocks.length > 0 ? (
             <div className="mb-2 space-y-2">
               {composerVisibleBlocks.map((block, index) => {
@@ -300,7 +300,7 @@ export function PostReplyComposerSurface({
             onChange={(event) => onDraftTextChange(event.target.value)}
             placeholder={`Comment as ${viewerName}`}
             rows={1}
-            className="max-h-28 min-h-[1.5rem] w-full resize-none bg-transparent text-[15px] leading-relaxed text-[#1c1e21] outline-none placeholder:text-slate-400"
+            className="max-h-28 min-h-0 w-full resize-none bg-transparent py-2 text-left text-[14px] leading-5 text-[#1c1e21] outline-none placeholder:text-[#65676b]"
             style={{ overflowY: 'hidden' }}
           />
         </div>

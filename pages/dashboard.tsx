@@ -21831,6 +21831,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           open={Boolean(postThreadOverlay)}
           title={postThreadOverlay.title || 'Solutions'}
           subtitle="Replies"
+          hideHeader={!(postThreadLoading || Boolean(postThreadError) || (Array.isArray(postThreadResponses) && postThreadResponses.length > 0))}
           onClose={() => {
             setPostThreadOverlay(null)
             setPostThreadError(null)

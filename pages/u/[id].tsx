@@ -2365,104 +2365,106 @@ export function PublicUserProfileSurface({
       ) : null}
 
       {postThreadOverlay ? (
-        <BottomSheet
-          open={Boolean(postThreadOverlay)}
-          title={postThreadOverlay.title || 'Solutions'}
-          subtitle="Replies"
-          hideHeader
-          onClose={() => {
-            setPostThreadOverlay(null)
-            setPostThreadError(null)
-            setPostThreadResponses([])
-            setPostSolveModeOverlay(null)
-            setPostSolveOverlay(null)
-            setPostTypedSolveOverlay(null)
-            setPostSolveBlocks([])
-            setPostSolveText('')
-            setPostSolveEditingTarget(null)
-            setComposerBlockCrudTarget(null)
-            setPostSolveError(null)
-            setPostReplyImageSourceSheetOpen(false)
-          }}
-          backdrop
-          closeOnBackdrop
-          closeOnEscape
-          className="bottom-0"
-          sheetClassName="rounded-[30px] border border-slate-200 bg-white shadow-sm"
-          zIndexClassName="z-[67]"
-          style={{
-            maxHeight: 'calc(100dvh - max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) - max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) - 5rem)',
-          }}
-          contentClassName="min-h-0 flex flex-col p-0 overflow-hidden overscroll-contain"
-        >
-          {(postThreadLoading || Boolean(postThreadError) || (Array.isArray(postThreadResponses) && postThreadResponses.length > 0)) ? (
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
-              <div className="space-y-3 p-4">
-                {postThreadOverlay.imageUrl ? (
-                  <button
-                    type="button"
-                    className="block w-full overflow-hidden rounded-2xl border border-black/10 bg-white text-left"
-                    onClick={() => openImageViewer(postThreadOverlay.imageUrl as string, `${postThreadOverlay.title || 'Post'} image`)}
-                  >
-                    <img src={postThreadOverlay.imageUrl} alt="Post attachment" className="max-h-[320px] w-full object-contain" />
-                  </button>
-                ) : null}
-                <div className="min-h-[200px]">
-                  <InlinePostSolutionsThread
-                    loading={postThreadLoading}
-                    error={postThreadError}
-                    responses={postThreadResponses}
-                    currentUserId={currentViewerId}
-                    theme="light"
-                    inlineCanvasMode="static"
-                    getContainerProps={(response, args) => {
-                      const overlayPost = posts.find((post) => String(post?.id || '') === String(postThreadOverlay.postId || '')) || null
-                      return overlayPost ? getPostReplyContainerProps(overlayPost, response, args.isMine) : {}
-                    }}
-                    getResponseActions={(response, args) => {
-                      const overlayPost = posts.find((post) => String(post?.id || '') === String(postThreadOverlay.postId || '')) || null
-                      return overlayPost ? buildPostReplyActions(overlayPost, response, args) : []
-                    }}
-                    onOpenImageBlock={(imageUrl, args) => openImageViewer(imageUrl, `${args.responseUserName} attachment`)}
-                    onOpenCanvasBlock={(_response, args, scene) => {
-                      openCanvasViewer(scene, `${args.responseUserName} canvas`, postThreadOverlay?.title || 'Canvas viewer')
-                    }}
-                  />
+        <OverlayPortal>
+          <BottomSheet
+            open={Boolean(postThreadOverlay)}
+            title={postThreadOverlay.title || 'Solutions'}
+            subtitle="Replies"
+            hideHeader
+            onClose={() => {
+              setPostThreadOverlay(null)
+              setPostThreadError(null)
+              setPostThreadResponses([])
+              setPostSolveModeOverlay(null)
+              setPostSolveOverlay(null)
+              setPostTypedSolveOverlay(null)
+              setPostSolveBlocks([])
+              setPostSolveText('')
+              setPostSolveEditingTarget(null)
+              setComposerBlockCrudTarget(null)
+              setPostSolveError(null)
+              setPostReplyImageSourceSheetOpen(false)
+            }}
+            backdrop
+            closeOnBackdrop
+            closeOnEscape
+            className="bottom-0"
+            sheetClassName="rounded-[30px] border border-slate-200 bg-white shadow-sm"
+            zIndexClassName="z-[67]"
+            style={{
+              maxHeight: 'calc(100dvh - max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) - max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) - 5rem)',
+            }}
+            contentClassName="min-h-0 flex flex-col p-0 overflow-hidden overscroll-contain"
+          >
+            {(postThreadLoading || Boolean(postThreadError) || (Array.isArray(postThreadResponses) && postThreadResponses.length > 0)) ? (
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+                <div className="space-y-3 p-4">
+                  {postThreadOverlay.imageUrl ? (
+                    <button
+                      type="button"
+                      className="block w-full overflow-hidden rounded-2xl border border-black/10 bg-white text-left"
+                      onClick={() => openImageViewer(postThreadOverlay.imageUrl as string, `${postThreadOverlay.title || 'Post'} image`)}
+                    >
+                      <img src={postThreadOverlay.imageUrl} alt="Post attachment" className="max-h-[320px] w-full object-contain" />
+                    </button>
+                  ) : null}
+                  <div className="min-h-[200px]">
+                    <InlinePostSolutionsThread
+                      loading={postThreadLoading}
+                      error={postThreadError}
+                      responses={postThreadResponses}
+                      currentUserId={currentViewerId}
+                      theme="light"
+                      inlineCanvasMode="static"
+                      getContainerProps={(response, args) => {
+                        const overlayPost = posts.find((post) => String(post?.id || '') === String(postThreadOverlay.postId || '')) || null
+                        return overlayPost ? getPostReplyContainerProps(overlayPost, response, args.isMine) : {}
+                      }}
+                      getResponseActions={(response, args) => {
+                        const overlayPost = posts.find((post) => String(post?.id || '') === String(postThreadOverlay.postId || '')) || null
+                        return overlayPost ? buildPostReplyActions(overlayPost, response, args) : []
+                      }}
+                      onOpenImageBlock={(imageUrl, args) => openImageViewer(imageUrl, `${args.responseUserName} attachment`)}
+                      onOpenCanvasBlock={(_response, args, scene) => {
+                        openCanvasViewer(scene, `${args.responseUserName} canvas`, postThreadOverlay?.title || 'Canvas viewer')
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : null}
-          <div className={`shrink-0 bg-[linear-gradient(180deg,#fbfcff_0%,#f0f6ff_100%)] px-4 pt-3 sm:px-5 sm:pt-4 ${(postThreadLoading || Boolean(postThreadError) || (Array.isArray(postThreadResponses) && postThreadResponses.length > 0)) ? 'border-t border-slate-200' : ''}`.trim()}>
-            {postSolveError ? (
-              <div className="mb-3 rounded-2xl border border-red-200 bg-red-50/95 px-4 py-3 text-sm font-medium text-red-700 shadow-[0_12px_28px_rgba(220,38,38,0.12)]">
-                {postSolveError}
-              </div>
             ) : null}
-            <div className="max-h-[min(18rem,42dvh)] min-h-0 overflow-hidden">
-              <PostReplyComposerSurface
-                blocks={postSolveBlocks}
-                draftText={postSolveText}
-                editingTarget={postSolveEditingTarget}
-                viewerName={currentViewerName}
-                submitting={postSolveSubmitting}
-                imageUploading={postReplyImageUploading}
-                textareaRef={postSolveTextareaRef}
-                onDraftTextChange={setPostSolveText}
-                onOpenTyped={() => openTypedPostSolveComposer(activePostReplyComposerDraft, 'keyboard')}
-                onOpenHandwritten={() => openHandwrittenPostSolveComposer(activePostReplyComposerDraft)}
-                onOpenImagePicker={openPostReplyImagePicker}
-                onSubmitText={() => void submitPostTextSolve()}
-                onEditBlock={editComposerBlock}
-                onDeleteBlock={deleteComposerBlock}
-                onCanvasViewportChange={updateComposerCanvasViewport}
-                onBeginBlockLongPress={beginComposerBlockLongPress}
-                onMoveBlockLongPress={moveComposerBlockLongPress}
-                onClearBlockLongPress={clearComposerBlockLongPress}
-                onOpenBlockCrudOptions={openComposerBlockCrudOptions}
-              />
+            <div className={`shrink-0 bg-[linear-gradient(180deg,#fbfcff_0%,#f0f6ff_100%)] px-4 pt-3 sm:px-5 sm:pt-4 ${(postThreadLoading || Boolean(postThreadError) || (Array.isArray(postThreadResponses) && postThreadResponses.length > 0)) ? 'border-t border-slate-200' : ''}`.trim()}>
+              {postSolveError ? (
+                <div className="mb-3 rounded-2xl border border-red-200 bg-red-50/95 px-4 py-3 text-sm font-medium text-red-700 shadow-[0_12px_28px_rgba(220,38,38,0.12)]">
+                  {postSolveError}
+                </div>
+              ) : null}
+              <div className="max-h-[min(18rem,42dvh)] min-h-0 overflow-hidden">
+                <PostReplyComposerSurface
+                  blocks={postSolveBlocks}
+                  draftText={postSolveText}
+                  editingTarget={postSolveEditingTarget}
+                  viewerName={currentViewerName}
+                  submitting={postSolveSubmitting}
+                  imageUploading={postReplyImageUploading}
+                  textareaRef={postSolveTextareaRef}
+                  onDraftTextChange={setPostSolveText}
+                  onOpenTyped={() => openTypedPostSolveComposer(activePostReplyComposerDraft, 'keyboard')}
+                  onOpenHandwritten={() => openHandwrittenPostSolveComposer(activePostReplyComposerDraft)}
+                  onOpenImagePicker={openPostReplyImagePicker}
+                  onSubmitText={() => void submitPostTextSolve()}
+                  onEditBlock={editComposerBlock}
+                  onDeleteBlock={deleteComposerBlock}
+                  onCanvasViewportChange={updateComposerCanvasViewport}
+                  onBeginBlockLongPress={beginComposerBlockLongPress}
+                  onMoveBlockLongPress={moveComposerBlockLongPress}
+                  onClearBlockLongPress={clearComposerBlockLongPress}
+                  onOpenBlockCrudOptions={openComposerBlockCrudOptions}
+                />
+              </div>
             </div>
-          </div>
-        </BottomSheet>
+          </BottomSheet>
+        </OverlayPortal>
       ) : null}
 
       {imageViewer ? (

@@ -8,6 +8,20 @@
   --philani-ui-icon-shadow: drop-shadow(0 6px 12px rgba(14, 165, 233, 0.18));
 }
 
+.philani-inline-katex {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.philani-inline-katex .katex {
+  font-size: 1em;
+  line-height: inherit;
+  vertical-align: middle;
+  position: relative;
+  top: 0.04em;
+}
+
 .philani-gradient-outline,
 .philani-gradient-outline-soft {
   border: 1px solid transparent !important;

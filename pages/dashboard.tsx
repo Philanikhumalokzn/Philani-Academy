@@ -6483,7 +6483,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         <button
                           type="button"
                           className="btn btn-primary shrink-0"
-                          onClick={() => void openPostSolveComposer(c)}
+                          onClick={() => void openPostThread(c, { forceOpen: true })}
                         >
                           Solve
                         </button>
@@ -6491,7 +6491,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         <button
                           type="button"
                           className="btn btn-primary shrink-0"
-                          onClick={() => void openPostThread(c)}
+                          onClick={() => void openPostThread(c, { forceOpen: true })}
                         >
                           Solutions
                         </button>
@@ -6504,13 +6504,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       <button
                         type="button"
                         className="btn btn-primary shrink-0"
-                        onClick={() => {
-                          if (c?.hasOwnResponse) {
-                            void openPostThread(c)
-                            return
-                          }
-                          void openPostSolveComposer(c)
-                        }}
+                        onClick={() => void openPostThread(c, { forceOpen: true })}
                       >
                         {c?.hasOwnResponse ? formatSolutionsLabel((c as any)?.solutionCount) : 'Solve'}
                       </button>
@@ -6889,7 +6883,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           <button
                             type="button"
                             className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
-                            onClick={() => void openPostSolveComposer(p)}
+                            onClick={() => void openPostThread(p, { forceOpen: true })}
                           >
                             Solve
                           </button>
@@ -6897,7 +6891,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                           <button
                             type="button"
                             className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
-                            onClick={() => void openPostThread(p)}
+                            onClick={() => void openPostThread(p, { forceOpen: true })}
                           >
                             Solutions
                           </button>
@@ -6910,13 +6904,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         <button
                           type="button"
                           className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
-                          onClick={() => {
-                            if (p?.hasOwnResponse) {
-                              void openPostThread(p)
-                              return
-                            }
-                            void openPostSolveComposer(p)
-                          }}
+                          onClick={() => void openPostThread(p, { forceOpen: true })}
                         >
                           {p?.hasOwnResponse ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve'}
                         </button>
@@ -6951,7 +6939,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       count: (p as any)?.solutionCount ?? 0,
                       countLabel: formatSocialCountLabel((p as any)?.solutionCount, 'Reply', 'Replies'),
                       onClick: () => {
-                        void openPostSolveComposer(p)
+                        void openPostThread(p, { forceOpen: true })
                       },
                       onCountClick: () => {
                         void openPostThread(p, { forceOpen: true })
@@ -7187,7 +7175,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 <button
                                   type="button"
                                   className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
-                                  onClick={() => void openPostSolveComposer(p)}
+                                  onClick={() => void openPostThread(p, { forceOpen: true })}
                                 >
                                   Solve
                                 </button>
@@ -7195,7 +7183,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 <button
                                   type="button"
                                   className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
-                                  onClick={() => void openPostThread(p)}
+                                  onClick={() => void openPostThread(p, { forceOpen: true })}
                                 >
                                   Solutions
                                 </button>
@@ -7208,13 +7196,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               <button
                                 type="button"
                                 className="inline-flex shrink-0 h-10 items-center justify-center rounded-xl bg-[#1877f2] px-4 text-sm font-semibold text-white"
-                                onClick={() => {
-                                  if (p?.hasOwnResponse) {
-                                    void openPostThread(p)
-                                    return
-                                  }
-                                  void openPostSolveComposer(p)
-                                }}
+                                onClick={() => void openPostThread(p, { forceOpen: true })}
                               >
                                 {p?.hasOwnResponse ? formatSolutionsLabel((p as any)?.solutionCount) : 'Solve'}
                               </button>
@@ -7299,7 +7281,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               : undefined,
                             onClick: () => {
                               if (isPost) {
-                                void openPostSolveComposer(p)
+                                void openPostThread(p, { forceOpen: true })
                                 return
                               }
                               if (hasAttempted) {
@@ -9804,15 +9786,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const canAttempt = attemptsOpen && (maxAttempts === null || myAttemptCount < maxAttempts)
 
     if (usesAttemptRules) {
-      if (hasAttempted) {
+      if (hasAttempted || canAttempt) {
         void openPostThread(targetItem, { forceOpen: true })
-      } else if (canAttempt) {
-        void openPostSolveComposer(targetItem)
       }
-    } else if (targetItem?.hasOwnResponse) {
-      void openPostThread(targetItem, { forceOpen: true })
     } else {
-      void openPostSolveComposer(targetItem)
+      void openPostThread(targetItem, { forceOpen: true })
     }
 
     const nextQuery: Record<string, any> = { ...router.query }

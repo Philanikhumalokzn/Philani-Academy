@@ -1,4 +1,4 @@
-import { useCallback, useState, type HTMLAttributes, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react'
 import type { PublicSolveScene } from './PublicSolveCanvas'
 import type { PostReplyBlock } from '../lib/postReplyComposer'
 import { normalizePostReplyBlocks } from '../lib/postReplyComposer'
@@ -63,6 +63,9 @@ export default function PublicFeedPostCard({
   children,
 }: PublicFeedPostCardProps) {
   const [fallbackImageViewer, setFallbackImageViewer] = useState<{ url: string; title: string } | null>(null)
+  const [iframeHeight, setIframeHeight] = useState(420)
+  const remixIframeRef = useRef<HTMLIFrameElement | null>(null)
+  const iframeResizeTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([])
   const safeAuthorName = String(authorName || '').trim() || 'Learner'
   const safeTitle = String(title || '').trim() || 'Post'
   const safePrompt = String(prompt || '').trim()
@@ -116,6 +119,56 @@ export default function PublicFeedPostCard({
   const handleBodyContextMenu = bodyPointerProps?.onContextMenu
   const latexOnlyDisableButtonSemantics = !customBody && isLatexOnlyBody
 
+  const clearIframeResizeTimers = useCallback(() => {
+    for (const timer of iframeResizeTimersRef.current) {
+      clearTimeout(timer)
+    }
+    iframeResizeTimersRef.current = []
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      clearIframeResizeTimers()
+    }
+  }, [clearIframeResizeTimers])
+
+  const syncRemixIframeHeight = useCallback(() => {
+    const iframe = remixIframeRef.current
+    if (!iframe) return
+
+    try {
+      const iframeDoc = iframe.contentWindow?.document
+      if (!iframeDoc) return
+      const body = iframeDoc.body
+      const docEl = iframeDoc.documentElement
+      if (!body || !docEl) return
+
+      const nextHeight = Math.max(
+        body.scrollHeight,
+        body.offsetHeight,
+        docEl.scrollHeight,
+        docEl.offsetHeight,
+      )
+      if (!Number.isFinite(nextHeight) || nextHeight <= 0) return
+
+      const clampedHeight = Math.max(280, Math.min(Math.ceil(nextHeight + 2), 2400))
+      setIframeHeight((prev) => (prev === clampedHeight ? prev : clampedHeight))
+    } catch {
+      // Ignore cross-document measurement failures and keep fallback height.
+    }
+  }, [])
+
+  const handleRemixIframeLoad = useCallback(() => {
+    clearIframeResizeTimers()
+    syncRemixIframeHeight()
+
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(syncRemixIframeHeight)
+    }
+
+    iframeResizeTimersRef.current = [120, 360, 900, 1800].map((delay) => setTimeout(syncRemixIframeHeight, delay))
+  }, [clearIframeResizeTimers, syncRemixIframeHeight])
+
   const body = customBody ?? (
     <div
       className={onOpen ? 'mt-3 block w-full cursor-pointer text-left' : 'mt-3 block w-full text-left'}
@@ -145,13 +198,15 @@ export default function PublicFeedPostCard({
       {enableMmdBodyViewer && mmdBodyContent && postId ? (
         <div className="mt-2">
           <iframe
+            ref={remixIframeRef}
             src={`/remix/preview/${postId}`}
             title={`${safeTitle} preview`}
             className="block w-full bg-white"
             style={{
-              minHeight: '400px',
-              maxHeight: '800px',
+              height: `${iframeHeight}px`,
             }}
+            onLoad={handleRemixIframeLoad}
+            scrolling="no"
             sandbox="allow-same-origin allow-scripts"
             loading="lazy"
           />

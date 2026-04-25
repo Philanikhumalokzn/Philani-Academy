@@ -48,29 +48,16 @@ export default function RemixPreviewPage({ post, errorMessage }: RemixPreviewPag
         <meta name="robots" content="noindex" />
       </Head>
       
-      <div className="flex min-h-screen flex-col bg-white p-4 sm:p-6">
-        {/* Question container styled like Remix search result */}
-        <div className="w-full max-w-4xl mx-auto">
-          {/* Question title */}
-          {post.title && (
-            <div className="mb-4 border-b border-gray-200 pb-4">
-              <h1 className="text-xl font-semibold text-gray-900">{post.title}</h1>
-            </div>
-          )}
-
-          {/* Question viewer */}
-          {post.remixMmd && (
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 sm:p-6">
-              <MmdPaperViewer
-                mmd={post.remixMmd}
-                compact={false}
-                centerInlineMath
-                autoScrollToSelectedQuestion={false}
-                selectedQuestionNumber={post.remixSelectedQuestionNumber || undefined}
-              />
-            </div>
-          )}
-        </div>
+      <div className="bg-white p-3">
+        {post.remixMmd && (
+          <MmdPaperViewer
+            mmd={post.remixMmd}
+            compact
+            centerInlineMath
+            autoScrollToSelectedQuestion={false}
+            selectedQuestionNumber={post.remixSelectedQuestionNumber || undefined}
+          />
+        )}
       </div>
 
       <style jsx>{`

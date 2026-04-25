@@ -15,8 +15,41 @@ type RemixPreviewPageProps = {
     title: string
     remixMmd: string
     remixSelectedQuestionNumber?: string
+    remixYear?: number
+    remixMonth?: string
+    remixPaper?: number
+    remixTopic?: string
+    remixCognitiveLevel?: number
+    remixMarks?: number
   } | null
   errorMessage?: string
+}
+
+function formatMonthBadgeLabel(month: unknown): string {
+  const value = String(month || '').trim()
+  if (!value) return ''
+  const normalized = value.toLowerCase()
+  if (normalized.startsWith('sep')) return 'Sept'
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
+function formatPaperBadgeLabel(paper: unknown): string {
+  const n = Number(paper)
+  if (!Number.isFinite(n)) return ''
+  return `P${Math.max(1, Math.trunc(n))}`
+}
+
+function formatLevelBadgeLabel(level: unknown): string {
+  const n = Number(level)
+  if (!Number.isFinite(n)) return ''
+  return `Lv${Math.max(1, Math.trunc(n))}`
+}
+
+function formatMarksBadgeLabel(marks: unknown): string {
+  const n = Number(marks)
+  if (!Number.isFinite(n)) return ''
+  const safe = Math.max(0, Math.trunc(n))
+  return `${safe} mark${safe === 1 ? '' : 's'}`
 }
 
 export default function RemixPreviewPage({ post, errorMessage }: RemixPreviewPageProps) {
@@ -51,6 +84,17 @@ export default function RemixPreviewPage({ post, errorMessage }: RemixPreviewPag
       <div id="remix-preview-root" className="bg-white">
         {post.remixMmd && (
           <div className="remix-preview-gutter">
+            <div className="remix-preview-question-header">
+              <span className="remix-preview-question-label">QUESTION {post.remixSelectedQuestionNumber || ''}</span>
+              <div className="remix-preview-badges" aria-label="Question metadata badges">
+                {post.remixYear ? <span className="remix-preview-badge remix-preview-badge-neutral">{post.remixYear}</span> : null}
+                {post.remixMonth ? <span className="remix-preview-badge remix-preview-badge-neutral">{formatMonthBadgeLabel(post.remixMonth)}</span> : null}
+                {post.remixPaper ? <span className="remix-preview-badge remix-preview-badge-neutral">{formatPaperBadgeLabel(post.remixPaper)}</span> : null}
+                {post.remixTopic ? <span className="remix-preview-badge remix-preview-badge-topic">{post.remixTopic}</span> : null}
+                {post.remixCognitiveLevel ? <span className="remix-preview-badge remix-preview-badge-level">{formatLevelBadgeLabel(post.remixCognitiveLevel)}</span> : null}
+                {post.remixMarks ? <span className="remix-preview-badge remix-preview-badge-neutral">{formatMarksBadgeLabel(post.remixMarks)}</span> : null}
+              </div>
+            </div>
             <MmdPaperViewer
               mmd={post.remixMmd}
               compact
@@ -83,6 +127,52 @@ export default function RemixPreviewPage({ post, errorMessage }: RemixPreviewPag
         #remix-preview-root .remix-preview-gutter {
           padding-left: var(--remix-preview-gutter);
           padding-right: var(--remix-preview-gutter);
+        }
+
+        #remix-preview-root .remix-preview-question-header {
+          padding-top: 10px;
+          margin-bottom: 8px;
+        }
+
+        #remix-preview-root .remix-preview-question-label {
+          display: inline-block;
+          font-size: 12px;
+          font-weight: 700;
+          color: #1c1e21;
+          letter-spacing: 0.03em;
+          text-transform: uppercase;
+          margin-bottom: 6px;
+        }
+
+        #remix-preview-root .remix-preview-badges {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+
+        #remix-preview-root .remix-preview-badge {
+          display: inline-flex;
+          align-items: center;
+          font-size: 12px;
+          border-radius: 999px;
+          padding: 2px 8px;
+          line-height: 1.2;
+        }
+
+        #remix-preview-root .remix-preview-badge-neutral {
+          background: #f0f2f5;
+          color: #4b5563;
+        }
+
+        #remix-preview-root .remix-preview-badge-topic {
+          background: #e8f4fd;
+          color: #1877f2;
+        }
+
+        #remix-preview-root .remix-preview-badge-level {
+          background: #fff3cd;
+          color: #856404;
         }
 
         #remix-preview-root .mmd-fullbleed-media .preview img,
@@ -166,6 +256,12 @@ export const getServerSideProps: GetServerSideProps<RemixPreviewPageProps> = asy
           title: post.title || 'Question',
           remixMmd: composerMeta.remixMmd,
           remixSelectedQuestionNumber: composerMeta.remixSelectedQuestionNumber,
+          remixYear: typeof composerMeta.remixYear === 'number' ? composerMeta.remixYear : undefined,
+          remixMonth: typeof composerMeta.remixMonth === 'string' ? composerMeta.remixMonth : undefined,
+          remixPaper: typeof composerMeta.remixPaper === 'number' ? composerMeta.remixPaper : undefined,
+          remixTopic: typeof composerMeta.remixTopic === 'string' ? composerMeta.remixTopic : undefined,
+          remixCognitiveLevel: typeof composerMeta.remixCognitiveLevel === 'number' ? composerMeta.remixCognitiveLevel : undefined,
+          remixMarks: typeof composerMeta.remixMarks === 'number' ? composerMeta.remixMarks : undefined,
         },
       },
     }

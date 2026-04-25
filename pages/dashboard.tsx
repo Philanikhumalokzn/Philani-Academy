@@ -9406,6 +9406,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       questionNumber: draft.questionNumber || null,
       remixMmd: canonicalRemixMmd || null,
       remixSelectedQuestionNumber: draft.questionNumber || null,
+      remixYear: Number.isFinite(Number(question?.year)) ? Math.trunc(Number(question.year)) : null,
+      remixMonth: String(question?.month || '').trim() || null,
+      remixPaper: Number.isFinite(Number(question?.paper)) ? Math.trunc(Number(question.paper)) : null,
+      remixTopic: String(question?.topic || '').trim() || null,
+      remixCognitiveLevel: Number.isFinite(Number(question?.cognitiveLevel)) ? Math.trunc(Number(question.cognitiveLevel)) : null,
+      remixMarks: Number.isFinite(Number(question?.marks)) ? Math.trunc(Number(question.marks)) : null,
     }
 
     setQbPostingToTimelineByItemKey((prev) => ({ ...prev, [socialItemKey]: true }))

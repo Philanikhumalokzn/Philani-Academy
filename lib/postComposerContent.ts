@@ -10,6 +10,12 @@ export type SocialPostComposerMeta = {
   questionNumber?: string | null
   remixMmd?: string | null
   remixSelectedQuestionNumber?: string | null
+  remixYear?: number | null
+  remixMonth?: string | null
+  remixPaper?: number | null
+  remixTopic?: string | null
+  remixCognitiveLevel?: number | null
+  remixMarks?: number | null
 }
 
 type SocialPostComposerEnvelope = {
@@ -38,7 +44,17 @@ function normalizeComposerMeta(meta: SocialPostComposerMeta | null | undefined):
   const questionNumber = typeof meta.questionNumber === 'string' ? meta.questionNumber.trim() : ''
   const remixMmd = typeof meta.remixMmd === 'string' ? meta.remixMmd.trim() : ''
   const remixSelectedQuestionNumber = typeof meta.remixSelectedQuestionNumber === 'string' ? meta.remixSelectedQuestionNumber.trim() : ''
-  if (!origin && !sourceId && !questionId && !questionNumber && !remixMmd && !remixSelectedQuestionNumber) return null
+  const remixYearRaw = Number((meta as any).remixYear)
+  const remixYear = Number.isFinite(remixYearRaw) ? Math.trunc(remixYearRaw) : null
+  const remixMonth = typeof (meta as any).remixMonth === 'string' ? (meta as any).remixMonth.trim() : ''
+  const remixPaperRaw = Number((meta as any).remixPaper)
+  const remixPaper = Number.isFinite(remixPaperRaw) ? Math.trunc(remixPaperRaw) : null
+  const remixTopic = typeof (meta as any).remixTopic === 'string' ? (meta as any).remixTopic.trim() : ''
+  const remixCognitiveLevelRaw = Number((meta as any).remixCognitiveLevel)
+  const remixCognitiveLevel = Number.isFinite(remixCognitiveLevelRaw) ? Math.trunc(remixCognitiveLevelRaw) : null
+  const remixMarksRaw = Number((meta as any).remixMarks)
+  const remixMarks = Number.isFinite(remixMarksRaw) ? Math.trunc(remixMarksRaw) : null
+  if (!origin && !sourceId && !questionId && !questionNumber && !remixMmd && !remixSelectedQuestionNumber && remixYear === null && !remixMonth && remixPaper === null && !remixTopic && remixCognitiveLevel === null && remixMarks === null) return null
   return {
     ...(origin ? { origin } : {}),
     ...(sourceId ? { sourceId } : {}),
@@ -46,6 +62,12 @@ function normalizeComposerMeta(meta: SocialPostComposerMeta | null | undefined):
     ...(questionNumber ? { questionNumber } : {}),
     ...(remixMmd ? { remixMmd } : {}),
     ...(remixSelectedQuestionNumber ? { remixSelectedQuestionNumber } : {}),
+    ...(remixYear !== null ? { remixYear } : {}),
+    ...(remixMonth ? { remixMonth } : {}),
+    ...(remixPaper !== null ? { remixPaper } : {}),
+    ...(remixTopic ? { remixTopic } : {}),
+    ...(remixCognitiveLevel !== null ? { remixCognitiveLevel } : {}),
+    ...(remixMarks !== null ? { remixMarks } : {}),
   }
 }
 

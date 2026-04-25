@@ -76,11 +76,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }).catch(() => [] as any[])).map((u: any) => String(u?.id || '')).filter(Boolean)
 
   const publicCircleIds = Array.from(new Set([...followingIds, ...groupmateIds, ...privilegedIds])).filter((id) => id && id !== requesterId)
-  if (onlyFollowing && followingIds.length === 0) return res.status(200).json({ posts: [] })
+  const followingAndSelfIds = Array.from(new Set([...followingIds, requesterId])).filter(Boolean)
+  if (onlyFollowing && followingAndSelfIds.length === 0) return res.status(200).json({ posts: [] })
 
   const socialPost = (prisma as any).socialPost as typeof prisma extends { socialPost: infer T } ? T : any
   const where: any = {
-    createdById: onlyFollowing ? { in: followingIds, not: requesterId } : { not: requesterId },
+    ...(onlyFollowing ? { createdById: { in: followingAndSelfIds } } : {}),
     audience: { in: ['public', 'grade'] },
   }
 

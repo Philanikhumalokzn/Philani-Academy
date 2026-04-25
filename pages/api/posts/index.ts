@@ -20,7 +20,17 @@ function parseComposerMeta(value: unknown): SocialPostComposerMeta | null {
   const questionNumber = typeof raw.questionNumber === 'string' ? raw.questionNumber.trim() : ''
   const remixMmd = typeof raw.remixMmd === 'string' ? raw.remixMmd.trim() : ''
   const remixSelectedQuestionNumber = typeof raw.remixSelectedQuestionNumber === 'string' ? raw.remixSelectedQuestionNumber.trim() : ''
-  if (!origin && !sourceId && !questionId && !questionNumber && !remixMmd && !remixSelectedQuestionNumber) return null
+  const remixYearRaw = Number(raw.remixYear)
+  const remixYear = Number.isFinite(remixYearRaw) ? Math.trunc(remixYearRaw) : null
+  const remixMonth = typeof raw.remixMonth === 'string' ? raw.remixMonth.trim() : ''
+  const remixPaperRaw = Number(raw.remixPaper)
+  const remixPaper = Number.isFinite(remixPaperRaw) ? Math.trunc(remixPaperRaw) : null
+  const remixTopic = typeof raw.remixTopic === 'string' ? raw.remixTopic.trim() : ''
+  const remixCognitiveLevelRaw = Number(raw.remixCognitiveLevel)
+  const remixCognitiveLevel = Number.isFinite(remixCognitiveLevelRaw) ? Math.trunc(remixCognitiveLevelRaw) : null
+  const remixMarksRaw = Number(raw.remixMarks)
+  const remixMarks = Number.isFinite(remixMarksRaw) ? Math.trunc(remixMarksRaw) : null
+  if (!origin && !sourceId && !questionId && !questionNumber && !remixMmd && !remixSelectedQuestionNumber && remixYear === null && !remixMonth && remixPaper === null && !remixTopic && remixCognitiveLevel === null && remixMarks === null) return null
   return {
     ...(origin ? { origin } : {}),
     ...(sourceId ? { sourceId } : {}),
@@ -28,6 +38,12 @@ function parseComposerMeta(value: unknown): SocialPostComposerMeta | null {
     ...(questionNumber ? { questionNumber } : {}),
     ...(remixMmd ? { remixMmd } : {}),
     ...(remixSelectedQuestionNumber ? { remixSelectedQuestionNumber } : {}),
+    ...(remixYear !== null ? { remixYear } : {}),
+    ...(remixMonth ? { remixMonth } : {}),
+    ...(remixPaper !== null ? { remixPaper } : {}),
+    ...(remixTopic ? { remixTopic } : {}),
+    ...(remixCognitiveLevel !== null ? { remixCognitiveLevel } : {}),
+    ...(remixMarks !== null ? { remixMarks } : {}),
   }
 }
 

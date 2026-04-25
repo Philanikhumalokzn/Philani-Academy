@@ -63,7 +63,7 @@ export default function PublicFeedPostCard({
   children,
 }: PublicFeedPostCardProps) {
   const [fallbackImageViewer, setFallbackImageViewer] = useState<{ url: string; title: string } | null>(null)
-  const [iframeHeight, setIframeHeight] = useState(420)
+  const [iframeHeight, setIframeHeight] = useState(280)
   const remixIframeRef = useRef<HTMLIFrameElement | null>(null)
   const iframeResizeTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([])
   const safeAuthorName = String(authorName || '').trim() || 'Learner'
@@ -139,19 +139,17 @@ export default function PublicFeedPostCard({
     try {
       const iframeDoc = iframe.contentWindow?.document
       if (!iframeDoc) return
-      const body = iframeDoc.body
-      const docEl = iframeDoc.documentElement
-      if (!body || !docEl) return
+      const previewRoot = iframeDoc.getElementById('remix-preview-root') as HTMLElement | null
+      if (!previewRoot) return
 
       const nextHeight = Math.max(
-        body.scrollHeight,
-        body.offsetHeight,
-        docEl.scrollHeight,
-        docEl.offsetHeight,
+        previewRoot.scrollHeight,
+        previewRoot.offsetHeight,
+        Math.ceil(previewRoot.getBoundingClientRect().height),
       )
       if (!Number.isFinite(nextHeight) || nextHeight <= 0) return
 
-      const clampedHeight = Math.max(280, Math.min(Math.ceil(nextHeight + 2), 2400))
+      const clampedHeight = Math.max(120, Math.min(Math.ceil(nextHeight), 2400))
       setIframeHeight((prev) => (prev === clampedHeight ? prev : clampedHeight))
     } catch {
       // Ignore cross-document measurement failures and keep fallback height.

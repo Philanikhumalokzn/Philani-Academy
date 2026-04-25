@@ -21794,54 +21794,57 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       />
 
       {postThreadOverlay && (
-        <OverlayPortal>
-          <FullScreenGlassOverlay
-            title={postThreadOverlay.title || 'Solutions'}
-            subtitle="Public solutions thread"
-            zIndexClassName="z-[67]"
-            onClose={() => {
-              setPostThreadOverlay(null)
-              setPostThreadError(null)
-              setPostThreadResponses([])
-            }}
-            onBackdropClick={() => {
-              setPostThreadOverlay(null)
-              setPostThreadError(null)
-              setPostThreadResponses([])
-            }}
-            rightActions={(
+        <BottomSheet
+          open={Boolean(postThreadOverlay)}
+          title={postThreadOverlay.title || 'Solutions'}
+          subtitle="Replies"
+          onClose={() => {
+            setPostThreadOverlay(null)
+            setPostThreadError(null)
+            setPostThreadResponses([])
+          }}
+          backdrop
+          closeOnBackdrop
+          closeOnEscape
+          zIndexClassName="z-[67]"
+          style={{
+            maxHeight: 'calc(100dvh - max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) - max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) - 5rem)',
+          }}
+          contentClassName="p-0 overflow-hidden"
+          rightActions={(
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                void openPostSolveComposer(postThreadOverlay)
+              }}
+            >
+              Reply
+            </button>
+          )}
+        >
+          <div className="space-y-3 overflow-y-auto p-4">
+            {postThreadOverlay.prompt ? (
+              <div className="rounded-2xl border border-black/10 bg-slate-50 p-3 text-sm text-slate-700">
+                {postThreadOverlay.prompt}
+              </div>
+            ) : null}
+            {postThreadOverlay.imageUrl ? (
               <button
                 type="button"
-                className="btn btn-primary"
-                onClick={() => {
-                  void openPostSolveComposer(postThreadOverlay)
-                }}
+                className="block w-full overflow-hidden rounded-2xl border border-black/10 bg-white text-left"
+                onClick={() => openPostImageViewer(postThreadOverlay.imageUrl as string, `${postThreadOverlay.title || 'Post'} image`)}
               >
-                Reply
+                <img src={postThreadOverlay.imageUrl} alt="Post attachment" className="max-h-[320px] w-full object-contain" />
               </button>
-            )}
-          >
-            <div className="space-y-4">
-              {postThreadOverlay.prompt ? (
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
-                  {postThreadOverlay.prompt}
-                </div>
-              ) : null}
-              {postThreadOverlay.imageUrl ? (
-                <button
-                  type="button"
-                  className="block w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 text-left"
-                  onClick={() => openPostImageViewer(postThreadOverlay.imageUrl as string, `${postThreadOverlay.title || 'Post'} image`)}
-                >
-                  <img src={postThreadOverlay.imageUrl} alt="Post attachment" className="max-h-[320px] w-full object-contain" />
-                </button>
-              ) : null}
+            ) : null}
+            <div className="min-h-[200px]">
               <InlinePostSolutionsThread
                 loading={postThreadLoading}
                 error={postThreadError}
                 responses={postThreadResponses}
                 currentUserId={String(currentUserId || viewerId || '')}
-                theme="dark"
+                theme="light"
                 inlineCanvasMode="static"
                 getContainerProps={(response, args) => ({
                   onPointerDown: (event) => beginReplyLongPress(event as any, {
@@ -21870,7 +21873,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   const viewportError = String(interactiveViewportErrorByResponseId[args.responseId] || '').trim()
                   if (!(args.isMine && response?.excalidrawScene && (viewportError || viewportSaving))) return null
                   return (
-                    <div className="mt-1 text-[11px] font-medium text-white/55">
+                    <div className="mt-1 text-[11px] font-medium text-slate-500">
                       {viewportError ? viewportError : 'Saving view...'}
                     </div>
                   )
@@ -21892,8 +21895,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 }}
               />
             </div>
-          </FullScreenGlassOverlay>
-        </OverlayPortal>
+          </div>
+        </BottomSheet>
       )}
 
       {userDetailOverlayOpen && selectedUserDetail && (

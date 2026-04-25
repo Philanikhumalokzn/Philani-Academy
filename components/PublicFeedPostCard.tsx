@@ -194,7 +194,7 @@ export default function PublicFeedPostCard({
         </div>
       ) : null}
       {enableMmdBodyViewer && mmdBodyContent && postId ? (
-        <div className="mt-2">
+        <div className="mt-2 px-4 sm:px-6">
           <iframe
             ref={remixIframeRef}
             src={`/remix/preview/${postId}`}

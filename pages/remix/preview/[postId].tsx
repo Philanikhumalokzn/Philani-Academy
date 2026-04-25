@@ -52,6 +52,12 @@ function formatMarksBadgeLabel(marks: unknown): string {
   return `${safe} mark${safe === 1 ? '' : 's'}`
 }
 
+function toMainQuestionNumber(value: unknown): string {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  return raw.split('.').map((part) => part.trim()).filter(Boolean)[0] || raw
+}
+
 export default function RemixPreviewPage({ post, errorMessage }: RemixPreviewPageProps) {
   if (errorMessage) {
     return (
@@ -73,6 +79,8 @@ export default function RemixPreviewPage({ post, errorMessage }: RemixPreviewPag
     )
   }
 
+  const mainQuestionNumber = toMainQuestionNumber(post.remixSelectedQuestionNumber)
+
   return (
     <>
       <Head>
@@ -85,7 +93,7 @@ export default function RemixPreviewPage({ post, errorMessage }: RemixPreviewPag
         {post.remixMmd && (
           <div className="remix-preview-gutter">
             <div className="remix-preview-question-header">
-              <span className="remix-preview-question-label">QUESTION {post.remixSelectedQuestionNumber || ''}</span>
+              <span className="remix-preview-question-label">QUESTION {mainQuestionNumber || post.remixSelectedQuestionNumber || ''}</span>
               <div className="remix-preview-badges" aria-label="Question metadata badges">
                 {post.remixYear ? <span className="remix-preview-badge remix-preview-badge-neutral">{post.remixYear}</span> : null}
                 {post.remixMonth ? <span className="remix-preview-badge remix-preview-badge-neutral">{formatMonthBadgeLabel(post.remixMonth)}</span> : null}

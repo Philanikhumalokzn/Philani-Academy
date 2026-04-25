@@ -677,7 +677,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
   if (compact) {
     if (useMathpixRenderer && renderedHtml) {
       return (
-        <div className={`w-full bg-transparent [&_.katex]:!text-[#1c1e21] [&_.preview]:!max-w-none [&_.preview]:!mx-0 [&_.preview]:!px-0 [&_.preview-content]:!max-w-none [&_.preview-content]:!mx-0 [&_.preview-content]:!px-0 [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden [&_.katex-display]:max-w-full${centerInlineMath ? ' [&_.katex]:align-middle [&_.katex]:relative [&_.katex]:top-[0.04em] [&_.katex]:text-[1em]' : ''}`} style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+        <div className={`w-full bg-transparent [&_.katex]:!text-[#1c1e21] [&_.math-inline]:!text-[#1c1e21] [&_.math-block]:!text-[#1c1e21] [&_.MathJax]:!text-[#1c1e21] [&_.preview]:!max-w-none [&_.preview]:!mx-0 [&_.preview]:!px-0 [&_.preview-content]:!max-w-none [&_.preview-content]:!mx-0 [&_.preview-content]:!px-0 [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden [&_.katex-display]:max-w-full${centerInlineMath ? ' [&_.katex]:align-middle [&_.katex]:relative [&_.katex]:top-[0.04em] [&_.katex]:text-[1em]' : ''}`} style={{ fontFamily: '"Times New Roman", Times, serif' }}>
           <section className="scroll-mt-24 rounded-xl px-0 py-1">
             <div
               id={contentRootId}
@@ -690,7 +690,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
     }
 
     return (
-      <div className={`w-full bg-transparent [&_.katex]:!text-[#1c1e21] [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden [&_.katex-display]:max-w-full${centerInlineMath ? ' [&_.katex]:align-middle [&_.katex]:relative [&_.katex]:top-[0.04em] [&_.katex]:text-[1em]' : ''}`} style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+      <div className={`w-full bg-transparent [&_.katex]:!text-[#1c1e21] [&_.math-inline]:!text-[#1c1e21] [&_.math-block]:!text-[#1c1e21] [&_.MathJax]:!text-[#1c1e21] [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden [&_.katex-display]:max-w-full${centerInlineMath ? ' [&_.katex]:align-middle [&_.katex]:relative [&_.katex]:top-[0.04em] [&_.katex]:text-[1em]' : ''}`} style={{ fontFamily: '"Times New Roman", Times, serif' }}>
         <div className="space-y-1">
           {blocks.map((block) => {
             const isSelected = !!normalizedSelectedQuestionNumber && block.questionNumber === normalizedSelectedQuestionNumber

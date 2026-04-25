@@ -4,6 +4,29 @@ import { getUserGrade, getUserIdFromReq, getUserRole } from '../../../lib/auth'
 import { enrichFeedPosts, FEED_POST_SELECT } from '../../../lib/feedContract'
 import { normalizeGradeInput } from '../../../lib/grades'
 
+function buildCanonicalQbQuestionMmd(question: {
+  questionNumber?: string | null
+  questionText?: string | null
+  latex?: string | null
+  tableMarkdown?: string | null
+  imageUrl?: string | null
+}) {
+  const lines: string[] = []
+  const questionNumber = String(question?.questionNumber || '').trim()
+  const questionText = String(question?.questionText || '').trim()
+  const latex = String(question?.latex || '').trim()
+  const tableMarkdown = String(question?.tableMarkdown || '').trim()
+  const imageUrl = String(question?.imageUrl || '').trim()
+
+  if (questionNumber) lines.push(`QUESTION ${questionNumber}`)
+  if (questionText) lines.push(questionText)
+  if (latex) lines.push(`$$\n${latex}\n$$`)
+  if (tableMarkdown) lines.push(tableMarkdown)
+  if (imageUrl && /^https?:\/\//i.test(imageUrl)) lines.push(`![Diagram 1](${imageUrl})`)
+
+  return lines.join('\n\n').trim()
+}
+
 function asString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -128,7 +151,55 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     attemptCountByKey.set(key, Number(row?._count?.id || 0))
   }
 
-  return res.status(200).json({
-    posts: enrichFeedPosts(items, ownResponseByKey, attemptCountByKey, solutionCounts),
-  })
+  const hydratedPosts = enrichFeedPosts(items, ownResponseByKey, attemptCountByKey, solutionCounts)
+
+  const qbQuestionIds = Array.from(new Set(
+    hydratedPosts
+      .map((post) => {
+        const origin = String(post?.composerMeta?.origin || '').trim()
+        if (origin !== 'qb-question-post') return ''
+        return String(post?.composerMeta?.questionId || '').trim()
+      })
+      .filter(Boolean),
+  ))
+
+  if (qbQuestionIds.length > 0) {
+    const questionRows = await prisma.examQuestion.findMany({
+      where: { id: { in: qbQuestionIds } },
+      select: {
+        id: true,
+        questionNumber: true,
+        questionText: true,
+        latex: true,
+        tableMarkdown: true,
+        imageUrl: true,
+      },
+    }).catch(() => [])
+
+    const canonicalMmdByQuestionId = new Map<string, string>()
+    for (const row of questionRows) {
+      const mmd = buildCanonicalQbQuestionMmd(row)
+      if (mmd) canonicalMmdByQuestionId.set(String(row.id), mmd)
+    }
+
+    for (const post of hydratedPosts) {
+      const origin = String(post?.composerMeta?.origin || '').trim()
+      if (origin !== 'qb-question-post') continue
+      const questionId = String(post?.composerMeta?.questionId || '').trim()
+      if (!questionId) continue
+      const canonicalMmd = canonicalMmdByQuestionId.get(questionId)
+      if (!canonicalMmd) continue
+      post.composerMeta = {
+        ...(post.composerMeta || {}),
+        remixMmd: canonicalMmd,
+        remixSelectedQuestionNumber:
+          String(post?.composerMeta?.remixSelectedQuestionNumber || '').trim()
+          || String(post?.composerMeta?.questionNumber || '').trim()
+          || String(questionRows.find((row) => String(row.id) === questionId)?.questionNumber || '').trim()
+          || null,
+      }
+    }
+  }
+
+  return res.status(200).json({ posts: hydratedPosts })
 }

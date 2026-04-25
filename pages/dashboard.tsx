@@ -15216,6 +15216,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   useEffect(() => {
     if (booksHubTab !== 'remix') return
+    if (!gradeReady || !selectedGrade) return
     if (questionRemixSearchHandoff) {
       setQbFocusedQuestionId(questionRemixSearchHandoff.focusQuestionId || null)
       void searchQuestionBank(questionRemixSearchHandoff.filters, { remixMessage: questionRemixSearchHandoff.message })
@@ -15223,7 +15224,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       return
     }
     void loadRandomRemixResults()
-  }, [booksHubTab, questionRemixSearchHandoff])
+  }, [booksHubTab, gradeReady, questionRemixSearchHandoff, selectedGrade])
 
   useEffect(() => {
     if (booksHubTab !== 'remixes') return
@@ -17325,6 +17326,24 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }
 
   const renderStudentSurfaceSection = (id: 'sessions' | 'groups' | 'discover' | 'books') => {
+    const booksHubRefreshing = booksHubTab === 'remix'
+      ? qbLoading
+      : booksHubTab === 'remixes'
+        ? questionRemixesLoading
+        : booksLoading
+
+    const refreshBooksHub = () => {
+      if (booksHubTab === 'remix') {
+        void loadRandomRemixResults()
+        return
+      }
+      if (booksHubTab === 'remixes') {
+        void loadQuestionRemixes()
+        return
+      }
+      void fetchBooksForGrade()
+    }
+
     const action =
       id === 'groups' ? (
         <button
@@ -17338,12 +17357,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         <button
           type="button"
           className="inline-flex h-10 items-center justify-center rounded-full border border-[#d5def0] bg-[#f7f8fa] px-4 text-sm font-medium text-[#1c1e21] transition hover:bg-[#eef2f7]"
-          onClick={() => {
-            void fetchBooksForGrade()
-          }}
-          disabled={booksLoading}
+          onClick={refreshBooksHub}
+          disabled={booksHubRefreshing}
         >
-          {booksLoading ? 'Loading...' : 'Refresh'}
+          {booksHubRefreshing ? 'Loading...' : 'Refresh'}
         </button>
       ) : null
 
@@ -18275,11 +18292,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               type="button"
               className="btn btn-ghost text-xs"
               onClick={() => {
+                if (booksHubTab === 'remix') {
+                  void loadRandomRemixResults()
+                  return
+                }
+                if (booksHubTab === 'remixes') {
+                  void loadQuestionRemixes()
+                  return
+                }
                 void fetchBooksForGrade()
               }}
-              disabled={booksLoading}
+              disabled={booksHubTab === 'remix' ? qbLoading : booksHubTab === 'remixes' ? questionRemixesLoading : booksLoading}
             >
-              {booksLoading ? 'Loading...' : 'Refresh'}
+              {(booksHubTab === 'remix' ? qbLoading : booksHubTab === 'remixes' ? questionRemixesLoading : booksLoading)
+                ? 'Loading...'
+                : 'Refresh'}
             </button>
           }
         >

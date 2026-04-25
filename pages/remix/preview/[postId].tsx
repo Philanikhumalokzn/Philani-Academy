@@ -110,7 +110,6 @@ export const getServerSideProps: GetServerSideProps<RemixPreviewPageProps> = asy
       console.error('[remix/preview] Database error:', dbError)
       return {
         props: { post: null, errorMessage: 'Database error loading post' },
-        revalidate: 10,
       }
     }
 
@@ -118,7 +117,6 @@ export const getServerSideProps: GetServerSideProps<RemixPreviewPageProps> = asy
       console.warn('[remix/preview] Post not found:', postId)
       return {
         props: { post: null, errorMessage: 'Post not found' },
-        revalidate: 60,
       }
     }
 
@@ -130,7 +128,6 @@ export const getServerSideProps: GetServerSideProps<RemixPreviewPageProps> = asy
       console.error('[remix/preview] Decode error:', decodeError)
       return {
         props: { post: null, errorMessage: 'Error decoding post content' },
-        revalidate: 10,
       }
     }
 
@@ -144,7 +141,6 @@ export const getServerSideProps: GetServerSideProps<RemixPreviewPageProps> = asy
           post: null,
           errorMessage: 'This post cannot be previewed as a Remix question',
         },
-        revalidate: 60,
       }
     }
 
@@ -157,13 +153,11 @@ export const getServerSideProps: GetServerSideProps<RemixPreviewPageProps> = asy
           remixSelectedQuestionNumber: composerMeta.remixSelectedQuestionNumber,
         },
       },
-      revalidate: 3600, // ISR: revalidate every hour
     }
   } catch (error) {
     console.error('[remix/preview] Unexpected error:', error)
     return {
       props: { post: null, errorMessage: 'Error loading preview' },
-      revalidate: 10,
     }
   }
 }

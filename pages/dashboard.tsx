@@ -21850,7 +21850,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           closeOnBackdrop
           closeOnEscape
           className="bottom-0"
-          sheetClassName="rounded-2xl border border-slate-200 bg-white shadow-sm"
+          sheetClassName="rounded-[30px] border border-slate-200 bg-white shadow-sm"
           zIndexClassName="z-[67]"
           style={{
             maxHeight: 'calc(100dvh - max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) - max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) - 5rem)',

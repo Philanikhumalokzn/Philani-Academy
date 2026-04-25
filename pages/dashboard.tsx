@@ -5059,15 +5059,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       return
     }
     try {
+      const requestTs = Date.now().toString()
       const url = isAdmin
-        ? `/api/resources?grade=${encodeURIComponent(selectedGrade)}&all=1`
-        : '/api/resources?all=1'
+        ? `/api/resources?grade=${encodeURIComponent(selectedGrade)}&all=1&_=${requestTs}`
+        : `/api/resources?all=1&_=${requestTs}`
       const papersUrl = isAdmin
-        ? `/api/exam-questions/papers?grade=${encodeURIComponent(selectedGrade)}`
-        : '/api/exam-questions/papers'
+        ? `/api/exam-questions/papers?grade=${encodeURIComponent(selectedGrade)}&_=${requestTs}`
+        : `/api/exam-questions/papers?_=${requestTs}`
       const [res, papersRes] = await Promise.all([
-        fetch(url, { credentials: 'same-origin' }),
-        fetch(papersUrl, { credentials: 'same-origin' }),
+        fetch(url, { credentials: 'same-origin', cache: 'no-store' }),
+        fetch(papersUrl, { credentials: 'same-origin', cache: 'no-store' }),
       ])
       const data = await res.json().catch(() => ({}))
       const papersData = await papersRes.json().catch(() => ({}))
@@ -5099,7 +5100,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [booksOverlayOpen, fetchBooksForGrade])
 
   useEffect(() => {
-    if (!booksOverlayOpen || booksHubTab !== 'papers') return
+    if (!booksOverlayOpen) return
+    if (booksHubTab !== 'papers' && booksHubTab !== 'pdfs' && booksHubTab !== 'resources') return
     void fetchBooksForGrade()
   }, [booksHubTab, booksOverlayOpen, fetchBooksForGrade])
 

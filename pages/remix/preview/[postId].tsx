@@ -50,13 +50,16 @@ export default function RemixPreviewPage({ post, errorMessage }: RemixPreviewPag
       
       <div id="remix-preview-root" className="bg-white">
         {post.remixMmd && (
-          <MmdPaperViewer
-            mmd={post.remixMmd}
-            compact
-            centerInlineMath
-            autoScrollToSelectedQuestion={false}
-            selectedQuestionNumber={post.remixSelectedQuestionNumber || undefined}
-          />
+          <div className="remix-preview-gutter">
+            <MmdPaperViewer
+              mmd={post.remixMmd}
+              compact
+              centerInlineMath
+              autoScrollToSelectedQuestion={false}
+              fullBleedMedia
+              selectedQuestionNumber={post.remixSelectedQuestionNumber || undefined}
+            />
+          </div>
         )}
       </div>
 
@@ -65,6 +68,31 @@ export default function RemixPreviewPage({ post, errorMessage }: RemixPreviewPag
           margin: 0;
           padding: 0;
           background-color: white;
+        }
+
+        #remix-preview-root {
+          --remix-preview-gutter: 16px;
+        }
+
+        @media (min-width: 640px) {
+          #remix-preview-root {
+            --remix-preview-gutter: 24px;
+          }
+        }
+
+        #remix-preview-root .remix-preview-gutter {
+          padding-left: var(--remix-preview-gutter);
+          padding-right: var(--remix-preview-gutter);
+        }
+
+        #remix-preview-root .mmd-fullbleed-media .preview img,
+        #remix-preview-root .mmd-fullbleed-media .preview-content img,
+        #remix-preview-root .mmd-fullbleed-media .mmd-table-wrap img {
+          display: block;
+          width: calc(100% + (var(--remix-preview-gutter) * 2));
+          max-width: none;
+          margin-left: calc(var(--remix-preview-gutter) * -1);
+          margin-right: calc(var(--remix-preview-gutter) * -1);
         }
       `}</style>
     </>

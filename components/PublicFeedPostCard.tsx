@@ -7,9 +7,9 @@ import PostComposerBlocksPreview from './PostComposerBlocksPreview'
 import SocialActionStrip, { type SocialActionStripAction } from './SocialActionStrip'
 import UserLink from './UserLink'
 import ZoomableImageOverlay from './ZoomableImageOverlay'
-import MmdPaperViewer from './MmdPaperViewer'
 
 export type PublicFeedPostCardProps = {
+  postId?: string | null
   authorId?: string | null
   authorName: string
   authorAvatar?: string | null
@@ -40,6 +40,7 @@ export type PublicFeedPostCardProps = {
 }
 
 export default function PublicFeedPostCard({
+  postId,
   authorId,
   authorName,
   authorAvatar,
@@ -139,14 +140,18 @@ export default function PublicFeedPostCard({
       <div className="px-4">
         <div className="text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{safeTitle}</div>
       </div>
-      {enableMmdBodyViewer && mmdBodyContent ? (
-        <div className="mt-2 px-3">
-          <MmdPaperViewer
-            mmd={mmdBodyContent}
-            compact
-            centerInlineMath
-            autoScrollToSelectedQuestion={false}
-            selectedQuestionNumber={remixSelectedQuestionNumber || undefined}
+      {enableMmdBodyViewer && mmdBodyContent && postId ? (
+        <div className="mt-4 px-2">
+          <iframe
+            src={`/remix/preview/${postId}`}
+            title={`${safeTitle} preview`}
+            className="w-full rounded-lg border border-gray-200 bg-white"
+            style={{
+              minHeight: '400px',
+              maxHeight: '800px',
+            }}
+            sandbox="allow-same-origin"
+            loading="lazy"
           />
         </div>
       ) : contentRows.map((block, index) => {

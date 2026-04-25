@@ -1751,6 +1751,7 @@ export function PublicUserProfileSurface({
     return (
       <article key={post.id} data-post-id={postId || undefined} className="public-profile-feed-post bg-white py-3">
         <PublicFeedPostCard
+          postId={postId || undefined}
           authorId={authorId}
           authorName={authorName}
           authorAvatar={authorAvatar}
@@ -1760,6 +1761,7 @@ export function PublicUserProfileSurface({
           prompt={post.prompt || ''}
           imageUrl={resolveImageUrl(post.imageUrl)}
           contentBlocks={Array.isArray(post.contentBlocks) ? post.contentBlocks : null}
+          composerMeta={(post as any)?.composerMeta || null}
           expanded={isExpanded}
           onOpen={() => {
             if (consumePostLongPressForPost(post)) return

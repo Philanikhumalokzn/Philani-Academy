@@ -6968,6 +6968,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       className="border-b border-black/10 bg-white py-3"
                     >
                       <PublicFeedPostCard
+                        postId={itemId}
                         authorId={authorId}
                         authorName={authorName}
                         authorAvatar={authorAvatar}

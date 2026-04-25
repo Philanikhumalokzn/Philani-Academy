@@ -136,11 +136,13 @@ export default function BottomSheet(props: BottomSheetProps) {
   const cappedSheetStyle: React.CSSProperties = {
     maxHeight: `calc(100dvh - ${safeTopClearance} - ${safeBottomInset} - 8px)`,
     overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
     ...(style || {}),
   }
 
   const sheetInner = (
-    <div className={`overflow-hidden max-h-full flex flex-col ${sheetClassName || 'rounded-2xl border border-slate-200 bg-white shadow-sm'}`.trim()}>
+    <div className={`overflow-hidden flex-1 min-h-0 flex flex-col ${sheetClassName || 'rounded-2xl border border-slate-200 bg-white shadow-sm'}`.trim()}>
       {!hideHeader ? (
         <div className="flex items-start justify-between gap-3 px-3 py-2 border-b border-slate-200">
           <div className="min-w-0">

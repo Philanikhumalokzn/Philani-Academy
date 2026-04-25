@@ -117,6 +117,33 @@ export default function PublicFeedPostCard({
   const handleBodyPointerLeave = bodyPointerProps?.onPointerLeave
 
   const handleBodyContextMenu = bodyPointerProps?.onContextMenu
+  const handleIframePointerDown = useCallback((event: any) => {
+    handleBodyPointerDown?.(event)
+  }, [handleBodyPointerDown])
+
+  const handleIframePointerMove = useCallback((event: any) => {
+    handleBodyPointerMove?.(event)
+  }, [handleBodyPointerMove])
+
+  const handleIframePointerUp = useCallback((event: any) => {
+    handleBodyPointerUp?.(event)
+  }, [handleBodyPointerUp])
+
+  const handleIframePointerCancel = useCallback((event: any) => {
+    handleBodyPointerCancel?.(event)
+  }, [handleBodyPointerCancel])
+
+  const handleIframePointerLeave = useCallback((event: any) => {
+    handleBodyPointerLeave?.(event)
+  }, [handleBodyPointerLeave])
+
+  const handleIframeContextMenu = useCallback((event: any) => {
+    handleBodyContextMenu?.(event)
+  }, [handleBodyContextMenu])
+
+  const handleIframeClick = useCallback((event: any) => {
+    handleBodyClick?.(event)
+  }, [handleBodyClick])
   const latexOnlyDisableButtonSemantics = !customBody && isLatexOnlyBody
 
   const clearIframeResizeTimers = useCallback(() => {
@@ -194,7 +221,16 @@ export default function PublicFeedPostCard({
         </div>
       ) : null}
       {enableMmdBodyViewer && mmdBodyContent && postId ? (
-        <div className="mt-2">
+        <div
+          className="mt-2"
+          onClick={handleIframeClick}
+          onPointerDown={handleIframePointerDown}
+          onPointerMove={handleIframePointerMove}
+          onPointerUp={handleIframePointerUp}
+          onPointerCancel={handleIframePointerCancel}
+          onPointerLeave={handleIframePointerLeave}
+          onContextMenu={handleIframeContextMenu}
+        >
           <iframe
             ref={remixIframeRef}
             src={`/remix/preview/${postId}`}
@@ -204,6 +240,13 @@ export default function PublicFeedPostCard({
               height: `${iframeHeight}px`,
             }}
             onLoad={handleRemixIframeLoad}
+            onClick={handleIframeClick}
+            onPointerDown={handleIframePointerDown}
+            onPointerMove={handleIframePointerMove}
+            onPointerUp={handleIframePointerUp}
+            onPointerCancel={handleIframePointerCancel}
+            onPointerLeave={handleIframePointerLeave}
+            onContextMenu={handleIframeContextMenu}
             scrolling="no"
             sandbox="allow-same-origin allow-scripts"
             loading="lazy"

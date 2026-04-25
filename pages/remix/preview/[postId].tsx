@@ -55,7 +55,9 @@ function formatMarksBadgeLabel(marks: unknown): string {
 function toMainQuestionNumber(value: unknown): string {
   const raw = String(value || '').trim()
   if (!raw) return ''
-  return raw.split('.').map((part) => part.trim()).filter(Boolean)[0] || raw
+  const normalized = raw.replace(/^question\s*/i, '').replace(/^q\s*/i, '').trim()
+  const numberPath = normalized.match(/\d+(?:\.\d+)*/)?.[0] || normalized
+  return numberPath.split('.').map((part) => part.trim()).filter(Boolean)[0] || ''
 }
 
 export default function RemixPreviewPage({ post, errorMessage }: RemixPreviewPageProps) {

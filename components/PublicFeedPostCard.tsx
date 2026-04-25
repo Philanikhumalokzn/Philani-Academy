@@ -66,6 +66,7 @@ export default function PublicFeedPostCard({
   const [iframeHeight, setIframeHeight] = useState(280)
   const remixIframeRef = useRef<HTMLIFrameElement | null>(null)
   const iframeResizeTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([])
+  const iframeInteractionCleanupRef = useRef<(() => void) | null>(null)
   const safeAuthorName = String(authorName || '').trim() || 'Learner'
   const safeTitle = String(title || '').trim() || 'Post'
   const safePrompt = String(prompt || '').trim()
@@ -153,11 +154,19 @@ export default function PublicFeedPostCard({
     iframeResizeTimersRef.current = []
   }, [])
 
+  const clearIframeInteractionListeners = useCallback(() => {
+    if (iframeInteractionCleanupRef.current) {
+      iframeInteractionCleanupRef.current()
+      iframeInteractionCleanupRef.current = null
+    }
+  }, [])
+
   useEffect(() => {
     return () => {
       clearIframeResizeTimers()
+      clearIframeInteractionListeners()
     }
-  }, [clearIframeResizeTimers])
+  }, [clearIframeResizeTimers, clearIframeInteractionListeners])
 
   const syncRemixIframeHeight = useCallback(() => {
     const iframe = remixIframeRef.current
@@ -183,8 +192,69 @@ export default function PublicFeedPostCard({
     }
   }, [])
 
+  const wireRemixIframeInteractions = useCallback(() => {
+    clearIframeInteractionListeners()
+    const iframe = remixIframeRef.current
+    const iframeWindow = iframe?.contentWindow
+    const iframeDoc = iframeWindow?.document
+    if (!iframeDoc) return
+
+    const toPointerLikeEvent = (event: PointerEvent) => ({
+      button: typeof event.button === 'number' ? event.button : 0,
+      clientX: Number.isFinite(event.clientX) ? event.clientX : 0,
+      clientY: Number.isFinite(event.clientY) ? event.clientY : 0,
+      preventDefault: () => event.preventDefault(),
+    })
+
+    const onPointerDown = (event: PointerEvent) => {
+      handleBodyPointerDown?.(toPointerLikeEvent(event) as any)
+    }
+    const onPointerMove = (event: PointerEvent) => {
+      handleBodyPointerMove?.(toPointerLikeEvent(event) as any)
+    }
+    const onPointerUp = (event: PointerEvent) => {
+      handleBodyPointerUp?.(toPointerLikeEvent(event) as any)
+    }
+    const onPointerCancel = (event: PointerEvent) => {
+      handleBodyPointerCancel?.(toPointerLikeEvent(event) as any)
+    }
+    const onContextMenu = (event: MouseEvent) => {
+      handleBodyContextMenu?.({
+        button: 2,
+        clientX: Number.isFinite(event.clientX) ? event.clientX : 0,
+        clientY: Number.isFinite(event.clientY) ? event.clientY : 0,
+        preventDefault: () => event.preventDefault(),
+      } as any)
+    }
+    const onWindowBlur = () => {
+      handleBodyPointerLeave?.({
+        button: 0,
+        clientX: 0,
+        clientY: 0,
+        preventDefault: () => {},
+      } as any)
+    }
+
+    iframeDoc.addEventListener('pointerdown', onPointerDown, { passive: true })
+    iframeDoc.addEventListener('pointermove', onPointerMove, { passive: true })
+    iframeDoc.addEventListener('pointerup', onPointerUp, { passive: true })
+    iframeDoc.addEventListener('pointercancel', onPointerCancel, { passive: true })
+    iframeDoc.addEventListener('contextmenu', onContextMenu)
+    iframeWindow?.addEventListener('blur', onWindowBlur)
+
+    iframeInteractionCleanupRef.current = () => {
+      iframeDoc.removeEventListener('pointerdown', onPointerDown)
+      iframeDoc.removeEventListener('pointermove', onPointerMove)
+      iframeDoc.removeEventListener('pointerup', onPointerUp)
+      iframeDoc.removeEventListener('pointercancel', onPointerCancel)
+      iframeDoc.removeEventListener('contextmenu', onContextMenu)
+      iframeWindow?.removeEventListener('blur', onWindowBlur)
+    }
+  }, [clearIframeInteractionListeners, handleBodyContextMenu, handleBodyPointerCancel, handleBodyPointerDown, handleBodyPointerLeave, handleBodyPointerMove, handleBodyPointerUp])
+
   const handleRemixIframeLoad = useCallback(() => {
     clearIframeResizeTimers()
+    wireRemixIframeInteractions()
     syncRemixIframeHeight()
 
     if (typeof window !== 'undefined') {
@@ -192,7 +262,7 @@ export default function PublicFeedPostCard({
     }
 
     iframeResizeTimersRef.current = [120, 360, 900, 1800].map((delay) => setTimeout(syncRemixIframeHeight, delay))
-  }, [clearIframeResizeTimers, syncRemixIframeHeight])
+  }, [clearIframeResizeTimers, syncRemixIframeHeight, wireRemixIframeInteractions])
 
   const body = customBody ?? (
     <div

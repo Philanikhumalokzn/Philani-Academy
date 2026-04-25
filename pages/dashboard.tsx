@@ -14633,7 +14633,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       setQuestionRemixes(items)
       setSelectedQuestionRemixId((prev) => {
         if (prev && items.some((item: QuestionRemixSummary) => item.id === prev)) return prev
-        return items[0]?.id || null
+        return null
       })
     } catch (err: any) {
       setQuestionRemixes([])
@@ -15242,6 +15242,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
     void loadQuestionRemixDetail(selectedQuestionRemixId)
   }, [booksHubTab, loadQuestionRemixDetail, selectedQuestionRemixId])
+
+  useEffect(() => {
+    if (booksHubTab === 'remixes') return
+    if (!selectedQuestionRemixId && !selectedQuestionRemix && !selectedQuestionRemixError) return
+    setSelectedQuestionRemixId(null)
+    setSelectedQuestionRemix(null)
+    setSelectedQuestionRemixError(null)
+  }, [booksHubTab, selectedQuestionRemix, selectedQuestionRemixError, selectedQuestionRemixId])
 
   useEffect(() => {
     if (booksHubTab !== 'remix') return

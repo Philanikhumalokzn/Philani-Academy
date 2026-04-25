@@ -21843,11 +21843,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           closeOnBackdrop
           closeOnEscape
           className="bottom-0"
+          sheetClassName="rounded-2xl border border-slate-200 bg-white shadow-sm h-full"
           zIndexClassName="z-[67]"
           style={{
-            maxHeight: 'calc(100dvh - max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) - max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) - 5rem)',
+            height: 'calc(100dvh - max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) - max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) - 5rem)',
           }}
-          contentClassName="p-0 overflow-y-auto overscroll-contain"
+          contentClassName="min-h-0 p-0 overflow-y-scroll overscroll-contain"
           rightActions={(
             <button
               type="button"

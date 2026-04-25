@@ -137,15 +137,17 @@ export default function PublicFeedPostCard({
       onPointerLeave={handleBodyPointerLeave}
       onContextMenu={handleBodyContextMenu}
     >
-      <div className="px-4">
-        <div className="text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{safeTitle}</div>
-      </div>
+      {!enableMmdBodyViewer ? (
+        <div className="px-4">
+          <div className="text-[15px] font-semibold leading-6 tracking-[-0.02em] text-[#1c1e21] break-words">{safeTitle}</div>
+        </div>
+      ) : null}
       {enableMmdBodyViewer && mmdBodyContent && postId ? (
-        <div className="mt-4 px-2">
+        <div className="mt-2">
           <iframe
             src={`/remix/preview/${postId}`}
             title={`${safeTitle} preview`}
-            className="w-full rounded-lg border border-gray-200 bg-white"
+            className="block w-full bg-white"
             style={{
               minHeight: '400px',
               maxHeight: '800px',

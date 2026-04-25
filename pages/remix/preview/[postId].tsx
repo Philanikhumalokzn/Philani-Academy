@@ -48,7 +48,7 @@ export default function RemixPreviewPage({ post, errorMessage }: RemixPreviewPag
         <meta name="robots" content="noindex" />
       </Head>
       
-      <div className="bg-white p-3">
+      <div className="bg-white">
         {post.remixMmd && (
           <MmdPaperViewer
             mmd={post.remixMmd}

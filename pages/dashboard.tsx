@@ -21847,7 +21847,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           style={{
             maxHeight: 'calc(100dvh - max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) - max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) - 5rem)',
           }}
-          contentClassName="p-0 overflow-hidden"
+          contentClassName="p-0 overflow-y-auto overscroll-contain"
           rightActions={(
             <button
               type="button"
@@ -21860,7 +21860,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </button>
           )}
         >
-          <div className="space-y-3 overflow-y-auto p-4">
+          <div className="space-y-3 p-4">
             {postThreadOverlay.prompt ? (
               <div className="rounded-2xl border border-black/10 bg-slate-50 p-3 text-sm text-slate-700">
                 {postThreadOverlay.prompt}

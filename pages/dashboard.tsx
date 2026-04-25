@@ -1145,6 +1145,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const router = useRouter()
   const { data: session, status, update: updateSession } = useSession()
   const { queueRestore, discardRestore, popRestore, hasRestore } = useOverlayRestore()
+  const setAdminSelectedGradeCookie = useCallback((grade: GradeValue | null) => {
+    if (typeof document === 'undefined') return
+    if (!grade) {
+      document.cookie = 'pa_admin_selected_grade=; Path=/; Max-Age=0; SameSite=Lax'
+      return
+    }
+    document.cookie = `pa_admin_selected_grade=${encodeURIComponent(grade)}; Path=/; Max-Age=31536000; SameSite=Lax`
+  }, [])
   const gradeOptions = useMemo(() => GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) })), [])
   const adminGradeStorageKey = useMemo(() => {
     const userKey = String((session as any)?.user?.id || session?.user?.email || 'anon')
@@ -7744,6 +7752,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       } catch {
         // ignore persistence failures
       }
+      setAdminSelectedGradeCookie(grade)
     }
     if (router.isReady) {
       const nextQuery = { ...router.query, grade }
@@ -10870,7 +10879,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } catch {
       // ignore persistence failures
     }
-  }, [adminGradeStorageKey, gradeReady, isAdmin, selectedGrade])
+    setAdminSelectedGradeCookie(selectedGrade)
+  }, [adminGradeStorageKey, gradeReady, isAdmin, selectedGrade, setAdminSelectedGradeCookie])
 
   useEffect(() => {
     if (!gradeReady || !selectedGrade) return

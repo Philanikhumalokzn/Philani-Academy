@@ -80,6 +80,14 @@ export default function BoardPage({ initialIsMobile = false }: { initialIsMobile
   }, [lessonAuthoring, router.isReady, router.query.grade, session])
 
   const gradeOptions = useMemo(() => GRADE_VALUES.map(value => ({ value, label: gradeToLabel(value) })), [])
+  const setAdminSelectedGradeCookie = useCallback((grade: GradeValue | null) => {
+    if (typeof document === 'undefined') return
+    if (!grade) {
+      document.cookie = 'pa_admin_selected_grade=; Path=/; Max-Age=0; SameSite=Lax'
+      return
+    }
+    document.cookie = `pa_admin_selected_grade=${encodeURIComponent(grade)}; Path=/; Max-Age=31536000; SameSite=Lax`
+  }, [])
   const gradeSlug = useMemo(() => (selectedGrade ? selectedGrade.toLowerCase().replace(/_/g, '-') : null), [selectedGrade])
   const boardRoomId = useMemo(() => {
     if (lessonAuthoring && lessonAuthoringBoardId) return makeChannelName(lessonAuthoringBoardId)
@@ -197,6 +205,9 @@ export default function BoardPage({ initialIsMobile = false }: { initialIsMobile
   const handleGradeChange = (value: string) => {
     const next = normalizeGradeInput(value)
     setSelectedGrade(next)
+    if (isBoardAdmin) {
+      setAdminSelectedGradeCookie(next)
+    }
     setGradePickerOpen(false)
     if (router.isReady) {
       const query = next ? { ...router.query, grade: next } : { ...router.query }
@@ -204,6 +215,11 @@ export default function BoardPage({ initialIsMobile = false }: { initialIsMobile
       router.replace({ pathname: router.pathname, query }, undefined, { shallow: true })
     }
   }
+
+  useEffect(() => {
+    if (!isBoardAdmin || !selectedGrade) return
+    setAdminSelectedGradeCookie(selectedGrade)
+  }, [isBoardAdmin, selectedGrade, setAdminSelectedGradeCookie])
 
   useEffect(() => {
     if (!isMobile) {

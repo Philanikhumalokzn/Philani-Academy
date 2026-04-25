@@ -1626,6 +1626,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const composerBlockLongPressStateRef = useRef<null | { x: number; y: number; target: ComposerBlockCrudTarget }>(null)
   const composerBlockLongPressOpenedRef = useRef(false)
   const [postThreadOverlay, setPostThreadOverlay] = useState<null | {
+    id: string
     postId: string
     threadKey: string
     title: string
@@ -1633,6 +1634,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     imageUrl?: string | null
     authorName?: string | null
     authorAvatarUrl?: string | null
+    createdBy?: {
+      id?: string | null
+      name?: string | null
+      avatar?: string | null
+      email?: string | null
+    } | null
   }>(null)
   const [postThreadLoading, setPostThreadLoading] = useState(false)
   const [postThreadError, setPostThreadError] = useState<string | null>(null)
@@ -6919,7 +6926,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         void openPostSolveComposer(p)
                       },
                       onCountClick: () => {
-                        void openPostThread(p)
+                        void openPostThread(p, { forceOpen: true })
                       },
                       disabled: !itemId,
                       icon: (
@@ -7276,7 +7283,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               }
                             },
                             onCountClick: isPost ? (() => {
-                              void openPostThread(p)
+                              void openPostThread(p, { forceOpen: true })
                             }) : undefined,
                             disabled: !itemId,
                             icon: (
@@ -9140,16 +9147,45 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const threadKey = `post:${postId}`
     if (!postId) return
 
-    const nextKey = `post:${postId}`
-    if (!options?.forceOpen && expandedSolutionThreadKey === nextKey && expandedSolutionThreadKind === 'post') {
-      setExpandedSolutionThreadKey(null)
-      setExpandedSolutionThreadKind(null)
-      setPostThreadError(null)
-      return
-    }
+    const authorName = String(
+      post?.authorName
+      || post?.createdBy?.name
+      || post?.user?.name
+      || post?.userName
+      || post?.createdBy?.email
+      || post?.user?.email
+      || ''
+    ).trim() || 'Poster'
+    const authorAvatarUrl = String(
+      post?.authorAvatarUrl
+      || post?.createdBy?.avatar
+      || post?.user?.avatar
+      || post?.userAvatar
+      || ''
+    ).trim() || null
 
-    setExpandedSolutionThreadKey(nextKey)
-    setExpandedSolutionThreadKind('post')
+    setPostThreadOverlay({
+      id: postId,
+      postId,
+      threadKey,
+      title: String(post?.title || 'Post'),
+      prompt: String(post?.prompt || ''),
+      imageUrl: typeof post?.imageUrl === 'string' ? post.imageUrl : null,
+      authorName,
+      authorAvatarUrl,
+      createdBy: post?.createdBy && typeof post.createdBy === 'object'
+        ? {
+            id: String(post.createdBy.id || '') || null,
+            name: String(post.createdBy.name || '') || null,
+            avatar: String(post.createdBy.avatar || '') || null,
+            email: String(post.createdBy.email || '') || null,
+          }
+        : null,
+    })
+
+    // Post replies now render in a bottom sheet, not inline expansion.
+    setExpandedSolutionThreadKey((prev) => (prev?.startsWith('post:') ? null : prev))
+    setExpandedSolutionThreadKind((prev) => (prev === 'post' ? null : prev))
     setPostThreadLoading(true)
     setPostThreadError(null)
     try {
@@ -9162,7 +9198,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setPostThreadLoading(false)
     }
-  }, [expandedSolutionThreadKey, expandedSolutionThreadKind, fetchPublicThreadResponses, rememberInteractiveViewportScenes])
+  }, [fetchPublicThreadResponses, rememberInteractiveViewportScenes])
 
   useEffect(() => {
     if (!router.isReady) return

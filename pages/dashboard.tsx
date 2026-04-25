@@ -9295,10 +9295,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [buildPostReplyPayloadFromBlocks, normalizePostReplyBlocks])
 
   const buildQbQuestionPostDraft = useCallback((question: any) => {
-    const normalized = normalizeExamQuestionContent(
-      unwrapQuestionField(question?.questionText, ['questionText', 'text', 'prompt']),
-      unwrapQuestionField(question?.latex, ['latex', 'equation', 'math']),
-    )
+    const questionTextRaw = unwrapQuestionField(question?.questionText, ['questionText', 'text', 'prompt'])
+    const latexRaw = unwrapQuestionField(question?.latex, ['latex', 'equation', 'math'])
+    const questionText = typeof questionTextRaw === 'string' ? questionTextRaw.trim() : ''
+    const latex = typeof latexRaw === 'string' ? latexRaw.trim() : ''
     const tableMarkdown = typeof question?.tableMarkdown === 'string' ? question.tableMarkdown.trim() : ''
     const imageUrls: string[] = (() => {
       const urls: string[] = []
@@ -9321,8 +9321,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       .map((part) => part.trim())
       .filter(Boolean)
     const contentBlocks: PostReplyBlock[] = [
-      ...(normalized.questionText ? [{ id: createPostReplyBlockId(), type: 'text', text: normalized.questionText } as PostReplyTextBlock] : []),
-      ...(normalized.latex ? [{ id: createPostReplyBlockId(), type: 'latex', latex: normalized.latex } as PostReplyLatexBlock] : []),
+      ...(questionText ? [{ id: createPostReplyBlockId(), type: 'text', text: questionText } as PostReplyTextBlock] : []),
+      ...(latex ? [{ id: createPostReplyBlockId(), type: 'latex', latex } as PostReplyLatexBlock] : []),
       ...(tableMarkdown ? [{ id: createPostReplyBlockId(), type: 'table', markdown: tableMarkdown } as PostReplyTableBlock] : []),
       ...imageUrls.map((imageUrl) => ({ id: createPostReplyBlockId(), type: 'image', imageUrl } as PostReplyImageBlock)),
     ]
@@ -9331,13 +9331,57 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       id: `qb-${String(question?.id || qNumber || Date.now())}`,
       threadKey: `qb:${String(question?.id || qNumber || Date.now())}`,
       title: titleBits.join(' · ') || qLabel,
-      prompt: normalized.questionText || qLabel,
+      prompt: questionText || qLabel,
       imageUrl: imageUrls[0] || null,
       contentBlocks,
       sourceId: question?.sourceId ? String(question.sourceId) : null,
       questionNumber: qNumber || null,
       questionId: question?.id ? String(question.id) : null,
     }
+  }, [])
+
+  const buildQbQuestionPostMmd = useCallback((question: any) => {
+    const lines: string[] = []
+    const questionNumber = String(question?.questionNumber || '').trim()
+    if (questionNumber) {
+      lines.push(`QUESTION ${questionNumber}`)
+    }
+
+    const questionTextRaw = unwrapQuestionField(question?.questionText, ['questionText', 'text', 'prompt'])
+    const questionText = typeof questionTextRaw === 'string' ? questionTextRaw.trim() : ''
+    if (questionText) {
+      lines.push(questionText)
+    }
+
+    const latexRaw = unwrapQuestionField(question?.latex, ['latex', 'equation', 'math'])
+    const latex = typeof latexRaw === 'string' ? latexRaw.trim() : ''
+    if (latex) {
+      lines.push(`$$\n${latex}\n$$`)
+    }
+
+    const tableMarkdown = typeof question?.tableMarkdown === 'string' ? question.tableMarkdown.trim() : ''
+    if (tableMarkdown) {
+      lines.push(tableMarkdown)
+    }
+
+    const imageUrls: string[] = []
+    const seen = new Set<string>()
+    const pushImage = (value: unknown) => {
+      const url = String(value || '').trim()
+      if (!url || seen.has(url)) return
+      seen.add(url)
+      imageUrls.push(url)
+    }
+    pushImage(question?.imageUrl)
+    if (Array.isArray(question?.imageUrls)) {
+      for (const url of question.imageUrls) pushImage(url)
+    }
+
+    for (const [imageIndex, imageUrl] of imageUrls.entries()) {
+      lines.push(`![Diagram ${imageIndex + 1}](${imageUrl})`)
+    }
+
+    return lines.join('\n\n').trim()
   }, [])
 
   const openQbQuestionSolveComposer = useCallback((question: any) => {
@@ -9347,6 +9391,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const postQbQuestionToTimeline = useCallback(async (question: any, options?: { visibleQuestionMmd?: string | null }) => {
     const draft = buildQbQuestionPostDraft(question)
+    const canonicalRemixMmd = typeof options?.visibleQuestionMmd === 'string' && options.visibleQuestionMmd.trim()
+      ? options.visibleQuestionMmd.trim()
+      : buildQbQuestionPostMmd(question)
     const questionId = String(draft.questionId || question?.id || draft.id || '').trim()
     const socialItemKey = questionId ? `qb-question:${questionId}` : `qb-question:${String(draft.id || '').trim()}`
     if (!socialItemKey || qbPostingToTimelineByItemKey[socialItemKey]) return
@@ -9356,7 +9403,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       sourceId: draft.sourceId || null,
       questionId: draft.questionId || null,
       questionNumber: draft.questionNumber || null,
-      remixMmd: typeof options?.visibleQuestionMmd === 'string' ? options.visibleQuestionMmd.trim() || null : null,
+      remixMmd: canonicalRemixMmd || null,
       remixSelectedQuestionNumber: draft.questionNumber || null,
     }
 
@@ -9401,7 +9448,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         return next
       })
     }
-  }, [buildQbQuestionPostDraft, markSocialShareHandled, qbPostingToTimelineByItemKey, selectedGrade, session, viewerId])
+  }, [buildQbQuestionPostDraft, buildQbQuestionPostMmd, markSocialShareHandled, qbPostingToTimelineByItemKey, selectedGrade, session, viewerId])
 
   const getQbQuestionReplyCount = (question: any) => {
     const candidates = [question?.solutionCount, question?.replyCount, question?.responseCount, question?.threadResponseCount]

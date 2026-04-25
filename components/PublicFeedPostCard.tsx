@@ -72,8 +72,9 @@ export default function PublicFeedPostCard({
   const showAuthorAvatarTick = authorVerified && hasAvatar
   const showAuthorNameTick = authorVerified && !hasAvatar
   const normalizedBlocks = Array.isArray(contentBlocks) && contentBlocks.length > 0 ? normalizePostReplyBlocks(contentBlocks) : []
-  const enableMmdBodyViewer = String(composerMeta?.origin || '') === 'qb-question-post'
-  const remixMmd = enableMmdBodyViewer ? String(composerMeta?.remixMmd || '').trim() : ''
+  const remixOrigin = String(composerMeta?.origin || '') === 'qb-question-post'
+  const remixMmd = remixOrigin ? String(composerMeta?.remixMmd || '').trim() : ''
+  const enableMmdBodyViewer = remixOrigin && Boolean(remixMmd)
   const remixSelectedQuestionNumber = enableMmdBodyViewer ? String(composerMeta?.remixSelectedQuestionNumber || composerMeta?.questionNumber || '').trim() : ''
   const contentRows = normalizedBlocks.length > 0
     ? normalizedBlocks
@@ -81,28 +82,7 @@ export default function PublicFeedPostCard({
         ...(safePrompt ? [{ id: '__legacy_text__', type: 'text', text: safePrompt } as PostReplyBlock] : []),
         ...(safeImageUrl ? [{ id: '__legacy_image__', type: 'image', imageUrl: safeImageUrl } as PostReplyBlock] : []),
       ]
-  const mmdBodyContent = remixMmd || (enableMmdBodyViewer
-    ? contentRows
-        .map((block) => {
-          if (block.type === 'text') return String(block.text || '').trim()
-          if (block.type === 'latex') {
-            const latex = String(block.latex || '').trim()
-            if (!latex) return ''
-            return `$$\n${latex}\n$$`
-          }
-          if (block.type === 'table') {
-            return String(block.markdown || '').trim()
-          }
-          if (block.type === 'image') {
-            const image = String(block.imageUrl || '').trim()
-            if (!image) return ''
-            return `![${safeTitle} image](${image})`
-          }
-          return ''
-        })
-        .filter(Boolean)
-        .join('\n\n')
-      : '')
+  const mmdBodyContent = enableMmdBodyViewer ? remixMmd : ''
   const isLatexOnlyBody = !enableMmdBodyViewer && contentRows.length > 0 && contentRows.every((block) => block.type === 'latex')
 
   const openResolvedImageViewer = useCallback((url: string, titleText: string) => {

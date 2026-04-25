@@ -150,7 +150,7 @@ export default function PublicFeedPostCard({
               minHeight: '400px',
               maxHeight: '800px',
             }}
-            sandbox="allow-same-origin"
+            sandbox="allow-same-origin allow-scripts"
             loading="lazy"
           />
         </div>

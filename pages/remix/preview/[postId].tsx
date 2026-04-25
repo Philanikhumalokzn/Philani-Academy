@@ -1,8 +1,13 @@
 import { GetServerSideProps } from 'next'
 import Head from 'next/head'
+import dynamic from 'next/dynamic'
 import prisma from '../../../lib/prisma'
 import { decodeSocialPostContent } from '../../../lib/postComposerContent'
-import MmdPaperViewer from '../../../components/MmdPaperViewer'
+
+const MmdPaperViewer = dynamic(() => import('../../../components/MmdPaperViewer'), {
+  ssr: false,
+  loading: () => <div className="text-center py-8 text-gray-600">Loading question...</div>,
+})
 
 type RemixPreviewPageProps = {
   post: {
@@ -84,38 +89,62 @@ export const getServerSideProps: GetServerSideProps<RemixPreviewPageProps> = asy
     const { postId } = context.params as { postId: string }
 
     if (!postId) {
+      console.warn('[remix/preview] Missing postId')
       return {
         props: { post: null, errorMessage: 'Invalid post ID' },
       }
     }
 
-    const post = await prisma.socialPost.findUnique({
-      where: { id: postId },
-      select: {
-        id: true,
-        title: true,
-        prompt: true,
-        imageUrl: true,
-      },
-    })
+    let post
+    try {
+      post = await prisma.socialPost.findUnique({
+        where: { id: postId },
+        select: {
+          id: true,
+          title: true,
+          prompt: true,
+          imageUrl: true,
+        },
+      })
+    } catch (dbError) {
+      console.error('[remix/preview] Database error:', dbError)
+      return {
+        props: { post: null, errorMessage: 'Database error loading post' },
+        revalidate: 10,
+      }
+    }
 
     if (!post) {
+      console.warn('[remix/preview] Post not found:', postId)
       return {
         props: { post: null, errorMessage: 'Post not found' },
+        revalidate: 60,
       }
     }
 
     // Decode the stored prompt to extract composer metadata
-    const decodedContent = decodeSocialPostContent(post.prompt, post.imageUrl)
-    const composerMeta = decodedContent.composerMeta || {}
+    let decodedContent
+    try {
+      decodedContent = decodeSocialPostContent(post.prompt, post.imageUrl)
+    } catch (decodeError) {
+      console.error('[remix/preview] Decode error:', decodeError)
+      return {
+        props: { post: null, errorMessage: 'Error decoding post content' },
+        revalidate: 10,
+      }
+    }
+
+    const composerMeta = decodedContent?.composerMeta
 
     // Only render if this is a qb-question-post with remixMmd
-    if (composerMeta.origin !== 'qb-question-post' || !composerMeta.remixMmd) {
+    if (!composerMeta || composerMeta.origin !== 'qb-question-post' || !composerMeta.remixMmd) {
+      console.warn('[remix/preview] Invalid post type or missing remixMmd:', { origin: composerMeta?.origin, hasRemixMmd: !!composerMeta?.remixMmd })
       return {
         props: {
           post: null,
           errorMessage: 'This post cannot be previewed as a Remix question',
         },
+        revalidate: 60,
       }
     }
 
@@ -131,7 +160,7 @@ export const getServerSideProps: GetServerSideProps<RemixPreviewPageProps> = asy
       revalidate: 3600, // ISR: revalidate every hour
     }
   } catch (error) {
-    console.error('[remix/preview] Error:', error)
+    console.error('[remix/preview] Unexpected error:', error)
     return {
       props: { post: null, errorMessage: 'Error loading preview' },
       revalidate: 10,

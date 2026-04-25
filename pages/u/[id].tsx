@@ -1875,7 +1875,7 @@ export function PublicUserProfileSurface({
               label: 'Solve',
               countLabel: formatSocialCountLabel((post as any)?.solutionCount, 'Reply', 'Replies'),
               onClick: () => {
-                void openLocalPostSolveComposer(post)
+                void openLocalPostThread(post, { forceOpen: true })
               },
               onCountClick: () => {
                 void openLocalPostThread(post, { forceOpen: true })

@@ -6,7 +6,6 @@ import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react'
 import AccountControlOverlay from '../../components/AccountControlOverlay'
 import BottomSheet from '../../components/BottomSheet'
 import FeedComposerPill from '../../components/FeedComposerPill'
-import FullScreenGlassOverlay from '../../components/FullScreenGlassOverlay'
 import ImageCropperModal from '../../components/ImageCropperModal'
 import InlinePostSolutionsThread, { type InlinePostResponseAction, type ResponseRenderArgs } from '../../components/InlinePostSolutionsThread'
 import MmdPaperViewer from '../../components/MmdPaperViewer'
@@ -15,7 +14,7 @@ import OwnPostsManagerOverlay from '../../components/OwnPostsManagerOverlay'
 import PostComposerOverlay from '../../components/PostComposerOverlay'
 import PostCrudBottomSheet from '../../components/PostCrudBottomSheet'
 import PublicFeedPostCard from '../../components/PublicFeedPostCard'
-import PostReplyComposerOverlays from '../../components/PostReplyComposerOverlays'
+import PostReplyComposerOverlays, { PostReplyComposerSurface } from '../../components/PostReplyComposerOverlays'
 import ReplyCrudBottomSheet from '../../components/ReplyCrudBottomSheet'
 import { PublicSolveCanvasViewer, PublicSolvePlainExcalidrawViewer, normalizePublicSolveScene, preparePublicSolveSceneForPlainPreview, type PublicSolveScene } from '../../components/PublicSolveCanvas'
 import UserLink from '../../components/UserLink'
@@ -239,7 +238,6 @@ export function PublicUserProfileSurface({
   const [profileLikeCountByItemKey, setProfileLikeCountByItemKey] = useState<Record<string, number>>({})
   const [profileShareCountByItemKey, setProfileShareCountByItemKey] = useState<Record<string, number>>({})
   const [lastSharedPostKey, setLastSharedPostKey] = useState<string | null>(null)
-  const [expandedProfilePostId, setExpandedProfilePostId] = useState<string | null>(null)
   const socialShareResetTimeoutRef = useRef<number | null>(null)
   const [postSolveModeOverlay, setPostSolveModeOverlay] = useState<PostSolveOverlayState | null>(null)
   const [postSolveOverlay, setPostSolveOverlay] = useState<PostSolveOverlayState | null>(null)
@@ -296,6 +294,21 @@ export function PublicUserProfileSurface({
   const currentViewerName = String(session?.user?.name || session?.user?.email || 'You')
   const currentViewerAvatarUrl = resolveImageUrl(String((session as any)?.user?.avatar || (session as any)?.user?.image || '')) || null
   const currentViewerFirstName = useMemo(() => String(currentViewerName || '').trim().split(/\s+/).filter(Boolean)[0] || 'You', [currentViewerName])
+  const threadReplyComposerDraft = useMemo<PostSolveOverlayState | null>(() => {
+    if (!postThreadOverlay) return null
+    return {
+      postId: String(postThreadOverlay.postId || ''),
+      threadKey: String(postThreadOverlay.threadKey || `post:${String(postThreadOverlay.postId || '')}`),
+      title: String(postThreadOverlay.title || 'Post'),
+      prompt: String(postThreadOverlay.prompt || 'Share your reply.'),
+      imageUrl: typeof postThreadOverlay.imageUrl === 'string' ? postThreadOverlay.imageUrl : null,
+      authorName: currentViewerName,
+      authorAvatarUrl: currentViewerAvatarUrl,
+      postContentBlocks: composePostSolveBlocksWithDraftText(postSolveBlocks, String(postSolveText || ''), postSolveEditingTarget),
+      postRecord: postThreadOverlay,
+    }
+  }, [composePostSolveBlocksWithDraftText, currentViewerAvatarUrl, currentViewerName, postSolveBlocks, postSolveEditingTarget, postSolveText, postThreadOverlay])
+  const activePostReplyComposerDraft = postSolveModeOverlay || threadReplyComposerDraft
   const {
     clearLongPress: clearReplyLongPress,
     openCrudOptions: openReplyCrudOptions,
@@ -496,7 +509,6 @@ export function PublicUserProfileSurface({
         return
       }
       setPosts((current) => removeFeedPost(current, id))
-      setExpandedProfilePostId((current) => current === id ? null : current)
       setPostThreadOverlay((current) => current?.postId === id ? null : current)
       alert('Deleted')
     } catch (err: any) {
@@ -669,14 +681,25 @@ export function PublicUserProfileSurface({
     const threadKey = typeof post?.threadKey === 'string' ? post.threadKey : `post:${postId}`
     if (!postId || !threadKey) return
 
-    if (!options?.forceOpen && expandedProfilePostId === postId) {
-      setExpandedProfilePostId(null)
+    if (!options?.forceOpen && postThreadOverlay?.postId === postId) {
+      setPostThreadOverlay(null)
       setPostThreadError(null)
       setPostThreadResponses([])
       return
     }
 
-    setExpandedProfilePostId(postId)
+    const authorName = String(post?.createdBy?.name || profile?.name || 'Poster').trim() || 'Poster'
+    const authorAvatarUrl = resolveImageUrl(post?.createdBy?.avatar || profile?.avatar || '') || null
+
+    setPostThreadOverlay({
+      postId,
+      threadKey,
+      title: String(post?.title || 'Post'),
+      prompt: String(post?.prompt || ''),
+      imageUrl: resolveImageUrl(post?.imageUrl) || null,
+      authorName,
+      authorAvatarUrl,
+    })
     setPostThreadLoading(true)
     setPostThreadError(null)
     try {
@@ -688,7 +711,7 @@ export function PublicUserProfileSurface({
     } finally {
       setPostThreadLoading(false)
     }
-  }, [expandedProfilePostId, fetchPublicThreadResponses])
+  }, [fetchPublicThreadResponses, postThreadOverlay?.postId, profile?.avatar, profile?.name])
 
   const focusPostSolveTextarea = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -922,7 +945,7 @@ export function PublicUserProfileSurface({
   }, [openLocalPostSolveComposer])
 
   const submitPostTextSolve = useCallback(async () => {
-    const activeDraft = postSolveModeOverlay
+    const activeDraft = activePostReplyComposerDraft
     if (!activeDraft?.postId || !activeDraft?.threadKey) return
     const replyThreadMeta = activeDraft.replyTarget ? {
       parentResponseId: activeDraft.replyTarget.responseId,
@@ -974,13 +997,19 @@ export function PublicUserProfileSurface({
       setPostSolveEditingTarget(null)
       setComposerBlockCrudTarget(null)
       setPostReplyImageSourceSheetOpen(false)
-      await openLocalPostThread(activeDraft as any, { forceOpen: true })
+      await openLocalPostThread({
+        id: activeDraft.postId,
+        threadKey: activeDraft.threadKey,
+        title: activeDraft.title,
+        prompt: activeDraft.prompt,
+        imageUrl: activeDraft.imageUrl || null,
+      } as any, { forceOpen: true })
     } catch (err: any) {
       setPostSolveError(err?.message || 'Failed to submit reply')
     } finally {
       setPostSolveSubmitting(false)
     }
-  }, [applyOwnPostResponse, openLocalPostThread, postSolveBlocks, postSolveEditingTarget, postSolveModeOverlay, postSolveText])
+  }, [activePostReplyComposerDraft, applyOwnPostResponse, openLocalPostThread, postSolveBlocks, postSolveEditingTarget, postSolveText])
 
   const submitPostSolve = useCallback(async (scene: PublicSolveScene) => {
     const activeDraft = postSolveOverlay
@@ -1794,22 +1823,7 @@ export function PublicUserProfileSurface({
     const authorAvatar = resolveImageUrl(post?.createdBy?.avatar || avatarUrl)
     const authorRole = String(post?.createdBy?.role || profile?.role || '').toLowerCase()
     const authorVerified = authorRole === 'admin' || authorRole === 'teacher' || Boolean(profile?.verified)
-    const isExpanded = expandedProfilePostId === postId
-    const inlineThreadContent = isExpanded ? (
-      <InlinePostSolutionsThread
-        loading={postThreadLoading}
-        error={postThreadError}
-        responses={postThreadResponses}
-        currentUserId={currentViewerId}
-        inlineCanvasMode="static"
-        getContainerProps={(response, args) => getPostReplyContainerProps(post, response, args.isMine)}
-        getResponseActions={(response, args) => buildPostReplyActions(post, response, args)}
-        onOpenImageBlock={(imageUrl, args) => openImageViewer(imageUrl, `${args.responseUserName} attachment`)}
-        onOpenCanvasBlock={(_response, args, scene) => {
-          openCanvasViewer(scene, `${args.responseUserName} canvas`, String(post.title || '').trim() || 'Canvas viewer')
-        }}
-      />
-    ) : null
+    const isExpanded = String(postThreadOverlay?.postId || '') === postId
 
     return (
       <article key={post.id} data-post-id={postId || undefined} className="public-profile-feed-post bg-white py-3">
@@ -1894,9 +1908,7 @@ export function PublicUserProfileSurface({
               ),
             },
           ]}
-        >
-          {inlineThreadContent}
-        </PublicFeedPostCard>
+        />
       </article>
     )
   }
@@ -2387,64 +2399,104 @@ export function PublicUserProfileSurface({
       ) : null}
 
       {postThreadOverlay ? (
-        <FullScreenGlassOverlay
+        <BottomSheet
+          open={Boolean(postThreadOverlay)}
           title={postThreadOverlay.title || 'Solutions'}
-          subtitle="Public solutions thread"
-          zIndexClassName="z-[67]"
+          subtitle="Replies"
+          hideHeader
           onClose={() => {
             setPostThreadOverlay(null)
             setPostThreadError(null)
             setPostThreadResponses([])
+            setPostSolveModeOverlay(null)
+            setPostSolveOverlay(null)
+            setPostTypedSolveOverlay(null)
+            setPostSolveBlocks([])
+            setPostSolveText('')
+            setPostSolveEditingTarget(null)
+            setComposerBlockCrudTarget(null)
+            setPostSolveError(null)
+            setPostReplyImageSourceSheetOpen(false)
           }}
-          onBackdropClick={() => {
-            setPostThreadOverlay(null)
-            setPostThreadError(null)
-            setPostThreadResponses([])
+          backdrop
+          closeOnBackdrop
+          closeOnEscape
+          className="bottom-0"
+          sheetClassName="rounded-[30px] border border-slate-200 bg-white shadow-sm"
+          zIndexClassName="z-[67]"
+          style={{
+            maxHeight: 'calc(100dvh - max(var(--app-safe-top, 0px), env(safe-area-inset-top, 0px)) - max(var(--app-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) - 5rem)',
           }}
-          rightActions={(
-            <button type="button" className="btn btn-primary" onClick={() => {
-              const targetPost = posts.find((post) => String(post?.id || '') === String(postThreadOverlay.postId || ''))
-              if (targetPost) void openLocalPostSolveComposer(targetPost)
-            }}>
-              Reply
-            </button>
-          )}
+          contentClassName="min-h-0 flex flex-col p-0 overflow-hidden overscroll-contain"
         >
-          <div className="space-y-4">
-            {postThreadOverlay.prompt ? (
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">{postThreadOverlay.prompt}</div>
+          {(postThreadLoading || Boolean(postThreadError) || (Array.isArray(postThreadResponses) && postThreadResponses.length > 0)) ? (
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+              <div className="space-y-3 p-4">
+                {postThreadOverlay.imageUrl ? (
+                  <button
+                    type="button"
+                    className="block w-full overflow-hidden rounded-2xl border border-black/10 bg-white text-left"
+                    onClick={() => openImageViewer(postThreadOverlay.imageUrl as string, `${postThreadOverlay.title || 'Post'} image`)}
+                  >
+                    <img src={postThreadOverlay.imageUrl} alt="Post attachment" className="max-h-[320px] w-full object-contain" />
+                  </button>
+                ) : null}
+                <div className="min-h-[200px]">
+                  <InlinePostSolutionsThread
+                    loading={postThreadLoading}
+                    error={postThreadError}
+                    responses={postThreadResponses}
+                    currentUserId={currentViewerId}
+                    theme="light"
+                    inlineCanvasMode="static"
+                    getContainerProps={(response, args) => {
+                      const overlayPost = posts.find((post) => String(post?.id || '') === String(postThreadOverlay.postId || '')) || null
+                      return overlayPost ? getPostReplyContainerProps(overlayPost, response, args.isMine) : {}
+                    }}
+                    getResponseActions={(response, args) => {
+                      const overlayPost = posts.find((post) => String(post?.id || '') === String(postThreadOverlay.postId || '')) || null
+                      return overlayPost ? buildPostReplyActions(overlayPost, response, args) : []
+                    }}
+                    onOpenImageBlock={(imageUrl, args) => openImageViewer(imageUrl, `${args.responseUserName} attachment`)}
+                    onOpenCanvasBlock={(_response, args, scene) => {
+                      openCanvasViewer(scene, `${args.responseUserName} canvas`, postThreadOverlay?.title || 'Canvas viewer')
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
+          <div className={`shrink-0 bg-[linear-gradient(180deg,#fbfcff_0%,#f0f6ff_100%)] px-4 pt-3 sm:px-5 sm:pt-4 ${(postThreadLoading || Boolean(postThreadError) || (Array.isArray(postThreadResponses) && postThreadResponses.length > 0)) ? 'border-t border-slate-200' : ''}`.trim()}>
+            {postSolveError ? (
+              <div className="mb-3 rounded-2xl border border-red-200 bg-red-50/95 px-4 py-3 text-sm font-medium text-red-700 shadow-[0_12px_28px_rgba(220,38,38,0.12)]">
+                {postSolveError}
+              </div>
             ) : null}
-            {postThreadOverlay.imageUrl ? (
-              <button
-                type="button"
-                className="block w-full overflow-hidden rounded-2xl border border-white/10 bg-white/5 text-left"
-                onClick={() => openImageViewer(postThreadOverlay.imageUrl as string, `${postThreadOverlay.title || 'Post'} image`)}
-              >
-                <img src={postThreadOverlay.imageUrl} alt="Post attachment" className="max-h-[320px] w-full object-contain" />
-              </button>
-            ) : null}
-            <InlinePostSolutionsThread
-              loading={postThreadLoading}
-              error={postThreadError}
-              responses={postThreadResponses}
-              currentUserId={currentViewerId}
-              theme="dark"
-              inlineCanvasMode="static"
-              getContainerProps={(response, args) => {
-                const overlayPost = posts.find((post) => String(post?.id || '') === String(postThreadOverlay.postId || '')) || null
-                return overlayPost ? getPostReplyContainerProps(overlayPost, response, args.isMine) : {}
-              }}
-              getResponseActions={(response, args) => {
-                const overlayPost = posts.find((post) => String(post?.id || '') === String(postThreadOverlay.postId || '')) || null
-                return overlayPost ? buildPostReplyActions(overlayPost, response, args) : []
-              }}
-              onOpenImageBlock={(imageUrl, args) => openImageViewer(imageUrl, `${args.responseUserName} attachment`)}
-              onOpenCanvasBlock={(_response, args, scene) => {
-                openCanvasViewer(scene, `${args.responseUserName} canvas`, postThreadOverlay?.title || 'Canvas viewer')
-              }}
-            />
+            <div className="max-h-[min(18rem,42dvh)] min-h-0 overflow-hidden">
+              <PostReplyComposerSurface
+                blocks={postSolveBlocks}
+                draftText={postSolveText}
+                editingTarget={postSolveEditingTarget}
+                viewerName={currentViewerName}
+                submitting={postSolveSubmitting}
+                imageUploading={postReplyImageUploading}
+                textareaRef={postSolveTextareaRef}
+                onDraftTextChange={setPostSolveText}
+                onOpenTyped={() => openTypedPostSolveComposer(activePostReplyComposerDraft, 'keyboard')}
+                onOpenHandwritten={() => openHandwrittenPostSolveComposer(activePostReplyComposerDraft)}
+                onOpenImagePicker={openPostReplyImagePicker}
+                onSubmitText={() => void submitPostTextSolve()}
+                onEditBlock={editComposerBlock}
+                onDeleteBlock={deleteComposerBlock}
+                onCanvasViewportChange={updateComposerCanvasViewport}
+                onBeginBlockLongPress={beginComposerBlockLongPress}
+                onMoveBlockLongPress={moveComposerBlockLongPress}
+                onClearBlockLongPress={clearComposerBlockLongPress}
+                onOpenBlockCrudOptions={openComposerBlockCrudOptions}
+              />
+            </div>
           </div>
-        </FullScreenGlassOverlay>
+        </BottomSheet>
       ) : null}
 
       {imageViewer ? (

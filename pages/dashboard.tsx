@@ -2398,6 +2398,125 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [assignmentGradingPromptEditingByQuestionId, setAssignmentGradingPromptEditingByQuestionId] = useState<Record<string, boolean>>({})
 
   const [assignmentGradingPromptSavingScope, setAssignmentGradingPromptSavingScope] = useState<string | null>(null)
+
+  // Resource Bank state (native Learning Hub tab integration)
+  const [resourceBankProfile, setResourceBankProfile] = useState<any>(null)
+  const [resourceBankProfileLoading, setResourceBankProfileLoading] = useState(false)
+  const [resourceBankSelectedGrade, setResourceBankSelectedGrade] = useState<GradeValue | ''>('')
+  const [resourceBankItems, setResourceBankItems] = useState<ResourceBankItem[]>([])
+  const [resourceBankLoading, setResourceBankLoading] = useState(false)
+  const [resourceBankError, setResourceBankError] = useState<string | null>(null)
+  const [resourceBankTitle, setResourceBankTitle] = useState('')
+  const [resourceBankTag, setResourceBankTag] = useState('')
+  const [resourceBankUploading, setResourceBankUploading] = useState(false)
+  const [resourceBankParseOnUpload, setResourceBankParseOnUpload] = useState(false)
+  const [resourceBankAiNormalizeOnUpload, setResourceBankAiNormalizeOnUpload] = useState(false)
+  const [resourceBankConvertDocxOnUpload, setResourceBankConvertDocxOnUpload] = useState(false)
+  const [resourceBankParsedViewerOpen, setResourceBankParsedViewerOpen] = useState(false)
+  const [resourceBankParsedViewerLoading, setResourceBankParsedViewerLoading] = useState(false)
+  const [resourceBankParsedViewerTitle, setResourceBankParsedViewerTitle] = useState('')
+  const [resourceBankParsedViewerText, setResourceBankParsedViewerText] = useState('')
+  const [resourceBankParsedViewerJson, setResourceBankParsedViewerJson] = useState<any | null>(null)
+  const [resourceBankParsedDownloadBusy, setResourceBankParsedDownloadBusy] = useState(false)
+  const [resourceBankParseDebugOpen, setResourceBankParseDebugOpen] = useState(false)
+  const [resourceBankParseDebugItem, setResourceBankParseDebugItem] = useState<ResourceBankItem | null>(null)
+  const [resourceBankEditOpen, setResourceBankEditOpen] = useState(false)
+  const [resourceBankEditItem, setResourceBankEditItem] = useState<ResourceBankItem | null>(null)
+  const [resourceBankEditTitle, setResourceBankEditTitle] = useState('')
+  const [resourceBankEditTag, setResourceBankEditTag] = useState('')
+  const [resourceBankEditGrade, setResourceBankEditGrade] = useState<GradeValue | ''>('')
+  const [resourceBankEditParse, setResourceBankEditParse] = useState(false)
+  const [resourceBankEditAiNormalize, setResourceBankEditAiNormalize] = useState(false)
+  const [resourceBankEditing, setResourceBankEditing] = useState(false)
+  const [resourceBankExtractOpen, setResourceBankExtractOpen] = useState(false)
+  const [resourceBankExtractItem, setResourceBankExtractItem] = useState<ResourceBankItem | null>(null)
+  const [resourceBankExtractYear, setResourceBankExtractYear] = useState(new Date().getFullYear())
+  const [resourceBankExtractMonth, setResourceBankExtractMonth] = useState('November')
+  const [resourceBankExtractPaper, setResourceBankExtractPaper] = useState(1)
+  const [resourceBankExtracting, setResourceBankExtracting] = useState(false)
+  const [resourceBankExtractError, setResourceBankExtractError] = useState<string | null>(null)
+  const [resourceBankExtractResult, setResourceBankExtractResult] = useState<{ created: number; skipped: number } | null>(null)
+  const [resourceBankImportOpen, setResourceBankImportOpen] = useState(false)
+  const [resourceBankImportItem, setResourceBankImportItem] = useState<ResourceBankItem | null>(null)
+  const [resourceBankImportYear, setResourceBankImportYear] = useState(new Date().getFullYear())
+  const [resourceBankImportMonth, setResourceBankImportMonth] = useState('November')
+  const [resourceBankImportPaper, setResourceBankImportPaper] = useState(1)
+  const [resourceBankImportTitle, setResourceBankImportTitle] = useState('')
+  const [resourceBankImportTag, setResourceBankImportTag] = useState('')
+  const [resourceBankImportJsonText, setResourceBankImportJsonText] = useState('')
+  const [resourceBankImportingQuestions, setResourceBankImportingQuestions] = useState(false)
+  const [resourceBankImportError, setResourceBankImportError] = useState<string | null>(null)
+  const [resourceBankImportResult, setResourceBankImportResult] = useState<{ created: number; skipped: number } | null>(null)
+  const [resourceBankReviewOpen, setResourceBankReviewOpen] = useState(false)
+  const [resourceBankReviewItem, setResourceBankReviewItem] = useState<ResourceBankItem | null>(null)
+  const [resourceBankReviewQuestions, setResourceBankReviewQuestions] = useState<any[]>([])
+  const [resourceBankReviewLoading, setResourceBankReviewLoading] = useState(false)
+  const [resourceBankReviewError, setResourceBankReviewError] = useState<string | null>(null)
+  const [resourceBankSavingQId, setResourceBankSavingQId] = useState<string | null>(null)
+  const [resourceBankDeletingQId, setResourceBankDeletingQId] = useState<string | null>(null)
+  const resourceBankFileInputRef = useRef<HTMLInputElement | null>(null)
+  const resourceBankImportJsonFileRef = useRef<HTMLInputElement | null>(null)
+
+  // Resource Bank initialization
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    let cancelled = false
+    setResourceBankProfileLoading(true)
+    ;(async () => {
+      try {
+        const res = await fetch('/api/profile', { credentials: 'same-origin' })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data?.message || `Failed to load profile (${res.status})`)
+        if (!cancelled) setResourceBankProfile(data)
+      } catch (err: any) {
+        if (!cancelled) setResourceBankError(err?.message || 'Failed to load profile')
+      } finally {
+        if (!cancelled) setResourceBankProfileLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [status])
+
+  useEffect(() => {
+    if (status !== 'authenticated' || !resourceBankProfile) return
+    const profileGrade = normalizeGradeInput(resourceBankProfile?.grade)
+    const userRole = ((session as any)?.user?.role as string | undefined) || 'student'
+    const effectiveGrade = userRole === 'admin'
+      ? normalizeGradeInput(resourceBankSelectedGrade) || profileGrade
+      : profileGrade
+    if (!effectiveGrade) {
+      setResourceBankItems([])
+      return
+    }
+    let cancelled = false
+    setResourceBankLoading(true)
+    setResourceBankError(null)
+    ;(async () => {
+      try {
+        const url = userRole === 'admin' ? `/api/resources?grade=${encodeURIComponent(effectiveGrade)}&all=1` : '/api/resources?all=1'
+        const res = await fetch(url, { credentials: 'same-origin' })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data?.message || `Failed to load resources (${res.status})`)
+        if (!cancelled) {
+          const nextItems = Array.isArray(data?.items) ? data.items : []
+          setResourceBankItems(nextItems)
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setResourceBankError(err?.message || 'Failed to load resources')
+          setResourceBankItems([])
+        }
+      } finally {
+        if (!cancelled) setResourceBankLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [status, resourceBankProfile, resourceBankSelectedGrade, session])
+
   const [lessonScriptTemplates, setLessonScriptTemplates] = useState<any[]>([])
   const [lessonScriptTemplatesLoading, setLessonScriptTemplatesLoading] = useState(false)
   const [lessonScriptTemplatesError, setLessonScriptTemplatesError] = useState<string | null>(null)
@@ -16690,6 +16809,263 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     </div>
   )
 
+  // Resource Bank helper functions
+  const buildResourceBlobPath = (grade: GradeValue, originalName: string) => {
+    const safe = String(originalName || 'resource')
+      .replace(/\\/g, '_')
+      .replace(/\//g, '_')
+      .replace(/[^a-z0-9._-]+/gi, '_')
+      .slice(0, 120)
+    const stamp = Date.now()
+    return `resource-bank/${String(grade)}/${stamp}_${safe}`
+  }
+
+  const resourceBankEffectiveGrade: GradeValue | undefined = useMemo(() => {
+    const profileGrade = normalizeGradeInput(resourceBankProfile?.grade)
+    const userRole = ((session as any)?.user?.role as string | undefined) || 'student'
+    if (userRole === 'admin') {
+      return normalizeGradeInput(resourceBankSelectedGrade) || profileGrade
+    }
+    return profileGrade
+  }, [resourceBankProfile?.grade, resourceBankSelectedGrade, session])
+
+  const fetchResourceBankItems = useCallback(async (grade: GradeValue | undefined) => {
+    if (!grade) {
+      setResourceBankItems([])
+      return
+    }
+    setResourceBankLoading(true)
+    setResourceBankError(null)
+    try {
+      const userRole = ((session as any)?.user?.role as string | undefined) || 'student'
+      const url = userRole === 'admin' ? `/api/resources?grade=${encodeURIComponent(grade)}&all=1` : '/api/resources?all=1'
+      const res = await fetch(url, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to load resources (${res.status})`)
+      const nextItems = Array.isArray(data?.items) ? data.items : []
+      setResourceBankItems(nextItems)
+    } catch (err: any) {
+      setResourceBankError(err?.message || 'Failed to load resources')
+      setResourceBankItems([])
+    } finally {
+      setResourceBankLoading(false)
+    }
+  }, [session])
+
+  const openResourceBankParsedViewer = useCallback(async (item: ResourceBankItem) => {
+    const id = String(item?.id || '')
+    if (!id) return
+    const scopeGrade = resourceBankEffectiveGrade || item?.grade
+    if (!scopeGrade) {
+      setResourceBankParsedViewerText('Grade not configured for this account')
+      return
+    }
+    setResourceBankParsedViewerOpen(true)
+    setResourceBankParsedViewerLoading(true)
+    setResourceBankParsedViewerTitle(toDisplayFileName(item?.title) || item?.title || 'Parsed')
+    setResourceBankParsedViewerText('')
+    setResourceBankParsedViewerJson(null)
+    try {
+      const params = new URLSearchParams({ grade: String(scopeGrade) })
+      const res = await fetch(`/api/resources/${encodeURIComponent(id)}/parsed?${params.toString()}`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to load parsed data (${res.status})`)
+      const json = data?.parsedJson
+      const err = typeof data?.parseError === 'string' ? data.parseError : ''
+      if (json && typeof json === 'object') {
+        setResourceBankParsedViewerJson(json)
+      } else {
+        const rendered = err || 'No parsed output available.'
+        setResourceBankParsedViewerText(rendered)
+      }
+    } catch (err: any) {
+      setResourceBankParsedViewerText(err?.message || 'Failed to load parsed output')
+    } finally {
+      setResourceBankParsedViewerLoading(false)
+    }
+  }, [resourceBankEffectiveGrade])
+
+  const handleResourceBankUpload = useCallback(async () => {
+    if (status !== 'authenticated') return
+    if (!resourceBankEffectiveGrade) {
+      setResourceBankError('Grade not configured for this account')
+      return
+    }
+
+    const file = resourceBankFileInputRef.current?.files?.[0]
+    if (!file) {
+      setResourceBankError('Choose a file first')
+      return
+    }
+
+    setResourceBankUploading(true)
+    setResourceBankError(null)
+    try {
+      const userRole = ((session as any)?.user?.role as string | undefined) || 'student'
+      const form = new FormData()
+      form.append('file', file)
+      if (resourceBankTitle.trim()) form.append('title', resourceBankTitle.trim())
+      if (resourceBankTag.trim()) form.append('tag', resourceBankTag.trim())
+      if (userRole === 'admin') form.append('grade', resourceBankEffectiveGrade)
+      if (resourceBankParseOnUpload) form.append('parse', '1')
+      if (resourceBankParseOnUpload && resourceBankAiNormalizeOnUpload) form.append('aiNormalize', '1')
+      if (resourceBankConvertDocxOnUpload) form.append('convertDocx', '1')
+
+      const res = await fetch('/api/resources', {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: form,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Upload failed (${res.status})`)
+
+      if (resourceBankParseOnUpload && typeof data?.parseError === 'string' && data.parseError.trim()) {
+        setResourceBankError(`Parse failed: ${data.parseError}`)
+      }
+
+      setResourceBankTitle('')
+      setResourceBankTag('')
+      if (resourceBankFileInputRef.current) resourceBankFileInputRef.current.value = ''
+
+      setResourceBankLoading(true)
+      const listUrl = userRole === 'admin'
+        ? `/api/resources?grade=${encodeURIComponent(resourceBankEffectiveGrade)}&all=1`
+        : '/api/resources?all=1'
+      const listRes = await fetch(listUrl, { credentials: 'same-origin' })
+      const listData = await listRes.json().catch(() => ({}))
+      if (!listRes.ok) throw new Error(listData?.message || `Failed to load resources (${listRes.status})`)
+      setResourceBankItems(Array.isArray(listData?.items) ? listData.items : [])
+    } catch (err: any) {
+      setResourceBankError(err?.message || 'Failed to upload resource')
+    } finally {
+      setResourceBankUploading(false)
+      setResourceBankLoading(false)
+    }
+  }, [
+    resourceBankAiNormalizeOnUpload,
+    resourceBankConvertDocxOnUpload,
+    resourceBankEffectiveGrade,
+    resourceBankParseOnUpload,
+    resourceBankTag,
+    resourceBankTitle,
+    session,
+    status,
+  ])
+
+  const renderResourceBankContent = () => (
+    <div>
+      {resourceBankError ? (
+        <section className="border-b border-black/10 bg-white px-4 py-3 text-sm text-red-600">{resourceBankError}</section>
+      ) : null}
+
+      {/* Upload form */}
+      <section className="border-b border-black/10 bg-white px-4 py-4">
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Title</label>
+            <input
+              type="text"
+              value={resourceBankTitle}
+              onChange={(e) => setResourceBankTitle(e.target.value)}
+              placeholder="Resource title (optional)"
+              className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm placeholder:text-[#7b87a4]"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Tag</label>
+            <input
+              type="text"
+              value={resourceBankTag}
+              onChange={(e) => setResourceBankTag(e.target.value)}
+              placeholder="Tag (optional)"
+              className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm placeholder:text-[#7b87a4]"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-[#1c1e21] mb-1">File</label>
+            <input
+              ref={resourceBankFileInputRef}
+              type="file"
+              className="w-full text-sm"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={resourceBankParseOnUpload}
+                onChange={(e) => setResourceBankParseOnUpload(e.target.checked)}
+                className="rounded"
+              />
+              <span>Parse content with Mathpix OCR</span>
+            </label>
+            {resourceBankParseOnUpload && (
+              <label className="flex items-center gap-2 text-sm ml-6">
+                <input
+                  type="checkbox"
+                  checked={resourceBankAiNormalizeOnUpload}
+                  onChange={(e) => setResourceBankAiNormalizeOnUpload(e.target.checked)}
+                  className="rounded"
+                />
+                <span>Normalize with Gemini AI</span>
+              </label>
+            )}
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={resourceBankConvertDocxOnUpload}
+                onChange={(e) => setResourceBankConvertDocxOnUpload(e.target.checked)}
+                className="rounded"
+              />
+              <span>Convert DOCX output</span>
+            </label>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              void handleResourceBankUpload()
+            }}
+            disabled={resourceBankUploading}
+            className="w-full h-10 rounded-lg bg-[#1877f2] text-white font-semibold text-sm hover:bg-[#1565d8] disabled:opacity-50"
+          >
+            {resourceBankUploading ? 'Uploading...' : 'Upload Resource'}
+          </button>
+        </div>
+      </section>
+
+      {/* Resource list */}
+      {resourceBankItems.length > 0 ? (
+        <ul className="divide-y divide-black/10">
+          {resourceBankItems.map((item) => (
+            <li key={item.id} className="border-black/10 bg-white px-4 py-3">
+              <div className="flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm text-[#1c1e21]">{item.title || item.filename}</div>
+                  {item.tag && <div className="text-xs text-[#65676b] mt-1">{item.tag}</div>}
+                  <div className="text-xs text-[#65676b] mt-1">{new Date(item.createdAt).toLocaleDateString()}</div>
+                </div>
+                <div className="flex items-center gap-1">
+                  {item.parsedJson ? (
+                    <button
+                      type="button"
+                      onClick={() => openResourceBankParsedViewer(item)}
+                      className="px-2 py-1 text-xs rounded bg-[#e8f4fd] text-[#1877f2] hover:bg-[#dcefff]"
+                    >
+                      View
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : !resourceBankLoading ? (
+        <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">
+          No resources uploaded yet
+        </section>
+      ) : null}
+    </div>
+  )
   function renderBooksSurfaceContent() {
     const showBooksSearch = booksHubTab === 'papers' || booksHubTab === 'pdfs'
     return (
@@ -16728,10 +17104,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <button
               type="button"
               className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'resources' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
-              onClick={() => {
-                setBooksOverlayOpen(false)
-                void router.push('/resource-bank')
-              }}
+              onClick={() => setBooksHubTab('resources')}
             >
               Resources
             </button>
@@ -16784,7 +17157,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         {booksHubTab === 'remixes' ? renderQuestionRemixesContent() : null}
         {booksHubTab === 'papers' ? renderBooksList('papers') : null}
         {booksHubTab === 'pdfs' ? renderBooksList('pdfs') : null}
-        {booksHubTab === 'resources' ? renderBooksList('resources') : null}
+        {booksHubTab === 'resources' ? renderResourceBankContent() : null}
       </div>
     )
   }

@@ -22,32 +22,217 @@ export const VALID_TOPICS = [
   'Calculus', 'Sequences and Series', 'Polynomials',
 ]
 
+// Maps normalizeTopicText(aiOutput) → canonical label.
+// Covers common SA Matric subtopic names the AI may return verbatim.
 const TOPIC_ALIAS_MAP: Record<string, string> = {
+  // Algebra
+  'algebra': 'Algebra',
+  'algebraic expressions': 'Algebra',
+  'algebraic equations': 'Algebra',
+  'quadratic equations': 'Algebra',
+  'simultaneous equations': 'Algebra',
+  'linear equations': 'Algebra',
+  'inequalities': 'Algebra',
+  'surds': 'Algebra',
+  'surd': 'Algebra',
+  'equations and inequalities': 'Algebra',
+  'exponential equations': 'Algebra',
+  'logarithmic equations': 'Algebra',
+  'nature of roots': 'Algebra',
+  'discriminant': 'Algebra',
+  'completing the square': 'Algebra',
+
+  // Functions
+  'functions': 'Functions',
+  'functions and graphs': 'Functions',
+  'function and graphs': 'Functions',
+  'graphs': 'Functions',
+  'parabola': 'Functions',
+  'hyperbola': 'Functions',
+  'exponential function': 'Functions',
+  'exponential functions': 'Functions',
+  'logarithmic function': 'Functions',
+  'logarithmic functions': 'Functions',
+  'linear function': 'Functions',
+  'linear functions': 'Functions',
+  'quadratic function': 'Functions',
+  'quadratic functions': 'Functions',
+  'absolute value function': 'Functions',
+  'cubic function': 'Functions',
+  'cubic functions': 'Functions',
+  'inverse functions': 'Functions',
+  'transformations of functions': 'Functions',
+
+  // Number Patterns
   'number pattern': 'Number Patterns',
   'number patterns': 'Number Patterns',
   'patterns': 'Number Patterns',
   'patterns and sequences': 'Number Patterns',
+  'quadratic sequences': 'Number Patterns',
+  'quadratic number patterns': 'Number Patterns',
+  'linear number patterns': 'Number Patterns',
+  'general term': 'Number Patterns',
+
+  // Finance
+  'finance': 'Finance',
+  'financial maths': 'Finance',
+  'financial math': 'Finance',
+  'financial mathematics': 'Finance',
+  'simple interest': 'Finance',
+  'compound interest': 'Finance',
+  'future value': 'Finance',
+  'present value': 'Finance',
+  'annuities': 'Finance',
+  'annuity': 'Finance',
+  'hire purchase': 'Finance',
+  'inflation': 'Finance',
+  'depreciation': 'Finance',
+  'population growth': 'Finance',
+  'effective interest rate': 'Finance',
+  'nominal interest rate': 'Finance',
+  'investments': 'Finance',
+  'loans': 'Finance',
+
+  // Trigonometry
+  'trigonometry': 'Trigonometry',
+  'trig': 'Trigonometry',
+  'trigonometric': 'Trigonometry',
+  'trigonometric equations': 'Trigonometry',
+  'trigonometric identities': 'Trigonometry',
+  'trig identities': 'Trigonometry',
+  'sine rule': 'Trigonometry',
+  'cosine rule': 'Trigonometry',
+  'area rule': 'Trigonometry',
+  'trig ratios': 'Trigonometry',
+  'trigonometric ratios': 'Trigonometry',
+  '2d trigonometry': 'Trigonometry',
+  '3d trigonometry': 'Trigonometry',
+  'compound angles': 'Trigonometry',
+  'double angles': 'Trigonometry',
+
+  // Euclidean Geometry
+  'euclidean geometry': 'Euclidean Geometry',
+  'euclidean': 'Euclidean Geometry',
+  'geometry': 'Euclidean Geometry',
+  'circle geometry': 'Euclidean Geometry',
+  'circles': 'Euclidean Geometry',
+  'triangles': 'Euclidean Geometry',
+  'similar triangles': 'Euclidean Geometry',
+  'congruent triangles': 'Euclidean Geometry',
+  'similarity': 'Euclidean Geometry',
+  'congruence': 'Euclidean Geometry',
+  'polygons': 'Euclidean Geometry',
+  'quadrilaterals': 'Euclidean Geometry',
+  'parallel lines': 'Euclidean Geometry',
+  'proofs': 'Euclidean Geometry',
+  'proportion': 'Euclidean Geometry',
+  'midpoint theorem': 'Euclidean Geometry',
+  'pythagoras': 'Euclidean Geometry',
+
+  // Analytical Geometry
+  'analytical geometry': 'Analytical Geometry',
+  'analytic geometry': 'Analytical Geometry',
+  'coordinate geometry': 'Analytical Geometry',
+  'straight lines': 'Analytical Geometry',
+  'circles in coordinate geometry': 'Analytical Geometry',
+  'distance formula': 'Analytical Geometry',
+  'midpoint formula': 'Analytical Geometry',
+  'gradient': 'Analytical Geometry',
+
+  // Statistics
+  'statistics': 'Statistics',
+  'data handling': 'Statistics',
+  'data': 'Statistics',
+  'measures of central tendency': 'Statistics',
+  'mean median mode': 'Statistics',
+  'normal distribution': 'Statistics',
+  'ogive': 'Statistics',
+  'histogram': 'Statistics',
+  'box and whisker': 'Statistics',
+  'variance': 'Statistics',
+  'standard deviation': 'Statistics',
+  'regression': 'Statistics',
+  'scatter plot': 'Statistics',
+  'bivariate data': 'Statistics',
+
+  // Probability
+  'probability': 'Probability',
+  'probability and counting': 'Probability',
+  'counting principles': 'Probability',
+  'fundamental counting principle': 'Probability',
+  'venn diagrams': 'Probability',
+  'tree diagrams': 'Probability',
+  'mutually exclusive': 'Probability',
+  'independent events': 'Probability',
+  'complementary events': 'Probability',
+  'conditional probability': 'Probability',
+
+  // Calculus
+  'calculus': 'Calculus',
+  'differentiation': 'Calculus',
+  'derivatives': 'Calculus',
+  'derivative': 'Calculus',
+  'integration': 'Calculus',
+  'limits': 'Calculus',
+  'limit': 'Calculus',
+  'optimization': 'Calculus',
+  'rates of change': 'Calculus',
+  'rate of change': 'Calculus',
+  'gradient of a curve': 'Calculus',
+  'second derivative': 'Calculus',
+  'turning points': 'Calculus',
+  'cubic graph': 'Calculus',
+  'cubic graphs': 'Calculus',
+  'integral': 'Calculus',
+  'integrals': 'Calculus',
+
+  // Sequences and Series
   'sequences': 'Sequences and Series',
+  'series': 'Sequences and Series',
   'sequence and series': 'Sequences and Series',
   'sequences and series': 'Sequences and Series',
   'sequence series': 'Sequences and Series',
-  'series': 'Sequences and Series',
-  'trig': 'Trigonometry',
-  'trigonometric': 'Trigonometry',
-  'financial maths': 'Finance',
-  'financial math': 'Finance',
-  'data handling': 'Statistics',
-  'analytic geometry': 'Analytical Geometry',
-  'coordinate geometry': 'Analytical Geometry',
-  'euclidean': 'Euclidean Geometry',
-  'functions and graphs': 'Functions',
-  'function and graphs': 'Functions',
-  'probability and counting': 'Probability',
+  'arithmetic sequences': 'Sequences and Series',
+  'geometric sequences': 'Sequences and Series',
+  'arithmetic series': 'Sequences and Series',
+  'geometric series': 'Sequences and Series',
+  'sigma notation': 'Sequences and Series',
+  'arithmetic progression': 'Sequences and Series',
+  'geometric progression': 'Sequences and Series',
+  'sum to infinity': 'Sequences and Series',
+  'convergent series': 'Sequences and Series',
+
+  // Polynomials
+  'polynomials': 'Polynomials',
   'polynomial': 'Polynomials',
   'polynomial functions': 'Polynomials',
-  'differentiation': 'Calculus',
-  'integration': 'Calculus',
-  'limits': 'Calculus',
+  'factor theorem': 'Polynomials',
+  'remainder theorem': 'Polynomials',
+  'cubic equations': 'Polynomials',
+  'factorising cubics': 'Polynomials',
+  'long division': 'Polynomials',
+}
+
+// Maps a discriminating anchor word → canonical topic.
+// Used as a fast-path tiebreaker when Jaccard scoring is ambiguous (e.g., "Circle Geometry" hits both Euclidean and Analytical equally on the word "geometry").
+const TOPIC_ANCHOR_WORDS: Record<string, string> = {
+  'parabola': 'Functions', 'hyperbola': 'Functions', 'asymptote': 'Functions',
+  'exponential': 'Functions', 'logarithm': 'Functions', 'logarithmic': 'Functions',
+  'inverse': 'Functions',
+  'arithmetic': 'Sequences and Series', 'geometric': 'Sequences and Series',
+  'sigma': 'Sequences and Series', 'convergent': 'Sequences and Series',
+  'annuity': 'Finance', 'depreciation': 'Finance', 'inflation': 'Finance', 'nominal': 'Finance',
+  'effective': 'Finance', 'compound': 'Finance', 'hire': 'Finance',
+  'circle': 'Euclidean Geometry', 'triangle': 'Euclidean Geometry', 'chord': 'Euclidean Geometry',
+  'tangent': 'Euclidean Geometry', 'cyclic': 'Euclidean Geometry', 'quadrilateral': 'Euclidean Geometry',
+  'midpoint': 'Analytical Geometry', 'gradient': 'Analytical Geometry', 'collinear': 'Analytical Geometry',
+  'differentiation': 'Calculus', 'derivative': 'Calculus', 'integration': 'Calculus',
+  'limit': 'Calculus', 'optimization': 'Calculus',
+  'sine': 'Trigonometry', 'cosine': 'Trigonometry', 'tan': 'Trigonometry',
+  'venn': 'Probability', 'factorial': 'Probability', 'permutation': 'Probability', 'combination': 'Probability',
+  'standard deviation': 'Statistics', 'variance': 'Statistics', 'regression': 'Statistics', 'ogive': 'Statistics',
+  'factor theorem': 'Polynomials', 'remainder': 'Polynomials', 'cubic': 'Polynomials',
+  'surd': 'Algebra', 'simultaneous': 'Algebra', 'discriminant': 'Algebra',
 }
 
 function normalizeTopicText(value: string): string {
@@ -87,33 +272,61 @@ export function normalizeTopicLabel(value: unknown, allowedTopics: string[] = VA
 
   const allowed = new Set(allowedTopics)
   const lowered = raw.toLowerCase()
+
+  // 1. Exact case-insensitive match.
   const exact = allowedTopics.find((topic) => topic.toLowerCase() === lowered)
   if (exact) return exact
 
   const normalized = normalizeTopicText(raw)
+
+  // 2. Alias map lookup (covers 150+ common SA Matric subtopic names).
   const alias = TOPIC_ALIAS_MAP[normalized]
   if (alias && allowed.has(alias)) return alias
 
-  // Fuzzy canonicalization for near-miss labels from AI outputs.
+  // 3. Token-based anchor-word fast path: find the highest-confidence anchor word present in the AI output.
+  const tokens = normalized.split(' ').filter(Boolean)
+  const anchorScores = new Map<string, number>()
+  for (const token of tokens) {
+    const anchorTopic = TOPIC_ANCHOR_WORDS[token]
+    if (anchorTopic && allowed.has(anchorTopic)) {
+      anchorScores.set(anchorTopic, (anchorScores.get(anchorTopic) ?? 0) + 1)
+    }
+  }
+  // Also try multi-word anchor phrases (e.g., "standard deviation", "factor theorem").
+  for (const [phrase, anchorTopic] of Object.entries(TOPIC_ANCHOR_WORDS)) {
+    if (phrase.includes(' ') && normalized.includes(phrase) && allowed.has(anchorTopic)) {
+      anchorScores.set(anchorTopic, (anchorScores.get(anchorTopic) ?? 0) + 2)
+    }
+  }
+  if (anchorScores.size > 0) {
+    const top = [...anchorScores.entries()].sort((a, b) => b[1] - a[1])[0]
+    if (top) return top[0]
+  }
+
+  // 4. Jaccard word-overlap fuzzy scoring.
   const normalizedCandidates = allowedTopics.map((topic) => ({ topic, normalized: normalizeTopicText(topic) }))
   let best: { topic: string; score: number } | null = null
 
+  const lhsTokens = new Set(tokens)
   for (const candidate of normalizedCandidates) {
     let score = 0
-    if (candidate.normalized === normalized) score = 1
-    else if (candidate.normalized.includes(normalized) || normalized.includes(candidate.normalized)) score = 0.92
-    else {
-      const lhs = new Set(normalized.split(' ').filter(Boolean))
+    if (candidate.normalized === normalized) {
+      score = 1
+    } else if (candidate.normalized.includes(normalized) || normalized.includes(candidate.normalized)) {
+      score = 0.92
+    } else {
       const rhs = new Set(candidate.normalized.split(' ').filter(Boolean))
-      const overlap = [...lhs].filter((token) => rhs.has(token)).length
-      const union = new Set([...lhs, ...rhs]).size || 1
-      score = overlap / union
+      const overlap = [...lhsTokens].filter((t) => rhs.has(t)).length
+      const union = new Set([...lhsTokens, ...rhs]).size || 1
+      // Penalise generic shared tokens (e.g., "geometry" alone is not discriminating enough).
+      const genericTokens = new Set(['and', 'of', 'the', 'geometry', 'mathematics', 'maths', 'math'])
+      const discriminatingOverlap = [...lhsTokens].filter((t) => rhs.has(t) && !genericTokens.has(t)).length
+      score = discriminatingOverlap > 0 ? overlap / union : (overlap / union) * 0.4
     }
-
     if (!best || score > best.score) best = { topic: candidate.topic, score }
   }
 
-  return best && best.score >= 0.55 ? best.topic : null
+  return best && best.score >= 0.5 ? best.topic : null
 }
 
 function resolveBestTopic(opts: {

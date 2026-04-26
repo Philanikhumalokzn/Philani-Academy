@@ -143,10 +143,48 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === 'DELETE') {
     if (role !== 'admin') return res.status(403).json({ message: 'Admin only' })
     try {
+      const fallback = (req.body || {}) as {
+        sourceId?: string | null
+        grade?: string | null
+        year?: number | null
+        month?: string | null
+        paper?: number | null
+        questionNumber?: string | null
+        questionDepth?: number | null
+      }
+
+      let targetId = id
+      const existing = await prisma.examQuestion.findUnique({ where: { id }, select: { id: true } })
+      if (!existing) {
+        const fallbackGrade = normalizeGradeInput(typeof fallback.grade === 'string' ? fallback.grade : undefined)
+        const fallbackYear = typeof fallback.year === 'number' && Number.isFinite(fallback.year) ? Math.trunc(fallback.year) : null
+        const fallbackMonth = typeof fallback.month === 'string' ? fallback.month.trim() : ''
+        const fallbackPaper = typeof fallback.paper === 'number' && Number.isFinite(fallback.paper) ? Math.trunc(fallback.paper) : null
+        const fallbackQuestionNumber = typeof fallback.questionNumber === 'string' ? fallback.questionNumber.trim() : ''
+        const fallbackSourceId = typeof fallback.sourceId === 'string' ? fallback.sourceId.trim() : ''
+        const fallbackDepth = typeof fallback.questionDepth === 'number' && Number.isFinite(fallback.questionDepth) ? Math.trunc(fallback.questionDepth) : null
+
+        if (fallbackGrade && fallbackYear != null && fallbackMonth && fallbackPaper != null && fallbackQuestionNumber) {
+          const byFallback = await prisma.examQuestion.findFirst({
+            where: {
+              grade: fallbackGrade,
+              year: fallbackYear,
+              month: fallbackMonth,
+              paper: fallbackPaper,
+              questionNumber: fallbackQuestionNumber,
+              ...(fallbackDepth != null ? { questionDepth: fallbackDepth } : {}),
+              ...(fallbackSourceId ? { sourceId: fallbackSourceId } : {}),
+            },
+            select: { id: true },
+          })
+          if (byFallback?.id) targetId = byFallback.id
+        }
+      }
+
       await prisma.$transaction(async (tx) => {
         // Defensive unlink to support environments where DB-level cascade is not in sync.
-        await tx.questionRemixQuestion.deleteMany({ where: { questionId: id } })
-        await tx.examQuestion.delete({ where: { id } })
+        await tx.questionRemixQuestion.deleteMany({ where: { questionId: targetId } })
+        await tx.examQuestion.delete({ where: { id: targetId } })
       })
       return res.status(200).json({ message: 'Deleted' })
     } catch (err: any) {

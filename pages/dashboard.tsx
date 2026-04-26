@@ -16413,7 +16413,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     try {
       const res = await fetch(`/api/exam-questions/${id}`, {
         method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
+        body: JSON.stringify({
+          sourceId: question?.sourceId || null,
+          grade: question?.grade || null,
+          year: question?.year ?? null,
+          month: question?.month || null,
+          paper: question?.paper ?? null,
+          questionNumber: question?.questionNumber || null,
+          questionDepth: question?.questionDepth ?? null,
+        }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))

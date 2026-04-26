@@ -2418,7 +2418,6 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   // Resource Bank state (native Learning Hub tab integration)
   const [resourceBankProfile, setResourceBankProfile] = useState<any>(null)
   const [resourceBankProfileLoading, setResourceBankProfileLoading] = useState(false)
-  const [resourceBankSelectedGrade, setResourceBankSelectedGrade] = useState<GradeValue | ''>('')
   const [resourceBankItems, setResourceBankItems] = useState<ResourceBankItem[]>([])
   const [resourceBankLoading, setResourceBankLoading] = useState(false)
   const [resourceBankError, setResourceBankError] = useState<string | null>(null)
@@ -2500,7 +2499,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const profileGrade = normalizeGradeInput(resourceBankProfile?.grade)
     const userRole = ((session as any)?.user?.role as string | undefined) || 'student'
     const effectiveGrade = userRole === 'admin'
-      ? normalizeGradeInput(resourceBankSelectedGrade) || profileGrade
+      ? selectedGrade || profileGrade
       : profileGrade
     if (!effectiveGrade) {
       setResourceBankItems([])
@@ -2531,7 +2530,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return () => {
       cancelled = true
     }
-  }, [status, resourceBankProfile, resourceBankSelectedGrade, session])
+  }, [status, resourceBankProfile, selectedGrade, session])
 
   const [lessonScriptTemplates, setLessonScriptTemplates] = useState<any[]>([])
   const [lessonScriptTemplatesLoading, setLessonScriptTemplatesLoading] = useState(false)
@@ -16971,10 +16970,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     const profileGrade = normalizeGradeInput(resourceBankProfile?.grade)
     const userRole = ((session as any)?.user?.role as string | undefined) || 'student'
     if (userRole === 'admin') {
-      return normalizeGradeInput(resourceBankSelectedGrade) || profileGrade
+      return selectedGrade || profileGrade
     }
     return profileGrade
-  }, [resourceBankProfile?.grade, resourceBankSelectedGrade, session])
+  }, [resourceBankProfile?.grade, selectedGrade, session])
 
   const fetchResourceBankItems = useCallback(async (grade: GradeValue | undefined) => {
     if (!grade) {
@@ -17108,6 +17107,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       {/* Upload form */}
       <section className="border-b border-black/10 bg-white px-4 py-4">
         <div className="space-y-3">
+          <div className="rounded-xl border border-[#d5def0] bg-[#f4f7ff] px-3 py-2 text-xs text-[#33508a]">
+            Resource uploads, Mathpix OCR, and AI extraction are scoped to {gradeToLabel(resourceBankEffectiveGrade || null)} from the top grade pill.
+          </div>
           <div>
             <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Title</label>
             <input

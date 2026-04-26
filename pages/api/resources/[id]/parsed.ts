@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
+import { getUserGrade } from '../../../../lib/auth'
 import prisma from '../../../../lib/prisma'
 import { normalizeGradeInput } from '../../../../lib/grades'
 
@@ -12,7 +13,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!token) return res.status(401).json({ message: 'Unauthorized' })
 
   const role = ((token as any)?.role as string | undefined) || 'student'
-  const tokenGrade = normalizeGradeInput((token as any)?.grade as string | undefined)
+  const tokenGrade = await getUserGrade(req)
   const requestedGrade = normalizeGradeInput(typeof req.query.grade === 'string' ? req.query.grade : undefined)
   const scopeGrade = role === 'admin' ? (requestedGrade || tokenGrade) : tokenGrade
   if (!scopeGrade) return res.status(400).json({ message: 'Grade is required' })

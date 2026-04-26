@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import prisma from '../../../lib/prisma'
 import crypto from 'crypto'
+import { getUserGrade } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { normalizeExamQuestionContent } from '../../../lib/questionMath'
 import { upsertResourceBankItem } from '../../../lib/resourceBank'
@@ -120,7 +121,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(404).json({ message: 'Resource not found' })
     }
   } else {
-    const tokenGrade = normalizeGradeInput((token as any)?.grade)
+    const tokenGrade = await getUserGrade(req)
     const requestedGrade = normalizeGradeInput((req.body as any)?.grade)
     const grade = requestedGrade || tokenGrade
     if (!grade) {

@@ -12,6 +12,15 @@ import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
 import ParsedDocumentViewer from '../components/ParsedDocumentViewer'
 import PdfViewerOverlay from '../components/PdfViewerOverlay'
 
+const ADMIN_SELECTED_GRADE_COOKIE = 'pa_admin_selected_grade'
+
+function readAdminSelectedGradeCookie(): GradeValue | '' {
+  if (typeof document === 'undefined') return ''
+  const entry = document.cookie.split('; ').find((part) => part.startsWith(`${ADMIN_SELECTED_GRADE_COOKIE}=`))
+  if (!entry) return ''
+  return normalizeGradeInput(decodeURIComponent(entry.split('=').slice(1).join('='))) || ''
+}
+
 type ResourceBankItem = {
   id: string
   grade: GradeValue
@@ -38,7 +47,7 @@ export default function ResourceBankPage() {
   const [profile, setProfile] = useState<any>(null)
   const [profileLoading, setProfileLoading] = useState(false)
 
-  const [selectedGrade, setSelectedGrade] = useState<GradeValue | ''>('')
+  const [selectedGrade] = useState<GradeValue | ''>(() => readAdminSelectedGradeCookie())
   const [items, setItems] = useState<ResourceBankItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1151,17 +1160,13 @@ export default function ResourceBankPage() {
                   </div>
                   {role === 'admin' ? (
                     <div className="space-y-1">
-                      <div className="text-xs muted">Grade</div>
-                      <select
-                        className="input"
-                        value={selectedGrade}
-                        onChange={(e) => setSelectedGrade(normalizeGradeInput(e.target.value) || '')}
-                      >
-                        <option value="">(My grade)</option>
-                        {GRADE_VALUES.map((g) => (
-                          <option key={g} value={g}>{gradeToLabel(g)}</option>
-                        ))}
-                      </select>
+                      <div className="text-xs muted">Scope</div>
+                      <div className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white">
+                        {effectiveGradeLabel}
+                      </div>
+                      <div className="max-w-[16rem] text-right text-[11px] leading-4 text-slate-300">
+                        Controlled by the dashboard top-bar grade pill.
+                      </div>
                     </div>
                   ) : null}
                 </div>
@@ -1250,6 +1255,9 @@ export default function ResourceBankPage() {
                 </div>
 
                 <p className="text-xs muted">Uploads are restricted to your registered grade (admin can choose).</p>
+                {role === 'admin' ? (
+                  <p className="text-xs muted">This selector shares the same canonical admin grade scope as the dashboard top-bar pill.</p>
+                ) : null}
               </div>
 
               <div className="card dashboard-card space-y-3">

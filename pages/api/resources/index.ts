@@ -6,6 +6,7 @@ import { createReadStream } from 'fs'
 import { promises as fs } from 'fs'
 import { put } from '@vercel/blob'
 import prisma from '../../../lib/prisma'
+import { getUserGrade } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { computeFileSha256Hex, upsertResourceBankItem } from '../../../lib/resourceBank'
 import { tryParseJsonLoose } from '../../../lib/geminiAssignmentExtract'
@@ -306,7 +307,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const role = ((token as any)?.role as string | undefined) || 'student'
   const authUserId = String((token as any)?.id || (token as any)?.sub || '')
-  const tokenGrade = normalizeGradeInput((token as any)?.grade as string | undefined)
+  const tokenGrade = await getUserGrade(req)
 
   if (req.method === 'GET') {
     const q = typeof req.query.grade === 'string' ? req.query.grade : ''

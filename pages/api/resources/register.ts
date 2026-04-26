@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import path from 'path'
 import { put } from '@vercel/blob'
+import { getUserGrade } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { upsertResourceBankItem } from '../../../lib/resourceBank'
 import { tryParseJsonLoose } from '../../../lib/geminiAssignmentExtract'
@@ -259,7 +260,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const token = await getToken({ req })
   const role = ((token as any)?.role as string | undefined) || 'student'
   const authUserId = String((token as any)?.sub || '')
-  const tokenGrade = normalizeGradeInput((token as any)?.grade)
+  const tokenGrade = await getUserGrade(req)
 
   if (role !== 'admin' && role !== 'teacher' && role !== 'student') {
     return res.status(403).json({ message: 'Forbidden' })

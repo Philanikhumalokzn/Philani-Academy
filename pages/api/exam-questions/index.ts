@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import type { Prisma } from '@prisma/client'
+import { getUserGrade } from '../../../lib/auth'
 import prisma from '../../../lib/prisma'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { normalizeExamQuestionContent } from '../../../lib/questionMath'
@@ -1043,10 +1044,9 @@ function buildFallbackRootPreambleFromRootRecord(
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const token = await getToken({ req })
-  const role = ((token as any)?.role as string | undefined) || 'student'
-  const tokenGrade = normalizeGradeInput((token as any)?.grade)
-
   if (!token) return res.status(401).json({ message: 'Unauthenticated' })
+  const role = ((token as any)?.role as string | undefined) || 'student'
+  const tokenGrade = await getUserGrade(req)
 
   // Bulk DELETE
   if (req.method === 'DELETE') {

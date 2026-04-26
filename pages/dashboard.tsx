@@ -17376,11 +17376,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     return (
     <div>
       {/* Overlays */}
-      {resourceBankEditOpen ? (
+      {resourceBankEditOpen && typeof document !== 'undefined'
+        ? createPortal(
         <FullScreenGlassOverlay
           title="Edit resource"
           subtitle={toDisplayFileName(resourceBankEditItem?.title) || resourceBankEditItem?.title || 'Resource'}
-          zIndexClassName="z-50"
+          zIndexClassName="z-[120]"
           onClose={() => { if (!resourceBankEditing) setResourceBankEditOpen(false) }}
         >
           <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-3">
@@ -17438,14 +17439,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </button>
             </div>
           </div>
-        </FullScreenGlassOverlay>
-      ) : null}
+        </FullScreenGlassOverlay>,
+          document.body,
+        ) : null}
 
-      {resourceBankParseDebugOpen ? (
+      {resourceBankParseDebugOpen && typeof document !== 'undefined'
+        ? createPortal(
         <FullScreenGlassOverlay
           title="Parsing debugger"
           subtitle={toDisplayFileName(resourceBankParseDebugItem?.title) || resourceBankParseDebugItem?.title || 'Resource'}
-          zIndexClassName="z-50"
+          zIndexClassName="z-[120]"
           onClose={() => setResourceBankParseDebugOpen(false)}
         >
           <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-3">
@@ -17460,8 +17463,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               {resourceBankParseDebugItem?.parseError || 'No error details available.'}
             </pre>
           </div>
-        </FullScreenGlassOverlay>
-      ) : null}
+        </FullScreenGlassOverlay>,
+          document.body,
+        ) : null}
 
       {resourceBankExtractOpen && typeof document !== 'undefined'
         ? createPortal(
@@ -17536,11 +17540,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           )
         : null}
 
-      {resourceBankImportOpen ? (
+      {resourceBankImportOpen && typeof document !== 'undefined'
+        ? createPortal(
         <FullScreenGlassOverlay
           title="Import parsed questions"
           subtitle={toDisplayFileName(resourceBankImportItem?.title) || resourceBankImportItem?.title || 'Resource'}
-          zIndexClassName="z-50"
+          zIndexClassName="z-[120]"
           onClose={() => { if (!resourceBankImportingQuestions) setResourceBankImportOpen(false) }}
         >
           <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-4">
@@ -17624,14 +17629,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </button>
             </div>
           </div>
-        </FullScreenGlassOverlay>
-      ) : null}
+        </FullScreenGlassOverlay>,
+          document.body,
+        ) : null}
 
-      {resourceBankReviewOpen ? (
+      {resourceBankReviewOpen && typeof document !== 'undefined'
+        ? createPortal(
         <FullScreenGlassOverlay
           title="Review extracted questions"
           subtitle={toDisplayFileName(resourceBankReviewItem?.title) || resourceBankReviewItem?.title || 'Resource'}
-          zIndexClassName="z-50"
+          zIndexClassName="z-[120]"
           onClose={() => setResourceBankReviewOpen(false)}
         >
           <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-3">
@@ -17717,8 +17724,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <button type="button" className="btn btn-ghost" onClick={() => setResourceBankReviewOpen(false)}>Close</button>
             </div>
           </div>
-        </FullScreenGlassOverlay>
-      ) : null}
+        </FullScreenGlassOverlay>,
+          document.body,
+        ) : null}
 
       {resourceBankParsedViewerOpen && typeof document !== 'undefined'
         ? createPortal(

@@ -217,6 +217,9 @@ function buildPreviewMessageSample(previews: ClassificationPreview[]): string {
     if (typeof sourceId === 'string' && sourceId.trim()) where.sourceId = sourceId.trim()
     const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : undefined)
     if (normalizedGrade) where.grade = normalizedGrade
+    if (useProcessAll && !where.sourceId && !normalizedGrade) {
+      return res.status(400).json({ message: 'grade is required when processAll=true (unless sourceId is provided).' })
+    }
     if (Number.isFinite(year)) where.year = Number(year)
     if (typeof month === 'string' && month.trim()) where.month = month.trim()
     if (Number.isFinite(paper)) where.paper = Number(paper)

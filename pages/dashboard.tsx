@@ -15741,6 +15741,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         dryRun,
         processAll: topicBackfillAllPapers,
       }
+      if (resourceBankEffectiveGrade) payload.grade = resourceBankEffectiveGrade
       if (!topicBackfillAllPapers && sid) payload.sourceId = sid
 
       const res = await fetch('/api/exam-questions/backfill-topics-regex', {
@@ -15836,6 +15837,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         dryRun,
         processAll: topicBackfillAllPapers,
       }
+      if (resourceBankEffectiveGrade) payload.grade = resourceBankEffectiveGrade
       if (!topicBackfillAllPapers && sid) payload.sourceId = sid
       if (topicBackfillAllPapers) {
         payload.paperBatchSize = topicAiPaperBatchSize
@@ -15936,6 +15938,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           processAll: topicBackfillAllPapers,
           repairSuspiciousLevel1,
         }
+        if (resourceBankEffectiveGrade) payload.grade = resourceBankEffectiveGrade
         if (!topicBackfillAllPapers && sid) payload.sourceId = sid
         if (topicBackfillAllPapers) {
           payload.paperBatchSize = topicAiPaperBatchSize

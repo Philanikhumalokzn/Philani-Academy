@@ -432,6 +432,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (typeof sourceId === 'string' && sourceId.trim()) baseWhere.sourceId = sourceId.trim()
   const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : undefined)
   if (normalizedGrade) baseWhere.grade = normalizedGrade
+  if (useProcessAll && !baseWhere.sourceId && !normalizedGrade) {
+    return res.status(400).json({ message: 'grade is required when processAll=true (unless sourceId is provided).' })
+  }
   if (Number.isFinite(year)) baseWhere.year = Number(year)
   if (typeof month === 'string' && month.trim()) baseWhere.month = month.trim()
   if (Number.isFinite(paper)) baseWhere.paper = Number(paper)

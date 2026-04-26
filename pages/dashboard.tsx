@@ -17463,64 +17463,67 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </FullScreenGlassOverlay>
       ) : null}
 
-      {resourceBankExtractOpen ? (
-        <FullScreenGlassOverlay
-          title="Extract questions"
-          subtitle={toDisplayFileName(resourceBankExtractItem?.title) || resourceBankExtractItem?.title || 'Resource'}
-          zIndexClassName="z-50"
-          onClose={() => { if (!resourceBankExtracting) setResourceBankExtractOpen(false) }}
-        >
-          <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-4">
-            <p className="text-sm text-slate-600">
-              Gemini will read the parsed OCR text and extract every question and sub-question into the question bank.
-              Set the paper metadata before extracting.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="space-y-1">
-                <div className="text-xs uppercase tracking-wide text-slate-600">Year</div>
-                <input
-                  type="number"
-                  className="input"
-                  min={2000}
-                  max={2100}
-                  value={resourceBankExtractYear}
-                  onChange={(e) => setResourceBankExtractYear(parseInt(e.target.value, 10) || new Date().getFullYear())}
-                />
+      {resourceBankExtractOpen && typeof document !== 'undefined'
+        ? createPortal(
+            <FullScreenGlassOverlay
+              title="Extract questions"
+              subtitle={toDisplayFileName(resourceBankExtractItem?.title) || resourceBankExtractItem?.title || 'Resource'}
+              zIndexClassName="z-[120]"
+              onClose={() => { if (!resourceBankExtracting) setResourceBankExtractOpen(false) }}
+            >
+              <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-4">
+                <p className="text-sm text-slate-600">
+                  Gemini will read the parsed OCR text and extract every question and sub-question into the question bank.
+                  Set the paper metadata before extracting.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="space-y-1">
+                    <div className="text-xs uppercase tracking-wide text-slate-600">Year</div>
+                    <input
+                      type="number"
+                      className="input"
+                      min={2000}
+                      max={2100}
+                      value={resourceBankExtractYear}
+                      onChange={(e) => setResourceBankExtractYear(parseInt(e.target.value, 10) || new Date().getFullYear())}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs uppercase tracking-wide text-slate-600">Exam month</div>
+                    <select className="input" value={resourceBankExtractMonth} onChange={(e) => setResourceBankExtractMonth(e.target.value)}>
+                      {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs uppercase tracking-wide text-slate-600">Paper</div>
+                    <select className="input" value={resourceBankExtractPaper} onChange={(e) => setResourceBankExtractPaper(parseInt(e.target.value, 10))}>
+                      <option value={1}>Paper 1</option>
+                      <option value={2}>Paper 2</option>
+                      <option value={3}>Paper 3</option>
+                    </select>
+                  </div>
+                </div>
+                {resourceBankExtractError ? <div className="text-sm text-red-600">{resourceBankExtractError}</div> : null}
+                {resourceBankExtractResult ? (
+                  <div className="rounded-xl bg-green-50 p-3 text-sm text-green-800">
+                    ✓ Extracted {resourceBankExtractResult.created} question{resourceBankExtractResult.created !== 1 ? 's' : ''}.
+                    {resourceBankExtractResult.skipped > 0 ? ` ${resourceBankExtractResult.skipped} skipped (incomplete data).` : ''}{' '}
+                    Use <strong>Review Questions</strong> on this resource to approve them for students.
+                  </div>
+                ) : null}
+                <div className="flex items-center justify-end gap-2">
+                  <button type="button" className="btn btn-ghost" onClick={() => setResourceBankExtractOpen(false)} disabled={resourceBankExtracting}>Cancel</button>
+                  <button type="button" className="btn btn-primary" onClick={() => void handleResourceBankExtract()} disabled={resourceBankExtracting}>
+                    {resourceBankExtracting ? 'Extracting…' : 'Extract'}
+                  </button>
+                </div>
               </div>
-              <div className="space-y-1">
-                <div className="text-xs uppercase tracking-wide text-slate-600">Exam month</div>
-                <select className="input" value={resourceBankExtractMonth} onChange={(e) => setResourceBankExtractMonth(e.target.value)}>
-                  {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <div className="text-xs uppercase tracking-wide text-slate-600">Paper</div>
-                <select className="input" value={resourceBankExtractPaper} onChange={(e) => setResourceBankExtractPaper(parseInt(e.target.value, 10))}>
-                  <option value={1}>Paper 1</option>
-                  <option value={2}>Paper 2</option>
-                  <option value={3}>Paper 3</option>
-                </select>
-              </div>
-            </div>
-            {resourceBankExtractError ? <div className="text-sm text-red-600">{resourceBankExtractError}</div> : null}
-            {resourceBankExtractResult ? (
-              <div className="rounded-xl bg-green-50 p-3 text-sm text-green-800">
-                ✓ Extracted {resourceBankExtractResult.created} question{resourceBankExtractResult.created !== 1 ? 's' : ''}.
-                {resourceBankExtractResult.skipped > 0 ? ` ${resourceBankExtractResult.skipped} skipped (incomplete data).` : ''}{' '}
-                Use <strong>Review Questions</strong> on this resource to approve them for students.
-              </div>
-            ) : null}
-            <div className="flex items-center justify-end gap-2">
-              <button type="button" className="btn btn-ghost" onClick={() => setResourceBankExtractOpen(false)} disabled={resourceBankExtracting}>Cancel</button>
-              <button type="button" className="btn btn-primary" onClick={() => void handleResourceBankExtract()} disabled={resourceBankExtracting}>
-                {resourceBankExtracting ? 'Extracting…' : 'Extract'}
-              </button>
-            </div>
-          </div>
-        </FullScreenGlassOverlay>
-      ) : null}
+            </FullScreenGlassOverlay>,
+            document.body,
+          )
+        : null}
 
       {resourceBankImportOpen ? (
         <FullScreenGlassOverlay
@@ -17706,35 +17709,38 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </FullScreenGlassOverlay>
       ) : null}
 
-      {resourceBankParsedViewerOpen ? (
-        <FullScreenGlassOverlay
-          title="Parsed"
-          subtitle={resourceBankParsedViewerTitle}
-          zIndexClassName="z-50"
-          rightActions={
-            <button
-              type="button"
-              className="w-9 h-9 inline-flex items-center justify-center rounded-full border border-white/20 bg-white/10 hover:bg-white/20 text-white"
-              onClick={() => void resourceBankDownloadParsedDocx()}
-              aria-label="Download parsed"
-              title={resourceBankParsedDownloadBusy ? 'Preparing…' : 'Download as Docx'}
-              disabled={resourceBankParsedDownloadBusy || resourceBankParsedViewerLoading}
+      {resourceBankParsedViewerOpen && typeof document !== 'undefined'
+        ? createPortal(
+            <FullScreenGlassOverlay
+              title="Parsed"
+              subtitle={resourceBankParsedViewerTitle}
+              zIndexClassName="z-[120]"
+              rightActions={
+                <button
+                  type="button"
+                  className="w-9 h-9 inline-flex items-center justify-center rounded-full border border-white/20 bg-white/10 hover:bg-white/20 text-white"
+                  onClick={() => void resourceBankDownloadParsedDocx()}
+                  aria-label="Download parsed"
+                  title={resourceBankParsedDownloadBusy ? 'Preparing…' : 'Download as Docx'}
+                  disabled={resourceBankParsedDownloadBusy || resourceBankParsedViewerLoading}
+                >
+                  <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                    <path d="M10 3v9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M6.5 9.5L10 12.8l3.5-3.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M4 16h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              }
+              onClose={() => setResourceBankParsedViewerOpen(false)}
             >
-              <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
-                <path d="M10 3v9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <path d="M6.5 9.5L10 12.8l3.5-3.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <path d="M4 16h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </button>
-          }
-          onClose={() => setResourceBankParsedViewerOpen(false)}
-        >
-          {resourceBankParsedViewerLoading ? <div className="text-sm muted">Loading…</div> : null}
-          {!resourceBankParsedViewerLoading && (
-            <ParsedDocumentViewer parsedJson={resourceBankParsedViewerJson} fallbackText={resourceBankParsedViewerText} />
-          )}
-        </FullScreenGlassOverlay>
-      ) : null}
+              {resourceBankParsedViewerLoading ? <div className="text-sm muted">Loading…</div> : null}
+              {!resourceBankParsedViewerLoading && (
+                <ParsedDocumentViewer parsedJson={resourceBankParsedViewerJson} fallbackText={resourceBankParsedViewerText} />
+              )}
+            </FullScreenGlassOverlay>,
+            document.body,
+          )
+        : null}
 
       {resourceBankError ? (
         <section className="border-b border-black/10 bg-white px-4 py-3 text-sm text-red-600">{resourceBankError}</section>

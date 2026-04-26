@@ -16377,7 +16377,38 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     })
   }
 
-  const qbDeleteOne = async (id: string) => {
+  const qbDeleteOne = async (question: any) => {
+    const rawId = String(question?.id || '')
+    const resolveDeletableId = () => {
+      if (!rawId) return ''
+      if (!rawId.includes('::')) return rawId
+
+      if (rawId.endsWith('::fallback-root-preamble')) {
+        return rawId.replace(/::fallback-root-preamble$/, '')
+      }
+
+      if (rawId.includes('::root-preamble::')) {
+        const questionNumber = String(question?.questionNumber || '')
+        const sourceId = String(question?.sourceId || '')
+        const backing = qbItems.find((item: any) => {
+          const itemId = String(item?.id || '')
+          if (!itemId || itemId.includes('::')) return false
+          if (String(item?.questionNumber || '') !== questionNumber) return false
+          if (String(item?.sourceId || '') !== sourceId) return false
+          return Number(item?.questionDepth || 0) === 0
+        })
+        return String(backing?.id || '')
+      }
+
+      return ''
+    }
+
+    const id = resolveDeletableId()
+    if (!id) {
+      window.alert('This row is a generated paper preamble preview and cannot be deleted directly.')
+      return
+    }
+
     if (!window.confirm('Delete this question? This cannot be undone.')) return
     try {
       const res = await fetch(`/api/exam-questions/${id}`, {
@@ -16388,7 +16419,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         const data = await res.json().catch(() => ({}))
         throw new Error((data as any)?.message || `Delete failed (${res.status})`)
       }
-      setQbItems(prev => prev.filter((item: any) => item.id !== id))
+      setQbItems(prev => prev.filter((item: any) => {
+        const itemId = String(item?.id || '')
+        if (itemId === id) return false
+        if (itemId === rawId) return false
+        if (rawId.includes('::fallback-root-preamble') && itemId === `${id}::fallback-root-preamble`) return false
+        return true
+      }))
       setQbSelectedIds(prev => { const next = new Set(prev); next.delete(id); return next })
       setQbTotal(prev => Math.max(0, prev - 1))
     } catch (err: any) {
@@ -16918,7 +16955,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                                 <button
                                   type="button"
                                   className="text-xs text-red-600 border border-red-200 rounded-full px-2.5 py-0.5 hover:bg-red-50 transition-colors"
-                                  onClick={() => void qbDeleteOne(String(q.id))}
+                                  onClick={() => void qbDeleteOne(q)}
                                 >
                                   Delete
                                 </button>

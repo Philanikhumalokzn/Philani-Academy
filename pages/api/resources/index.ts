@@ -337,40 +337,89 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const grade = role === 'admin' ? (wants || tokenGrade) : tokenGrade
     if (!grade) return res.status(400).json({ message: 'Grade not configured for this account' })
 
-    const items = await prisma.resourceBankItem.findMany({
-      where: { grade },
-      orderBy: { createdAt: 'desc' },
-      ...(typeof take === 'number' ? { take } : {}),
-      select: {
-        id: true,
-        grade: true,
-        title: true,
-        tag: true,
-        sourceName: true,
-        authorityScope: true,
-        province: true,
-        examCycle: true,
-        assessmentType: true,
-        assessmentFormality: true,
-        year: true,
-        sessionMonth: true,
-        paper: true,
-        paperMode: true,
-        paperLabelRaw: true,
-        url: true,
-        filename: true,
-        contentType: true,
-        size: true,
-        checksum: true,
-        source: true,
-        createdById: true,
-        createdAt: true,
-        parsedAt: true,
-        parseError: true,
-        parsedJson: true,
-        createdBy: { select: { id: true, name: true, email: true, avatar: true } },
-      },
-    })
+    let items: any[] = []
+    try {
+      items = await prisma.resourceBankItem.findMany({
+        where: { grade },
+        orderBy: { createdAt: 'desc' },
+        ...(typeof take === 'number' ? { take } : {}),
+        select: {
+          id: true,
+          grade: true,
+          title: true,
+          tag: true,
+          sourceName: true,
+          authorityScope: true,
+          province: true,
+          examCycle: true,
+          assessmentType: true,
+          assessmentFormality: true,
+          year: true,
+          sessionMonth: true,
+          paper: true,
+          paperMode: true,
+          paperLabelRaw: true,
+          url: true,
+          filename: true,
+          contentType: true,
+          size: true,
+          checksum: true,
+          source: true,
+          createdById: true,
+          createdAt: true,
+          parsedAt: true,
+          parseError: true,
+          parsedJson: true,
+          createdBy: { select: { id: true, name: true, email: true, avatar: true } },
+        },
+      })
+    } catch (err: any) {
+      const message = String(err?.message || '')
+      const isSchemaMismatch =
+        message.includes('P2022') ||
+        /column|does not exist|unknown arg|resourcebankitem/i.test(message)
+
+      if (!isSchemaMismatch) throw err
+
+      const legacyItems = await prisma.resourceBankItem.findMany({
+        where: { grade },
+        orderBy: { createdAt: 'desc' },
+        ...(typeof take === 'number' ? { take } : {}),
+        select: {
+          id: true,
+          grade: true,
+          title: true,
+          tag: true,
+          url: true,
+          filename: true,
+          contentType: true,
+          size: true,
+          checksum: true,
+          source: true,
+          createdById: true,
+          createdAt: true,
+          parsedAt: true,
+          parseError: true,
+          parsedJson: true,
+          createdBy: { select: { id: true, name: true, email: true, avatar: true } },
+        },
+      })
+
+      items = legacyItems.map((item) => ({
+        ...item,
+        sourceName: null,
+        authorityScope: null,
+        province: null,
+        examCycle: null,
+        assessmentType: null,
+        assessmentFormality: null,
+        year: null,
+        sessionMonth: null,
+        paper: null,
+        paperMode: null,
+        paperLabelRaw: null,
+      }))
+    }
 
     return res.status(200).json({ grade, items })
   }

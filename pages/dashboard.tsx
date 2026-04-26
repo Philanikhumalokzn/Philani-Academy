@@ -14449,8 +14449,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   const QB_GET_CAPS_TOPICS = [
     'Number, Operations and Relationships',
-    'Patterns, Functions and Algebra',
-    'Space and Shape (Geometry)',
+    'Algebra',
+    'Patterns and Functions',
+    'Transformation Geometry',
+    '2D Geometry',
+    '3D Geometry',
     'Measurement',
     'Data Handling',
   ] as const
@@ -15152,7 +15155,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           { value: '3', label: 'Paper 3' },
         ]
       case 'topic':
-        return [{ value: '', label: 'Any topic' }, ...qbTopicsForSelectedGrade.map((topic) => ({ value: topic, label: topic }))]
+        return [{ value: '', label: 'Any topic' }, ...qbTopicsForSelectedGrade.map((topic) => ({ value: topic, label: formatTopicBadgeLabel(topic) }))]
       case 'level':
         return [{ value: '', label: 'Any level' }, ...QB_LEVEL_OPTIONS.map((option) => ({ value: option.value, label: option.label }))]
     }
@@ -15398,6 +15401,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const formatLevelBadgeLabel = (value: unknown): string => {
     const raw = String(value ?? '').trim()
     return raw ? `Lvl ${raw.replace(/^LEVEL\s*/i, '')}` : ''
+  }
+
+  const formatTopicBadgeLabel = (value: unknown): string => {
+    const raw = String(value ?? '').trim()
+    if (!raw) return ''
+
+    switch (raw) {
+      case 'Number, Operations and Relationships':
+        return 'Number Ops & Rel'
+      case 'Patterns and Functions':
+        return 'Patterns & Func'
+      case 'Transformation Geometry':
+        return 'Transform Geo'
+      default:
+        return raw
+    }
   }
 
   const compareQNum = (a: string, b: string): number => {
@@ -16655,7 +16674,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{q.year}</span>
                     <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{formatMonthBadgeLabel(q.month)}</span>
                     <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{formatPaperBadgeLabel(q.paper)}</span>
-                    {q.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{q.topic}</span> : null}
+                    {q.topic ? <span title={q.topic} className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{formatTopicBadgeLabel(q.topic)}</span> : null}
                   </div>
                   <div className="text-sm text-[#1c1e21] whitespace-pre-wrap break-words">{renderQuestionTextWithInlineLatex(cleanText)}</div>
                   <div className="mt-2 text-[11px] font-medium text-[#1877f2]">
@@ -16831,9 +16850,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                               type="button"
                               className={`text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2] transition hover:bg-[#dcefff]${qbRemixOverlay?.questionId === String(question?.id) && qbRemixOverlay.badge === 'topic' ? ' ring-2 ring-[#1877f2]/35' : ''}`}
                               onClick={(event) => openQbRemixOverlay(question, 'topic', event.currentTarget)}
-                              title="Remix this result by changing the topic"
+                              title={`Remix this result by changing the topic (${String(question.topic || '')})`}
                             >
-                              {question.topic}
+                              {formatTopicBadgeLabel(question.topic)}
                             </button>
                           ) : null}
                           {question?.cognitiveLevel ? (
@@ -17945,7 +17964,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                         <span className={`text-xs rounded-full px-2 py-0.5 font-semibold shrink-0 ${q.approved ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
                           {q.approved ? 'Approved' : 'Pending'}
                         </span>
-                        {q.topic ? <span className="text-xs text-slate-500 truncate">{q.topic}</span> : null}
+                        {q.topic ? <span title={q.topic} className="text-xs text-slate-500 truncate">{formatTopicBadgeLabel(q.topic)}</span> : null}
                         {q.cognitiveLevel ? <span className="text-xs text-slate-400">L{q.cognitiveLevel}</span> : null}
                         {q.marks ? <span className="text-xs text-slate-400">({q.marks} marks)</span> : null}
                       </div>
@@ -20979,7 +20998,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 >
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <span className="text-xs font-bold text-[#65676b]">Q{contextQ.questionNumber}</span>
-                    {contextQ.topic ? <span className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{contextQ.topic}</span> : null}
+                    {contextQ.topic ? <span title={contextQ.topic} className="text-xs rounded-full bg-[#e8f4fd] px-2 py-0.5 text-[#1877f2]">{formatTopicBadgeLabel(contextQ.topic)}</span> : null}
                     {contextQ.cognitiveLevel ? <span className="text-xs rounded-full bg-[#fff3cd] px-2 py-0.5 text-[#856404]">{formatLevelBadgeLabel(contextQ.cognitiveLevel)}</span> : null}
                     {contextMarksLabel ? <span className="text-xs rounded-full bg-[#f0f2f5] px-2 py-0.5 text-[#4b5563]">{contextMarksLabel}</span> : null}
                     {isFocus ? <span className="text-xs rounded-full bg-[#dce9ff] px-2 py-0.5 text-[#1d4ed8]">Selected result</span> : null}

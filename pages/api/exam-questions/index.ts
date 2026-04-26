@@ -12,7 +12,7 @@ export const config = {
 }
 
 const VALID_TOPICS = [
-  'Algebra', 'Functions', 'Number Patterns', 'Number, Operations and Relationships', 'Patterns, Functions and Algebra', 'Space and Shape (Geometry)', 'Measurement', 'Data Handling', 'Finance', 'Trigonometry',
+  'Algebra', 'Functions', 'Number Patterns', 'Number, Operations and Relationships', 'Patterns and Functions', 'Transformation Geometry', '2D Geometry', '3D Geometry', 'Measurement', 'Data Handling', 'Finance', 'Trigonometry',
   'Euclidean Geometry', 'Analytical Geometry', 'Statistics', 'Probability',
   'Calculus', 'Sequences and Series', 'Polynomials', 'Other',
 ]
@@ -63,9 +63,16 @@ const SEARCH_TOPIC_ALIASES = [
   ['number operations relations', 'Number, Operations and Relationships'],
   ['operations and relationships', 'Number, Operations and Relationships'],
   ['operations and relations', 'Number, Operations and Relationships'],
-  ['patterns functions and algebra', 'Patterns, Functions and Algebra'],
-  ['space and shape', 'Space and Shape (Geometry)'],
-  ['space and shape geometry', 'Space and Shape (Geometry)'],
+  ['patterns functions and algebra', 'Patterns and Functions'],
+  ['patterns and functions', 'Patterns and Functions'],
+  ['transformation geometry', 'Transformation Geometry'],
+  ['transformations', 'Transformation Geometry'],
+  ['2d geometry', '2D Geometry'],
+  ['two dimensional geometry', '2D Geometry'],
+  ['3d geometry', '3D Geometry'],
+  ['three dimensional geometry', '3D Geometry'],
+  ['space and shape', '2D Geometry'],
+  ['space and shape geometry', '2D Geometry'],
   ['measurement', 'Measurement'],
   ['mensuration', 'Measurement'],
   ['data handling', 'Data Handling'],

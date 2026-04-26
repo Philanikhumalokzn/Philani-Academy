@@ -94,24 +94,15 @@ type Props = {
 
 function AudiencePicker({
   audienceDraft,
-  allowPublicAudience,
   onAudienceChange,
 }: {
   audienceDraft: Audience
-  allowPublicAudience: boolean
   onAudienceChange: (value: Audience) => void
 }) {
   const [open, setOpen] = useState(false)
   const triggerClassName = 'philani-gradient-outline [--philani-outline-fill:#ffffff] inline-flex h-11 w-11 items-center justify-center rounded-full text-slate-700 transition hover:-translate-y-[1px] hover:brightness-105'
   const menuClassName = 'philani-gradient-outline-soft [--philani-outline-fill:#ffffff] absolute bottom-full right-0 mb-2 w-48 overflow-hidden rounded-2xl shadow-[0_20px_40px_rgba(15,23,42,0.15)]'
   const activeOptionClassName = 'bg-[linear-gradient(135deg,rgba(34,197,94,0.10),rgba(6,182,212,0.12)_52%,rgba(37,99,235,0.10))] text-slate-900'
-  const options = useMemo(() => {
-    const base: Array<[Audience, string]> = [
-      ['grade', 'My grade'],
-      ['private', 'Private'],
-    ]
-    return allowPublicAudience ? ([['public', 'Public'], ...base] as Array<[Audience, string]>) : base
-  }, [allowPublicAudience])
 
   return (
     <div className="relative">
@@ -122,7 +113,7 @@ function AudiencePicker({
         aria-label="Change audience"
         title="Change audience"
       >
-        {audienceDraft === 'public' && allowPublicAudience ? (
+        {audienceDraft === 'public' ? (
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z" stroke="currentColor" strokeWidth="2" />
             <path d="M2 12h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -149,7 +140,11 @@ function AudiencePicker({
 
       {open ? (
         <div className={menuClassName}>
-          {options.map(([value, label]) => (
+          {([
+            ['public', 'Public'],
+            ['grade', 'My grade'],
+            ['private', 'Private'],
+          ] as Array<[Audience, string]>).map(([value, label]) => (
             <button
               key={value}
               type="button"
@@ -361,7 +356,6 @@ export default function PostComposerOverlay(props: Props) {
     titleDraft,
     audienceDraft,
     maxAttempts,
-    allowPublicAudience = true,
     parseOnUpload,
     parsedJsonText,
     parsedOpen,
@@ -513,7 +507,7 @@ export default function PostComposerOverlay(props: Props) {
                 posting={posting}
                 trailingControls={
                   <div className="flex items-center gap-2">
-                    <AudiencePicker audienceDraft={audienceDraft} allowPublicAudience={allowPublicAudience} onAudienceChange={onAudienceChange} />
+                    <AudiencePicker audienceDraft={audienceDraft} onAudienceChange={onAudienceChange} />
                   </div>
                 }
                 submitLabel={posting ? (editingPostId ? 'Saving...' : 'Posting...') : (editingPostId ? 'Save' : 'Post')}
@@ -712,7 +706,7 @@ export default function PostComposerOverlay(props: Props) {
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 6h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><path d="M8 6V4h8v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><path d="M7 6l1 16h8l1-16" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /></svg>
                     </button>
                   }
-                  trailingControls={<AudiencePicker audienceDraft={audienceDraft} allowPublicAudience={allowPublicAudience} onAudienceChange={onAudienceChange} />}
+                  trailingControls={<AudiencePicker audienceDraft={audienceDraft} onAudienceChange={onAudienceChange} />}
                   submitLabel={posting ? (editingPostId ? 'Saving...' : 'Posting...') : (editingPostId ? 'Save' : 'Post')}
                   submitDisabled={posting || uploading}
                   onSubmit={onSubmit}

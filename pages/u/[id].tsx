@@ -1829,7 +1829,6 @@ export function PublicUserProfileSurface({
     return (
       <article key={post.id} data-post-id={postId || undefined} className="public-profile-feed-post bg-white py-3">
         <PublicFeedPostCard
-          postId={postId || undefined}
           authorId={authorId}
           authorName={authorName}
           authorAvatar={authorAvatar}

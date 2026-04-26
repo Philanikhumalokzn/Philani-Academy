@@ -1,5 +1,6 @@
 import type { PostReplyBlock } from './postReplyComposer'
 import { hydrateSocialPostRecord } from './postComposerContent'
+import type { SocialPostInteractionState } from './socialPostInteractions'
 
 export type FeedScope = 'public' | 'user-timeline'
 
@@ -111,21 +112,24 @@ export function enrichFeedPosts(
   ownResponseByKey: Map<string, any>,
   attemptCountByKey: Map<string, number>,
   solutionCounts: Map<string, number>,
-  interactionStateByPostId?: Map<string, { likeCount: number; shareCount: number; likedByMe: boolean }>,
+  interactionStateByPostId?: Map<string, SocialPostInteractionState>,
 ): FeedPost[] {
-  return items.map((item: any) => ({
-    ...hydrateSocialPostRecord(item),
-    kind: 'post',
-    threadKey: `post:${item.id}`,
-    ownResponse: ownResponseByKey.get(`post:${item.id}`) || null,
-    hasOwnResponse: ownResponseByKey.has(`post:${item.id}`),
-    myAttemptCount: attemptCountByKey.get(`post:${item.id}`) || 0,
-    usesAttemptRules: isAttemptScopedFeedPost(item),
-    solutionCount: solutionCounts.get(`post:${item.id}`) || 0,
-    likeCount: interactionStateByPostId?.get(String(item.id))?.likeCount || 0,
-    shareCount: interactionStateByPostId?.get(String(item.id))?.shareCount || 0,
-    likedByMe: interactionStateByPostId?.get(String(item.id))?.likedByMe || false,
-  }))
+  return items.map((item: any) => {
+    const interaction = interactionStateByPostId?.get(String(item?.id || ''))
+    return {
+      ...hydrateSocialPostRecord(item),
+      kind: 'post',
+      threadKey: `post:${item.id}`,
+      ownResponse: ownResponseByKey.get(`post:${item.id}`) || null,
+      hasOwnResponse: ownResponseByKey.has(`post:${item.id}`),
+      myAttemptCount: attemptCountByKey.get(`post:${item.id}`) || 0,
+      usesAttemptRules: isAttemptScopedFeedPost(item),
+      solutionCount: solutionCounts.get(`post:${item.id}`) || 0,
+      likeCount: interaction?.likeCount ?? 0,
+      shareCount: interaction?.shareCount ?? 0,
+      likedByMe: interaction?.likedByMe ?? false,
+    }
+  })
 }
 
 export function applyOwnFeedPostResponse<T extends Partial<FeedPost>>(item: T, postId: string, responseData: any): T {

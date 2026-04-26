@@ -14454,6 +14454,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   ] as const
 
   const QB_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'] as const
+  const SA_PROVINCES = [
+    'Eastern Cape',
+    'Free State',
+    'Gauteng',
+    'KwaZulu-Natal',
+    'Limpopo',
+    'Mpumalanga',
+    'North West',
+    'Northern Cape',
+    'Western Cape',
+  ] as const
   const QB_LEVEL_OPTIONS = [
     { value: '1', label: '1 — Knowledge' },
     { value: '2', label: '2 — Routine procedures' },
@@ -17520,18 +17531,24 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <div className="text-xs uppercase tracking-wide text-slate-600">Source Name</div>
-                <input className="input" value={resourceBankEditSourceName} onChange={(e) => setResourceBankEditSourceName(e.target.value)} placeholder="e.g. Gauteng DoE" />
+                <input className="input border-slate-300 bg-white text-slate-900 placeholder:text-slate-500" value={resourceBankEditSourceName} onChange={(e) => setResourceBankEditSourceName(e.target.value)} placeholder="e.g. Gauteng DoE (optional)" />
               </div>
               <div className="space-y-1">
                 <div className="text-xs uppercase tracking-wide text-slate-600">Province</div>
-                <input className="input" value={resourceBankEditProvince} onChange={(e) => setResourceBankEditProvince(e.target.value)} placeholder="e.g. KZN" />
+                <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankEditProvince} onChange={(e) => setResourceBankEditProvince(e.target.value)}>
+                  <option value="">Unspecified (optional)</option>
+                  {SA_PROVINCES.map((province) => (
+                    <option key={province} value={province}>{province}</option>
+                  ))}
+                </select>
               </div>
             </div>
+            <div className="text-xs text-slate-500">All taxonomy fields below are optional.</div>
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-1">
                 <div className="text-xs uppercase tracking-wide text-slate-600">Authority</div>
-                <select className="input" value={resourceBankEditAuthorityScope} onChange={(e) => setResourceBankEditAuthorityScope(e.target.value)}>
-                  <option value="">(unchanged)</option>
+                <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankEditAuthorityScope} onChange={(e) => setResourceBankEditAuthorityScope(e.target.value)}>
+                  <option value="">Unspecified (optional)</option>
                   <option value="NATIONAL">National</option>
                   <option value="PROVINCIAL">Provincial</option>
                   <option value="DISTRICT">District</option>
@@ -17541,8 +17558,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
               <div className="space-y-1">
                 <div className="text-xs uppercase tracking-wide text-slate-600">Cycle</div>
-                <select className="input" value={resourceBankEditExamCycle} onChange={(e) => setResourceBankEditExamCycle(e.target.value)}>
-                  <option value="">(unchanged)</option>
+                <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankEditExamCycle} onChange={(e) => setResourceBankEditExamCycle(e.target.value)}>
+                  <option value="">Unspecified (optional)</option>
                   <option value="FINAL">Final</option>
                   <option value="PRELIM">Prelim/Trial</option>
                   <option value="QUARTERLY">Quarterly</option>
@@ -17553,8 +17570,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
               <div className="space-y-1">
                 <div className="text-xs uppercase tracking-wide text-slate-600">Formality</div>
-                <select className="input" value={resourceBankEditAssessmentFormality} onChange={(e) => setResourceBankEditAssessmentFormality(e.target.value)}>
-                  <option value="">(unchanged)</option>
+                <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankEditAssessmentFormality} onChange={(e) => setResourceBankEditAssessmentFormality(e.target.value)}>
+                  <option value="">Unspecified (optional)</option>
                   <option value="FORMAL">Formal</option>
                   <option value="INFORMAL">Informal</option>
                   <option value="UNKNOWN">Unknown</option>
@@ -17564,8 +17581,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             <div className="grid gap-3 sm:grid-cols-4">
               <div className="space-y-1">
                 <div className="text-xs uppercase tracking-wide text-slate-600">Assessment Type</div>
-                <select className="input" value={resourceBankEditAssessmentType} onChange={(e) => setResourceBankEditAssessmentType(e.target.value)}>
-                  <option value="">(unchanged)</option>
+                <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankEditAssessmentType} onChange={(e) => setResourceBankEditAssessmentType(e.target.value)}>
+                  <option value="">Unspecified (optional)</option>
                   <option value="EXAM">Exam</option>
                   <option value="TEST">Test</option>
                   <option value="ASSIGNMENT">Assignment</option>
@@ -17576,12 +17593,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
               <div className="space-y-1">
                 <div className="text-xs uppercase tracking-wide text-slate-600">Year</div>
-                <input className="input" type="number" min={1900} max={2100} value={resourceBankEditYear} onChange={(e) => setResourceBankEditYear(e.target.value)} placeholder="e.g. 2025" />
+                <input className="input border-slate-300 bg-white text-slate-900 placeholder:text-slate-500" type="number" min={1900} max={2100} value={resourceBankEditYear} onChange={(e) => setResourceBankEditYear(e.target.value)} placeholder="e.g. 2025 (optional)" />
               </div>
               <div className="space-y-1">
                 <div className="text-xs uppercase tracking-wide text-slate-600">Session Month</div>
-                <select className="input" value={resourceBankEditSessionMonth} onChange={(e) => setResourceBankEditSessionMonth(e.target.value)}>
-                  <option value="">(unchanged)</option>
+                <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankEditSessionMonth} onChange={(e) => setResourceBankEditSessionMonth(e.target.value)}>
+                  <option value="">Unspecified (optional)</option>
                   {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m) => (
                     <option key={m} value={m}>{m}</option>
                   ))}
@@ -17589,14 +17606,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
               <div className="space-y-1">
                 <div className="text-xs uppercase tracking-wide text-slate-600">Paper #</div>
-                <input className="input" type="number" min={0} max={3} value={resourceBankEditPaper} onChange={(e) => setResourceBankEditPaper(e.target.value)} placeholder="0..3" />
+                <input className="input border-slate-300 bg-white text-slate-900 placeholder:text-slate-500" type="number" min={0} max={3} value={resourceBankEditPaper} onChange={(e) => setResourceBankEditPaper(e.target.value)} placeholder="0..3 (optional)" />
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <div className="text-xs uppercase tracking-wide text-slate-600">Paper Mode</div>
-                <select className="input" value={resourceBankEditPaperMode} onChange={(e) => setResourceBankEditPaperMode(e.target.value)}>
-                  <option value="">(unchanged)</option>
+                <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankEditPaperMode} onChange={(e) => setResourceBankEditPaperMode(e.target.value)}>
+                  <option value="">Unspecified (optional)</option>
                   <option value="P1">P1</option>
                   <option value="P2">P2</option>
                   <option value="P3">P3</option>
@@ -17606,7 +17623,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
               <div className="space-y-1">
                 <div className="text-xs uppercase tracking-wide text-slate-600">Paper Label (raw)</div>
-                <input className="input" value={resourceBankEditPaperLabelRaw} onChange={(e) => setResourceBankEditPaperLabelRaw(e.target.value)} placeholder="e.g. Paper A / Formal Test" />
+                <input className="input border-slate-300 bg-white text-slate-900 placeholder:text-slate-500" value={resourceBankEditPaperLabelRaw} onChange={(e) => setResourceBankEditPaperLabelRaw(e.target.value)} placeholder="e.g. Paper A / Formal Test (optional)" />
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -17998,30 +18015,34 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Source Name</label>
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Source Name (optional)</label>
               <input
                 type="text"
                 value={resourceBankSourceName}
                 onChange={(e) => setResourceBankSourceName(e.target.value)}
                 placeholder="e.g. Gauteng DoE / KZN Trial"
-                className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm placeholder:text-[#7b87a4]"
+                className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white placeholder:text-[#7b87a4]"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Province</label>
-              <input
-                type="text"
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Province (optional)</label>
+              <select
                 value={resourceBankProvince}
                 onChange={(e) => setResourceBankProvince(e.target.value)}
-                placeholder="e.g. Gauteng / KZN"
-                className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm placeholder:text-[#7b87a4]"
-              />
+                className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white"
+              >
+                <option value="">Unspecified</option>
+                {SA_PROVINCES.map((province) => (
+                  <option key={province} value={province}>{province}</option>
+                ))}
+              </select>
             </div>
           </div>
+          <div className="text-xs text-[#5c6b8a]">All taxonomy fields below are optional.</div>
           <div className="grid gap-3 sm:grid-cols-3">
             <div>
-              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Authority</label>
-              <select value={resourceBankAuthorityScope} onChange={(e) => setResourceBankAuthorityScope(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm">
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Authority (optional)</label>
+              <select value={resourceBankAuthorityScope} onChange={(e) => setResourceBankAuthorityScope(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white">
                 <option value="">Unspecified</option>
                 <option value="NATIONAL">National</option>
                 <option value="PROVINCIAL">Provincial</option>
@@ -18031,8 +18052,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Cycle</label>
-              <select value={resourceBankExamCycle} onChange={(e) => setResourceBankExamCycle(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm">
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Cycle (optional)</label>
+              <select value={resourceBankExamCycle} onChange={(e) => setResourceBankExamCycle(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white">
                 <option value="">Unspecified</option>
                 <option value="FINAL">Final</option>
                 <option value="PRELIM">Prelim/Trial</option>
@@ -18043,8 +18064,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Formality</label>
-              <select value={resourceBankAssessmentFormality} onChange={(e) => setResourceBankAssessmentFormality(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm">
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Formality (optional)</label>
+              <select value={resourceBankAssessmentFormality} onChange={(e) => setResourceBankAssessmentFormality(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white">
                 <option value="">Unspecified</option>
                 <option value="FORMAL">Formal</option>
                 <option value="INFORMAL">Informal</option>
@@ -18054,8 +18075,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
           <div className="grid gap-3 sm:grid-cols-5">
             <div>
-              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Assessment Type</label>
-              <select value={resourceBankAssessmentType} onChange={(e) => setResourceBankAssessmentType(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm">
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Assessment Type (optional)</label>
+              <select value={resourceBankAssessmentType} onChange={(e) => setResourceBankAssessmentType(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white">
                 <option value="">Unspecified</option>
                 <option value="EXAM">Exam</option>
                 <option value="TEST">Test</option>
@@ -18066,12 +18087,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Year</label>
-              <input type="number" min={1900} max={2100} value={resourceBankSourceYear} onChange={(e) => setResourceBankSourceYear(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm" placeholder="2025" />
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Year (optional)</label>
+              <input type="number" min={1900} max={2100} value={resourceBankSourceYear} onChange={(e) => setResourceBankSourceYear(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white" placeholder="2025" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Session Month</label>
-              <select value={resourceBankSessionMonth} onChange={(e) => setResourceBankSessionMonth(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm">
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Session Month (optional)</label>
+              <select value={resourceBankSessionMonth} onChange={(e) => setResourceBankSessionMonth(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white">
                 <option value="">Unspecified</option>
                 {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m) => (
                   <option key={m} value={m}>{m}</option>
@@ -18079,12 +18100,12 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Paper #</label>
-              <input type="number" min={0} max={3} value={resourceBankSourcePaper} onChange={(e) => setResourceBankSourcePaper(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm" placeholder="0..3" />
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Paper # (optional)</label>
+              <input type="number" min={0} max={3} value={resourceBankSourcePaper} onChange={(e) => setResourceBankSourcePaper(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white" placeholder="0..3" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Paper Mode</label>
-              <select value={resourceBankPaperMode} onChange={(e) => setResourceBankPaperMode(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm">
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Paper Mode (optional)</label>
+              <select value={resourceBankPaperMode} onChange={(e) => setResourceBankPaperMode(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white">
                 <option value="">Unspecified</option>
                 <option value="P1">P1</option>
                 <option value="P2">P2</option>
@@ -18095,13 +18116,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Paper Label (raw)</label>
+            <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Paper Label (raw, optional)</label>
             <input
               type="text"
               value={resourceBankPaperLabelRaw}
               onChange={(e) => setResourceBankPaperLabelRaw(e.target.value)}
               placeholder="e.g. Formal Test / Paper A / Combined"
-              className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm placeholder:text-[#7b87a4]"
+              className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white placeholder:text-[#7b87a4]"
             />
           </div>
           <div>

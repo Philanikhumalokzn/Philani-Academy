@@ -42,6 +42,23 @@ test.describe('remix delete (grade 9)', () => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto(toAbsoluteUrl('/dashboard?grade=GRADE_9'), { waitUntil: 'domcontentloaded' })
 
+    let latestExamQuestionGet: { url: string; itemIds: string[]; total?: number } | null = null
+    page.on('response', async (response) => {
+      try {
+        if (response.request().method() !== 'GET') return
+        if (!/\/api\/exam-questions\?/i.test(response.url())) return
+        const payload = await response.json().catch(() => null)
+        const items = Array.isArray(payload?.items) ? payload.items : []
+        latestExamQuestionGet = {
+          url: response.url(),
+          itemIds: items.map((item: any) => String(item?.id || '')).filter(Boolean),
+          total: typeof payload?.total === 'number' ? payload.total : undefined,
+        }
+      } catch {
+        // ignore observer failures
+      }
+    })
+
     const learningHubButton = page.getByRole('button', { name: /Learning Hub/i }).first()
     await expect(learningHubButton).toBeVisible({ timeout: 30_000 })
     await learningHubButton.click()
@@ -79,8 +96,30 @@ test.describe('remix delete (grade 9)', () => {
     const response = await deleteRequest
     const status = response.status()
     const bodyText = await response.text().catch(() => '')
+    const deleteUrl = response.url()
+    const deleteIdMatch = deleteUrl.match(/\/api\/exam-questions\/([^/?#]+)/i)
+    const deleteId = deleteIdMatch?.[1] ? decodeURIComponent(deleteIdMatch[1]) : ''
+
+    let bulkDeleteStatus: number | null = null
+    let bulkDeleteBody = ''
+    if (deleteId) {
+      const bulkResponse = await page.request.fetch(toAbsoluteUrl('/api/exam-questions'), {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        data: { ids: [deleteId] },
+      })
+      bulkDeleteStatus = bulkResponse.status()
+      bulkDeleteBody = await bulkResponse.text().catch(() => '')
+    }
+
     // eslint-disable-next-line no-console
-    console.log(`DELETE ${response.url()} -> ${status} | ${bodyText}`)
+    console.log(`GET exam-questions: ${latestExamQuestionGet?.url || 'none'} | total=${latestExamQuestionGet?.total ?? 'n/a'} | firstIds=${(latestExamQuestionGet?.itemIds || []).slice(0, 5).join(',')}`)
+    // eslint-disable-next-line no-console
+    console.log(`DELETE ${deleteUrl} -> ${status} | ${bodyText}`)
+    if (bulkDeleteStatus != null) {
+      // eslint-disable-next-line no-console
+      console.log(`BULK DELETE /api/exam-questions [${deleteId}] -> ${bulkDeleteStatus} | ${bulkDeleteBody}`)
+    }
 
     // Keep this assertion strict so the repro catches server-side failures.
     expect(status, `Delete API failed: ${bodyText}`).toBeLessThan(300)

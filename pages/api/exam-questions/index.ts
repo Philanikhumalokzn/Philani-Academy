@@ -773,20 +773,12 @@ function shapeCompositeRootItems<T extends {
   questionDepth: number
 }>(items: T[], scopeItems: T[]): T[] {
   const matchedByScope = new Map<string, T[]>()
-  const scopeByScope = new Map<string, T[]>()
 
   for (const item of items) {
     const scopeKey = buildQuestionScopeKey(item)
     const list = matchedByScope.get(scopeKey) || []
     list.push(item)
     matchedByScope.set(scopeKey, list)
-  }
-
-  for (const item of scopeItems) {
-    const scopeKey = buildQuestionScopeKey(item)
-    const list = scopeByScope.get(scopeKey) || []
-    list.push(item)
-    scopeByScope.set(scopeKey, list)
   }
 
   const shapedItems: T[] = []
@@ -800,31 +792,20 @@ function shapeCompositeRootItems<T extends {
 
     const scopeKey = buildQuestionScopeKey(item)
     const matchedSiblings = matchedByScope.get(scopeKey) || []
-    const availableScopeItems = scopeByScope.get(scopeKey) || []
-    const descendantsInScope = availableScopeItems
+    const descendantsInMatchedSet = matchedSiblings
       .filter((candidate) => {
         const candidateNumber = normalizeHierarchyQuestionNumber(candidate.questionNumber)
-        return candidateNumber !== normalized && candidateNumber.startsWith(`${normalized}.`)
+        return candidate.id !== item.id && candidateNumber !== normalized && candidateNumber.startsWith(`${normalized}.`)
       })
       .sort((left, right) => compareHierarchyQuestionNumbers(left.questionNumber, right.questionNumber))
 
-    if (descendantsInScope.length === 0) {
+    if (descendantsInMatchedSet.length === 0) {
       shapedItems.push(item)
       continue
     }
 
-    const matchedDescendantExists = matchedSiblings.some((candidate) => {
-      if (candidate.id === item.id) return false
-      const candidateNumber = normalizeHierarchyQuestionNumber(candidate.questionNumber)
-      return candidateNumber.startsWith(`${normalized}.`)
-    })
-
-    if (matchedDescendantExists) {
-      continue
-    }
-
-    const directChildren = descendantsInScope.filter((candidate) => getHierarchyParentQuestionNumber(candidate.questionNumber) === normalized)
-    const preferredBranchItem = directChildren[0] || descendantsInScope[0]
+    const directChildren = descendantsInMatchedSet.filter((candidate) => getHierarchyParentQuestionNumber(candidate.questionNumber) === normalized)
+    const preferredBranchItem = directChildren[0] || descendantsInMatchedSet[0]
     shapedItems.push(preferredBranchItem)
   }
 

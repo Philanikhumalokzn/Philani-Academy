@@ -17,6 +17,7 @@ import FeedComposerPill from '../components/FeedComposerPill'
 import HandwritingNormalizationOverlay from '../components/HandwritingNormalizationOverlay'
 import MathKeyboardOverlay from '../components/MathKeyboardOverlay'
 import FullScreenGlassOverlay from '../components/FullScreenGlassOverlay'
+import ParsedDocumentViewer from '../components/ParsedDocumentViewer'
 import OwnPostsManagerOverlay from '../components/OwnPostsManagerOverlay'
 import PostComposerBlocksPreview from '../components/PostComposerBlocksPreview'
 import PostComposerOverlay from '../components/PostComposerOverlay'
@@ -358,6 +359,9 @@ type ResourceBankItem = {
   createdAt: string
   tag?: string | null
   parsedJson?: any | null
+  parsedAt?: string | null
+  parseError?: string | null
+  createdById?: string | null
 }
 
 type BooksPaperItem = {
@@ -17098,8 +17102,640 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     status,
   ])
 
-  const renderResourceBankContent = () => (
+  const openResourceBankPdfViewer = useCallback((item: ResourceBankItem) => {
+    setPdfViewerTitle(toDisplayFileName(item.title) || item.title || 'Document')
+    setPdfViewerSubtitle('')
+    setPdfViewerUrl(item.url)
+    setPdfViewerCacheKey(String(item.id || item.url || item.title || 'pdf'))
+    setPdfViewerOpen(true)
+  }, [])
+
+  const openResourceBankParseDebug = useCallback((item: ResourceBankItem) => {
+    setResourceBankParseDebugItem(item)
+    setResourceBankParseDebugOpen(true)
+  }, [])
+
+  const openResourceBankEdit = useCallback((item: ResourceBankItem) => {
+    setResourceBankEditItem(item)
+    setResourceBankEditTitle(item?.title || '')
+    setResourceBankEditTag(item?.tag || '')
+    setResourceBankEditGrade((item?.grade as GradeValue) || '')
+    setResourceBankEditParse(false)
+    setResourceBankEditAiNormalize(false)
+    setResourceBankEditOpen(true)
+  }, [])
+
+  const resourceBankSaveEdit = useCallback(async () => {
+    if (!resourceBankEditItem?.id) return
+    setResourceBankEditing(true)
+    setResourceBankError(null)
+    try {
+      const res = await fetch(`/api/resources/${encodeURIComponent(resourceBankEditItem.id)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: resourceBankEditTitle,
+          tag: resourceBankEditTag,
+          grade: resourceBankEditGrade || undefined,
+          parse: resourceBankEditParse ? '1' : undefined,
+          aiNormalize: resourceBankEditParse && resourceBankEditAiNormalize ? '1' : undefined,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Edit failed (${res.status})`)
+      setResourceBankEditOpen(false)
+      setResourceBankEditItem(null)
+      await fetchResourceBankItems(resourceBankEffectiveGrade)
+    } catch (err: any) {
+      setResourceBankError(err?.message || 'Failed to edit resource')
+    } finally {
+      setResourceBankEditing(false)
+    }
+  }, [resourceBankEditItem, resourceBankEditTitle, resourceBankEditTag, resourceBankEditGrade, resourceBankEditParse, resourceBankEditAiNormalize, fetchResourceBankItems, resourceBankEffectiveGrade])
+
+  const openResourceBankExtract = useCallback((item: ResourceBankItem) => {
+    setResourceBankExtractItem(item)
+    setResourceBankExtractResult(null)
+    setResourceBankExtractError(null)
+    setResourceBankExtractOpen(true)
+  }, [])
+
+  const handleResourceBankExtract = useCallback(async () => {
+    if (!resourceBankExtractItem?.id) return
+    setResourceBankExtracting(true)
+    setResourceBankExtractError(null)
+    setResourceBankExtractResult(null)
+    try {
+      const res = await fetch('/api/resources/extract-questions', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resourceId: resourceBankExtractItem.id,
+          year: resourceBankExtractYear,
+          month: resourceBankExtractMonth,
+          paper: resourceBankExtractPaper,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const baseMessage = data?.message || `Extraction failed (${res.status})`
+        const shape = data?.parsedType ? `\nparsedType: ${String(data.parsedType)}` : ''
+        const keys = Array.isArray(data?.parsedKeys) && data.parsedKeys.length ? `\nparsedKeys: ${data.parsedKeys.join(', ')}` : ''
+        const raw = typeof data?.rawPreview === 'string' && data.rawPreview.trim() ? `\nrawPreview: ${data.rawPreview}` : ''
+        throw new Error(`${baseMessage}${shape}${keys}${raw}`)
+      }
+      setResourceBankExtractResult({ created: data.created ?? 0, skipped: data.skipped ?? 0 })
+    } catch (err: any) {
+      setResourceBankExtractError(err?.message || 'Extraction failed')
+    } finally {
+      setResourceBankExtracting(false)
+    }
+  }, [resourceBankExtractItem, resourceBankExtractYear, resourceBankExtractMonth, resourceBankExtractPaper])
+
+  const openResourceBankImportParsed = useCallback((item: ResourceBankItem) => {
+    setResourceBankImportItem(item)
+    setResourceBankImportError(null)
+    setResourceBankImportResult(null)
+    setResourceBankImportTitle(item.title || '')
+    setResourceBankImportTag(item.tag || '')
+    setResourceBankImportJsonText('')
+    setResourceBankImportOpen(true)
+  }, [])
+
+  const onResourceBankImportJsonFileChanged = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    try {
+      const text = await file.text()
+      setResourceBankImportJsonText(text)
+      setResourceBankImportError(null)
+    } catch {
+      setResourceBankImportError('Failed to read JSON file')
+    }
+  }, [])
+
+  const handleResourceBankImportParsedQuestions = useCallback(async () => {
+    if (!resourceBankImportItem?.id) {
+      setResourceBankImportError('No resource selected for import')
+      return
+    }
+    setResourceBankImportError(null)
+    setResourceBankImportResult(null)
+    let parsedPayload: any
+    try {
+      parsedPayload = JSON.parse(resourceBankImportJsonText)
+    } catch {
+      setResourceBankImportError('JSON is invalid. Paste valid JSON or choose a .json file.')
+      return
+    }
+    setResourceBankImportingQuestions(true)
+    try {
+      const res = await fetch('/api/resources/import-questions', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resourceId: resourceBankImportItem.id,
+          year: resourceBankImportYear,
+          month: resourceBankImportMonth,
+          paper: resourceBankImportPaper,
+          payload: parsedPayload,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Import failed (${res.status})`)
+      setResourceBankImportResult({ created: data.created ?? 0, skipped: data.skipped ?? 0 })
+      await fetchResourceBankItems(resourceBankEffectiveGrade)
+    } catch (err: any) {
+      setResourceBankImportError(err?.message || 'Import failed')
+    } finally {
+      setResourceBankImportingQuestions(false)
+    }
+  }, [resourceBankImportItem, resourceBankImportJsonText, resourceBankImportYear, resourceBankImportMonth, resourceBankImportPaper, fetchResourceBankItems, resourceBankEffectiveGrade])
+
+  const openResourceBankReview = useCallback(async (item: ResourceBankItem) => {
+    setResourceBankReviewItem(item)
+    setResourceBankReviewQuestions([])
+    setResourceBankReviewError(null)
+    setResourceBankReviewOpen(true)
+    setResourceBankReviewLoading(true)
+    try {
+      const scopeGrade = resourceBankEffectiveGrade || item?.grade
+      if (!scopeGrade) throw new Error('Grade not configured for this account')
+      const params = new URLSearchParams({ sourceId: String(item.id), take: '200', grade: String(scopeGrade) })
+      const res = await fetch(`/api/exam-questions?${params.toString()}`, { credentials: 'same-origin' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.message || `Failed to load questions (${res.status})`)
+      setResourceBankReviewQuestions(Array.isArray(data?.items) ? data.items : [])
+    } catch (err: any) {
+      setResourceBankReviewError(err?.message || 'Failed to load questions')
+    } finally {
+      setResourceBankReviewLoading(false)
+    }
+  }, [resourceBankEffectiveGrade])
+
+  const resourceBankToggleApprove = useCallback(async (qId: string, current: boolean) => {
+    setResourceBankSavingQId(qId)
+    try {
+      const res = await fetch(`/api/exam-questions/${encodeURIComponent(qId)}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved: !current }),
+      })
+      if (!res.ok) throw new Error('Failed to update')
+      const updated = await res.json()
+      setResourceBankReviewQuestions((prev) => prev.map((q) => (q.id === qId ? { ...q, approved: updated.approved } : q)))
+    } catch {
+      // silent
+    } finally {
+      setResourceBankSavingQId(null)
+    }
+  }, [])
+
+  const resourceBankDeleteQuestion = useCallback(async (qId: string) => {
+    setResourceBankDeletingQId(qId)
+    try {
+      const res = await fetch(`/api/exam-questions/${encodeURIComponent(qId)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      })
+      if (!res.ok) throw new Error('Failed to delete')
+      setResourceBankReviewQuestions((prev) => prev.filter((q) => q.id !== qId))
+    } catch {
+      // silent
+    } finally {
+      setResourceBankDeletingQId(null)
+    }
+  }, [])
+
+  const handleResourceBankDelete = useCallback(async (id: string) => {
+    if (!id) return
+    setResourceBankError(null)
+    try {
+      const res = await fetch(`/api/resources/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      })
+      if (!res.ok && res.status !== 204) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data?.message || `Delete failed (${res.status})`)
+      }
+      await fetchResourceBankItems(resourceBankEffectiveGrade)
+    } catch (err: any) {
+      setResourceBankError(err?.message || 'Failed to delete resource')
+    }
+  }, [fetchResourceBankItems, resourceBankEffectiveGrade])
+
+  const resourceBankDownloadParsedDocx = useCallback(async () => {
+    if (resourceBankParsedDownloadBusy) return
+    setResourceBankParsedDownloadBusy(true)
+    try {
+      const mmd = typeof resourceBankParsedViewerJson?.raw?.mmd === 'string'
+        ? resourceBankParsedViewerJson.raw.mmd
+        : typeof resourceBankParsedViewerJson?.text === 'string'
+        ? resourceBankParsedViewerJson.text
+        : ''
+      if (!mmd) throw new Error('No parsed content available to download.')
+      const res = await fetch('/api/resources/convert-docx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mmd, title: resourceBankParsedViewerTitle || 'parsed' }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.message || `Failed to convert (${res.status})`)
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      const baseRaw = (resourceBankParsedViewerTitle || 'parsed').toString().trim() || 'parsed'
+      const base = baseRaw.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9_-]+/gi, '_') || 'parsed'
+      link.download = `${base}.docx`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (err: any) {
+      setResourceBankError(err?.message || 'Failed to download parsed output')
+    } finally {
+      setResourceBankParsedDownloadBusy(false)
+    }
+  }, [resourceBankParsedDownloadBusy, resourceBankParsedViewerJson, resourceBankParsedViewerTitle])
+
+  const renderResourceBankContent = () => {
+    const isRbAdmin = ((session as any)?.user?.role as string | undefined) === 'admin'
+    const canDeleteItem = (item: ResourceBankItem) => {
+      if (isRbAdmin) return true
+      const myId = String(resourceBankProfile?.id || '')
+      return Boolean(myId && (item as any).createdById && String((item as any).createdById) === myId)
+    }
+    return (
     <div>
+      {/* Overlays */}
+      {resourceBankEditOpen ? (
+        <FullScreenGlassOverlay
+          title="Edit resource"
+          subtitle={toDisplayFileName(resourceBankEditItem?.title) || resourceBankEditItem?.title || 'Resource'}
+          zIndexClassName="z-50"
+          onClose={() => { if (!resourceBankEditing) setResourceBankEditOpen(false) }}
+        >
+          <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Title</div>
+                <input className="input" value={resourceBankEditTitle} onChange={(e) => setResourceBankEditTitle(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Tag</div>
+                <input className="input" value={resourceBankEditTag} onChange={(e) => setResourceBankEditTag(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <div className="text-xs uppercase tracking-wide text-slate-600">Grade</div>
+              <select
+                className="input"
+                value={resourceBankEditGrade}
+                onChange={(e) => setResourceBankEditGrade(normalizeGradeInput(e.target.value) || '')}
+              >
+                <option value="">(unchanged)</option>
+                {GRADE_VALUES.map((g) => (
+                  <option key={g} value={g}>{gradeToLabel(g)}</option>
+                ))}
+              </select>
+              <div className="text-xs text-slate-500">Admin can move resources across grades.</div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-sm text-slate-900 select-none">
+                <input
+                  type="checkbox"
+                  checked={resourceBankEditParse}
+                  onChange={(e) => {
+                    const next = e.target.checked
+                    setResourceBankEditParse(next)
+                    if (!next) setResourceBankEditAiNormalize(false)
+                  }}
+                />
+                Re-parse (Mathpix OCR)
+              </label>
+              <label className={`flex items-center gap-2 text-sm ${resourceBankEditParse ? 'text-slate-900' : 'text-slate-400'} select-none`}>
+                <input
+                  type="checkbox"
+                  checked={resourceBankEditAiNormalize}
+                  onChange={(e) => setResourceBankEditAiNormalize(e.target.checked)}
+                  disabled={!resourceBankEditParse}
+                />
+                AI post-normalize (Gemini)
+              </label>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button type="button" className="btn btn-ghost" onClick={() => setResourceBankEditOpen(false)} disabled={resourceBankEditing}>Cancel</button>
+              <button type="button" className="btn btn-primary" onClick={() => void resourceBankSaveEdit()} disabled={resourceBankEditing}>
+                {resourceBankEditing ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </FullScreenGlassOverlay>
+      ) : null}
+
+      {resourceBankParseDebugOpen ? (
+        <FullScreenGlassOverlay
+          title="Parsing debugger"
+          subtitle={toDisplayFileName(resourceBankParseDebugItem?.title) || resourceBankParseDebugItem?.title || 'Resource'}
+          zIndexClassName="z-50"
+          onClose={() => setResourceBankParseDebugOpen(false)}
+        >
+          <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-3">
+            <div className="text-sm space-y-1">
+              <div><span className="font-semibold">Filename:</span> {toDisplayFileName(resourceBankParseDebugItem?.filename) || resourceBankParseDebugItem?.filename || '—'}</div>
+              <div><span className="font-semibold">Content type:</span> {resourceBankParseDebugItem?.contentType || '—'}</div>
+              <div><span className="font-semibold">Size:</span> {typeof resourceBankParseDebugItem?.size === 'number' ? `${Math.round(resourceBankParseDebugItem.size / 1024)} KB` : '—'}</div>
+              <div><span className="font-semibold">Parsed at:</span> {resourceBankParseDebugItem?.parsedAt ? new Date(resourceBankParseDebugItem.parsedAt).toLocaleString() : '—'}</div>
+            </div>
+            <div className="text-xs uppercase tracking-wide text-slate-500">Error details</div>
+            <pre className="whitespace-pre-wrap break-words rounded-xl bg-slate-100 p-3 text-xs text-slate-900">
+              {resourceBankParseDebugItem?.parseError || 'No error details available.'}
+            </pre>
+          </div>
+        </FullScreenGlassOverlay>
+      ) : null}
+
+      {resourceBankExtractOpen ? (
+        <FullScreenGlassOverlay
+          title="Extract questions"
+          subtitle={toDisplayFileName(resourceBankExtractItem?.title) || resourceBankExtractItem?.title || 'Resource'}
+          zIndexClassName="z-50"
+          onClose={() => { if (!resourceBankExtracting) setResourceBankExtractOpen(false) }}
+        >
+          <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-4">
+            <p className="text-sm text-slate-600">
+              Gemini will read the parsed OCR text and extract every question and sub-question into the question bank.
+              Set the paper metadata before extracting.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Year</div>
+                <input
+                  type="number"
+                  className="input"
+                  min={2000}
+                  max={2100}
+                  value={resourceBankExtractYear}
+                  onChange={(e) => setResourceBankExtractYear(parseInt(e.target.value, 10) || new Date().getFullYear())}
+                />
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Exam month</div>
+                <select className="input" value={resourceBankExtractMonth} onChange={(e) => setResourceBankExtractMonth(e.target.value)}>
+                  {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Paper</div>
+                <select className="input" value={resourceBankExtractPaper} onChange={(e) => setResourceBankExtractPaper(parseInt(e.target.value, 10))}>
+                  <option value={1}>Paper 1</option>
+                  <option value={2}>Paper 2</option>
+                  <option value={3}>Paper 3</option>
+                </select>
+              </div>
+            </div>
+            {resourceBankExtractError ? <div className="text-sm text-red-600">{resourceBankExtractError}</div> : null}
+            {resourceBankExtractResult ? (
+              <div className="rounded-xl bg-green-50 p-3 text-sm text-green-800">
+                ✓ Extracted {resourceBankExtractResult.created} question{resourceBankExtractResult.created !== 1 ? 's' : ''}.
+                {resourceBankExtractResult.skipped > 0 ? ` ${resourceBankExtractResult.skipped} skipped (incomplete data).` : ''}{' '}
+                Use <strong>Review Questions</strong> on this resource to approve them for students.
+              </div>
+            ) : null}
+            <div className="flex items-center justify-end gap-2">
+              <button type="button" className="btn btn-ghost" onClick={() => setResourceBankExtractOpen(false)} disabled={resourceBankExtracting}>Cancel</button>
+              <button type="button" className="btn btn-primary" onClick={() => void handleResourceBankExtract()} disabled={resourceBankExtracting}>
+                {resourceBankExtracting ? 'Extracting…' : 'Extract'}
+              </button>
+            </div>
+          </div>
+        </FullScreenGlassOverlay>
+      ) : null}
+
+      {resourceBankImportOpen ? (
+        <FullScreenGlassOverlay
+          title="Import parsed questions"
+          subtitle={toDisplayFileName(resourceBankImportItem?.title) || resourceBankImportItem?.title || 'Resource'}
+          zIndexClassName="z-50"
+          onClose={() => { if (!resourceBankImportingQuestions) setResourceBankImportOpen(false) }}
+        >
+          <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-4">
+            <p className="text-sm text-slate-600">
+              Paste a pre-parsed JSON payload (or upload a .json file) to import questions into this resource.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Year</div>
+                <input
+                  type="number"
+                  className="input"
+                  min={2000}
+                  max={2100}
+                  value={resourceBankImportYear}
+                  onChange={(e) => setResourceBankImportYear(parseInt(e.target.value, 10) || new Date().getFullYear())}
+                />
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Exam month</div>
+                <select className="input" value={resourceBankImportMonth} onChange={(e) => setResourceBankImportMonth(e.target.value)}>
+                  {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Paper</div>
+                <select className="input" value={resourceBankImportPaper} onChange={(e) => setResourceBankImportPaper(parseInt(e.target.value, 10))}>
+                  <option value={1}>Paper 1</option>
+                  <option value={2}>Paper 2</option>
+                  <option value={3}>Paper 3</option>
+                </select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Parsed JSON</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={resourceBankImportJsonFileRef}
+                    type="file"
+                    accept="application/json,.json"
+                    className="hidden"
+                    onChange={(e) => void onResourceBankImportJsonFileChanged(e)}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => resourceBankImportJsonFileRef.current?.click()}
+                    disabled={resourceBankImportingQuestions}
+                  >
+                    Choose JSON File
+                  </button>
+                </div>
+              </div>
+              <textarea
+                className="input min-h-[180px] font-mono text-xs"
+                placeholder={'[{"questionNumber":"1","questionText":"...","latex":"","marks":5}] or {"questions":[...]}'}
+                value={resourceBankImportJsonText}
+                onChange={(e) => setResourceBankImportJsonText(e.target.value)}
+              />
+            </div>
+            {resourceBankImportError ? <div className="text-sm text-red-600">{resourceBankImportError}</div> : null}
+            {resourceBankImportResult ? (
+              <div className="rounded-xl bg-green-50 p-3 text-sm text-green-800">
+                Imported {resourceBankImportResult.created} question{resourceBankImportResult.created !== 1 ? 's' : ''}.
+                {resourceBankImportResult.skipped > 0 ? ` ${resourceBankImportResult.skipped} skipped (invalid or incomplete).` : ''}{' '}
+                Use <strong>Review Questions</strong> on this resource to approve them for students.
+              </div>
+            ) : null}
+            <div className="flex items-center justify-end gap-2">
+              <button type="button" className="btn btn-ghost" onClick={() => setResourceBankImportOpen(false)} disabled={resourceBankImportingQuestions}>Cancel</button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => void handleResourceBankImportParsedQuestions()}
+                disabled={resourceBankImportingQuestions || !resourceBankImportJsonText.trim()}
+              >
+                {resourceBankImportingQuestions ? 'Importing…' : 'Import JSON'}
+              </button>
+            </div>
+          </div>
+        </FullScreenGlassOverlay>
+      ) : null}
+
+      {resourceBankReviewOpen ? (
+        <FullScreenGlassOverlay
+          title="Review extracted questions"
+          subtitle={toDisplayFileName(resourceBankReviewItem?.title) || resourceBankReviewItem?.title || 'Resource'}
+          zIndexClassName="z-50"
+          onClose={() => setResourceBankReviewOpen(false)}
+        >
+          <div className="rounded-2xl border border-white/15 bg-white/90 p-4 text-slate-900 space-y-3">
+            {resourceBankReviewLoading ? <div className="text-sm text-slate-500">Loading questions…</div> : null}
+            {resourceBankReviewError ? <div className="text-sm text-red-600">{resourceBankReviewError}</div> : null}
+            {!resourceBankReviewLoading && !resourceBankReviewError && resourceBankReviewQuestions.length === 0 ? (
+              <div className="text-sm text-slate-500">No questions extracted yet. Use <strong>Extract Questions</strong> first.</div>
+            ) : null}
+            {!resourceBankReviewLoading && resourceBankReviewQuestions.length > 0 ? (
+              <ul className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                {resourceBankReviewQuestions.map((q) => (
+                  <li key={q.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xs font-bold text-slate-400 shrink-0">Q{q.questionNumber}</span>
+                        <span className={`text-xs rounded-full px-2 py-0.5 font-semibold shrink-0 ${q.approved ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {q.approved ? 'Approved' : 'Pending'}
+                        </span>
+                        {q.topic ? <span className="text-xs text-slate-500 truncate">{q.topic}</span> : null}
+                        {q.cognitiveLevel ? <span className="text-xs text-slate-400">L{q.cognitiveLevel}</span> : null}
+                        {q.marks ? <span className="text-xs text-slate-400">({q.marks} marks)</span> : null}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          className={`text-xs rounded-full px-2 py-1 font-semibold transition ${q.approved ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
+                          onClick={() => void resourceBankToggleApprove(q.id, q.approved)}
+                          disabled={resourceBankSavingQId === q.id}
+                        >
+                          {resourceBankSavingQId === q.id ? '…' : q.approved ? 'Revoke' : 'Approve'}
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs rounded-full px-2 py-1 font-semibold bg-red-100 text-red-700 hover:bg-red-200 transition"
+                          onClick={() => void resourceBankDeleteQuestion(q.id)}
+                          disabled={resourceBankDeletingQId === q.id}
+                        >
+                          {resourceBankDeletingQId === q.id ? '…' : 'Delete'}
+                        </button>
+                      </div>
+                    </div>
+                    {(() => {
+                      const normalized = normalizeExamQuestionContent(q.questionText, q.latex)
+                      const cleanText = normalized.questionText
+                      const cleanLatex = normalized.latex
+                      const latexHtml = cleanLatex ? renderKatexDisplayHtmlRaw(cleanLatex) : ''
+                      const imageUrls: string[] = []
+                      const pushImageUrl = (value: unknown) => {
+                        const u = typeof value === 'string' ? value.trim() : ''
+                        if (!u || !/^https?:\/\//i.test(u) || imageUrls.includes(u)) return
+                        imageUrls.push(u)
+                      }
+                      if (Array.isArray(q?.imageUrls)) for (const u of q.imageUrls) pushImageUrl(u)
+                      pushImageUrl(q?.imageUrl)
+                      return (
+                        <>
+                          <div className="text-sm text-slate-800 break-words">{renderQuestionTextWithInlineLatexShared(cleanText)}</div>
+                          {imageUrls.length > 0 ? (
+                            <div className="mt-2 grid gap-1">
+                              {imageUrls.map((imageUrl, idx) => (
+                                <div key={`img-${idx}`} className="overflow-hidden rounded border border-slate-300 bg-slate-100">
+                                  <img src={imageUrl} alt={`Diagram ${idx + 1}`} className="max-h-[180px] w-full object-contain" loading="lazy" />
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                          {cleanLatex ? (
+                            latexHtml ? (
+                              <div className="mt-1 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-[#1c1e21] leading-relaxed" dangerouslySetInnerHTML={{ __html: latexHtml }} />
+                            ) : (
+                              <div className="mt-1 rounded-lg border border-[#dbe4f3] bg-[#f8fbff] px-3 py-2 text-sm break-words">{renderTextWithKatexRaw(cleanLatex)}</div>
+                            )
+                          ) : null}
+                        </>
+                      )
+                    })()}
+                    <div className="text-xs text-slate-400">{q.year} {q.month} · Paper {q.paper} · {String(q.grade).replace('_', ' ')}</div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <div className="flex justify-end">
+              <button type="button" className="btn btn-ghost" onClick={() => setResourceBankReviewOpen(false)}>Close</button>
+            </div>
+          </div>
+        </FullScreenGlassOverlay>
+      ) : null}
+
+      {resourceBankParsedViewerOpen ? (
+        <FullScreenGlassOverlay
+          title="Parsed"
+          subtitle={resourceBankParsedViewerTitle}
+          zIndexClassName="z-50"
+          rightActions={
+            <button
+              type="button"
+              className="w-9 h-9 inline-flex items-center justify-center rounded-full border border-white/20 bg-white/10 hover:bg-white/20 text-white"
+              onClick={() => void resourceBankDownloadParsedDocx()}
+              aria-label="Download parsed"
+              title={resourceBankParsedDownloadBusy ? 'Preparing…' : 'Download as Docx'}
+              disabled={resourceBankParsedDownloadBusy || resourceBankParsedViewerLoading}
+            >
+              <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4" aria-hidden="true">
+                <path d="M10 3v9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M6.5 9.5L10 12.8l3.5-3.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M4 16h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+          }
+          onClose={() => setResourceBankParsedViewerOpen(false)}
+        >
+          {resourceBankParsedViewerLoading ? <div className="text-sm muted">Loading…</div> : null}
+          {!resourceBankParsedViewerLoading && (
+            <ParsedDocumentViewer parsedJson={resourceBankParsedViewerJson} fallbackText={resourceBankParsedViewerText} />
+          )}
+        </FullScreenGlassOverlay>
+      ) : null}
+
       {resourceBankError ? (
         <section className="border-b border-black/10 bg-white px-4 py-3 text-sm text-red-600">{resourceBankError}</section>
       ) : null}
@@ -17183,24 +17819,114 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       </section>
 
       {/* Resource list */}
+      {resourceBankLoading && resourceBankItems.length === 0 ? (
+        <section className="border-b border-black/10 bg-white px-4 py-4 text-sm text-[#65676b]">Loading…</section>
+      ) : null}
+
       {resourceBankItems.length > 0 ? (
         <ul className="divide-y divide-black/10">
           {resourceBankItems.map((item) => (
-            <li key={item.id} className="border-black/10 bg-white px-4 py-3">
-              <div className="flex items-start gap-3">
+            <li key={item.id} className="bg-white px-4 py-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-sm text-[#1c1e21]">{item.title || item.filename}</div>
-                  {item.tag && <div className="text-xs text-[#65676b] mt-1">{item.tag}</div>}
-                  <div className="text-xs text-[#65676b] mt-1">{new Date(item.createdAt).toLocaleDateString()}</div>
-                </div>
-                <div className="flex items-center gap-1">
-                  {item.parsedJson ? (
+                  <div className="font-semibold text-sm text-[#1c1e21] break-words">{toDisplayFileName(item.title) || item.title || item.filename}</div>
+                  <div className="text-xs text-[#65676b] mt-0.5">
+                    {item.tag ? `${item.tag} · ` : ''}
+                    {gradeToLabel(item.grade)} · {new Date(item.createdAt).toLocaleDateString()}
+                    {item.parsedAt ? <span className="ml-1 text-green-700">· Parsed</span> : null}
+                  </div>
+                  {item.parseError ? (
                     <button
                       type="button"
-                      onClick={() => openResourceBankParsedViewer(item)}
+                      className="text-left text-xs text-red-600 underline decoration-dotted mt-0.5"
+                      onClick={() => openResourceBankParseDebug(item)}
+                    >
+                      Parse failed — view details
+                    </button>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {isPdfResource(item) ? (
+                    <button
+                      type="button"
+                      onClick={() => openResourceBankPdfViewer(item)}
+                      className="px-2 py-1 text-xs rounded bg-[#f0f2f5] text-[#1c1e21] hover:bg-[#e4e6eb]"
+                    >
+                      View PDF
+                    </button>
+                  ) : (
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-2 py-1 text-xs rounded bg-[#f0f2f5] text-[#1c1e21] hover:bg-[#e4e6eb]"
+                    >
+                      Open
+                    </a>
+                  )}
+                  {item.parsedAt || item.parseError ? (
+                    <button
+                      type="button"
+                      onClick={() => void openResourceBankParsedViewer(item)}
                       className="px-2 py-1 text-xs rounded bg-[#e8f4fd] text-[#1877f2] hover:bg-[#dcefff]"
                     >
-                      View
+                      View parsed
+                    </button>
+                  ) : null}
+                  {item?.parsedJson?.docxUrl ? (
+                    <a
+                      href={item.parsedJson.docxUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      download
+                      className="px-2 py-1 text-xs rounded bg-[#f0f2f5] text-[#1c1e21] hover:bg-[#e4e6eb]"
+                    >
+                      DOCX
+                    </a>
+                  ) : null}
+                  {isRbAdmin && item.parsedAt ? (
+                    <button
+                      type="button"
+                      onClick={() => openResourceBankExtract(item)}
+                      className="px-2 py-1 text-xs rounded bg-[#1877f2] text-white hover:bg-[#1565d8]"
+                    >
+                      Extract Questions
+                    </button>
+                  ) : null}
+                  {isRbAdmin && item.parsedAt ? (
+                    <button
+                      type="button"
+                      onClick={() => void openResourceBankReview(item)}
+                      className="px-2 py-1 text-xs rounded bg-[#e6f4ea] text-[#1a7f37] hover:bg-[#d4edda]"
+                    >
+                      Review Questions
+                    </button>
+                  ) : null}
+                  {isRbAdmin ? (
+                    <button
+                      type="button"
+                      onClick={() => openResourceBankImportParsed(item)}
+                      className="px-2 py-1 text-xs rounded bg-[#f0f2f5] text-[#1c1e21] hover:bg-[#e4e6eb]"
+                    >
+                      Import JSON
+                    </button>
+                  ) : null}
+                  {isRbAdmin ? (
+                    <button
+                      type="button"
+                      onClick={() => openResourceBankEdit(item)}
+                      className="px-2 py-1 text-xs rounded bg-[#f0f2f5] text-[#1c1e21] hover:bg-[#e4e6eb]"
+                    >
+                      Edit
+                    </button>
+                  ) : null}
+                  {canDeleteItem(item) ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleResourceBankDelete(item.id)}
+                      className="px-2 py-1 text-xs rounded bg-[#fff0f0] text-[#c0392b] hover:bg-[#ffe0e0]"
+                    >
+                      Delete
                     </button>
                   ) : null}
                 </div>
@@ -17214,7 +17940,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         </section>
       ) : null}
     </div>
-  )
+    )
+  }
   function renderBooksSurfaceContent() {
     const showBooksSearch = booksHubTab === 'papers' || booksHubTab === 'pdfs'
     return (

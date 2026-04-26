@@ -10,6 +10,19 @@ import { getUserGrade } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { computeFileSha256Hex, upsertResourceBankItem } from '../../../lib/resourceBank'
 import { tryParseJsonLoose } from '../../../lib/geminiAssignmentExtract'
+import {
+  ASSESSMENT_FORMALITY_VALUES,
+  ASSESSMENT_TYPE_VALUES,
+  AUTHORITY_SCOPE_VALUES,
+  EXAM_CYCLE_VALUES,
+  PAPER_MODE_VALUES,
+  inferPaperMode,
+  normalizeEnumValue,
+  normalizePaperLabelRaw,
+  normalizePaperNumber,
+  normalizeProvince,
+  normalizeSourceName,
+} from '../../../lib/paperTaxonomy'
 
 export const config = {
   api: {
@@ -333,6 +346,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         grade: true,
         title: true,
         tag: true,
+        sourceName: true,
+        authorityScope: true,
+        province: true,
+        examCycle: true,
+        assessmentType: true,
+        assessmentFormality: true,
+        year: true,
+        sessionMonth: true,
+        paper: true,
+        paperMode: true,
+        paperLabelRaw: true,
         url: true,
         filename: true,
         contentType: true,
@@ -391,6 +415,52 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const grade = role === 'admin' ? (wantsGrade || tokenGrade) : tokenGrade
       if (!grade) return res.status(400).json({ message: 'Grade is required' })
+
+      const sourceNameField = fields.sourceName
+      const sourceNameRaw = Array.isArray(sourceNameField) ? sourceNameField[0] : sourceNameField
+      const sourceName = normalizeSourceName(sourceNameRaw)
+
+      const authorityScopeField = fields.authorityScope
+      const authorityScopeRaw = Array.isArray(authorityScopeField) ? authorityScopeField[0] : authorityScopeField
+      const authorityScope = normalizeEnumValue(authorityScopeRaw, AUTHORITY_SCOPE_VALUES)
+
+      const provinceField = fields.province
+      const provinceRaw = Array.isArray(provinceField) ? provinceField[0] : provinceField
+      const province = normalizeProvince(provinceRaw)
+
+      const examCycleField = fields.examCycle
+      const examCycleRaw = Array.isArray(examCycleField) ? examCycleField[0] : examCycleField
+      const examCycle = normalizeEnumValue(examCycleRaw, EXAM_CYCLE_VALUES)
+
+      const assessmentTypeField = fields.assessmentType
+      const assessmentTypeRaw = Array.isArray(assessmentTypeField) ? assessmentTypeField[0] : assessmentTypeField
+      const assessmentType = normalizeEnumValue(assessmentTypeRaw, ASSESSMENT_TYPE_VALUES)
+
+      const assessmentFormalityField = fields.assessmentFormality
+      const assessmentFormalityRaw = Array.isArray(assessmentFormalityField) ? assessmentFormalityField[0] : assessmentFormalityField
+      const assessmentFormality = normalizeEnumValue(assessmentFormalityRaw, ASSESSMENT_FORMALITY_VALUES)
+
+      const yearField = fields.year
+      const yearRaw = Array.isArray(yearField) ? yearField[0] : yearField
+      const yearParsed = Number.parseInt(String(yearRaw || ''), 10)
+      const year = Number.isFinite(yearParsed) && yearParsed >= 1900 && yearParsed <= 2100 ? yearParsed : null
+
+      const sessionMonthField = fields.sessionMonth
+      const sessionMonthRaw = Array.isArray(sessionMonthField) ? sessionMonthField[0] : sessionMonthField
+      const sessionMonth = String(sessionMonthRaw || '').trim() || null
+
+      const paperField = fields.paper
+      const paperRaw = Array.isArray(paperField) ? paperField[0] : paperField
+      const paper = normalizePaperNumber(paperRaw)
+
+      const paperModeField = fields.paperMode
+      const paperModeRaw = Array.isArray(paperModeField) ? paperModeField[0] : paperModeField
+      const explicitPaperMode = normalizeEnumValue(paperModeRaw, PAPER_MODE_VALUES)
+      const paperMode = inferPaperMode(paper, explicitPaperMode)
+
+      const paperLabelField = fields.paperLabelRaw
+      const paperLabelRawValue = Array.isArray(paperLabelField) ? paperLabelField[0] : paperLabelField
+      const paperLabelRaw = normalizePaperLabelRaw(paperLabelRawValue)
 
       // Strict: users (teacher/student) can only upload for their own grade.
       if (role !== 'admin' && tokenGrade && grade !== tokenGrade) {
@@ -727,6 +797,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         grade,
         title,
         tag: tag || null,
+        sourceName,
+        authorityScope: authorityScope || null,
+        province,
+        examCycle: examCycle || null,
+        assessmentType: assessmentType || null,
+        assessmentFormality: assessmentFormality || null,
+        year: typeof year === 'number' ? year : null,
+        sessionMonth,
+        paper: typeof paper === 'number' ? paper : null,
+        paperMode,
+        paperLabelRaw,
         url: publicUrl,
         filename: storedFilename,
         contentType: uploadedFile.mimetype || null,

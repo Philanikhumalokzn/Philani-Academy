@@ -352,6 +352,17 @@ type ResourceBankItem = {
   id: string
   grade: GradeValue
   title: string
+  sourceName?: string | null
+  authorityScope?: string | null
+  province?: string | null
+  examCycle?: string | null
+  assessmentType?: string | null
+  assessmentFormality?: string | null
+  year?: number | null
+  sessionMonth?: string | null
+  paper?: number | null
+  paperMode?: string | null
+  paperLabelRaw?: string | null
   url: string
   filename?: string | null
   contentType?: string | null
@@ -2427,6 +2438,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [resourceBankError, setResourceBankError] = useState<string | null>(null)
   const [resourceBankTitle, setResourceBankTitle] = useState('')
   const [resourceBankTag, setResourceBankTag] = useState('')
+  const [resourceBankSourceName, setResourceBankSourceName] = useState('')
+  const [resourceBankAuthorityScope, setResourceBankAuthorityScope] = useState('')
+  const [resourceBankProvince, setResourceBankProvince] = useState('')
+  const [resourceBankExamCycle, setResourceBankExamCycle] = useState('')
+  const [resourceBankAssessmentType, setResourceBankAssessmentType] = useState('')
+  const [resourceBankAssessmentFormality, setResourceBankAssessmentFormality] = useState('')
+  const [resourceBankSourceYear, setResourceBankSourceYear] = useState<string>('')
+  const [resourceBankSessionMonth, setResourceBankSessionMonth] = useState('')
+  const [resourceBankSourcePaper, setResourceBankSourcePaper] = useState<string>('')
+  const [resourceBankPaperMode, setResourceBankPaperMode] = useState('')
+  const [resourceBankPaperLabelRaw, setResourceBankPaperLabelRaw] = useState('')
   const [resourceBankUploading, setResourceBankUploading] = useState(false)
   const [resourceBankParseOnUpload, setResourceBankParseOnUpload] = useState(false)
   const [resourceBankAiNormalizeOnUpload, setResourceBankAiNormalizeOnUpload] = useState(false)
@@ -2443,6 +2465,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const [resourceBankEditItem, setResourceBankEditItem] = useState<ResourceBankItem | null>(null)
   const [resourceBankEditTitle, setResourceBankEditTitle] = useState('')
   const [resourceBankEditTag, setResourceBankEditTag] = useState('')
+  const [resourceBankEditSourceName, setResourceBankEditSourceName] = useState('')
+  const [resourceBankEditAuthorityScope, setResourceBankEditAuthorityScope] = useState('')
+  const [resourceBankEditProvince, setResourceBankEditProvince] = useState('')
+  const [resourceBankEditExamCycle, setResourceBankEditExamCycle] = useState('')
+  const [resourceBankEditAssessmentType, setResourceBankEditAssessmentType] = useState('')
+  const [resourceBankEditAssessmentFormality, setResourceBankEditAssessmentFormality] = useState('')
+  const [resourceBankEditYear, setResourceBankEditYear] = useState('')
+  const [resourceBankEditSessionMonth, setResourceBankEditSessionMonth] = useState('')
+  const [resourceBankEditPaper, setResourceBankEditPaper] = useState('')
+  const [resourceBankEditPaperMode, setResourceBankEditPaperMode] = useState('')
+  const [resourceBankEditPaperLabelRaw, setResourceBankEditPaperLabelRaw] = useState('')
   const [resourceBankEditGrade, setResourceBankEditGrade] = useState<GradeValue | ''>('')
   const [resourceBankEditParse, setResourceBankEditParse] = useState(false)
   const [resourceBankEditAiNormalize, setResourceBankEditAiNormalize] = useState(false)
@@ -17059,6 +17092,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       form.append('file', file)
       if (resourceBankTitle.trim()) form.append('title', resourceBankTitle.trim())
       if (resourceBankTag.trim()) form.append('tag', resourceBankTag.trim())
+      if (resourceBankSourceName.trim()) form.append('sourceName', resourceBankSourceName.trim())
+      if (resourceBankAuthorityScope) form.append('authorityScope', resourceBankAuthorityScope)
+      if (resourceBankProvince.trim()) form.append('province', resourceBankProvince.trim())
+      if (resourceBankExamCycle) form.append('examCycle', resourceBankExamCycle)
+      if (resourceBankAssessmentType) form.append('assessmentType', resourceBankAssessmentType)
+      if (resourceBankAssessmentFormality) form.append('assessmentFormality', resourceBankAssessmentFormality)
+      if (resourceBankSourceYear.trim()) form.append('year', resourceBankSourceYear.trim())
+      if (resourceBankSessionMonth.trim()) form.append('sessionMonth', resourceBankSessionMonth.trim())
+      if (resourceBankSourcePaper.trim()) form.append('paper', resourceBankSourcePaper.trim())
+      if (resourceBankPaperMode) form.append('paperMode', resourceBankPaperMode)
+      if (resourceBankPaperLabelRaw.trim()) form.append('paperLabelRaw', resourceBankPaperLabelRaw.trim())
       if (userRole === 'admin') form.append('grade', resourceBankEffectiveGrade)
       if (resourceBankParseOnUpload) form.append('parse', '1')
       if (resourceBankParseOnUpload && resourceBankAiNormalizeOnUpload) form.append('aiNormalize', '1')
@@ -17078,6 +17122,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       setResourceBankTitle('')
       setResourceBankTag('')
+      setResourceBankSourceName('')
+      setResourceBankAuthorityScope('')
+      setResourceBankProvince('')
+      setResourceBankExamCycle('')
+      setResourceBankAssessmentType('')
+      setResourceBankAssessmentFormality('')
+      setResourceBankSourceYear('')
+      setResourceBankSessionMonth('')
+      setResourceBankSourcePaper('')
+      setResourceBankPaperMode('')
+      setResourceBankPaperLabelRaw('')
       if (resourceBankFileInputRef.current) resourceBankFileInputRef.current.value = ''
 
       setResourceBankLoading(true)
@@ -17099,6 +17154,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     resourceBankConvertDocxOnUpload,
     resourceBankEffectiveGrade,
     resourceBankParseOnUpload,
+    resourceBankSourceName,
+    resourceBankAuthorityScope,
+    resourceBankProvince,
+    resourceBankExamCycle,
+    resourceBankAssessmentType,
+    resourceBankAssessmentFormality,
+    resourceBankSourceYear,
+    resourceBankSessionMonth,
+    resourceBankSourcePaper,
+    resourceBankPaperMode,
+    resourceBankPaperLabelRaw,
     resourceBankTag,
     resourceBankTitle,
     session,
@@ -17122,6 +17188,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setResourceBankEditItem(item)
     setResourceBankEditTitle(item?.title || '')
     setResourceBankEditTag(item?.tag || '')
+    setResourceBankEditSourceName(item?.sourceName || '')
+    setResourceBankEditAuthorityScope(item?.authorityScope || '')
+    setResourceBankEditProvince(item?.province || '')
+    setResourceBankEditExamCycle(item?.examCycle || '')
+    setResourceBankEditAssessmentType(item?.assessmentType || '')
+    setResourceBankEditAssessmentFormality(item?.assessmentFormality || '')
+    setResourceBankEditYear(typeof item?.year === 'number' ? String(item.year) : '')
+    setResourceBankEditSessionMonth(item?.sessionMonth || '')
+    setResourceBankEditPaper(typeof item?.paper === 'number' ? String(item.paper) : '')
+    setResourceBankEditPaperMode(item?.paperMode || '')
+    setResourceBankEditPaperLabelRaw(item?.paperLabelRaw || '')
     setResourceBankEditGrade((item?.grade as GradeValue) || '')
     setResourceBankEditParse(false)
     setResourceBankEditAiNormalize(false)
@@ -17140,6 +17217,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         body: JSON.stringify({
           title: resourceBankEditTitle,
           tag: resourceBankEditTag,
+          sourceName: resourceBankEditSourceName,
+          authorityScope: resourceBankEditAuthorityScope || null,
+          province: resourceBankEditProvince,
+          examCycle: resourceBankEditExamCycle || null,
+          assessmentType: resourceBankEditAssessmentType || null,
+          assessmentFormality: resourceBankEditAssessmentFormality || null,
+          year: resourceBankEditYear ? Number.parseInt(resourceBankEditYear, 10) : null,
+          sessionMonth: resourceBankEditSessionMonth,
+          paper: resourceBankEditPaper ? Number.parseInt(resourceBankEditPaper, 10) : null,
+          paperMode: resourceBankEditPaperMode || null,
+          paperLabelRaw: resourceBankEditPaperLabelRaw,
           grade: resourceBankEditGrade || undefined,
           parse: resourceBankEditParse ? '1' : undefined,
           aiNormalize: resourceBankEditParse && resourceBankEditAiNormalize ? '1' : undefined,
@@ -17155,7 +17243,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     } finally {
       setResourceBankEditing(false)
     }
-  }, [resourceBankEditItem, resourceBankEditTitle, resourceBankEditTag, resourceBankEditGrade, resourceBankEditParse, resourceBankEditAiNormalize, fetchResourceBankItems, resourceBankEffectiveGrade])
+  }, [resourceBankEditItem, resourceBankEditTitle, resourceBankEditTag, resourceBankEditSourceName, resourceBankEditAuthorityScope, resourceBankEditProvince, resourceBankEditExamCycle, resourceBankEditAssessmentType, resourceBankEditAssessmentFormality, resourceBankEditYear, resourceBankEditSessionMonth, resourceBankEditPaper, resourceBankEditPaperMode, resourceBankEditPaperLabelRaw, resourceBankEditGrade, resourceBankEditParse, resourceBankEditAiNormalize, fetchResourceBankItems, resourceBankEffectiveGrade])
 
   const openResourceBankExtract = useCallback((item: ResourceBankItem) => {
     setResourceBankExtractItem(item)
@@ -17179,6 +17267,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           year: resourceBankExtractYear,
           month: resourceBankExtractMonth,
           paper: resourceBankExtractPaper,
+          sourceName: resourceBankExtractItem.sourceName,
+          authorityScope: resourceBankExtractItem.authorityScope,
+          province: resourceBankExtractItem.province,
+          examCycle: resourceBankExtractItem.examCycle,
+          assessmentType: resourceBankExtractItem.assessmentType,
+          assessmentFormality: resourceBankExtractItem.assessmentFormality,
+          paperMode: resourceBankExtractItem.paperMode,
+          paperLabelRaw: resourceBankExtractItem.paperLabelRaw,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -17244,6 +17340,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           year: resourceBankImportYear,
           month: resourceBankImportMonth,
           paper: resourceBankImportPaper,
+          sourceName: resourceBankImportItem.sourceName,
+          authorityScope: resourceBankImportItem.authorityScope,
+          province: resourceBankImportItem.province,
+          examCycle: resourceBankImportItem.examCycle,
+          assessmentType: resourceBankImportItem.assessmentType,
+          assessmentFormality: resourceBankImportItem.assessmentFormality,
+          paperMode: resourceBankImportItem.paperMode,
+          paperLabelRaw: resourceBankImportItem.paperLabelRaw,
           payload: parsedPayload,
         }),
       })
@@ -17412,6 +17516,98 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </select>
               <div className="text-xs text-slate-500">Admin can move resources across grades.</div>
             </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Source Name</div>
+                <input className="input" value={resourceBankEditSourceName} onChange={(e) => setResourceBankEditSourceName(e.target.value)} placeholder="e.g. Gauteng DoE" />
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Province</div>
+                <input className="input" value={resourceBankEditProvince} onChange={(e) => setResourceBankEditProvince(e.target.value)} placeholder="e.g. KZN" />
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Authority</div>
+                <select className="input" value={resourceBankEditAuthorityScope} onChange={(e) => setResourceBankEditAuthorityScope(e.target.value)}>
+                  <option value="">(unchanged)</option>
+                  <option value="NATIONAL">National</option>
+                  <option value="PROVINCIAL">Provincial</option>
+                  <option value="DISTRICT">District</option>
+                  <option value="SCHOOL">School</option>
+                  <option value="INTERNAL">Internal</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Cycle</div>
+                <select className="input" value={resourceBankEditExamCycle} onChange={(e) => setResourceBankEditExamCycle(e.target.value)}>
+                  <option value="">(unchanged)</option>
+                  <option value="FINAL">Final</option>
+                  <option value="PRELIM">Prelim/Trial</option>
+                  <option value="QUARTERLY">Quarterly</option>
+                  <option value="COMMON_TEST">Common Test</option>
+                  <option value="SUPPLEMENTARY">Supplementary</option>
+                  <option value="INTERNAL">Internal</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Formality</div>
+                <select className="input" value={resourceBankEditAssessmentFormality} onChange={(e) => setResourceBankEditAssessmentFormality(e.target.value)}>
+                  <option value="">(unchanged)</option>
+                  <option value="FORMAL">Formal</option>
+                  <option value="INFORMAL">Informal</option>
+                  <option value="UNKNOWN">Unknown</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Assessment Type</div>
+                <select className="input" value={resourceBankEditAssessmentType} onChange={(e) => setResourceBankEditAssessmentType(e.target.value)}>
+                  <option value="">(unchanged)</option>
+                  <option value="EXAM">Exam</option>
+                  <option value="TEST">Test</option>
+                  <option value="ASSIGNMENT">Assignment</option>
+                  <option value="WORKSHEET">Worksheet</option>
+                  <option value="QUIZ">Quiz</option>
+                  <option value="UNKNOWN">Unknown</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Year</div>
+                <input className="input" type="number" min={1900} max={2100} value={resourceBankEditYear} onChange={(e) => setResourceBankEditYear(e.target.value)} placeholder="e.g. 2025" />
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Session Month</div>
+                <select className="input" value={resourceBankEditSessionMonth} onChange={(e) => setResourceBankEditSessionMonth(e.target.value)}>
+                  <option value="">(unchanged)</option>
+                  {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Paper #</div>
+                <input className="input" type="number" min={0} max={3} value={resourceBankEditPaper} onChange={(e) => setResourceBankEditPaper(e.target.value)} placeholder="0..3" />
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Paper Mode</div>
+                <select className="input" value={resourceBankEditPaperMode} onChange={(e) => setResourceBankEditPaperMode(e.target.value)}>
+                  <option value="">(unchanged)</option>
+                  <option value="P1">P1</option>
+                  <option value="P2">P2</option>
+                  <option value="P3">P3</option>
+                  <option value="COMBINED">Combined</option>
+                  <option value="UNKNOWN">Unknown</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-wide text-slate-600">Paper Label (raw)</div>
+                <input className="input" value={resourceBankEditPaperLabelRaw} onChange={(e) => setResourceBankEditPaperLabelRaw(e.target.value)} placeholder="e.g. Paper A / Formal Test" />
+              </div>
+            </div>
             <div className="flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-2 text-sm text-slate-900 select-none">
                 <input
@@ -17517,6 +17713,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                       value={resourceBankExtractPaper}
                       onChange={(e) => setResourceBankExtractPaper(parseInt(e.target.value, 10))}
                     >
+                      <option value={0} style={{ color: '#0f172a', backgroundColor: '#ffffff' }}>Combined / Unlabeled</option>
                       <option value={1} style={{ color: '#0f172a', backgroundColor: '#ffffff' }}>Paper 1</option>
                       <option value={2} style={{ color: '#0f172a', backgroundColor: '#ffffff' }}>Paper 2</option>
                       <option value={3} style={{ color: '#0f172a', backgroundColor: '#ffffff' }}>Paper 3</option>
@@ -17578,6 +17775,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <div className="space-y-1">
                 <div className="text-xs uppercase tracking-wide text-slate-600">Paper</div>
                 <select className="input" value={resourceBankImportPaper} onChange={(e) => setResourceBankImportPaper(parseInt(e.target.value, 10))}>
+                  <option value={0}>Combined / Unlabeled</option>
                   <option value={1}>Paper 1</option>
                   <option value={2}>Paper 2</option>
                   <option value={3}>Paper 3</option>
@@ -17794,6 +17992,114 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm placeholder:text-[#7b87a4]"
             />
           </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Source Name</label>
+              <input
+                type="text"
+                value={resourceBankSourceName}
+                onChange={(e) => setResourceBankSourceName(e.target.value)}
+                placeholder="e.g. Gauteng DoE / KZN Trial"
+                className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm placeholder:text-[#7b87a4]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Province</label>
+              <input
+                type="text"
+                value={resourceBankProvince}
+                onChange={(e) => setResourceBankProvince(e.target.value)}
+                placeholder="e.g. Gauteng / KZN"
+                className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm placeholder:text-[#7b87a4]"
+              />
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Authority</label>
+              <select value={resourceBankAuthorityScope} onChange={(e) => setResourceBankAuthorityScope(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm">
+                <option value="">Unspecified</option>
+                <option value="NATIONAL">National</option>
+                <option value="PROVINCIAL">Provincial</option>
+                <option value="DISTRICT">District</option>
+                <option value="SCHOOL">School</option>
+                <option value="INTERNAL">Internal</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Cycle</label>
+              <select value={resourceBankExamCycle} onChange={(e) => setResourceBankExamCycle(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm">
+                <option value="">Unspecified</option>
+                <option value="FINAL">Final</option>
+                <option value="PRELIM">Prelim/Trial</option>
+                <option value="QUARTERLY">Quarterly</option>
+                <option value="COMMON_TEST">Common Test</option>
+                <option value="SUPPLEMENTARY">Supplementary</option>
+                <option value="INTERNAL">Internal</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Formality</label>
+              <select value={resourceBankAssessmentFormality} onChange={(e) => setResourceBankAssessmentFormality(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm">
+                <option value="">Unspecified</option>
+                <option value="FORMAL">Formal</option>
+                <option value="INFORMAL">Informal</option>
+                <option value="UNKNOWN">Unknown</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-5">
+            <div>
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Assessment Type</label>
+              <select value={resourceBankAssessmentType} onChange={(e) => setResourceBankAssessmentType(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm">
+                <option value="">Unspecified</option>
+                <option value="EXAM">Exam</option>
+                <option value="TEST">Test</option>
+                <option value="ASSIGNMENT">Assignment</option>
+                <option value="WORKSHEET">Worksheet</option>
+                <option value="QUIZ">Quiz</option>
+                <option value="UNKNOWN">Unknown</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Year</label>
+              <input type="number" min={1900} max={2100} value={resourceBankSourceYear} onChange={(e) => setResourceBankSourceYear(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm" placeholder="2025" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Session Month</label>
+              <select value={resourceBankSessionMonth} onChange={(e) => setResourceBankSessionMonth(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm">
+                <option value="">Unspecified</option>
+                {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Paper #</label>
+              <input type="number" min={0} max={3} value={resourceBankSourcePaper} onChange={(e) => setResourceBankSourcePaper(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm" placeholder="0..3" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Paper Mode</label>
+              <select value={resourceBankPaperMode} onChange={(e) => setResourceBankPaperMode(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm">
+                <option value="">Unspecified</option>
+                <option value="P1">P1</option>
+                <option value="P2">P2</option>
+                <option value="P3">P3</option>
+                <option value="COMBINED">Combined</option>
+                <option value="UNKNOWN">Unknown</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Paper Label (raw)</label>
+            <input
+              type="text"
+              value={resourceBankPaperLabelRaw}
+              onChange={(e) => setResourceBankPaperLabelRaw(e.target.value)}
+              placeholder="e.g. Formal Test / Paper A / Combined"
+              className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm placeholder:text-[#7b87a4]"
+            />
+          </div>
           <div>
             <label className="block text-xs font-semibold text-[#1c1e21] mb-1">File</label>
             <input
@@ -17863,6 +18169,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     {gradeToLabel(item.grade)} · {new Date(item.createdAt).toLocaleDateString()}
                     {item.parsedAt ? <span className="ml-1 text-green-700">· Parsed</span> : null}
                   </div>
+                  {(item.sourceName || item.authorityScope || item.province || item.examCycle || item.assessmentType || item.assessmentFormality || item.year || item.sessionMonth || item.paperMode)
+                    ? (
+                      <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-[#4b5563]">
+                        {item.sourceName ? <span className="rounded-full bg-[#eef4ff] px-2 py-0.5">{item.sourceName}</span> : null}
+                        {item.authorityScope ? <span className="rounded-full bg-[#f5f6f7] px-2 py-0.5">{item.authorityScope}</span> : null}
+                        {item.province ? <span className="rounded-full bg-[#f5f6f7] px-2 py-0.5">{item.province}</span> : null}
+                        {item.examCycle ? <span className="rounded-full bg-[#fff4e5] px-2 py-0.5">{item.examCycle}</span> : null}
+                        {item.assessmentType ? <span className="rounded-full bg-[#edf7ed] px-2 py-0.5">{item.assessmentType}</span> : null}
+                        {item.assessmentFormality ? <span className="rounded-full bg-[#edf7ed] px-2 py-0.5">{item.assessmentFormality}</span> : null}
+                        {item.year ? <span className="rounded-full bg-[#f5f6f7] px-2 py-0.5">{item.year}</span> : null}
+                        {item.sessionMonth ? <span className="rounded-full bg-[#f5f6f7] px-2 py-0.5">{item.sessionMonth}</span> : null}
+                        {item.paperMode ? <span className="rounded-full bg-[#f5f6f7] px-2 py-0.5">{item.paperMode}{typeof item.paper === 'number' ? ` (${item.paper})` : ''}</span> : null}
+                      </div>
+                    )
+                    : null}
                   {item.parseError ? (
                     <button
                       type="button"

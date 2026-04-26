@@ -6,6 +6,19 @@ import { getUserGrade } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { upsertResourceBankItem } from '../../../lib/resourceBank'
 import { tryParseJsonLoose } from '../../../lib/geminiAssignmentExtract'
+import {
+  ASSESSMENT_FORMALITY_VALUES,
+  ASSESSMENT_TYPE_VALUES,
+  AUTHORITY_SCOPE_VALUES,
+  EXAM_CYCLE_VALUES,
+  PAPER_MODE_VALUES,
+  inferPaperMode,
+  normalizeEnumValue,
+  normalizePaperLabelRaw,
+  normalizePaperNumber,
+  normalizeProvince,
+  normalizeSourceName,
+} from '../../../lib/paperTaxonomy'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -276,6 +289,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       filename,
       title,
       tag,
+      sourceName,
+      authorityScope,
+      province,
+      examCycle,
+      assessmentType,
+      assessmentFormality,
+      year,
+      sessionMonth,
+      paper,
+      paperMode,
+      paperLabelRaw,
       grade: requestedGrade,
       contentType,
       size,
@@ -298,6 +322,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const shouldParse = ['1', 'true', 'yes', 'on'].includes(String(parse || '').trim().toLowerCase())
     const shouldConvertDocx = ['1', 'true', 'yes', 'on'].includes(String(convertDocx || '').trim().toLowerCase())
     const shouldAiNormalize = shouldParse && ['1', 'true', 'yes', 'on'].includes(String(aiNormalize || '').trim().toLowerCase())
+
+    const normalizedSourceName = normalizeSourceName(sourceName)
+    const normalizedAuthorityScope = normalizeEnumValue(authorityScope, AUTHORITY_SCOPE_VALUES)
+    const normalizedProvince = normalizeProvince(province)
+    const normalizedExamCycle = normalizeEnumValue(examCycle, EXAM_CYCLE_VALUES)
+    const normalizedAssessmentType = normalizeEnumValue(assessmentType, ASSESSMENT_TYPE_VALUES)
+    const normalizedAssessmentFormality = normalizeEnumValue(assessmentFormality, ASSESSMENT_FORMALITY_VALUES)
+    const normalizedYearRaw = Number.parseInt(String(year || ''), 10)
+    const normalizedYear = Number.isFinite(normalizedYearRaw) && normalizedYearRaw >= 1900 && normalizedYearRaw <= 2100
+      ? normalizedYearRaw
+      : null
+    const normalizedSessionMonth = String(sessionMonth || '').trim() || null
+    const normalizedPaper = normalizePaperNumber(paper)
+    const normalizedPaperModeExplicit = normalizeEnumValue(paperMode, PAPER_MODE_VALUES)
+    const normalizedPaperMode = inferPaperMode(normalizedPaper, normalizedPaperModeExplicit)
+    const normalizedPaperLabelRaw = normalizePaperLabelRaw(paperLabelRaw)
 
     const storedSize = typeof size === 'number' ? size : typeof size === 'string' ? Number(size) : null
     const mime = String(contentType || '').trim() || null
@@ -547,6 +587,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       grade,
       title: String(title || '').trim() || String(filename || '').trim() || 'Resource',
       tag: String(tag || '').trim() || null,
+      sourceName: normalizedSourceName,
+      authorityScope: normalizedAuthorityScope || null,
+      province: normalizedProvince,
+      examCycle: normalizedExamCycle || null,
+      assessmentType: normalizedAssessmentType || null,
+      assessmentFormality: normalizedAssessmentFormality || null,
+      year: normalizedYear,
+      sessionMonth: normalizedSessionMonth,
+      paper: typeof normalizedPaper === 'number' ? normalizedPaper : null,
+      paperMode: normalizedPaperMode,
+      paperLabelRaw: normalizedPaperLabelRaw,
       url: cleanUrl,
       filename: String(filename || '').trim() || null,
       contentType: mime,

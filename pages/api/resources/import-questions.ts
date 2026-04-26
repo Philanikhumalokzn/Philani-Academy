@@ -6,6 +6,19 @@ import { getUserGrade } from '../../../lib/auth'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { normalizeExamQuestionContent } from '../../../lib/questionMath'
 import { upsertResourceBankItem } from '../../../lib/resourceBank'
+import {
+  ASSESSMENT_FORMALITY_VALUES,
+  ASSESSMENT_TYPE_VALUES,
+  AUTHORITY_SCOPE_VALUES,
+  EXAM_CYCLE_VALUES,
+  PAPER_MODE_VALUES,
+  inferPaperMode,
+  normalizeEnumValue,
+  normalizePaperLabelRaw,
+  normalizePaperNumber,
+  normalizeProvince,
+  normalizeSourceName,
+} from '../../../lib/paperTaxonomy'
 
 export const config = {
   api: {
@@ -89,6 +102,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     year?: number
     month?: string
     paper?: number
+    sourceName?: string
+    authorityScope?: string
+    province?: string
+    examCycle?: string
+    assessmentType?: string
+    assessmentFormality?: string
+    paperMode?: string
+    paperLabelRaw?: string
     payload?: unknown
   }
 
@@ -98,9 +119,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!month || !VALID_MONTHS.includes(month)) {
     return res.status(400).json({ message: `month must be one of: ${VALID_MONTHS.join(', ')}` })
   }
-  if (!paper || (paper !== 1 && paper !== 2 && paper !== 3)) {
-    return res.status(400).json({ message: 'paper must be 1, 2, or 3' })
+  const normalizedPaper = normalizePaperNumber(paper)
+  if (normalizedPaper === undefined) {
+    return res.status(400).json({ message: 'paper must be 0, 1, 2, or 3' })
   }
+
+  const resolvedSourceName = normalizeSourceName((req.body as any)?.sourceName)
+  const resolvedAuthorityScope = normalizeEnumValue((req.body as any)?.authorityScope, AUTHORITY_SCOPE_VALUES)
+  const resolvedProvince = normalizeProvince((req.body as any)?.province)
+  const resolvedExamCycle = normalizeEnumValue((req.body as any)?.examCycle, EXAM_CYCLE_VALUES)
+  const resolvedAssessmentType = normalizeEnumValue((req.body as any)?.assessmentType, ASSESSMENT_TYPE_VALUES)
+  const resolvedAssessmentFormality = normalizeEnumValue((req.body as any)?.assessmentFormality, ASSESSMENT_FORMALITY_VALUES)
+  const explicitPaperMode = normalizeEnumValue((req.body as any)?.paperMode, PAPER_MODE_VALUES)
+  const resolvedPaperMode = inferPaperMode(normalizedPaper, explicitPaperMode)
+  const resolvedPaperLabelRaw = normalizePaperLabelRaw((req.body as any)?.paperLabelRaw)
 
   const questions = coerceQuestionsArray(payload)
   if (!questions) {
@@ -140,6 +172,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       grade,
       title: String((req.body as any)?.title || 'Parsed question import').trim() || 'Parsed question import',
       tag: String((req.body as any)?.tag || '').trim() || null,
+      sourceName: resolvedSourceName,
+      authorityScope: resolvedAuthorityScope || null,
+      province: resolvedProvince,
+      examCycle: resolvedExamCycle || null,
+      assessmentType: resolvedAssessmentType || null,
+      assessmentFormality: resolvedAssessmentFormality || null,
+      year,
+      sessionMonth: month,
+      paper: normalizedPaper,
+      paperMode: resolvedPaperMode,
+      paperLabelRaw: resolvedPaperLabelRaw,
       url: cleanUrl,
       filename: String((req.body as any)?.filename || 'parsed-questions.json').trim() || 'parsed-questions.json',
       contentType: String((req.body as any)?.contentType || 'application/json').trim() || 'application/json',
@@ -209,7 +252,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         grade: resource.grade,
         year,
         month,
-        paper,
+        paper: normalizedPaper,
         questionNumber: qNum,
         questionText: qText,
         latex: latex || null,
@@ -229,7 +272,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           grade: resource.grade,
           year,
           month,
-          paper,
+          paper: normalizedPaper,
+          paperMode: resolvedPaperMode as any,
+          paperLabelRaw: resolvedPaperLabelRaw,
+          sourceName: resolvedSourceName,
+          authorityScope: resolvedAuthorityScope as any,
+          province: resolvedProvince,
+          examCycle: resolvedExamCycle as any,
+          assessmentType: resolvedAssessmentType as any,
+          assessmentFormality: resolvedAssessmentFormality as any,
           questionNumber: qNum,
           questionDepth: depth,
           topic,

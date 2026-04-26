@@ -4,6 +4,19 @@ import katex from 'katex'
 import prisma from '../../../lib/prisma'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { tryParseJsonLoose } from '../../../lib/geminiAssignmentExtract'
+import {
+  ASSESSMENT_FORMALITY_VALUES,
+  ASSESSMENT_TYPE_VALUES,
+  AUTHORITY_SCOPE_VALUES,
+  EXAM_CYCLE_VALUES,
+  PAPER_MODE_VALUES,
+  inferPaperMode,
+  normalizeEnumValue,
+  normalizePaperLabelRaw,
+  normalizePaperNumber,
+  normalizeProvince,
+  normalizeSourceName,
+} from '../../../lib/paperTaxonomy'
 import { normalizeExamQuestionContent } from '../../../lib/questionMath'
 import { scoreTopicMap } from '../../../lib/examTopicRegex'
 
@@ -1556,25 +1569,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     year?: number
     month?: string
     paper?: number
+    sourceName?: string
+    authorityScope?: string
+    province?: string
+    examCycle?: string
+    assessmentType?: string
+    assessmentFormality?: string
+    paperMode?: string
+    paperLabelRaw?: string
   }
 
   if (!resourceId || typeof resourceId !== 'string') {
     return res.status(400).json({ message: 'resourceId is required' })
   }
-  if (!year || typeof year !== 'number' || year < 2000 || year > 2100) {
-    return res.status(400).json({ message: 'Valid year (2000-2100) is required' })
-  }
-  if (!month || !VALID_MONTHS.includes(month)) {
-    return res.status(400).json({ message: `month must be one of: ${VALID_MONTHS.join(', ')}` })
-  }
-  if (!paper || (paper !== 1 && paper !== 2 && paper !== 3)) {
-    return res.status(400).json({ message: 'paper must be 1, 2, or 3' })
-  }
 
   // Fetch the resource
   const resource = await prisma.resourceBankItem.findUnique({
     where: { id: resourceId },
-    select: { id: true, grade: true, title: true, parsedJson: true, parsedAt: true },
+    select: {
+      id: true,
+      grade: true,
+      title: true,
+      parsedJson: true,
+      parsedAt: true,
+      sourceName: true,
+      authorityScope: true,
+      province: true,
+      examCycle: true,
+      assessmentType: true,
+      assessmentFormality: true,
+      year: true,
+      sessionMonth: true,
+      paper: true,
+      paperMode: true,
+      paperLabelRaw: true,
+    },
   })
 
   if (!resource) {
@@ -1583,6 +1612,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!resource.parsedJson) {
     return res.status(400).json({ message: 'Resource has not been parsed yet. Parse it first using Mathpix OCR.' })
   }
+
+  const requestedYear = typeof year === 'number' && Number.isFinite(year) ? year : Number.parseInt(String(year || ''), 10)
+  const resolvedYear = Number.isFinite(requestedYear) ? requestedYear : (typeof resource.year === 'number' ? resource.year : NaN)
+  if (!Number.isFinite(resolvedYear) || resolvedYear < 2000 || resolvedYear > 2100) {
+    return res.status(400).json({ message: 'Valid year (2000-2100) is required (provide it in extract form or resource metadata).' })
+  }
+
+  const resolvedMonth = String(month || resource.sessionMonth || '').trim()
+  if (!VALID_MONTHS.includes(resolvedMonth)) {
+    return res.status(400).json({ message: `month must be one of: ${VALID_MONTHS.join(', ')}` })
+  }
+
+  const requestedPaper = normalizePaperNumber(paper)
+  const resourcePaper = normalizePaperNumber(resource.paper)
+  const resolvedPaper = requestedPaper ?? resourcePaper
+  if (resolvedPaper === undefined) {
+    return res.status(400).json({ message: 'paper is required (0 for combined/unknown, or 1/2/3 for labeled papers).' })
+  }
+
+  const explicitPaperMode = normalizeEnumValue(req.body?.paperMode, PAPER_MODE_VALUES)
+    || normalizeEnumValue(resource.paperMode, PAPER_MODE_VALUES)
+  const resolvedPaperMode = inferPaperMode(resolvedPaper, explicitPaperMode)
+  const resolvedSourceName = normalizeSourceName(req.body?.sourceName) ?? normalizeSourceName(resource.sourceName)
+  const resolvedAuthorityScope = normalizeEnumValue(req.body?.authorityScope, AUTHORITY_SCOPE_VALUES)
+    || normalizeEnumValue(resource.authorityScope, AUTHORITY_SCOPE_VALUES)
+  const resolvedProvince = normalizeProvince(req.body?.province) ?? normalizeProvince(resource.province)
+  const resolvedExamCycle = normalizeEnumValue(req.body?.examCycle, EXAM_CYCLE_VALUES)
+    || normalizeEnumValue(resource.examCycle, EXAM_CYCLE_VALUES)
+  const resolvedAssessmentType = normalizeEnumValue(req.body?.assessmentType, ASSESSMENT_TYPE_VALUES)
+    || normalizeEnumValue(resource.assessmentType, ASSESSMENT_TYPE_VALUES)
+  const resolvedAssessmentFormality = normalizeEnumValue(req.body?.assessmentFormality, ASSESSMENT_FORMALITY_VALUES)
+    || normalizeEnumValue(resource.assessmentFormality, ASSESSMENT_FORMALITY_VALUES)
+  const resolvedPaperLabelRaw = normalizePaperLabelRaw(req.body?.paperLabelRaw) ?? normalizePaperLabelRaw(resource.paperLabelRaw)
 
   const provider = getExtractProvider()
   const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim()
@@ -1605,7 +1667,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const inputText = (rawMmd || rawText).slice(0, 24000)
   const prompt =
     `You are a South African National Senior Certificate (NSC) Mathematics exam parser.\n` +
-    `You are given OCR/Mathpix output from a ${gradeLabel} Mathematics Paper ${paper} exam (${month} ${year}).\n` +
+    `You are given OCR/Mathpix output from a ${gradeLabel} Mathematics Paper ${resolvedPaper} exam (${resolvedMonth} ${resolvedYear}).\n` +
     `The input uses Mathpix Markdown (MMD): math is already in LaTeX, and data tables appear as GitHub-Flavored Markdown pipe tables.\n\n` +
     `Extract every question and sub-question as a JSON array. Rules:\n` +
     `- questionNumber: the dot-notation number exactly as it appears (e.g. "1", "1.1", "1.1.2")\n` +
@@ -1776,9 +1838,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const existingExact = await prisma.examQuestion.findFirst({
       where: {
         grade: gradeEnum,
-        year,
-        month,
-        paper,
+        year: resolvedYear,
+        month: resolvedMonth,
+        paper: resolvedPaper,
         questionNumber: qNum,
         questionText: qText,
         latex: latex || null,
@@ -1794,6 +1856,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (existingExact.marks == null && marks != null) updateData.marks = marks
       if (!existingExact.topic && topic) updateData.topic = topic
       if (existingExact.cognitiveLevel == null && cl != null) updateData.cognitiveLevel = cl
+      updateData.paperMode = resolvedPaperMode
+      if (resolvedSourceName) updateData.sourceName = resolvedSourceName
+      if (resolvedAuthorityScope) updateData.authorityScope = resolvedAuthorityScope
+      if (resolvedProvince) updateData.province = resolvedProvince
+      if (resolvedExamCycle) updateData.examCycle = resolvedExamCycle
+      if (resolvedAssessmentType) updateData.assessmentType = resolvedAssessmentType
+      if (resolvedAssessmentFormality) updateData.assessmentFormality = resolvedAssessmentFormality
+      if (resolvedPaperLabelRaw) updateData.paperLabelRaw = resolvedPaperLabelRaw
 
       if (Object.keys(updateData).length > 0) {
         try {
@@ -1815,9 +1885,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         data: {
           sourceId: resource.id,
           grade: gradeEnum,
-          year,
-          month,
-          paper,
+          year: resolvedYear,
+          month: resolvedMonth,
+          paper: resolvedPaper,
+          paperMode: resolvedPaperMode as any,
+          paperLabelRaw: resolvedPaperLabelRaw,
+          sourceName: resolvedSourceName,
+          authorityScope: resolvedAuthorityScope as any,
+          province: resolvedProvince,
+          examCycle: resolvedExamCycle as any,
+          assessmentType: resolvedAssessmentType as any,
+          assessmentFormality: resolvedAssessmentFormality as any,
           questionNumber: qNum,
           questionDepth: depth,
           topic: topic || null,

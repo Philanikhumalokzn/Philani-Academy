@@ -15,6 +15,46 @@ enum Grade {
   GRADE_12
 }
 
+enum ExamCycle {
+  FINAL
+  PRELIM
+  QUARTERLY
+  COMMON_TEST
+  SUPPLEMENTARY
+  INTERNAL
+}
+
+enum PaperMode {
+  P1
+  P2
+  P3
+  COMBINED
+  UNKNOWN
+}
+
+enum AuthorityScope {
+  NATIONAL
+  PROVINCIAL
+  DISTRICT
+  SCHOOL
+  INTERNAL
+}
+
+enum AssessmentType {
+  EXAM
+  TEST
+  ASSIGNMENT
+  WORKSHEET
+  QUIZ
+  UNKNOWN
+}
+
+enum AssessmentFormality {
+  FORMAL
+  INFORMAL
+  UNKNOWN
+}
+
 model User {
   id        String  @id @default(cuid())
   name      String?
@@ -117,6 +157,17 @@ model ResourceBankItem {
   grade       Grade
   title       String
   tag         String?
+  sourceName  String?
+  authorityScope AuthorityScope?
+  province    String?
+  examCycle   ExamCycle?
+  assessmentType AssessmentType?
+  assessmentFormality AssessmentFormality?
+  year        Int?
+  sessionMonth String?
+  paper       Int?
+  paperMode   PaperMode?
+  paperLabelRaw String?
   url         String
   filename    String?
   contentType String?
@@ -136,6 +187,7 @@ model ResourceBankItem {
   createdAt   DateTime @default(now())
 
   @@index([grade, createdAt])
+  @@index([grade, year, sessionMonth, paperMode, createdAt])
   @@index([createdById, createdAt])
   @@unique([grade, checksum])
 }
@@ -148,7 +200,17 @@ model ExamQuestion {
   grade          Grade
   year           Int
   month          String   // "March" | "June" | "September" | "November"
-  paper          Int      // 1 or 2
+  paper          Int      // 0=combined/unknown, 1/2/3=labeled papers
+  paperMode      PaperMode? @default(UNKNOWN)
+  paperLabelRaw  String?
+
+  // Source taxonomy metadata
+  sourceName         String?
+  authorityScope     AuthorityScope?
+  province           String?
+  examCycle          ExamCycle?
+  assessmentType     AssessmentType?
+  assessmentFormality AssessmentFormality?
 
   // Question identity
   questionNumber String   // "1", "1.1", "1.1.5"
@@ -175,6 +237,8 @@ model ExamQuestion {
   updatedAt      DateTime @updatedAt
 
   @@index([grade, year, month, paper])
+  @@index([grade, year, month, paperMode])
+  @@index([authorityScope, province, examCycle])
   @@index([topic, cognitiveLevel])
   @@index([questionNumber])
   @@index([sourceId])

@@ -3,6 +3,19 @@ import { getToken } from 'next-auth/jwt'
 import prisma from '../../../lib/prisma'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { tryParseJsonLoose } from '../../../lib/geminiAssignmentExtract'
+import {
+  ASSESSMENT_FORMALITY_VALUES,
+  ASSESSMENT_TYPE_VALUES,
+  AUTHORITY_SCOPE_VALUES,
+  EXAM_CYCLE_VALUES,
+  PAPER_MODE_VALUES,
+  inferPaperMode,
+  normalizeEnumValue,
+  normalizePaperLabelRaw,
+  normalizePaperNumber,
+  normalizeProvince,
+  normalizeSourceName,
+} from '../../../lib/paperTaxonomy'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -237,6 +250,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const nextTitle = typeof body.title === 'string' ? body.title.trim() : undefined
     const nextTag = typeof body.tag === 'string' ? body.tag.trim() : undefined
     const nextGrade = normalizeGradeInput(body.grade)
+    const nextSourceName = body.sourceName !== undefined ? normalizeSourceName(body.sourceName) : undefined
+    const nextAuthorityScope = body.authorityScope !== undefined ? normalizeEnumValue(body.authorityScope, AUTHORITY_SCOPE_VALUES) : undefined
+    const nextProvince = body.province !== undefined ? normalizeProvince(body.province) : undefined
+    const nextExamCycle = body.examCycle !== undefined ? normalizeEnumValue(body.examCycle, EXAM_CYCLE_VALUES) : undefined
+    const nextAssessmentType = body.assessmentType !== undefined ? normalizeEnumValue(body.assessmentType, ASSESSMENT_TYPE_VALUES) : undefined
+    const nextAssessmentFormality = body.assessmentFormality !== undefined ? normalizeEnumValue(body.assessmentFormality, ASSESSMENT_FORMALITY_VALUES) : undefined
+    const nextYear = body.year !== undefined
+      ? (() => {
+          const value = Number.parseInt(String(body.year || ''), 10)
+          return Number.isFinite(value) && value >= 1900 && value <= 2100 ? value : null
+        })()
+      : undefined
+    const nextSessionMonth = body.sessionMonth !== undefined ? (String(body.sessionMonth || '').trim() || null) : undefined
+    const nextPaper = body.paper !== undefined ? (normalizePaperNumber(body.paper) ?? null) : undefined
+    const explicitPaperMode = body.paperMode !== undefined ? normalizeEnumValue(body.paperMode, PAPER_MODE_VALUES) : undefined
+    const nextPaperMode = body.paperMode !== undefined || body.paper !== undefined
+      ? inferPaperMode(nextPaper === undefined ? normalizePaperNumber(item.paper) : nextPaper ?? undefined, explicitPaperMode)
+      : undefined
+    const nextPaperLabelRaw = body.paperLabelRaw !== undefined ? normalizePaperLabelRaw(body.paperLabelRaw) : undefined
 
     const shouldParse = ['1', 'true', 'yes', 'on'].includes(String(body.parse || '').trim().toLowerCase())
     const shouldAiNormalize = shouldParse && ['1', 'true', 'yes', 'on'].includes(String(body.aiNormalize || '').trim().toLowerCase())
@@ -406,6 +438,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         title: nextTitle ? nextTitle : undefined,
         tag: nextTag != null ? (nextTag || null) : undefined,
         grade: nextGrade ? nextGrade : undefined,
+        sourceName: nextSourceName,
+        authorityScope: nextAuthorityScope as any,
+        province: nextProvince,
+        examCycle: nextExamCycle as any,
+        assessmentType: nextAssessmentType as any,
+        assessmentFormality: nextAssessmentFormality as any,
+        year: nextYear,
+        sessionMonth: nextSessionMonth,
+        paper: nextPaper,
+        paperMode: nextPaperMode as any,
+        paperLabelRaw: nextPaperLabelRaw,
         parsedJson: shouldParse ? parsedJson : undefined,
         parsedAt: shouldParse ? (parsedAt || null) : undefined,
         parseError: shouldParse ? (parseError || null) : undefined,

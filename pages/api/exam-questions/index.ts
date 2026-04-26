@@ -1157,7 +1157,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!searchQuery) {
     if (year && Number.isFinite(year)) where.year = year
     if (month) where.month = month
-    if (paper && Number.isFinite(paper)) where.paper = paper
+    if (Number.isFinite(paper as number)) where.paper = paper
     if (topic) where.topic = topic
     if (cognitiveLevel && Number.isFinite(cognitiveLevel)) where.cognitiveLevel = cognitiveLevel
     if (questionNumber) where.questionNumber = { startsWith: questionNumber }

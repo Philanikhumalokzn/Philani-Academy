@@ -15,6 +15,17 @@ export async function computeFileSha256Hex(filePath: string): Promise<string> {
 export async function upsertResourceBankItem(input: {
   grade: any
   title: string
+  sourceName?: string | null
+  authorityScope?: string | null
+  province?: string | null
+  examCycle?: string | null
+  assessmentType?: string | null
+  assessmentFormality?: string | null
+  year?: number | null
+  sessionMonth?: string | null
+  paper?: number | null
+  paperMode?: string | null
+  paperLabelRaw?: string | null
   url: string
   filename?: string | null
   contentType?: string | null
@@ -47,6 +58,17 @@ export async function upsertResourceBankItem(input: {
       return await prisma.resourceBankItem.update({
         where: { id: existing.id },
         data: {
+          sourceName: input.sourceName != null ? (String(input.sourceName).trim() || null) : undefined,
+          authorityScope: input.authorityScope != null ? (input.authorityScope as any) : undefined,
+          province: input.province != null ? (String(input.province).trim() || null) : undefined,
+          examCycle: input.examCycle != null ? (input.examCycle as any) : undefined,
+          assessmentType: input.assessmentType != null ? (input.assessmentType as any) : undefined,
+          assessmentFormality: input.assessmentFormality != null ? (input.assessmentFormality as any) : undefined,
+          year: typeof input.year === 'number' ? input.year : input.year === null ? null : undefined,
+          sessionMonth: input.sessionMonth != null ? (String(input.sessionMonth).trim() || null) : undefined,
+          paper: typeof input.paper === 'number' ? input.paper : input.paper === null ? null : undefined,
+          paperMode: input.paperMode != null ? (input.paperMode as any) : undefined,
+          paperLabelRaw: input.paperLabelRaw != null ? (String(input.paperLabelRaw).trim() || null) : undefined,
           parsedJson: input.parsedJson ?? undefined,
           parsedAt: input.parsedAt ?? undefined,
           parseError: typeof input.parseError === 'string' ? input.parseError : input.parseError === null ? null : undefined,
@@ -60,6 +82,17 @@ export async function upsertResourceBankItem(input: {
       grade: input.grade,
       title,
       tag: (input.tag || '').trim() || null,
+      sourceName: (input.sourceName || '').trim() || null,
+      authorityScope: input.authorityScope ? (input.authorityScope as any) : null,
+      province: (input.province || '').trim() || null,
+      examCycle: input.examCycle ? (input.examCycle as any) : null,
+      assessmentType: input.assessmentType ? (input.assessmentType as any) : null,
+      assessmentFormality: input.assessmentFormality ? (input.assessmentFormality as any) : null,
+      year: typeof input.year === 'number' ? input.year : null,
+      sessionMonth: (input.sessionMonth || '').trim() || null,
+      paper: typeof input.paper === 'number' ? input.paper : null,
+      paperMode: input.paperMode ? (input.paperMode as any) : null,
+      paperLabelRaw: (input.paperLabelRaw || '').trim() || null,
       url,
       filename: (input.filename || '').trim() || null,
       contentType: (input.contentType || '').trim() || null,

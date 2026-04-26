@@ -35,9 +35,12 @@ export const VALID_TOPICS = [
   'Calculus', 'Sequences and Series', 'Polynomials',
 ]
 
-export const GRADE_8_9_EXTRA_TOPICS = [
-  'Number, Operations and Relations',
+export const GET_CAPS_TOPICS = [
+  'Number, Operations and Relationships',
+  'Patterns, Functions and Algebra',
+  'Space and Shape (Geometry)',
   'Measurement',
+  'Data Handling',
 ]
 
 // Maps normalizeTopicText(aiOutput) → canonical label.
@@ -91,23 +94,45 @@ const TOPIC_ALIAS_MAP: Record<string, string> = {
   'linear number patterns': 'Number Patterns',
   'general term': 'Number Patterns',
 
-  // Number, Operations and Relations (Grade 8/9)
-  'number operations and relations': 'Number, Operations and Relations',
-  'number operations relations': 'Number, Operations and Relations',
-  'operations and relations': 'Number, Operations and Relations',
-  'numbers operations and relations': 'Number, Operations and Relations',
-  'numbers operations relations': 'Number, Operations and Relations',
-  'integers and rational numbers': 'Number, Operations and Relations',
-  'ratio rate and proportion': 'Number, Operations and Relations',
-  'ratio and proportion': 'Number, Operations and Relations',
+  // CAPS GET (Grades 7-9)
+  'number operations and relationships': 'Number, Operations and Relationships',
+  'number operations relationships': 'Number, Operations and Relationships',
+  'number operations and relations': 'Number, Operations and Relationships',
+  'number operations relations': 'Number, Operations and Relationships',
+  'operations and relationships': 'Number, Operations and Relationships',
+  'operations and relations': 'Number, Operations and Relationships',
+  'numbers operations and relationships': 'Number, Operations and Relationships',
+  'numbers operations and relations': 'Number, Operations and Relationships',
+  'numbers operations relationships': 'Number, Operations and Relationships',
+  'numbers operations relations': 'Number, Operations and Relationships',
+  'integers and rational numbers': 'Number, Operations and Relationships',
+  'ratio rate and proportion': 'Number, Operations and Relationships',
+  'ratio and proportion': 'Number, Operations and Relationships',
 
-  // Measurement (Grade 8/9)
+  'patterns functions and algebra': 'Patterns, Functions and Algebra',
+  'patterns functions algebra': 'Patterns, Functions and Algebra',
+  'pattern functions and algebra': 'Patterns, Functions and Algebra',
+  'patterns and algebra': 'Patterns, Functions and Algebra',
+
+  'space and shape geometry': 'Space and Shape (Geometry)',
+  'space and shape': 'Space and Shape (Geometry)',
+  'shape and space': 'Space and Shape (Geometry)',
+  'geometry': 'Space and Shape (Geometry)',
+  'geometric constructions': 'Space and Shape (Geometry)',
+
+  // Measurement
   'measurement': 'Measurement',
   'mensuration': 'Measurement',
   'perimeter area and volume': 'Measurement',
   'perimeter area volume': 'Measurement',
   'surface area and volume': 'Measurement',
   'surface area volume': 'Measurement',
+
+  'data handling': 'Data Handling',
+  'statistics': 'Data Handling',
+  'probability': 'Data Handling',
+  'graphs and data': 'Data Handling',
+  'data representation': 'Data Handling',
 
   // Finance
   'finance': 'Finance',
@@ -149,7 +174,6 @@ const TOPIC_ALIAS_MAP: Record<string, string> = {
   // Euclidean Geometry
   'euclidean geometry': 'Euclidean Geometry',
   'euclidean': 'Euclidean Geometry',
-  'geometry': 'Euclidean Geometry',
   'circle geometry': 'Euclidean Geometry',
   'circles': 'Euclidean Geometry',
   'triangles': 'Euclidean Geometry',
@@ -176,8 +200,6 @@ const TOPIC_ALIAS_MAP: Record<string, string> = {
   'gradient': 'Analytical Geometry',
 
   // Statistics
-  'statistics': 'Statistics',
-  'data handling': 'Statistics',
   'data': 'Statistics',
   'measures of central tendency': 'Statistics',
   'mean median mode': 'Statistics',
@@ -192,7 +214,6 @@ const TOPIC_ALIAS_MAP: Record<string, string> = {
   'bivariate data': 'Statistics',
 
   // Probability
-  'probability': 'Probability',
   'probability and counting': 'Probability',
   'counting principles': 'Probability',
   'fundamental counting principle': 'Probability',
@@ -255,13 +276,17 @@ const TOPIC_ANCHOR_WORDS: Record<string, string> = {
   'parabola': 'Functions', 'hyperbola': 'Functions', 'asymptote': 'Functions',
   'exponential': 'Functions', 'logarithm': 'Functions', 'logarithmic': 'Functions',
   'inverse': 'Functions',
+  'pattern': 'Patterns, Functions and Algebra', 'patterns': 'Patterns, Functions and Algebra',
   'arithmetic': 'Sequences and Series', 'geometric': 'Sequences and Series',
   'sigma': 'Sequences and Series', 'convergent': 'Sequences and Series',
-  'integer': 'Number, Operations and Relations', 'integers': 'Number, Operations and Relations',
-  'rational': 'Number, Operations and Relations', 'ratio': 'Number, Operations and Relations',
-  'proportion': 'Number, Operations and Relations',
+  'integer': 'Number, Operations and Relationships', 'integers': 'Number, Operations and Relationships',
+  'rational': 'Number, Operations and Relationships', 'ratio': 'Number, Operations and Relationships',
+  'proportion': 'Number, Operations and Relationships',
+  'space': 'Space and Shape (Geometry)', 'shape': 'Space and Shape (Geometry)',
   'measurement': 'Measurement', 'perimeter': 'Measurement', 'area': 'Measurement',
   'volume': 'Measurement', 'capacity': 'Measurement', 'conversion': 'Measurement',
+  'data': 'Data Handling', 'histogram': 'Data Handling', 'scatter': 'Data Handling',
+  'chance': 'Data Handling',
   'annuity': 'Finance', 'depreciation': 'Finance', 'inflation': 'Finance', 'nominal': 'Finance',
   'effective': 'Finance', 'compound': 'Finance', 'hire': 'Finance',
   'circle': 'Euclidean Geometry', 'triangle': 'Euclidean Geometry', 'chord': 'Euclidean Geometry',
@@ -286,14 +311,16 @@ function normalizeTopicText(value: string): string {
 }
 
 export function getAllowedTopicsForGrade(grade: unknown): string[] {
-  const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : String(grade || ''))
+  const gradeText = String(grade || '').trim()
+  const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : gradeText)
+  const gradeDigits = gradeText.replace(/[^0-9]/g, '')
   if (normalizedGrade === 'GRADE_12') return [...VALID_TOPICS]
 
-  const topicsWithoutCalculus = VALID_TOPICS.filter((topic) => topic !== 'Calculus')
-  if (normalizedGrade === 'GRADE_8' || normalizedGrade === 'GRADE_9') {
-    return [...topicsWithoutCalculus, ...GRADE_8_9_EXTRA_TOPICS]
+  if (normalizedGrade === 'GRADE_8' || normalizedGrade === 'GRADE_9' || gradeDigits === '7') {
+    return [...GET_CAPS_TOPICS]
   }
 
+  const topicsWithoutCalculus = VALID_TOPICS.filter((topic) => topic !== 'Calculus')
   return topicsWithoutCalculus
 }
 

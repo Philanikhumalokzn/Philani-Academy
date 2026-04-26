@@ -14447,7 +14447,13 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     )
   }
 
-  const QB_GRADE_8_9_EXTRA_TOPICS = ['Number, Operations and Relations', 'Measurement'] as const
+  const QB_GET_CAPS_TOPICS = [
+    'Number, Operations and Relationships',
+    'Patterns, Functions and Algebra',
+    'Space and Shape (Geometry)',
+    'Measurement',
+    'Data Handling',
+  ] as const
   const QB_TOPICS_BASE = [
     'Algebra', 'Functions', 'Number Patterns', 'Finance', 'Trigonometry',
     'Euclidean Geometry', 'Analytical Geometry', 'Statistics', 'Probability',
@@ -14455,13 +14461,14 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   ] as const
 
   const getQbTopicsForGrade = (grade: unknown): string[] => {
-    const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : String(grade || ''))
+    const gradeText = String(grade || '').trim()
+    const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : gradeText)
+    const gradeDigits = gradeText.replace(/[^0-9]/g, '')
     const withoutCalculus = QB_TOPICS_BASE.filter((topic) => topic !== 'Calculus')
 
     if (normalizedGrade === 'GRADE_12') return [...QB_TOPICS_BASE]
-    if (normalizedGrade === 'GRADE_8' || normalizedGrade === 'GRADE_9') {
-      const otherRemoved = withoutCalculus.filter((topic) => topic !== 'Other')
-      return [...otherRemoved, ...QB_GRADE_8_9_EXTRA_TOPICS, 'Other']
+    if (normalizedGrade === 'GRADE_8' || normalizedGrade === 'GRADE_9' || gradeDigits === '7') {
+      return [...QB_GET_CAPS_TOPICS, 'Other']
     }
     return withoutCalculus
   }

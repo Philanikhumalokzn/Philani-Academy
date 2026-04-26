@@ -12,7 +12,7 @@ export const config = {
 }
 
 const VALID_TOPICS = [
-  'Algebra', 'Functions', 'Number Patterns', 'Number, Operations and Relations', 'Measurement', 'Finance', 'Trigonometry',
+  'Algebra', 'Functions', 'Number Patterns', 'Number, Operations and Relationships', 'Patterns, Functions and Algebra', 'Space and Shape (Geometry)', 'Measurement', 'Data Handling', 'Finance', 'Trigonometry',
   'Euclidean Geometry', 'Analytical Geometry', 'Statistics', 'Probability',
   'Calculus', 'Sequences and Series', 'Polynomials', 'Other',
 ]
@@ -57,11 +57,18 @@ const SEARCH_TOPIC_ALIASES = [
   ['number patterns', 'Number Patterns'],
   ['pattern', 'Number Patterns'],
   ['patterns', 'Number Patterns'],
-  ['number operations and relations', 'Number, Operations and Relations'],
-  ['number operations relations', 'Number, Operations and Relations'],
-  ['operations and relations', 'Number, Operations and Relations'],
+  ['number operations and relationships', 'Number, Operations and Relationships'],
+  ['number operations relationships', 'Number, Operations and Relationships'],
+  ['number operations and relations', 'Number, Operations and Relationships'],
+  ['number operations relations', 'Number, Operations and Relationships'],
+  ['operations and relationships', 'Number, Operations and Relationships'],
+  ['operations and relations', 'Number, Operations and Relationships'],
+  ['patterns functions and algebra', 'Patterns, Functions and Algebra'],
+  ['space and shape', 'Space and Shape (Geometry)'],
+  ['space and shape geometry', 'Space and Shape (Geometry)'],
   ['measurement', 'Measurement'],
   ['mensuration', 'Measurement'],
+  ['data handling', 'Data Handling'],
   ['finance', 'Finance'],
   ['trig', 'Trigonometry'],
   ['trigonometry', 'Trigonometry'],

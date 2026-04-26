@@ -16411,23 +16411,19 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     if (!window.confirm('Delete this question? This cannot be undone.')) return
     try {
-      const res = await fetch(`/api/exam-questions/${id}`, {
+      const res = await fetch('/api/exam-questions', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({
-          sourceId: question?.sourceId || null,
-          grade: question?.grade || null,
-          year: question?.year ?? null,
-          month: question?.month || null,
-          paper: question?.paper ?? null,
-          questionNumber: question?.questionNumber || null,
-          questionDepth: question?.questionDepth ?? null,
-        }),
+        body: JSON.stringify({ ids: [id] }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error((data as any)?.message || `Delete failed (${res.status})`)
+      }
+      const payload = await res.json().catch(() => ({}))
+      if (typeof payload?.deleted === 'number' && payload.deleted <= 0) {
+        throw new Error('Question not found')
       }
       setQbItems(prev => prev.filter((item: any) => {
         const itemId = String(item?.id || '')

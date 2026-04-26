@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import prisma from '../../../lib/prisma'
+import { Prisma } from '@prisma/client'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { VALID_MONTHS, getAllowedTopicsForGrade, normalizeTopicLabel } from '../resources/extract-questions'
 
@@ -142,9 +143,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === 'DELETE') {
     if (role !== 'admin') return res.status(403).json({ message: 'Admin only' })
     try {
-      await prisma.examQuestion.delete({ where: { id } })
+      await prisma.$transaction(async (tx) => {
+        // Defensive unlink to support environments where DB-level cascade is not in sync.
+        await tx.questionRemixQuestion.deleteMany({ where: { questionId: id } })
+        await tx.examQuestion.delete({ where: { id } })
+      })
       return res.status(200).json({ message: 'Deleted' })
-    } catch {
+    } catch (err: any) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        if (err.code === 'P2025') {
+          return res.status(404).json({ message: 'Question not found' })
+        }
+        if (err.code === 'P2003') {
+          return res.status(409).json({ message: 'Question is still referenced by related records' })
+        }
+      }
       return res.status(404).json({ message: 'Question not found' })
     }
   }

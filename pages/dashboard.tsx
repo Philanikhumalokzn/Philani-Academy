@@ -17481,7 +17481,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     <div className="text-xs uppercase tracking-wide text-slate-600">Year</div>
                     <input
                       type="number"
-                      className="input"
+                      className="input border-slate-300 bg-white text-slate-900"
                       min={2000}
                       max={2100}
                       value={resourceBankExtractYear}
@@ -17490,7 +17490,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   </div>
                   <div className="space-y-1">
                     <div className="text-xs uppercase tracking-wide text-slate-600">Exam month</div>
-                    <select className="input" value={resourceBankExtractMonth} onChange={(e) => setResourceBankExtractMonth(e.target.value)}>
+                    <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankExtractMonth} onChange={(e) => setResourceBankExtractMonth(e.target.value)}>
                       {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m) => (
                         <option key={m} value={m}>{m}</option>
                       ))}
@@ -17498,7 +17498,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   </div>
                   <div className="space-y-1">
                     <div className="text-xs uppercase tracking-wide text-slate-600">Paper</div>
-                    <select className="input" value={resourceBankExtractPaper} onChange={(e) => setResourceBankExtractPaper(parseInt(e.target.value, 10))}>
+                    <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankExtractPaper} onChange={(e) => setResourceBankExtractPaper(parseInt(e.target.value, 10))}>
                       <option value={1}>Paper 1</option>
                       <option value={2}>Paper 2</option>
                       <option value={3}>Paper 3</option>

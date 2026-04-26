@@ -3,7 +3,6 @@ import { getToken } from 'next-auth/jwt'
 import prisma from '../../../lib/prisma'
 import { normalizeGradeInput } from '../../../lib/grades'
 import {
-  VALID_TOPICS,
   getExtractProvider,
   normalizeTopicLabel,
   getAllowedTopicsForGrade,

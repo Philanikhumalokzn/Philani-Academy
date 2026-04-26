@@ -12,7 +12,7 @@ export const config = {
 }
 
 const VALID_TOPICS = [
-  'Algebra', 'Functions', 'Number Patterns', 'Finance', 'Trigonometry',
+  'Algebra', 'Functions', 'Number Patterns', 'Number, Operations and Relations', 'Measurement', 'Finance', 'Trigonometry',
   'Euclidean Geometry', 'Analytical Geometry', 'Statistics', 'Probability',
   'Calculus', 'Sequences and Series', 'Polynomials', 'Other',
 ]
@@ -57,6 +57,11 @@ const SEARCH_TOPIC_ALIASES = [
   ['number patterns', 'Number Patterns'],
   ['pattern', 'Number Patterns'],
   ['patterns', 'Number Patterns'],
+  ['number operations and relations', 'Number, Operations and Relations'],
+  ['number operations relations', 'Number, Operations and Relations'],
+  ['operations and relations', 'Number, Operations and Relations'],
+  ['measurement', 'Measurement'],
+  ['mensuration', 'Measurement'],
   ['finance', 'Finance'],
   ['trig', 'Trigonometry'],
   ['trigonometry', 'Trigonometry'],

@@ -35,6 +35,11 @@ export const VALID_TOPICS = [
   'Calculus', 'Sequences and Series', 'Polynomials',
 ]
 
+export const GRADE_8_9_EXTRA_TOPICS = [
+  'Number, Operations and Relations',
+  'Measurement',
+]
+
 // Maps normalizeTopicText(aiOutput) → canonical label.
 // Covers common SA Matric subtopic names the AI may return verbatim.
 const TOPIC_ALIAS_MAP: Record<string, string> = {
@@ -85,6 +90,24 @@ const TOPIC_ALIAS_MAP: Record<string, string> = {
   'quadratic number patterns': 'Number Patterns',
   'linear number patterns': 'Number Patterns',
   'general term': 'Number Patterns',
+
+  // Number, Operations and Relations (Grade 8/9)
+  'number operations and relations': 'Number, Operations and Relations',
+  'number operations relations': 'Number, Operations and Relations',
+  'operations and relations': 'Number, Operations and Relations',
+  'numbers operations and relations': 'Number, Operations and Relations',
+  'numbers operations relations': 'Number, Operations and Relations',
+  'integers and rational numbers': 'Number, Operations and Relations',
+  'ratio rate and proportion': 'Number, Operations and Relations',
+  'ratio and proportion': 'Number, Operations and Relations',
+
+  // Measurement (Grade 8/9)
+  'measurement': 'Measurement',
+  'mensuration': 'Measurement',
+  'perimeter area and volume': 'Measurement',
+  'perimeter area volume': 'Measurement',
+  'surface area and volume': 'Measurement',
+  'surface area volume': 'Measurement',
 
   // Finance
   'finance': 'Finance',
@@ -234,6 +257,11 @@ const TOPIC_ANCHOR_WORDS: Record<string, string> = {
   'inverse': 'Functions',
   'arithmetic': 'Sequences and Series', 'geometric': 'Sequences and Series',
   'sigma': 'Sequences and Series', 'convergent': 'Sequences and Series',
+  'integer': 'Number, Operations and Relations', 'integers': 'Number, Operations and Relations',
+  'rational': 'Number, Operations and Relations', 'ratio': 'Number, Operations and Relations',
+  'proportion': 'Number, Operations and Relations',
+  'measurement': 'Measurement', 'perimeter': 'Measurement', 'area': 'Measurement',
+  'volume': 'Measurement', 'capacity': 'Measurement', 'conversion': 'Measurement',
   'annuity': 'Finance', 'depreciation': 'Finance', 'inflation': 'Finance', 'nominal': 'Finance',
   'effective': 'Finance', 'compound': 'Finance', 'hire': 'Finance',
   'circle': 'Euclidean Geometry', 'triangle': 'Euclidean Geometry', 'chord': 'Euclidean Geometry',
@@ -260,7 +288,13 @@ function normalizeTopicText(value: string): string {
 export function getAllowedTopicsForGrade(grade: unknown): string[] {
   const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : String(grade || ''))
   if (normalizedGrade === 'GRADE_12') return [...VALID_TOPICS]
-  return VALID_TOPICS.filter((topic) => topic !== 'Calculus')
+
+  const topicsWithoutCalculus = VALID_TOPICS.filter((topic) => topic !== 'Calculus')
+  if (normalizedGrade === 'GRADE_8' || normalizedGrade === 'GRADE_9') {
+    return [...topicsWithoutCalculus, ...GRADE_8_9_EXTRA_TOPICS]
+  }
+
+  return topicsWithoutCalculus
 }
 
 function inferTopicFromRegex(questionText: string, latex: string | null, tableMarkdown: string | null, allowedTopics: string[]): string | null {

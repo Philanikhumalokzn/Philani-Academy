@@ -20,8 +20,8 @@ import {
   getExtractProvider,
   extractQuestionsWithGeminiApi,
   extractQuestionsWithOpenAI,
-  VALID_TOPICS,
   normalizeTopicLabel,
+  getAllowedTopicsForGrade,
 } from '../resources/extract-questions'
 
 export const config = {
@@ -142,7 +142,7 @@ function buildContextExtractionPrompt(
   paper: number,
 ): string {
   const gradeLabel = String(grade || '').replace('_', ' ').replace(/^GRADE /i, 'Grade ')
-  const topicList = VALID_TOPICS.join(', ')
+  const topicList = getAllowedTopicsForGrade(grade).join(', ')
   return [
     `You are a South African NSC Mathematics exam parser.`,
     `Extract the ROOT CONTEXT for QUESTION ${rootNumber} from the following OCR/Mathpix output of a ${gradeLabel} Mathematics Paper ${paper} exam (${month} ${year}).`,

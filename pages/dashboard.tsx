@@ -14447,11 +14447,27 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     )
   }
 
-  const QB_TOPICS = [
+  const QB_GRADE_8_9_EXTRA_TOPICS = ['Number, Operations and Relations', 'Measurement'] as const
+  const QB_TOPICS_BASE = [
     'Algebra', 'Functions', 'Number Patterns', 'Finance', 'Trigonometry',
     'Euclidean Geometry', 'Analytical Geometry', 'Statistics', 'Probability',
     'Calculus', 'Sequences and Series', 'Polynomials', 'Other',
   ] as const
+
+  const getQbTopicsForGrade = (grade: unknown): string[] => {
+    const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : String(grade || ''))
+    const withoutCalculus = QB_TOPICS_BASE.filter((topic) => topic !== 'Calculus')
+
+    if (normalizedGrade === 'GRADE_12') return [...QB_TOPICS_BASE]
+    if (normalizedGrade === 'GRADE_8' || normalizedGrade === 'GRADE_9') {
+      const otherRemoved = withoutCalculus.filter((topic) => topic !== 'Other')
+      return [...otherRemoved, ...QB_GRADE_8_9_EXTRA_TOPICS, 'Other']
+    }
+    return withoutCalculus
+  }
+
+  const qbTopicsForSelectedGrade = useMemo(() => getQbTopicsForGrade(selectedGrade), [selectedGrade])
+  const qbTopicsForEditDraftGrade = useMemo(() => getQbTopicsForGrade(qbEditDraft.grade), [qbEditDraft.grade])
 
   const QB_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'] as const
   const SA_PROVINCES = [
@@ -15129,7 +15145,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           { value: '3', label: 'Paper 3' },
         ]
       case 'topic':
-        return [{ value: '', label: 'Any topic' }, ...QB_TOPICS.map((topic) => ({ value: topic, label: topic }))]
+        return [{ value: '', label: 'Any topic' }, ...qbTopicsForSelectedGrade.map((topic) => ({ value: topic, label: topic }))]
       case 'level':
         return [{ value: '', label: 'Any level' }, ...QB_LEVEL_OPTIONS.map((option) => ({ value: option.value, label: option.label }))]
     }
@@ -21632,7 +21648,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <label className="text-xs font-medium text-[#65676b]">Topic</label>
               <select className="w-full rounded-lg border border-[#d5def0] bg-[#f7f8fa] px-3 py-2 text-sm text-[#1c1e21]" value={qbEditDraft.topic} onChange={(e) => setQbEditDraft(prev => ({ ...prev, topic: e.target.value }))} disabled={qbEditSaving}>
                 <option value="">— None —</option>
-                {QB_TOPICS.map((t) => <option key={t} value={t}>{t}</option>)}
+                {qbTopicsForEditDraftGrade.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div className="space-y-1">

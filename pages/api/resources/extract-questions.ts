@@ -1615,7 +1615,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     `- topic: choose EXACTLY ONE label from this fixed list and return it EXACTLY as written (strict parser requirement): ${allowedTopics.join(', ')}\n` +
     `- topic strictness rules: do not invent, paraphrase, merge, or partially rewrite topic names; if uncertain, choose the closest valid label from the fixed list above (never return an out-of-list label)\n` +
     `- root-topic consistency rule: all sub-questions under the same root (e.g. 5, 5.1, 5.2, 5.3) MUST share the same topic, determined by the root question preamble/context\n` +
-    `- cognitiveLevel: integer 1-4 where 1=Knowledge, 2=Routine procedures, 3=Complex procedures, 4=Problem-solving\n` +
+    `- cognitiveLevel: integer 1-4 REQUIRED for EVERY question. Use these definitions:\n` +
+    `  1=Knowledge: recall, identification, simple reading from table/graph/diagram, direct substitution, or obvious one-step fact.\n` +
+    `  2=Routine procedures: familiar standard methods, straightforward calculations/manipulations, obvious multi-step procedures.\n` +
+    `  3=Complex procedures: non-routine or connected procedures requiring method selection, linking ideas, interpretation, sustained reasoning.\n` +
+    `  4=Problem-solving: unfamiliar/unstructured tasks requiring insight, strategy design, justification, modelling, extended reasoning.\n` +
+    `- For example: "Solve $2x + 3 = 7$" is Level 2 (routine). "Solve $\\frac{x^2-5x+6}{x-2} = 0$ after simplifying" is Level 3 (must select method). "Given [scenario], determine the optimal investment strategy" is Level 4 (problem-solving).\n` +
     `- Include question preambles in questionText. If a main question (e.g. "1") starts with shared context text or a scenario after "QUESTION n" and before the first numbered sub-part (e.g. "1.1"), include that FULL preamble in the root question's questionText. If a sub-question has its own preamble, keep it too.\n` +
     `- tableMarkdown: CRITICAL — if the question or its preamble contains a data table (frequency table, value table, timetable, two-way table, statistics table, etc.), copy the FULL pipe-table markdown exactly as it appears in the input (including the header row and separator row "| --- | --- |"). For root questions (e.g. questionNumber "1") that have a shared preamble table, include it in that root record's tableMarkdown even if individual sub-questions also refer to it. If there is no table, use null.\n` +
     `- imageUrl: leave absent — diagram images are extracted separately from the source document.\n\n` +

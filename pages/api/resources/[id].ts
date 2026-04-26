@@ -272,6 +272,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const shouldParse = ['1', 'true', 'yes', 'on'].includes(String(body.parse || '').trim().toLowerCase())
     const shouldAiNormalize = shouldParse && ['1', 'true', 'yes', 'on'].includes(String(body.aiNormalize || '').trim().toLowerCase())
+    const shouldSyncQuestionsTaxonomy = ['1', 'true', 'yes', 'on'].includes(String(body.syncQuestionsTaxonomy || '').trim().toLowerCase())
 
     let parsedJson: any | null = null
     let parsedAt: Date | null = null
@@ -455,7 +456,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
     })
 
-    return res.status(200).json(updated)
+    let syncedQuestions = 0
+    if (shouldSyncQuestionsTaxonomy) {
+      const taxonomyUpdateData: Record<string, unknown> = {
+        grade: updated.grade,
+        sourceName: updated.sourceName,
+        authorityScope: updated.authorityScope as any,
+        province: updated.province,
+        examCycle: updated.examCycle as any,
+        assessmentType: updated.assessmentType as any,
+        assessmentFormality: updated.assessmentFormality as any,
+        paperMode: updated.paperMode as any,
+        paperLabelRaw: updated.paperLabelRaw,
+      }
+
+      if (typeof updated.year === 'number') taxonomyUpdateData.year = updated.year
+      if (typeof updated.sessionMonth === 'string' && updated.sessionMonth.trim()) taxonomyUpdateData.month = updated.sessionMonth.trim()
+      if (typeof updated.paper === 'number') taxonomyUpdateData.paper = updated.paper
+
+      const syncResult = await prisma.examQuestion.updateMany({
+        where: { sourceId: updated.id },
+        data: taxonomyUpdateData,
+      })
+      syncedQuestions = syncResult.count
+    }
+
+    return res.status(200).json({ ...updated, syncedQuestions })
   } catch (err: any) {
     return res.status(500).json({ message: err?.message || 'Failed to edit resource' })
   }

@@ -17205,7 +17205,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setResourceBankEditOpen(true)
   }, [])
 
-  const resourceBankSaveEdit = useCallback(async () => {
+  const resourceBankSaveEdit = useCallback(async (syncQuestionsTaxonomy = false) => {
     if (!resourceBankEditItem?.id) return
     setResourceBankEditing(true)
     setResourceBankError(null)
@@ -17231,6 +17231,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           grade: resourceBankEditGrade || undefined,
           parse: resourceBankEditParse ? '1' : undefined,
           aiNormalize: resourceBankEditParse && resourceBankEditAiNormalize ? '1' : undefined,
+          syncQuestionsTaxonomy: syncQuestionsTaxonomy ? '1' : undefined,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -17633,6 +17634,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </div>
             <div className="flex items-center justify-end gap-2">
               <button type="button" className="btn btn-ghost" onClick={() => setResourceBankEditOpen(false)} disabled={resourceBankEditing}>Cancel</button>
+              <button type="button" className="btn btn-ghost" onClick={() => void resourceBankSaveEdit(true)} disabled={resourceBankEditing}>
+                {resourceBankEditing ? 'Saving…' : 'Save + Sync Questions'}
+              </button>
               <button type="button" className="btn btn-primary" onClick={() => void resourceBankSaveEdit()} disabled={resourceBankEditing}>
                 {resourceBankEditing ? 'Saving…' : 'Save'}
               </button>

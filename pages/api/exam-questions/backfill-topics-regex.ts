@@ -7,7 +7,9 @@ import {
   pickTopTopicCandidates,
   scoreTopicMap,
   TopicCandidate,
+  VALID_TOPICS,
 } from '../../../lib/examTopicRegex'
+import { getAllowedTopicsForGrade } from '../resources/extract-questions'
 
 type CandidateQuestion = {
   id: string
@@ -277,8 +279,9 @@ function buildPreviewMessageSample(previews: ClassificationPreview[]): string {
     for (const q of targetQuestions) {
       const root = getQuestionRoot(q.questionNumber)
       const identityKey = buildIdentityKey(q)
+      const validTopicsForGrade = getAllowedTopicsForGrade(q.grade as any)
       const candidates = candidatesByIdentityRoot.get(buildIdentityRootKey(identityKey, root))
-        || [{ topic: 'Other', score: 1, share: 1 } as TopicCandidate]
+        || [{ topic: validTopicsForGrade[0] || 'Algebra', score: 0, share: 1 } as TopicCandidate]
 
       const primary = candidates[0]
       const secondary = candidates[1] || null

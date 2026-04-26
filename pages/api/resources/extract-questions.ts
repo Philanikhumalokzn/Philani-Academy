@@ -5,6 +5,7 @@ import prisma from '../../../lib/prisma'
 import { normalizeGradeInput } from '../../../lib/grades'
 import { tryParseJsonLoose } from '../../../lib/geminiAssignmentExtract'
 import { normalizeExamQuestionContent } from '../../../lib/questionMath'
+import { scoreTopicMap } from '../../../lib/examTopicRegex'
 
 export const config = {
   api: {
@@ -18,16 +19,118 @@ export const VALID_MONTHS = ['January', 'February', 'March', 'April', 'May', 'Ju
 export const VALID_TOPICS = [
   'Algebra', 'Functions', 'Number Patterns', 'Finance', 'Trigonometry',
   'Euclidean Geometry', 'Analytical Geometry', 'Statistics', 'Probability',
-  'Calculus', 'Sequences and Series', 'Polynomials', 'Other',
+  'Calculus', 'Sequences and Series', 'Polynomials',
 ]
 
-export function normalizeTopicLabel(value: unknown): string | null {
+const TOPIC_ALIAS_MAP: Record<string, string> = {
+  'number pattern': 'Number Patterns',
+  'number patterns': 'Number Patterns',
+  'patterns': 'Number Patterns',
+  'patterns and sequences': 'Number Patterns',
+  'sequences': 'Sequences and Series',
+  'sequence and series': 'Sequences and Series',
+  'sequences and series': 'Sequences and Series',
+  'sequence series': 'Sequences and Series',
+  'series': 'Sequences and Series',
+  'trig': 'Trigonometry',
+  'trigonometric': 'Trigonometry',
+  'financial maths': 'Finance',
+  'financial math': 'Finance',
+  'data handling': 'Statistics',
+  'analytic geometry': 'Analytical Geometry',
+  'coordinate geometry': 'Analytical Geometry',
+  'euclidean': 'Euclidean Geometry',
+  'functions and graphs': 'Functions',
+  'function and graphs': 'Functions',
+  'probability and counting': 'Probability',
+  'polynomial': 'Polynomials',
+  'polynomial functions': 'Polynomials',
+  'differentiation': 'Calculus',
+  'integration': 'Calculus',
+  'limits': 'Calculus',
+}
+
+function normalizeTopicText(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export function getAllowedTopicsForGrade(grade: unknown): string[] {
+  const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : String(grade || ''))
+  if (normalizedGrade === 'GRADE_12') return [...VALID_TOPICS]
+  return VALID_TOPICS.filter((topic) => topic !== 'Calculus')
+}
+
+function inferTopicFromRegex(questionText: string, latex: string | null, tableMarkdown: string | null, allowedTopics: string[]): string | null {
+  const scoreMap = scoreTopicMap(questionText, latex, tableMarkdown)
+  let bestTopic: string | null = null
+  let bestScore = 0
+
+  for (const topic of allowedTopics) {
+    const score = scoreMap.get(topic as any) || 0
+    if (score > bestScore) {
+      bestScore = score
+      bestTopic = topic
+    }
+  }
+
+  return bestScore > 0 ? bestTopic : null
+}
+
+export function normalizeTopicLabel(value: unknown, allowedTopics: string[] = VALID_TOPICS): string | null {
   const raw = typeof value === 'string' ? value.trim() : ''
   if (!raw) return null
 
+  const allowed = new Set(allowedTopics)
   const lowered = raw.toLowerCase()
-  const match = VALID_TOPICS.find((topic) => topic.toLowerCase() === lowered)
-  return match || null
+  const exact = allowedTopics.find((topic) => topic.toLowerCase() === lowered)
+  if (exact) return exact
+
+  const normalized = normalizeTopicText(raw)
+  const alias = TOPIC_ALIAS_MAP[normalized]
+  if (alias && allowed.has(alias)) return alias
+
+  // Fuzzy canonicalization for near-miss labels from AI outputs.
+  const normalizedCandidates = allowedTopics.map((topic) => ({ topic, normalized: normalizeTopicText(topic) }))
+  let best: { topic: string; score: number } | null = null
+
+  for (const candidate of normalizedCandidates) {
+    let score = 0
+    if (candidate.normalized === normalized) score = 1
+    else if (candidate.normalized.includes(normalized) || normalized.includes(candidate.normalized)) score = 0.92
+    else {
+      const lhs = new Set(normalized.split(' ').filter(Boolean))
+      const rhs = new Set(candidate.normalized.split(' ').filter(Boolean))
+      const overlap = [...lhs].filter((token) => rhs.has(token)).length
+      const union = new Set([...lhs, ...rhs]).size || 1
+      score = overlap / union
+    }
+
+    if (!best || score > best.score) best = { topic: candidate.topic, score }
+  }
+
+  return best && best.score >= 0.55 ? best.topic : null
+}
+
+function resolveBestTopic(opts: {
+  aiTopic: unknown
+  questionText: string
+  latex: string | null
+  tableMarkdown: string | null
+  allowedTopics: string[]
+}): string {
+  const normalizedFromAi = normalizeTopicLabel(opts.aiTopic, opts.allowedTopics)
+  if (normalizedFromAi) return normalizedFromAi
+
+  const fromRegex = inferTopicFromRegex(opts.questionText, opts.latex, opts.tableMarkdown, opts.allowedTopics)
+  if (fromRegex) return fromRegex
+
+  // No null/Other fallback allowed by policy; choose a deterministic safe default.
+  return opts.allowedTopics[0] || 'Algebra'
 }
 
 export function questionDepthFromNumber(qNum: string): number {
@@ -1283,6 +1386,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const rootPreambleBlocks = buildRootPreambleBlocksFromMmd(rawMmd)
   const questionMarksMap = buildQuestionMarksMapFromMmd(rawMmd)
   const gradeLabel = String(resource.grade).replace('_', ' ').replace('GRADE ', 'Grade ')
+  const allowedTopics = getAllowedTopicsForGrade(resource.grade)
 
   // Prefer Mathpix MMD (preserves pipe-table formatting) over raw text
   const inputText = (rawMmd || rawText).slice(0, 24000)
@@ -1295,8 +1399,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     `- questionText: the full question text. Where the question contains mathematical expressions, wrap each expression inline using ONLY single-dollar delimiters in the exact form $Expression$. Example: "Solve for x: $3x^{2}-5x-2=0$" or "Simplify $\\frac{a^2-b^2}{a-b}$". Do NOT use $$...$$. Do NOT use \\(...\\) or \\[...\\]. Do NOT leave math as bare undelimited text.\n` +
     `- latex: the PRIMARY mathematical expression for the question in valid LaTeX without outer $ delimiters (e.g. "3x^{2}-5x-2=0"). Use normal LaTeX commands such as \\frac and \\sqrt. Leave empty string if questionText contains no math at all.\n` +
     `- marks: the mark allocation as an integer if shown in brackets (e.g. "(3)" ÔåÆ 3), else null\n` +
-    `- topic: choose EXACTLY ONE label from this fixed list and return it EXACTLY as written (strict parsing requirement): ${VALID_TOPICS.join(', ')}\n` +
-    `- topic strictness rules: do not invent, paraphrase, merge, or partially rewrite topic names; if unsure, return "Other"\n` +
+    `- topic: choose EXACTLY ONE label from this fixed list and return it EXACTLY as written (strict parser requirement): ${allowedTopics.join(', ')}\n` +
+    `- topic strictness rules: do not invent, paraphrase, merge, or partially rewrite topic names; if uncertain, choose the closest valid label from the fixed list above (never return an out-of-list label)\n` +
     `- root-topic consistency rule: all sub-questions under the same root (e.g. 5, 5.1, 5.2, 5.3) MUST share the same topic, determined by the root question preamble/context\n` +
     `- cognitiveLevel: integer 1-4 where 1=Knowledge, 2=Routine procedures, 3=Complex procedures, 4=Problem-solving\n` +
     `- Include question preambles in questionText. If a main question (e.g. "1") starts with shared context text or a scenario after "QUESTION n" and before the first numbered sub-part (e.g. "1.1"), include that FULL preamble in the root question's questionText. If a sub-question has its own preamble, keep it too.\n` +
@@ -1400,13 +1504,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const root = questionRootFromNumber(qNum)
     if (!root) continue
 
-    const normalizedTopic = normalizeTopicLabel(rawItem.topic)
-    if (!normalizedTopic) continue
+    const inferredTopic = resolveBestTopic({
+      aiTopic: rawItem.topic,
+      questionText: typeof rawItem.questionText === 'string' ? rawItem.questionText : '',
+      latex: typeof rawItem.latex === 'string' ? rawItem.latex : null,
+      tableMarkdown: typeof rawItem.tableMarkdown === 'string' ? rawItem.tableMarkdown : null,
+      allowedTopics,
+    })
 
     const existingTopic = rootTopicByRoot.get(root)
     const isRootRow = qNum === root
-    if (!existingTopic || (isRootRow && existingTopic !== normalizedTopic)) {
-      rootTopicByRoot.set(root, normalizedTopic)
+    if (!existingTopic || (isRootRow && existingTopic !== inferredTopic)) {
+      rootTopicByRoot.set(root, inferredTopic)
     }
   }
 
@@ -1432,12 +1541,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ?? extractMarksFromText(qText)
       ?? pickQuestionMarks(qNum, questionMarksMap)
     const root = questionRootFromNumber(qNum)
-    const topic = (root ? rootTopicByRoot.get(root) : null) || normalizeTopicLabel(item.topic) || 'Other'
-    const cl = typeof item.cognitiveLevel === 'number' ? Math.min(4, Math.max(1, Math.round(item.cognitiveLevel))) : null
-    const depth = questionDepthFromNumber(qNum)
     const imageUrl = pickQuestionImageUrl(qNum, questionImageMap)
     const aiTableMarkdown = typeof item.tableMarkdown === 'string' && item.tableMarkdown.trim() ? item.tableMarkdown.trim() : null
     const tableMarkdown = aiTableMarkdown || pickQuestionTableMarkdown(qNum, questionTableMap)
+    const topic = (root ? rootTopicByRoot.get(root) : null)
+      || resolveBestTopic({
+        aiTopic: item.topic,
+        questionText: qText,
+        latex,
+        tableMarkdown,
+        allowedTopics,
+      })
+    const cl = typeof item.cognitiveLevel === 'number' ? Math.min(4, Math.max(1, Math.round(item.cognitiveLevel))) : null
+    const depth = questionDepthFromNumber(qNum)
 
     const existingExact = await prisma.examQuestion.findFirst({
       where: {

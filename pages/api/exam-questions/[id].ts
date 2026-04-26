@@ -2,17 +2,11 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { getToken } from 'next-auth/jwt'
 import prisma from '../../../lib/prisma'
 import { normalizeGradeInput } from '../../../lib/grades'
-import { VALID_MONTHS } from '../resources/extract-questions'
+import { VALID_MONTHS, getAllowedTopicsForGrade, normalizeTopicLabel } from '../resources/extract-questions'
 
 export const config = {
   api: { bodyParser: { sizeLimit: '16kb' } },
 }
-
-const VALID_TOPICS = [
-  'Algebra', 'Functions', 'Number Patterns', 'Finance', 'Trigonometry',
-  'Euclidean Geometry', 'Analytical Geometry', 'Statistics', 'Probability',
-  'Calculus', 'Sequences and Series', 'Polynomials', 'Other',
-]
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const token = await getToken({ req })
@@ -80,7 +74,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         data.sourceId = normalizedSourceId
       }
     }
-    if (topic !== undefined) data.topic = topic && VALID_TOPICS.includes(topic) ? topic : null
+    if (topic !== undefined) {
+      let topicGrade: string | undefined = data.grade
+      if (!topicGrade) {
+        const existingForTopic = await prisma.examQuestion.findUnique({
+          where: { id },
+          select: { grade: true },
+        })
+        if (!existingForTopic) return res.status(404).json({ message: 'Question not found' })
+        topicGrade = existingForTopic.grade
+      }
+      const allowedTopics = getAllowedTopicsForGrade(topicGrade)
+      data.topic = normalizeTopicLabel(topic, allowedTopics) || null
+    }
     if (cognitiveLevel !== undefined) {
       data.cognitiveLevel =
         typeof cognitiveLevel === 'number' && cognitiveLevel >= 1 && cognitiveLevel <= 4

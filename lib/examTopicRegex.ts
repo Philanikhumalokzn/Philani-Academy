@@ -11,7 +11,6 @@ export const VALID_TOPICS = [
   'Calculus',
   'Sequences and Series',
   'Polynomials',
-  'Other',
 ] as const
 
 export type TopicLabel = typeof VALID_TOPICS[number]
@@ -22,7 +21,7 @@ type TopicRule = {
 }
 
 type TopicScore = {
-  topic: Exclude<TopicLabel, 'Other'>
+  topic: TopicLabel
   score: number
 }
 
@@ -32,7 +31,7 @@ export type TopicCandidate = {
   share: number
 }
 
-const TOPIC_RULES: Record<Exclude<TopicLabel, 'Other'>, TopicRule[]> = {
+const TOPIC_RULES: Record<TopicLabel, TopicRule[]> = {
   Algebra: [
     { term: 'solve', weight: 1.8 },
     { term: 'simplify', weight: 1.6 },
@@ -268,12 +267,12 @@ function buildRuleRegex(term: string): RegExp {
   return new RegExp(`\\b${escaped}\\b`, 'gi')
 }
 
-const COMPILED_RULES: Record<Exclude<TopicLabel, 'Other'>, Array<{ regex: RegExp; weight: number }>> = Object.fromEntries(
+const COMPILED_RULES: Record<TopicLabel, Array<{ regex: RegExp; weight: number }>> = Object.fromEntries(
   Object.entries(TOPIC_RULES).map(([topic, rules]) => [
     topic,
-    rules.map((rule) => ({ regex: buildRuleRegex(rule.term), weight: rule.weight })),
+    rules.map((rule) => ({ regex: new RegExp(`\\b${escapeRegExp(rule.term)}\\b`, 'i'), weight: rule.weight })),
   ]),
-) as Record<Exclude<TopicLabel, 'Other'>, Array<{ regex: RegExp; weight: number }>>
+) as Record<TopicLabel, Array<{ regex: RegExp; weight: number }>>
 
 function countMatches(input: string, regex: RegExp): number {
   regex.lastIndex = 0
@@ -295,13 +294,18 @@ function normalizeCorpus(questionText: string, latex?: string | null, tableMarkd
     .trim()
 }
 
-export function scoreTopicMap(questionText: string, latex?: string | null, tableMarkdown?: string | null): Map<Exclude<TopicLabel, 'Other'>, number> {
+export function scoreTopicMap(questionText: string, latex?: string | null, tableMarkdown?: string | null): Map<TopicLabel, number> {
   const corpus = normalizeCorpus(questionText, latex, tableMarkdown)
-  const scores = new Map<Exclude<TopicLabel, 'Other'>, number>()
+  const scores = new Map<TopicLabel, number>()
+
+  // Initialize all valid topics with 0 score
+  for (const topic of VALID_TOPICS) {
+    scores.set(topic, 0)
+  }
 
   if (!corpus) return scores
 
-  for (const [topic, rules] of Object.entries(COMPILED_RULES) as Array<[Exclude<TopicLabel, 'Other'>, Array<{ regex: RegExp; weight: number }>]>) {
+  for (const [topic, rules] of Object.entries(COMPILED_RULES) as Array<[TopicLabel, Array<{ regex: RegExp; weight: number }>]>) {
     let score = 0
     for (const rule of rules) {
       const matches = countMatches(corpus, rule.regex)
@@ -317,22 +321,23 @@ export function scoreTopicMap(questionText: string, latex?: string | null, table
   return scores
 }
 
-function toSortedTopicScores(scoreMap: Map<Exclude<TopicLabel, 'Other'>, number>): TopicScore[] {
+function toSortedTopicScores(scoreMap: Map<TopicLabel, number>): TopicScore[] {
   return Array.from(scoreMap.entries())
     .map(([topic, score]) => ({ topic, score }))
     .sort((a, b) => b.score - a.score)
 }
 
 export function pickTopTopicCandidates(
-  scoreMap: Map<Exclude<TopicLabel, 'Other'>, number>,
+  scoreMap: Map<TopicLabel, number>,
   opts?: { secondTopicThreshold?: number; minSecondScore?: number },
 ): TopicCandidate[] {
   const secondTopicThreshold = opts?.secondTopicThreshold ?? 0.8
   const minSecondScore = opts?.minSecondScore ?? 2.4
   const sorted = toSortedTopicScores(scoreMap)
 
-  if (!sorted.length) {
-    return [{ topic: 'Other', score: 1, share: 1 }]
+  // Never return empty. If no scores are non-zero, pick the first valid topic.
+  if (sorted.length === 0 || (sorted[0]?.score ?? 0) === 0) {
+    return [{ topic: VALID_TOPICS[0], score: 0, share: 1 }]
   }
 
   const first = sorted[0]
@@ -352,16 +357,22 @@ export function pickTopTopicCandidates(
 }
 
 export function blendTopicScores(
-  questionScores: Map<Exclude<TopicLabel, 'Other'>, number>,
-  rootScores: Map<Exclude<TopicLabel, 'Other'>, number>,
+  questionScores: Map<TopicLabel, number>,
+  rootScores: Map<TopicLabel, number>,
   opts?: { questionWeight?: number; rootWeight?: number },
-): Map<Exclude<TopicLabel, 'Other'>, number> {
+): Map<TopicLabel, number> {
   const questionWeight = opts?.questionWeight ?? 0.65
   const rootWeight = opts?.rootWeight ?? 0.35
 
-  const blended = new Map<Exclude<TopicLabel, 'Other'>, number>()
-  const keys = new Set<Exclude<TopicLabel, 'Other'>>([...questionScores.keys(), ...rootScores.keys()])
+  const blended = new Map<TopicLabel, number>()
+  
+  // Initialize all valid topics with 0 score
+  for (const topic of VALID_TOPICS) {
+    blended.set(topic, 0)
+  }
 
+  // Blend scores for topics that have non-zero scores
+  const keys = new Set<TopicLabel>([...questionScores.keys(), ...rootScores.keys()])
   for (const key of keys) {
     const questionScore = questionScores.get(key) || 0
     const rootScore = rootScores.get(key) || 0

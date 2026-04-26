@@ -6,6 +6,7 @@ import {
   VALID_TOPICS,
   getExtractProvider,
   normalizeTopicLabel,
+  getAllowedTopicsForGrade,
 } from '../resources/extract-questions'
 
 type RootRow = {
@@ -136,13 +137,13 @@ function buildTopicPrompt(input: {
   sectionMmd: string
 }): string {
   const gradeLabel = String(input.grade || '').replace('_', ' ').replace(/^GRADE /i, 'Grade ')
+  const validTopicsForGrade = getAllowedTopicsForGrade(input.grade as any)
   return [
     `Classify ONLY the ROOT question topic for QUESTION ${input.root}.`,
     `Context: ${gradeLabel} Mathematics Paper ${input.paper} (${input.month} ${input.year}).`,
-    `Use exactly ONE topic from this fixed list: ${VALID_TOPICS.join(', ')}.`,
+    `Use exactly ONE topic from this fixed list: ${validTopicsForGrade.join(', ')}.`,
     `Rules:`,
     `- Output must be exactly one label from the list above.`,
-    `- If uncertain, output Other.`,
     `- Do not output explanation.`,
     `MMD block for QUESTION ${input.root} (from QUESTION ${input.root} to next QUESTION):`,
     input.sectionMmd.slice(0, 12000),
@@ -383,11 +384,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         aiRaw = await classifyTopicWithGemini({ apiKey: geminiApiKey, model: geminiModel, prompt })
       }
     } catch {
-      aiRaw = 'Other'
+      aiRaw = getAllowedTopicsForGrade(row.grade as any)[0] || 'Algebra'
     }
 
     const firstLine = String(aiRaw || '').split(/\r?\n/)[0]?.trim() || ''
-    const normalizedTopic = normalizeTopicLabel(firstLine) || normalizeTopicLabel(aiRaw) || 'Other'
+    const validTopicsForGrade = getAllowedTopicsForGrade(row.grade as any)
+    const normalizedTopic = normalizeTopicLabel(firstLine, validTopicsForGrade) || normalizeTopicLabel(aiRaw, validTopicsForGrade) || validTopicsForGrade[0] || 'Algebra'
 
     previews.push({
       id: row.id,

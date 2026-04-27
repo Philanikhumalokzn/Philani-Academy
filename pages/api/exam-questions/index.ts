@@ -1542,6 +1542,105 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
+  // Global, unconditional slicer mode:
+  // always derive Remix question rows from parsed MMD across matching resources.
+  {
+    const sourceWhere: Prisma.ResourceBankItemWhereInput = {
+      grade,
+      parsedJson: { not: null },
+    }
+    if (sourceId) {
+      sourceWhere.id = sourceId
+    } else {
+      if (year && Number.isFinite(year)) sourceWhere.year = year
+      if (month) sourceWhere.sessionMonth = month
+      if (Number.isFinite(paper as number)) sourceWhere.paper = paper
+    }
+
+    const sourceCandidates = await prisma.resourceBankItem.findMany({
+      where: sourceWhere,
+      select: {
+        id: true,
+        grade: true,
+        year: true,
+        sessionMonth: true,
+        paper: true,
+        parsedJson: true,
+      },
+      orderBy: [{ createdAt: 'desc' }],
+      take: sourceId ? 200 : 1200,
+    })
+
+    let syntheticAll: typeof items = []
+    for (const source of sourceCandidates) {
+      const mmd = typeof (source.parsedJson as any)?.raw?.mmd === 'string'
+        ? String((source.parsedJson as any).raw.mmd)
+        : ''
+      if (!mmd.trim()) continue
+      if (typeof source.year !== 'number' || !source.sessionMonth || typeof source.paper !== 'number') continue
+
+      const synthesized = synthesizeQuestionsFromSourceMmd({
+        sourceId: source.id,
+        grade: source.grade,
+        year: source.year,
+        month: source.sessionMonth,
+        paper: source.paper,
+        mmd,
+      })
+      syntheticAll.push(...synthesized)
+    }
+
+    if (questionNumber) {
+      syntheticAll = syntheticAll.filter((item) => String(item.questionNumber || '').startsWith(String(questionNumber)))
+    }
+    if (topic) {
+      syntheticAll = syntheticAll.filter((item) => String(item.topic || '') === String(topic))
+    }
+    if (cognitiveLevel && Number.isFinite(cognitiveLevel)) {
+      syntheticAll = syntheticAll.filter((item) => Number(item.cognitiveLevel) === Number(cognitiveLevel))
+    }
+
+    if (searchQuery) {
+      const parsedSearch = parseExamQuestionSearchQuery(searchQuery)
+      syntheticAll = syntheticAll.filter((item) => {
+        if (parsedSearch.year && item.year !== parsedSearch.year) return false
+        if (parsedSearch.month?.value && item.month !== parsedSearch.month.value) return false
+        if (parsedSearch.paper && item.paper !== parsedSearch.paper) return false
+        if (parsedSearch.level && Number(item.cognitiveLevel || 0) !== parsedSearch.level) return false
+        if (parsedSearch.topic?.value && String(item.topic || '') !== parsedSearch.topic.value) return false
+        if (parsedSearch.questionNumber && !String(item.questionNumber || '').startsWith(parsedSearch.questionNumber)) return false
+
+        const haystack = normalizeSearchValue([
+          item.questionNumber,
+          item.questionText,
+          item.month,
+          item.year,
+          item.paper,
+          item.topic,
+        ].join(' '))
+
+        if (parsedSearch.freeTokens.length === 0) return true
+        return parsedSearch.freeTokens.every((token) => haystack.includes(token))
+      })
+    }
+
+    syntheticAll.sort((left, right) => {
+      if (right.year !== left.year) return right.year - left.year
+      if (left.month !== right.month) return left.month.localeCompare(right.month, undefined, { sensitivity: 'base' })
+      if (left.paper !== right.paper) return left.paper - right.paper
+      return compareHierarchyQuestionNumbers(left.questionNumber, right.questionNumber)
+    })
+
+    const scopedSynthetic = hideCompositeRoots
+      ? shapeCompositeRootItems(syntheticAll, syntheticAll)
+      : syntheticAll
+
+    const orderedSynthetic = randomize ? shuffleInPlace([...scopedSynthetic]) : scopedSynthetic
+
+    total = orderedSynthetic.length
+    items = orderedSynthetic.slice(skip, skip + take)
+  }
+
   const sourceIds = Array.from(new Set(items.map((item) => String(item.sourceId || '')).filter(Boolean)))
   const sources = sourceIds.length
     ? await prisma.resourceBankItem.findMany({

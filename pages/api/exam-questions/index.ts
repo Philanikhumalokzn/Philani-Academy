@@ -760,6 +760,22 @@ function compareHierarchyQuestionNumbers(a: unknown, b: unknown): number {
   return String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' })
 }
 
+function buildQuestionAnnotationKey(sourceId: string, questionNumber: string): string {
+  return `${sourceId}::${normalizeHierarchyQuestionNumber(questionNumber)}`
+}
+
+function parseQuestionAnnotationTargetFromAnyId(rawId: string): { sourceId: string; questionNumber: string } | null {
+  const trimmed = String(rawId || '').trim()
+  if (!trimmed) return null
+  const withoutSuffix = trimmed.split('::')[0] || trimmed
+  const syntheticMatch = withoutSuffix.match(/^synthetic:([^:]+):(.+)$/)
+  if (!syntheticMatch?.[1] || !syntheticMatch?.[2]) return null
+  const sourceId = syntheticMatch[1].trim()
+  const questionNumber = normalizeHierarchyQuestionNumber(syntheticMatch[2])
+  if (!sourceId || !questionNumber) return null
+  return { sourceId, questionNumber }
+}
+
 function extractQuestionNumbersFromSection(sectionMmd: string, rootQuestionNumber: string): string[] {
   const values = new Set<string>()
   const root = normalizeHierarchyQuestionNumber(rootQuestionNumber)
@@ -1162,14 +1178,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // Bulk DELETE
   if (req.method === 'DELETE') {
     if (role !== 'admin') return res.status(403).json({ message: 'Admin only' })
-    const { ids } = req.body as { ids?: unknown }
-    if (!Array.isArray(ids) || ids.length === 0) {
-      return res.status(400).json({ message: 'ids array is required' })
-    }
-    const safeIds = (ids as unknown[]).filter((id): id is string => typeof id === 'string' && id.length > 0).slice(0, 500)
-    if (safeIds.length === 0) return res.status(400).json({ message: 'No valid ids provided' })
-    const { count } = await prisma.examQuestion.deleteMany({ where: { id: { in: safeIds } } })
-    return res.status(200).json({ deleted: count })
+    return res.status(410).json({
+      message: 'Legacy extracted-question deletion is disabled. Use annotation workflows with real-time slicer.',
+    })
   }
 
   // Bulk PATCH
@@ -1184,72 +1195,61 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const safeIds = (ids as unknown[]).filter((id): id is string => typeof id === 'string' && id.length > 0).slice(0, 500)
     if (safeIds.length === 0) return res.status(400).json({ message: 'No valid ids provided' })
-    const data: any = {}
-    if (patch.approved !== undefined) data.approved = Boolean(patch.approved)
+    const annotationData: { topic?: string | null; cognitiveLevel?: number | null } = {}
     if (patch.topic !== undefined) {
-      data.topic = typeof patch.topic === 'string' && VALID_TOPICS.includes(patch.topic) ? patch.topic : null
+      const normalizedTopic = typeof patch.topic === 'string' && VALID_TOPICS.includes(patch.topic) ? patch.topic : null
+      annotationData.topic = normalizedTopic
     }
     if (patch.cognitiveLevel !== undefined) {
       const cl = typeof patch.cognitiveLevel === 'number' ? patch.cognitiveLevel : parseInt(String(patch.cognitiveLevel), 10)
-      data.cognitiveLevel = Number.isFinite(cl) && cl >= 1 && cl <= 4 ? cl : null
+      const normalizedLevel = Number.isFinite(cl) && cl >= 1 && cl <= 4 ? cl : null
+      annotationData.cognitiveLevel = normalizedLevel
     }
-    if (patch.marks !== undefined) {
-      const m = typeof patch.marks === 'number' ? patch.marks : parseFloat(String(patch.marks))
-      data.marks = Number.isFinite(m) && m >= 0 ? Math.round(m) : null
+    if (Object.keys(annotationData).length === 0) {
+      return res.status(400).json({ message: 'Only topic and cognitiveLevel are patchable in slicer mode' })
     }
-    if (Object.keys(data).length === 0) {
-      return res.status(400).json({ message: 'No patchable fields provided' })
+
+    let annotationUpdated = 0
+    const targetMap = new Map<string, { sourceId: string; questionNumber: string }>()
+    for (const id of safeIds) {
+      const target = parseQuestionAnnotationTargetFromAnyId(id)
+      if (!target) continue
+      targetMap.set(buildQuestionAnnotationKey(target.sourceId, target.questionNumber), target)
     }
-    const { count } = await prisma.examQuestion.updateMany({ where: { id: { in: safeIds } }, data })
-    return res.status(200).json({ updated: count })
+
+    if (targetMap.size === 0) {
+      return res.status(400).json({ message: 'In slicer mode, ids must be synthetic source+question identifiers.' })
+    }
+
+    for (const target of targetMap.values()) {
+      await prisma.questionAnnotation.upsert({
+        where: {
+          sourceId_questionNumber: {
+            sourceId: target.sourceId,
+            questionNumber: target.questionNumber,
+          },
+        },
+        create: {
+          sourceId: target.sourceId,
+          questionNumber: target.questionNumber,
+          ...annotationData,
+        },
+        update: {
+          ...annotationData,
+        },
+      })
+      annotationUpdated += 1
+    }
+
+    return res.status(200).json({ updated: annotationUpdated, annotationUpdated, legacyUpdated: 0 })
   }
 
   // POST: create a single (root) ExamQuestion record
   if (req.method === 'POST') {
     if (role !== 'admin') return res.status(403).json({ message: 'Admin only' })
-    const body = req.body as Record<string, unknown>
-    const postGrade = normalizeGradeInput(body.grade as string)
-    if (!postGrade) return res.status(400).json({ message: 'grade is required' })
-    const postYear = typeof body.year === 'number' ? body.year : parseInt(String(body.year || ''), 10)
-    if (!Number.isFinite(postYear)) return res.status(400).json({ message: 'year is required' })
-    const postMonth = typeof body.month === 'string' ? body.month.trim() : ''
-    if (!postMonth) return res.status(400).json({ message: 'month is required' })
-    const postPaper = typeof body.paper === 'number' ? body.paper : parseInt(String(body.paper || ''), 10)
-    if (!Number.isFinite(postPaper)) return res.status(400).json({ message: 'paper is required' })
-    const postQNum = typeof body.questionNumber === 'string' ? body.questionNumber.trim() : ''
-    if (!postQNum) return res.status(400).json({ message: 'questionNumber is required' })
-    const postText = typeof body.questionText === 'string' ? body.questionText.trim() : ''
-    if (!postText) return res.status(400).json({ message: 'questionText is required' })
-    const postDepth = typeof body.questionDepth === 'number' ? body.questionDepth : 0
-    const postImageUrl = typeof body.imageUrl === 'string' && /^https?:\/\//i.test(body.imageUrl.trim()) ? body.imageUrl.trim() : null
-    const postTableMd = typeof body.tableMarkdown === 'string' ? body.tableMarkdown.trim() || null : null
-    const postSourceId = typeof body.sourceId === 'string' ? body.sourceId.trim() || null : null
-    const postApproved = body.approved !== undefined ? Boolean(body.approved) : false
-    try {
-      const created = await prisma.examQuestion.create({
-        data: {
-          grade: postGrade,
-          year: postYear,
-          month: postMonth,
-          paper: postPaper,
-          questionNumber: postQNum,
-          questionDepth: postDepth,
-          questionText: postText,
-          imageUrl: postImageUrl,
-          tableMarkdown: postTableMd,
-          sourceId: postSourceId,
-          approved: postApproved,
-        },
-        select: {
-          id: true, grade: true, year: true, month: true, paper: true,
-          questionNumber: true, questionDepth: true, questionText: true,
-          latex: true, imageUrl: true, tableMarkdown: true, approved: true, sourceId: true,
-        },
-      })
-      return res.status(201).json(created)
-    } catch (err: any) {
-      return res.status(500).json({ message: err?.message || 'Failed to create question' })
-    }
+    return res.status(410).json({
+      message: 'Legacy extracted-question creation is disabled. Questions are synthesized from source MMD in real time.',
+    })
   }
 
   if (req.method !== 'GET') {
@@ -1571,6 +1571,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       take: sourceId ? 200 : 1200,
     })
 
+    const annotationSourceIds = sourceCandidates.map((source) => source.id)
+    const annotations = annotationSourceIds.length
+      ? await prisma.questionAnnotation.findMany({
+          where: { sourceId: { in: annotationSourceIds } },
+          select: { sourceId: true, questionNumber: true, topic: true, cognitiveLevel: true },
+        })
+      : []
+
+    const annotationMap = new Map<string, { topic: string | null; cognitiveLevel: number | null }>()
+    for (const row of annotations) {
+      const qNum = normalizeHierarchyQuestionNumber(row.questionNumber)
+      if (!qNum) continue
+      annotationMap.set(buildQuestionAnnotationKey(row.sourceId, qNum), {
+        topic: row.topic ?? null,
+        cognitiveLevel: row.cognitiveLevel ?? null,
+      })
+    }
+
     let syntheticAll: typeof items = []
     for (const source of sourceCandidates) {
       const mmd = typeof (source.parsedJson as any)?.raw?.mmd === 'string'
@@ -1587,7 +1605,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         paper: source.paper,
         mmd,
       })
-      syntheticAll.push(...synthesized)
+      for (const item of synthesized) {
+        const key = buildQuestionAnnotationKey(source.id, item.questionNumber)
+        const annotation = annotationMap.get(key)
+        syntheticAll.push({
+          ...item,
+          topic: annotation?.topic ?? null,
+          cognitiveLevel: annotation?.cognitiveLevel ?? null,
+        })
+      }
     }
 
     if (questionNumber) {

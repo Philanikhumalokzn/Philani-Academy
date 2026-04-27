@@ -3,22 +3,19 @@ import { getToken } from 'next-auth/jwt'
 import prisma from '../../../lib/prisma'
 import { normalizeGradeInput } from '../../../lib/grades'
 import {
-  getQuestionRoot,
   pickTopTopicCandidates,
   scoreTopicMap,
   TopicCandidate,
 } from '../../../lib/examTopicRegex'
 import { getAllowedTopicsForGrade, normalizeTopicLabel } from '../resources/extract-questions'
 
-type CandidateQuestion = {
+type SourceRow = {
   id: string
-  sourceId: string | null
   grade: string
-  year: number
-  month: string
-  paper: number
-  questionNumber: string
-  topic: string | null
+  year: number | null
+  sessionMonth: string | null
+  paper: number | null
+  parsedJson: unknown
 }
 
 type ClassificationPreview = {
@@ -29,20 +26,6 @@ type ClassificationPreview = {
   secondaryTopic: string | null
   primaryShare: number
   secondaryShare: number | null
-}
-
-function buildIdentityKey(q: CandidateQuestion): string {
-  return [
-    q.sourceId || 'no-source',
-    q.grade,
-    q.year,
-    q.month,
-    q.paper,
-  ].join('|')
-}
-
-function buildIdentityRootKey(identityKey: string, root: string): string {
-  return `${identityKey}|${root || 'no-root'}`
 }
 
 function extractQuestionSectionsFromMmd(mmd: string): Map<string, string> {
@@ -77,21 +60,41 @@ function extractQuestionSectionsFromMmd(mmd: string): Map<string, string> {
   return sections
 }
 
-function parseIdentityKey(identityKey: string): {
-  sourceId: string | null
-  grade: string
-  year: number
-  month: string
-  paper: number
-} {
-  const [sourceIdRaw, grade, yearRaw, month, paperRaw] = identityKey.split('|')
-  return {
-    sourceId: sourceIdRaw && sourceIdRaw !== 'no-source' ? sourceIdRaw : null,
-    grade,
-    year: Number(yearRaw),
-    month,
-    paper: Number(paperRaw),
+function normalizeQuestionNumber(value: unknown): string {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  const match = text.match(/\d+(?:\.\d+)*/)
+  return match?.[0] || ''
+}
+
+function compareQuestionNumbers(a: string, b: string): number {
+  const aParts = normalizeQuestionNumber(a).split('.').map((part) => Number(part))
+  const bParts = normalizeQuestionNumber(b).split('.').map((part) => Number(part))
+  for (let i = 0; i < Math.max(aParts.length, bParts.length); i += 1) {
+    const av = aParts[i] ?? 0
+    const bv = bParts[i] ?? 0
+    if (av !== bv) return av - bv
   }
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' })
+}
+
+function extractQuestionNumbersFromSection(sectionMmd: string, rootQuestionNumber: string): string[] {
+  const values = new Set<string>()
+  const root = normalizeQuestionNumber(rootQuestionNumber)
+  if (root) values.add(root)
+
+  const lines = String(sectionMmd || '').split(/\r?\n/)
+  for (const rawLine of lines) {
+    const line = String(rawLine || '').trim()
+    if (!line) continue
+    const m = line.match(/^Q?((?:\d+)(?:\.\d+){0,6})\b/)
+    const qNum = normalizeQuestionNumber(m?.[1] || '')
+    if (!qNum) continue
+    if (root && !(qNum === root || qNum.startsWith(`${root}.`))) continue
+    values.add(qNum)
+  }
+
+  return Array.from(values).sort((a, b) => compareQuestionNumbers(a, b))
 }
 
 function buildPreviewMessageSample(previews: ClassificationPreview[]): string {
@@ -102,249 +105,239 @@ function buildPreviewMessageSample(previews: ClassificationPreview[]): string {
   return lines.join('\n')
 }
 
-  function buildIdentityRoots(questions: CandidateQuestion[]): Map<string, Set<string>> {
-    const rootsByIdentity = new Map<string, Set<string>>()
-    for (const q of questions) {
-      const root = getQuestionRoot(q.questionNumber)
-      if (!root) continue
-      const identityKey = buildIdentityKey(q)
-      const roots = rootsByIdentity.get(identityKey) || new Set<string>()
-      roots.add(root)
-      rootsByIdentity.set(identityKey, roots)
-    }
-    return rootsByIdentity
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const token = await getToken({ req })
+  if ((token as any)?.role !== 'admin') {
+    return res.status(403).json({ message: 'Admin only' })
   }
 
-  function buildSourceIds(questions: CandidateQuestion[]): string[] {
-    return Array.from(new Set(questions.map((q) => q.sourceId).filter((v): v is string => Boolean(v))))
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST'])
+    return res.status(405).json({ message: 'Method not allowed' })
   }
 
-  function buildMmdBySource(rows: Array<{ id: string; parsedJson: unknown }>): Map<string, string> {
-    const map = new Map<string, string>()
-    for (const row of rows) {
-      const parsed = row.parsedJson as any
-      const mmd = typeof parsed?.raw?.mmd === 'string' ? parsed.raw.mmd.trim() : ''
-      if (mmd) map.set(row.id, mmd)
-    }
-    return map
+  const {
+    sourceId,
+    grade,
+    year,
+    month,
+    paper,
+    limit,
+    processAll,
+    onlyMissing,
+    dryRun,
+    sourceCursor,
+    paperBatchSize,
+    secondTopicThreshold,
+    minSecondScore,
+  } = (req.body || {}) as {
+    sourceId?: string
+    grade?: string
+    year?: number
+    month?: string
+    paper?: number
+    limit?: number
+    processAll?: boolean
+    onlyMissing?: boolean
+    dryRun?: boolean
+    sourceCursor?: string
+    paperBatchSize?: number
+    secondTopicThreshold?: number
+    minSecondScore?: number
   }
 
-  function buildRootCandidatesFromMmd(
-    rootsByIdentity: Map<string, Set<string>>,
-    mmdBySource: Map<string, string>,
-    opts: { secondTopicThreshold: number; minSecondScore: number },
-  ): {
-    candidatesByIdentityRoot: Map<string, TopicCandidate[]>
-    missingContextCount: number
-  } {
-    const candidatesByIdentityRoot = new Map<string, TopicCandidate[]>()
-    const sectionCache = new Map<string, Map<string, string>>()
-    let missingContextCount = 0
+  const effectiveLimit = Number.isFinite(limit) ? Math.max(1, Math.min(5000, Number(limit))) : 1000
+  const useProcessAll = Boolean(processAll)
+  const useOnlyMissing = onlyMissing !== false
+  const effectivePaperBatchSize = Number.isFinite(paperBatchSize)
+    ? Math.max(1, Math.min(100, Number(paperBatchSize)))
+    : 10
+  const normalizedSourceCursor = typeof sourceCursor === 'string' && sourceCursor.trim() ? sourceCursor.trim() : null
+  const effectiveSecondTopicThreshold = Number.isFinite(secondTopicThreshold) ? Number(secondTopicThreshold) : 0.8
+  const effectiveMinSecondScore = Number.isFinite(minSecondScore) ? Number(minSecondScore) : 2.4
 
-    for (const [identityKey, roots] of rootsByIdentity.entries()) {
-      const identity = parseIdentityKey(identityKey)
-      if (!identity.sourceId) {
-        missingContextCount += roots.size
-        continue
-      }
+  const where: any = { parsedJson: { not: null } }
+  if (typeof sourceId === 'string' && sourceId.trim()) where.id = sourceId.trim()
+  const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : undefined)
+  if (normalizedGrade) where.grade = normalizedGrade
+  if (useProcessAll && !where.id && !normalizedGrade) {
+    return res.status(400).json({ message: 'grade is required when processAll=true (unless sourceId is provided).' })
+  }
+  if (Number.isFinite(year)) where.year = Number(year)
+  if (typeof month === 'string' && month.trim()) where.sessionMonth = month.trim()
+  if (Number.isFinite(paper)) where.paper = Number(paper)
+  if (normalizedSourceCursor) where.id = { gt: normalizedSourceCursor }
 
-      const mmd = mmdBySource.get(identity.sourceId) || ''
-      if (!mmd) {
-        missingContextCount += roots.size
-        continue
-      }
+  const sources = await prisma.resourceBankItem.findMany({
+    where,
+    select: {
+      id: true,
+      grade: true,
+      year: true,
+      sessionMonth: true,
+      paper: true,
+      parsedJson: true,
+    },
+    orderBy: { id: 'asc' },
+    take: useProcessAll ? effectivePaperBatchSize : effectiveLimit,
+  }) as SourceRow[]
 
-      const sections = sectionCache.get(identity.sourceId) || extractQuestionSectionsFromMmd(mmd)
-      if (!sectionCache.has(identity.sourceId)) sectionCache.set(identity.sourceId, sections)
-
-      for (const root of roots) {
-        const section = sections.get(root) || ''
-        const scores = scoreTopicMap(section)
-        const candidates = pickTopTopicCandidates(scores as any, opts)
-        candidatesByIdentityRoot.set(buildIdentityRootKey(identityKey, root), candidates)
-        if (!section) missingContextCount += 1
-      }
-    }
-
-    return { candidatesByIdentityRoot, missingContextCount }
+  if (!sources.length) {
+    return res.status(200).json({
+      message: 'No papers matched regex topic backfill criteria.',
+      scanned: 0,
+      updated: 0,
+      skipped: 0,
+      dryRun: Boolean(dryRun),
+      processAll: useProcessAll,
+      onlyMissing: useOnlyMissing,
+      previews: [] as ClassificationPreview[],
+    })
   }
 
-  export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-    const token = await getToken({ req })
-    if ((token as any)?.role !== 'admin') {
-      return res.status(403).json({ message: 'Admin only' })
-    }
-
-    if (req.method !== 'POST') {
-      res.setHeader('Allow', ['POST'])
-      return res.status(405).json({ message: 'Method not allowed' })
-    }
-
-    const {
-      sourceId,
-      grade,
-      year,
-      month,
-      paper,
-      limit,
-      processAll,
-      onlyMissing,
-      dryRun,
-      secondTopicThreshold,
-      minSecondScore,
-    } = (req.body || {}) as {
-      sourceId?: string
-      grade?: string
-      year?: number
-      month?: string
-      paper?: number
-      limit?: number
-      processAll?: boolean
-      onlyMissing?: boolean
-      dryRun?: boolean
-      secondTopicThreshold?: number
-      minSecondScore?: number
-    }
-
-    const effectiveLimit = Number.isFinite(limit) ? Math.max(1, Math.min(3000, Number(limit))) : 1000
-    const useProcessAll = Boolean(processAll)
-    const useOnlyMissing = onlyMissing !== false
-    const effectiveSecondTopicThreshold = Number.isFinite(secondTopicThreshold) ? Number(secondTopicThreshold) : 0.8
-    const effectiveMinSecondScore = Number.isFinite(minSecondScore) ? Number(minSecondScore) : 2.4
-
-    const where: Record<string, unknown> = {}
-    if (typeof sourceId === 'string' && sourceId.trim()) where.sourceId = sourceId.trim()
-    const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : undefined)
-    if (normalizedGrade) where.grade = normalizedGrade
-    if (useProcessAll && !where.sourceId && !normalizedGrade) {
-      return res.status(400).json({ message: 'grade is required when processAll=true (unless sourceId is provided).' })
-    }
-    if (Number.isFinite(year)) where.year = Number(year)
-    if (typeof month === 'string' && month.trim()) where.month = month.trim()
-    if (Number.isFinite(paper)) where.paper = Number(paper)
-    if (useOnlyMissing) where.OR = [{ topic: null }, { topic: '' }]
-
-    const queryArgs: Record<string, unknown> = {
-      where,
-      orderBy: [{ year: 'desc' }, { month: 'asc' }, { paper: 'asc' }, { questionNumber: 'asc' }],
-      select: {
-        id: true,
-        sourceId: true,
-        grade: true,
-        year: true,
-        month: true,
-        paper: true,
-        questionNumber: true,
-        topic: true,
-      },
-    }
-    if (!useProcessAll) queryArgs.take = effectiveLimit
-
-    const targetQuestions = await prisma.examQuestion.findMany(queryArgs as any) as CandidateQuestion[]
-
-    if (!targetQuestions.length) {
-      return res.status(200).json({
-        message: 'No questions matched regex topic backfill criteria.',
-        scanned: 0,
-        updated: 0,
-        skipped: 0,
-        dryRun: Boolean(dryRun),
-        processAll: useProcessAll,
-        onlyMissing: useOnlyMissing,
-        previews: [] as ClassificationPreview[],
+  const sourceIds = sources.map((source) => source.id)
+  const existingRows = sourceIds.length
+    ? await prisma.questionAnnotation.findMany({
+        where: { sourceId: { in: sourceIds } },
+        select: { sourceId: true, questionNumber: true, topic: true },
       })
+    : []
+
+  const existingTopicByKey = new Map<string, string | null>()
+  for (const row of existingRows) {
+    const qNum = normalizeQuestionNumber(row.questionNumber)
+    if (!qNum) continue
+    existingTopicByKey.set(`${row.sourceId}::${qNum}`, row.topic ?? null)
+  }
+
+  const previews: ClassificationPreview[] = []
+  let updated = 0
+  let skipped = 0
+  let scanned = 0
+  let missingContextCount = 0
+
+  for (const source of sources) {
+    const mmd = typeof (source.parsedJson as any)?.raw?.mmd === 'string'
+      ? String((source.parsedJson as any).raw.mmd).trim()
+      : ''
+    if (!mmd) {
+      missingContextCount += 1
+      continue
     }
 
-    const rootsByIdentity = buildIdentityRoots(targetQuestions)
-    const sourceIds = buildSourceIds(targetQuestions)
-    const sourceRows = sourceIds.length
-      ? await prisma.resourceBankItem.findMany({
-          where: { id: { in: sourceIds } },
-          select: { id: true, parsedJson: true },
-        })
-      : []
-    const mmdBySource = buildMmdBySource(sourceRows)
+    const sections = extractQuestionSectionsFromMmd(mmd)
+    const validTopicsForGrade = getAllowedTopicsForGrade(source.grade as any)
+    const allowedCandidateSet = new Set(validTopicsForGrade)
 
-    const { candidatesByIdentityRoot, missingContextCount } = buildRootCandidatesFromMmd(
-      rootsByIdentity,
-      mmdBySource,
-      {
+    for (const [root, section] of sections.entries()) {
+      const qNums = extractQuestionNumbersFromSection(section, root)
+      if (!qNums.length) continue
+
+      const scores = scoreTopicMap(section)
+      const rawCandidates = pickTopTopicCandidates(scores as any, {
         secondTopicThreshold: effectiveSecondTopicThreshold,
         minSecondScore: effectiveMinSecondScore,
-      },
-    )
+      })
 
-    const previews: ClassificationPreview[] = []
-    let updated = 0
-    let skipped = 0
-
-    for (const q of targetQuestions) {
-      const root = getQuestionRoot(q.questionNumber)
-      const identityKey = buildIdentityKey(q)
-      const validTopicsForGrade = getAllowedTopicsForGrade(q.grade as any)
-      const rawCandidates = candidatesByIdentityRoot.get(buildIdentityRootKey(identityKey, root)) || []
-      const remappedCandidates = rawCandidates
-        .map((candidate) => {
-          const mappedTopic = normalizeTopicLabel(candidate.topic, validTopicsForGrade) || candidate.topic
-          return { ...candidate, topic: mappedTopic }
-        })
-      const allowedCandidateSet = new Set(validTopicsForGrade)
+      const remappedCandidates = rawCandidates.map((candidate) => {
+        const mappedTopic = normalizeTopicLabel(candidate.topic, validTopicsForGrade) || candidate.topic
+        return { ...candidate, topic: mappedTopic }
+      })
       const candidates = remappedCandidates.filter((candidate) => allowedCandidateSet.has(candidate.topic))
 
       const fallbackCandidate = [{ topic: validTopicsForGrade[0] || 'Algebra', score: 0, share: 1 } as TopicCandidate]
       const rankedCandidates = candidates.length ? candidates : fallbackCandidate
-
       const primary = rankedCandidates[0]
       const secondary = rankedCandidates[1] || null
 
-      previews.push({
-        id: q.id,
-        questionNumber: q.questionNumber,
-        existingTopic: q.topic,
-        primaryTopic: primary.topic,
-        secondaryTopic: secondary?.topic || null,
-        primaryShare: primary.share,
-        secondaryShare: secondary?.share || null,
-      })
+      for (const qNum of qNums) {
+        const existingTopic = existingTopicByKey.get(`${source.id}::${qNum}`) ?? null
+        if (useOnlyMissing && String(existingTopic || '').trim()) {
+          skipped += 1
+          continue
+        }
 
-      if (dryRun) continue
+        scanned += 1
+        previews.push({
+          id: `synthetic:${source.id}:${qNum}`,
+          questionNumber: qNum,
+          existingTopic,
+          primaryTopic: primary.topic,
+          secondaryTopic: secondary?.topic || null,
+          primaryShare: primary.share,
+          secondaryShare: secondary?.share || null,
+        })
 
-      const shouldSkip = q.topic === primary.topic
-      if (shouldSkip) {
-        skipped += 1
-        continue
+        if (dryRun) continue
+
+        if (existingTopic === primary.topic) {
+          skipped += 1
+          continue
+        }
+
+        await prisma.questionAnnotation.upsert({
+          where: {
+            sourceId_questionNumber: {
+              sourceId: source.id,
+              questionNumber: qNum,
+            },
+          },
+          create: {
+            sourceId: source.id,
+            questionNumber: qNum,
+            topic: primary.topic,
+          },
+          update: {
+            topic: primary.topic,
+          },
+        })
+        updated += 1
       }
-
-      await prisma.examQuestion.update({ where: { id: q.id }, data: { topic: primary.topic } })
-      updated += 1
     }
+  }
 
-    const dualTopicCount = previews.filter((p) => p.secondaryTopic).length
+  const dualTopicCount = previews.filter((p) => p.secondaryTopic).length
+  const nextSourceCursor = useProcessAll ? sources[sources.length - 1]?.id || null : null
+  let hasMoreSourceBatches = false
+  if (useProcessAll && nextSourceCursor) {
+    const nextWhere: any = {
+      parsedJson: { not: null },
+      id: { gt: nextSourceCursor },
+    }
+    if (normalizedGrade) nextWhere.grade = normalizedGrade
+    if (Number.isFinite(year)) nextWhere.year = Number(year)
+    if (typeof month === 'string' && month.trim()) nextWhere.sessionMonth = month.trim()
+    if (Number.isFinite(paper)) nextWhere.paper = Number(paper)
+    const more = await prisma.resourceBankItem.findFirst({ where: nextWhere, select: { id: true } })
+    hasMoreSourceBatches = Boolean(more)
+  }
 
-    return res.status(200).json({
-      message: `Regex topic backfill complete for ${targetQuestions.length} question(s).`,
-      scanned: targetQuestions.length,
-      updated,
-      skipped,
-      dryRun: Boolean(dryRun),
-      processAll: useProcessAll,
-      onlyMissing: useOnlyMissing,
-      dualTopicCount,
-      thresholds: {
-        secondTopicThreshold: Number(effectiveSecondTopicThreshold.toFixed(4)),
-        minSecondScore: Number(effectiveMinSecondScore.toFixed(4)),
-      },
-      previews: previews.slice(0, 120),
-      notes: [
-        'Root-forced mode is active: all subquestions under a QUESTION root inherit the same primary topic.',
-        'Classification source is original parsed MMD blocks (QUESTION i to QUESTION i+1), not extracted question text.',
-        useProcessAll
-          ? 'Global mode is active: this run scoped across all matching papers in the database.'
-          : 'Single-scope mode is active: this run scoped to the provided source/filters.',
-        missingContextCount > 0
-          ? `${missingContextCount} root block(s) had missing/undetected QUESTION sections and defaulted to fallback scoring.`
-          : 'All targeted roots resolved to parsed MMD QUESTION sections.',
-        `Preview sample:\n${buildPreviewMessageSample(previews) || 'No preview rows available.'}`,
-      ],
-    })
+  return res.status(200).json({
+    message: `Regex topic backfill complete for ${scanned} question(s).`,
+    scanned,
+    updated,
+    skipped,
+    dryRun: Boolean(dryRun),
+    processAll: useProcessAll,
+    onlyMissing: useOnlyMissing,
+    dualTopicCount,
+    sourceBatchSize: useProcessAll ? effectivePaperBatchSize : null,
+    nextSourceCursor,
+    hasMoreSourceBatches,
+    scannedSourceIds: sources.map((source) => source.id),
+    thresholds: {
+      secondTopicThreshold: Number(effectiveSecondTopicThreshold.toFixed(4)),
+      minSecondScore: Number(effectiveMinSecondScore.toFixed(4)),
+    },
+    previews: previews.slice(0, 120),
+    notes: [
+      'Root-forced mode is active: all subquestions under a QUESTION root inherit the same primary topic.',
+      'Classification source is parsed MMD blocks (QUESTION i to QUESTION i+1).',
+      'Results are persisted into QuestionAnnotation keyed by sourceId+questionNumber.',
+      missingContextCount > 0
+        ? `${missingContextCount} source(s) had missing/empty MMD and were skipped.`
+        : 'All targeted sources resolved to parsed MMD QUESTION sections.',
+      `Preview sample:\n${buildPreviewMessageSample(previews) || 'No preview rows available.'}`,
+    ],
+  })
 }

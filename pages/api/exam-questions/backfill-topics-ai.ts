@@ -8,15 +8,24 @@ import {
   getAllowedTopicsForGrade,
 } from '../resources/extract-questions'
 
-type RootRow = {
+type SourceRow = {
   id: string
-  sourceId: string | null
+  grade: string
+  year: number | null
+  sessionMonth: string | null
+  paper: number | null
+  parsedJson: unknown
+}
+
+type RootTarget = {
+  sourceId: string
   grade: string
   year: number
   month: string
   paper: number
   questionNumber: string
-  topic: string | null
+  sectionMmd: string
+  existingTopic: string | null
 }
 
 type PreviewItem = {
@@ -24,11 +33,6 @@ type PreviewItem = {
   questionNumber: string
   existingTopic: string | null
   proposedTopic: string
-}
-
-function extractRootFromQuestionNumber(value: string): string {
-  const match = String(value || '').trim().match(/\d+/)
-  return match?.[0] || ''
 }
 
 function extractQuestionSectionsFromMmd(mmd: string): Map<string, string> {
@@ -141,9 +145,9 @@ function buildTopicPrompt(input: {
     `Classify ONLY the ROOT question topic for QUESTION ${input.root}.`,
     `Context: ${gradeLabel} Mathematics Paper ${input.paper} (${input.month} ${input.year}).`,
     `Use exactly ONE topic from this fixed list: ${validTopicsForGrade.join(', ')}.`,
-    `Rules:`,
-    `- Output must be exactly one label from the list above.`,
-    `- Do not output explanation.`,
+    'Rules:',
+    '- Output must be exactly one label from the list above.',
+    '- Do not output explanation.',
     `MMD block for QUESTION ${input.root} (from QUESTION ${input.root} to next QUESTION):`,
     input.sectionMmd.slice(0, 12000),
   ].join('\n')
@@ -188,10 +192,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const useProcessAll = Boolean(processAll)
   const useOnlyMissing = onlyMissing !== false
-  const effectiveLimit = Number.isFinite(limit) ? Math.max(1, Math.min(3000, Number(limit))) : 1000
+  const effectiveLimit = Number.isFinite(limit) ? Math.max(1, Math.min(5000, Number(limit))) : 2000
   const effectivePaperBatchSize = Number.isFinite(paperBatchSize)
-    ? Math.max(1, Math.min(50, Number(paperBatchSize)))
-    : 5
+    ? Math.max(1, Math.min(100, Number(paperBatchSize)))
+    : 10
   const normalizedSourceCursor = typeof sourceCursor === 'string' && sourceCursor.trim() ? sourceCursor.trim() : null
 
   const provider = getExtractProvider()
@@ -204,84 +208,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ message: 'No AI provider API key configured for topic backfill.' })
   }
 
-  const where: any = { questionDepth: 0 }
-  if (typeof sourceId === 'string' && sourceId.trim()) where.sourceId = sourceId.trim()
+  const where: any = {
+    parsedJson: { not: null },
+  }
+  if (typeof sourceId === 'string' && sourceId.trim()) where.id = sourceId.trim()
   const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : undefined)
   if (normalizedGrade) where.grade = normalizedGrade
-  if (useProcessAll && !where.sourceId && !normalizedGrade) {
+  if (useProcessAll && !where.id && !normalizedGrade) {
     return res.status(400).json({ message: 'grade is required when processAll=true (unless sourceId is provided).' })
   }
   if (Number.isFinite(year)) where.year = Number(year)
-  if (typeof month === 'string' && month.trim()) where.month = month.trim()
+  if (typeof month === 'string' && month.trim()) where.sessionMonth = month.trim()
   if (Number.isFinite(paper)) where.paper = Number(paper)
-  if (useOnlyMissing) where.OR = [{ topic: null }, { topic: '' }]
+  if (normalizedSourceCursor) where.id = { gt: normalizedSourceCursor }
 
-  let selectedSourceIds: string[] = []
-  let nextSourceCursor: string | null = null
-  let hasMoreSourceBatches = false
-
-  if (useProcessAll && !where.sourceId) {
-    const sourceWhere: any = {
-      ...where,
-      sourceId: normalizedSourceCursor
-        ? { gt: normalizedSourceCursor }
-        : { not: null },
-    }
-
-    const sourceIdRows = await prisma.examQuestion.findMany({
-      where: sourceWhere,
-      distinct: ['sourceId'],
-      select: { sourceId: true },
-      orderBy: { sourceId: 'asc' },
-      take: effectivePaperBatchSize,
-    })
-
-    selectedSourceIds = sourceIdRows
-      .map((row) => (typeof row.sourceId === 'string' ? row.sourceId : ''))
-      .filter((v) => Boolean(v))
-
-    if (!selectedSourceIds.length) {
-      return res.status(200).json({
-        message: normalizedSourceCursor
-          ? 'No additional MMD papers remain after the current AI cursor.'
-          : 'No root questions matched AI topic backfill criteria.',
-        scanned: 0,
-        updated: 0,
-        skipped: 0,
-        dryRun: Boolean(dryRun),
-        processAll: useProcessAll,
-        onlyMissing: useOnlyMissing,
-        sourceBatchSize: effectivePaperBatchSize,
-        nextSourceCursor: null,
-        hasMoreSourceBatches: false,
-        scannedSourceIds: [] as string[],
-        previews: [] as PreviewItem[],
-      })
-    }
-
-    where.sourceId = { in: selectedSourceIds }
-  }
-
-  const queryArgs: Record<string, unknown> = {
+  const sources = await prisma.resourceBankItem.findMany({
     where,
-    orderBy: [{ year: 'desc' }, { month: 'asc' }, { paper: 'asc' }, { questionNumber: 'asc' }],
     select: {
       id: true,
-      sourceId: true,
       grade: true,
       year: true,
-      month: true,
+      sessionMonth: true,
       paper: true,
-      questionNumber: true,
-      topic: true,
+      parsedJson: true,
     },
-  }
-  if (!useProcessAll) queryArgs.take = effectiveLimit
+    orderBy: { id: 'asc' },
+    take: useProcessAll ? effectivePaperBatchSize : effectiveLimit,
+  }) as SourceRow[]
 
-  const roots = await prisma.examQuestion.findMany(queryArgs as any) as RootRow[]
-  if (!roots.length) {
+  if (!sources.length) {
     return res.status(200).json({
-      message: 'No root questions matched AI topic backfill criteria.',
+      message: normalizedSourceCursor
+        ? 'No additional MMD papers remain after the current AI cursor.'
+        : 'No papers matched AI topic backfill criteria.',
       scanned: 0,
       updated: 0,
       skipped: 0,
@@ -291,77 +250,83 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       sourceBatchSize: useProcessAll ? effectivePaperBatchSize : null,
       nextSourceCursor: null,
       hasMoreSourceBatches: false,
-      scannedSourceIds: selectedSourceIds,
+      scannedSourceIds: [] as string[],
       previews: [] as PreviewItem[],
     })
   }
 
-  if (useProcessAll && selectedSourceIds.length > 0) {
-    nextSourceCursor = selectedSourceIds[selectedSourceIds.length - 1] || null
-    if (nextSourceCursor) {
-      const nextRows = await prisma.examQuestion.findMany({
-        where: {
-          ...where,
-          sourceId: { gt: nextSourceCursor },
-        },
-        distinct: ['sourceId'],
-        select: { sourceId: true },
-        orderBy: { sourceId: 'asc' },
-        take: 1,
+  const rootTargets: RootTarget[] = []
+  for (const source of sources) {
+    const mmd = typeof (source.parsedJson as any)?.raw?.mmd === 'string'
+      ? String((source.parsedJson as any).raw.mmd).trim()
+      : ''
+    if (!mmd) continue
+    if (typeof source.year !== 'number' || !source.sessionMonth || typeof source.paper !== 'number') continue
+
+    const sections = extractQuestionSectionsFromMmd(mmd)
+    for (const [root, sectionMmd] of sections.entries()) {
+      rootTargets.push({
+        sourceId: source.id,
+        grade: source.grade,
+        year: source.year,
+        month: source.sessionMonth,
+        paper: source.paper,
+        questionNumber: String(root).trim(),
+        sectionMmd,
+        existingTopic: null,
       })
-      hasMoreSourceBatches = nextRows.length > 0
     }
   }
 
-  const sourceIds = Array.from(new Set(roots.map((r) => r.sourceId).filter((v): v is string => Boolean(v))))
-  const sourceRows = sourceIds.length
-    ? await prisma.resourceBankItem.findMany({ where: { id: { in: sourceIds } }, select: { id: true, parsedJson: true } })
-    : []
-  const mmdBySource = new Map<string, string>()
-  for (const source of sourceRows) {
-    const parsed = source.parsedJson as any
-    const mmd = typeof parsed?.raw?.mmd === 'string' ? parsed.raw.mmd.trim() : ''
-    if (mmd) mmdBySource.set(source.id, mmd)
+  if (!rootTargets.length) {
+    return res.status(200).json({
+      message: 'No root questions found in matching MMD papers.',
+      scanned: 0,
+      updated: 0,
+      skipped: 0,
+      dryRun: Boolean(dryRun),
+      processAll: useProcessAll,
+      onlyMissing: useOnlyMissing,
+      sourceBatchSize: useProcessAll ? effectivePaperBatchSize : null,
+      nextSourceCursor: useProcessAll ? sources[sources.length - 1]?.id || null : null,
+      hasMoreSourceBatches: false,
+      scannedSourceIds: sources.map((s) => s.id),
+      previews: [] as PreviewItem[],
+    })
   }
 
-  const sectionCache = new Map<string, Map<string, string>>()
+  const sourceIds = Array.from(new Set(rootTargets.map((r) => r.sourceId)))
+  const existing = sourceIds.length
+    ? await prisma.questionAnnotation.findMany({
+        where: { sourceId: { in: sourceIds } },
+        select: { sourceId: true, questionNumber: true, topic: true },
+      })
+    : []
+  const existingMap = new Map<string, string | null>()
+  for (const row of existing) {
+    existingMap.set(`${row.sourceId}::${String(row.questionNumber || '').trim()}`, row.topic ?? null)
+  }
+
+  for (const row of rootTargets) {
+    row.existingTopic = existingMap.get(`${row.sourceId}::${row.questionNumber}`) ?? null
+  }
+
+  const toClassify = useOnlyMissing
+    ? rootTargets.filter((row) => !String(row.existingTopic || '').trim())
+    : rootTargets
+
   const previews: PreviewItem[] = []
   let updated = 0
   let skipped = 0
-  let missingContextCount = 0
 
-  for (const row of roots) {
-    const root = extractRootFromQuestionNumber(row.questionNumber)
-    if (!root || !row.sourceId) {
-      missingContextCount += 1
-      skipped += 1
-      continue
-    }
-
-    const mmd = mmdBySource.get(row.sourceId) || ''
-    if (!mmd) {
-      missingContextCount += 1
-      skipped += 1
-      continue
-    }
-
-    const sections = sectionCache.get(row.sourceId) || extractQuestionSectionsFromMmd(mmd)
-    if (!sectionCache.has(row.sourceId)) sectionCache.set(row.sourceId, sections)
-
-    const sectionMmd = sections.get(root) || ''
-    if (!sectionMmd) {
-      missingContextCount += 1
-      skipped += 1
-      continue
-    }
-
+  for (const row of toClassify) {
     const prompt = buildTopicPrompt({
       grade: row.grade,
       year: row.year,
       month: row.month,
       paper: row.paper,
-      root,
-      sectionMmd,
+      root: row.questionNumber,
+      sectionMmd: row.sectionMmd,
     })
 
     let aiRaw = ''
@@ -391,44 +356,76 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const firstLine = String(aiRaw || '').split(/\r?\n/)[0]?.trim() || ''
     const validTopicsForGrade = getAllowedTopicsForGrade(row.grade as any)
-    const normalizedTopic = normalizeTopicLabel(firstLine, validTopicsForGrade) || normalizeTopicLabel(aiRaw, validTopicsForGrade) || validTopicsForGrade[0] || 'Algebra'
+    const normalizedTopic = normalizeTopicLabel(firstLine, validTopicsForGrade)
+      || normalizeTopicLabel(aiRaw, validTopicsForGrade)
+      || validTopicsForGrade[0]
+      || 'Algebra'
 
     previews.push({
-      id: row.id,
+      id: `synthetic:${row.sourceId}:${row.questionNumber}`,
       questionNumber: row.questionNumber,
-      existingTopic: row.topic,
+      existingTopic: row.existingTopic,
       proposedTopic: normalizedTopic,
     })
 
     if (dryRun) continue
 
-    if (row.topic === normalizedTopic) {
+    if (row.existingTopic === normalizedTopic) {
       skipped += 1
       continue
     }
 
-    await prisma.examQuestion.update({ where: { id: row.id }, data: { topic: normalizedTopic } })
+    await prisma.questionAnnotation.upsert({
+      where: {
+        sourceId_questionNumber: {
+          sourceId: row.sourceId,
+          questionNumber: row.questionNumber,
+        },
+      },
+      create: {
+        sourceId: row.sourceId,
+        questionNumber: row.questionNumber,
+        topic: normalizedTopic,
+      },
+      update: {
+        topic: normalizedTopic,
+      },
+    })
     updated += 1
   }
 
+  const nextSourceCursor = useProcessAll ? sources[sources.length - 1]?.id || null : null
+  let hasMoreSourceBatches = false
+  if (useProcessAll && nextSourceCursor) {
+    const nextWhere: any = {
+      parsedJson: { not: null },
+      id: { gt: nextSourceCursor },
+    }
+    if (normalizedGrade) nextWhere.grade = normalizedGrade
+    if (Number.isFinite(year)) nextWhere.year = Number(year)
+    if (typeof month === 'string' && month.trim()) nextWhere.sessionMonth = month.trim()
+    if (Number.isFinite(paper)) nextWhere.paper = Number(paper)
+    const more = await prisma.resourceBankItem.findFirst({ where: nextWhere, select: { id: true } })
+    hasMoreSourceBatches = Boolean(more)
+  }
+
   return res.status(200).json({
-    message: `AI topic backfill complete for ${roots.length} root question(s).`,
-    scanned: roots.length,
+    message: `AI topic backfill complete for ${toClassify.length} root question(s).`,
+    scanned: toClassify.length,
     updated,
     skipped,
     dryRun: Boolean(dryRun),
     processAll: useProcessAll,
     onlyMissing: useOnlyMissing,
     sourceBatchSize: useProcessAll ? effectivePaperBatchSize : null,
-    nextSourceCursor: useProcessAll ? nextSourceCursor : null,
-    hasMoreSourceBatches: useProcessAll ? hasMoreSourceBatches : false,
-    scannedSourceIds: useProcessAll ? selectedSourceIds : (sourceIds.length ? sourceIds : []),
-    missingContextCount,
+    nextSourceCursor,
+    hasMoreSourceBatches,
+    scannedSourceIds: sources.map((s) => s.id),
     previews: previews.slice(0, 120),
     notes: [
-      'AI classification is based on original parsed MMD root blocks (QUESTION i to next QUESTION).',
-      'Only root/main questions (questionDepth=0) are updated in this endpoint.',
-      'Subquestions are not updated by this endpoint.',
+      'AI classification is based on parsed MMD root blocks (QUESTION i to next QUESTION).',
+      'Results are persisted into QuestionAnnotation keyed by sourceId+questionNumber.',
+      'Only root/main questions are classified by this endpoint.',
     ],
   })
 }

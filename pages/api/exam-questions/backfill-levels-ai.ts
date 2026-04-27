@@ -6,9 +6,18 @@ import { tryParseJsonLoose } from '../../../lib/geminiAssignmentExtract'
 import { normalizeExamQuestionContent } from '../../../lib/questionMath'
 import { getExtractProvider } from '../resources/extract-questions'
 
+type SourceRow = {
+  id: string
+  grade: string
+  year: number | null
+  sessionMonth: string | null
+  paper: number | null
+  parsedJson: unknown
+}
+
 type QuestionRow = {
   id: string
-  sourceId: string | null
+  sourceId: string
   grade: string
   year: number
   month: string
@@ -34,6 +43,92 @@ type PreviewItem = {
 type ProposedLevelMapOptions = {
   coerceUnknownToOne?: boolean
   defaultUnresolvedLevel?: number | null
+}
+
+function extractQuestionSectionsFromMmd(mmd: string): Map<string, string> {
+  const sections = new Map<string, string>()
+  const lines = String(mmd || '').split(/\r?\n/)
+  let currentRoot = ''
+  let bucket: string[] = []
+
+  const flush = () => {
+    if (!currentRoot) return
+    const block = bucket.join('\n').trim()
+    if (block) sections.set(currentRoot, block)
+  }
+
+  for (const rawLine of lines) {
+    const line = String(rawLine || '')
+    const trimmed = line.trim()
+    const headingMatch = trimmed.match(/(?:\\section\*\{\s*QUESTION\s+(\d+)\s*\}|^QUESTION\s+(\d+)\b)/i)
+
+    if (headingMatch?.[1] || headingMatch?.[2]) {
+      flush()
+      currentRoot = String(headingMatch[1] || headingMatch[2] || '').trim()
+      bucket = [line]
+      continue
+    }
+
+    if (!currentRoot) continue
+    bucket.push(line)
+  }
+
+  flush()
+  return sections
+}
+
+function extractQuestionNumbersFromSection(sectionMmd: string, rootQuestionNumber: string): string[] {
+  const values = new Set<string>()
+  const root = normalizeQuestionNumber(rootQuestionNumber)
+  if (root) values.add(root)
+
+  const lines = String(sectionMmd || '').split(/\r?\n/)
+  for (const rawLine of lines) {
+    const line = String(rawLine || '').trim()
+    if (!line) continue
+    const m = line.match(/^Q?((?:\d+)(?:\.\d+){0,6})\b/)
+    const qNum = normalizeQuestionNumber(m?.[1] || '')
+    if (!qNum) continue
+    if (root && !(qNum === root || qNum.startsWith(`${root}.`))) continue
+    values.add(qNum)
+  }
+
+  return Array.from(values).sort((a, b) => compareQuestionNumbers(a, b))
+}
+
+function sliceQuestionBlockFromSection(sectionMmd: string, targetQuestionNumber: string): string {
+  const lines = String(sectionMmd || '').split(/\r?\n/)
+  const target = normalizeQuestionNumber(targetQuestionNumber)
+  if (!target) return ''
+
+  const isHeading = (line: string): string | null => {
+    const m = String(line || '').trim().match(/^Q?((?:\d+)(?:\.\d+){0,6})\b/)
+    return normalizeQuestionNumber(m?.[1] || '') || null
+  }
+
+  let start = -1
+  for (let i = 0; i < lines.length; i += 1) {
+    const q = isHeading(lines[i])
+    if (q === target) {
+      start = i
+      break
+    }
+  }
+  if (start < 0) return ''
+
+  const targetDepth = target.split('.').length
+  let end = lines.length
+  for (let i = start + 1; i < lines.length; i += 1) {
+    const q = isHeading(lines[i])
+    if (!q) continue
+    const depth = q.split('.').length
+    if (depth <= targetDepth && (q === target || !q.startsWith(`${target}.`))) {
+      end = i
+      break
+    }
+  }
+
+  return lines.slice(start, end).join('\n').trim()
 }
 
 function clampCognitiveLevel(value: number): number {
@@ -64,16 +159,16 @@ function normalizeCognitiveLevel(value: unknown, options?: { coerceUnknownToOne?
   return coerceUnknownToOne ? 1 : null
 }
 
-function normalizeQuestionNumber(value: unknown): string | null {
+function normalizeQuestionNumber(value: unknown): string {
   const text = String(value ?? '').trim()
-  if (!text) return null
+  if (!text) return ''
   const matches = [...text.matchAll(/(\d+(?:\.\d+)*)/g)].map((match) => match[1]).filter(Boolean)
-  if (!matches.length) return null
+  if (!matches.length) return ''
   return matches.sort((left, right) => {
     const depthDiff = right.split('.').length - left.split('.').length
     if (depthDiff !== 0) return depthDiff
     return right.length - left.length
-  })[0] || null
+  })[0] || ''
 }
 
 function questionSortParts(qNum: string): number[] {
@@ -412,10 +507,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const useProcessAll = Boolean(processAll)
   const useRepairSuspiciousLevel1 = Boolean(repairSuspiciousLevel1)
   const useOnlyMissing = onlyMissing !== false
-  const effectiveLimit = Number.isFinite(limit) ? Math.max(1, Math.min(3000, Number(limit))) : 1000
+  const effectiveLimit = Number.isFinite(limit) ? Math.max(1, Math.min(2000, Number(limit))) : 200
   const effectivePaperBatchSize = Number.isFinite(paperBatchSize)
-    ? Math.max(1, Math.min(50, Number(paperBatchSize)))
-    : 5
+    ? Math.max(1, Math.min(100, Number(paperBatchSize)))
+    : 10
   const normalizedSourceCursor = typeof sourceCursor === 'string' && sourceCursor.trim() ? sourceCursor.trim() : null
 
   const provider = getExtractProvider()
@@ -428,101 +523,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ message: 'No AI provider API key configured for cognitive level backfill.' })
   }
 
-  const baseWhere: any = {}
-  if (typeof sourceId === 'string' && sourceId.trim()) baseWhere.sourceId = sourceId.trim()
+  const where: any = { parsedJson: { not: null } }
+  if (typeof sourceId === 'string' && sourceId.trim()) where.id = sourceId.trim()
   const normalizedGrade = normalizeGradeInput(typeof grade === 'string' ? grade : undefined)
-  if (normalizedGrade) baseWhere.grade = normalizedGrade
-  if (useProcessAll && !baseWhere.sourceId && !normalizedGrade) {
+  if (normalizedGrade) where.grade = normalizedGrade
+  if (useProcessAll && !where.id && !normalizedGrade) {
     return res.status(400).json({ message: 'grade is required when processAll=true (unless sourceId is provided).' })
   }
-  if (Number.isFinite(year)) baseWhere.year = Number(year)
-  if (typeof month === 'string' && month.trim()) baseWhere.month = month.trim()
-  if (Number.isFinite(paper)) baseWhere.paper = Number(paper)
+  if (Number.isFinite(year)) where.year = Number(year)
+  if (typeof month === 'string' && month.trim()) where.sessionMonth = month.trim()
+  if (Number.isFinite(paper)) where.paper = Number(paper)
+  if (normalizedSourceCursor) where.id = { gt: normalizedSourceCursor }
 
-  const targetWhere: any = { ...baseWhere }
-  if (useRepairSuspiciousLevel1) targetWhere.cognitiveLevel = 1
-  else if (useOnlyMissing) targetWhere.cognitiveLevel = null
-
-  let selectedSourceIds: string[] = []
-  let nextSourceCursor: string | null = null
-  let hasMoreSourceBatches = false
-
-  if (useProcessAll && !baseWhere.sourceId) {
-    const sourceWhere: any = {
-      ...targetWhere,
-      sourceId: normalizedSourceCursor
-        ? { gt: normalizedSourceCursor }
-        : { not: null },
-    }
-
-    const sourceIdRows = await prisma.examQuestion.findMany({
-      where: sourceWhere,
-      distinct: ['sourceId'],
-      select: { sourceId: true },
-      orderBy: { sourceId: 'asc' },
-      take: effectivePaperBatchSize,
-    })
-
-    selectedSourceIds = sourceIdRows
-      .map((row) => (typeof row.sourceId === 'string' ? row.sourceId : ''))
-      .filter(Boolean)
-
-    if (!selectedSourceIds.length) {
-      return res.status(200).json({
-        message: normalizedSourceCursor
-          ? 'No additional papers remain after the current cognitive-level AI cursor.'
-          : 'No questions matched AI cognitive-level backfill criteria.',
-        scanned: 0,
-        updated: 0,
-        skipped: 0,
-        dryRun: Boolean(dryRun),
-        processAll: useProcessAll,
-        onlyMissing: useOnlyMissing,
-        sourceBatchSize: effectivePaperBatchSize,
-        nextSourceCursor: null,
-        hasMoreSourceBatches: false,
-        scannedSourceIds: [] as string[],
-        previews: [] as PreviewItem[],
-      })
-    }
-
-    targetWhere.sourceId = { in: selectedSourceIds }
-    baseWhere.sourceId = { in: selectedSourceIds }
-  }
-
-  const targetQueryArgs: Record<string, unknown> = {
-    where: targetWhere,
-    orderBy: [{ year: 'desc' }, { month: 'asc' }, { paper: 'asc' }, { questionNumber: 'asc' }],
+  const sources = await prisma.resourceBankItem.findMany({
+    where,
     select: {
       id: true,
-      sourceId: true,
       grade: true,
       year: true,
-      month: true,
+      sessionMonth: true,
       paper: true,
-      questionNumber: true,
-      questionDepth: true,
-      topic: true,
-      marks: true,
-      cognitiveLevel: true,
-      questionText: true,
-      latex: true,
-      imageUrl: true,
-      tableMarkdown: true,
+      parsedJson: true,
     },
-  }
-  if (!useProcessAll) targetQueryArgs.take = effectiveLimit
+    orderBy: { id: 'asc' },
+    take: useProcessAll ? effectivePaperBatchSize : effectiveLimit,
+  }) as SourceRow[]
 
-  const rawTargetRows = await prisma.examQuestion.findMany(targetQueryArgs as any) as QuestionRow[]
-  const targetRows = useRepairSuspiciousLevel1
-    ? rawTargetRows.filter((row) => isSuspiciousLevelOneRow(row))
-    : rawTargetRows
-
-  if (!targetRows.length) {
+  if (!sources.length) {
     return res.status(200).json({
-      message: useRepairSuspiciousLevel1
-        ? 'No suspicious Level 1 questions matched repair criteria.'
-        : 'No questions matched AI cognitive-level backfill criteria.',
+      message: normalizedSourceCursor
+        ? 'No additional papers remain after the current cognitive-level AI cursor.'
+        : 'No papers matched AI cognitive-level backfill criteria.',
       scanned: 0,
       updated: 0,
       skipped: 0,
@@ -532,85 +563,99 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       sourceBatchSize: useProcessAll ? effectivePaperBatchSize : null,
       nextSourceCursor: null,
       hasMoreSourceBatches: false,
-      scannedSourceIds: selectedSourceIds,
+      scannedSourceIds: [] as string[],
       previews: [] as PreviewItem[],
     })
   }
 
-  if (useProcessAll && selectedSourceIds.length > 0) {
-    nextSourceCursor = selectedSourceIds[selectedSourceIds.length - 1] || null
-    if (nextSourceCursor) {
-      const nextRows = await prisma.examQuestion.findMany({
-        where: {
-          ...targetWhere,
-          sourceId: { gt: nextSourceCursor },
-        },
-        distinct: ['sourceId'],
-        select: { sourceId: true },
-        orderBy: { sourceId: 'asc' },
-        take: 1,
-      })
-      hasMoreSourceBatches = nextRows.length > 0
-    }
-  }
-
-  const sourceIds = Array.from(new Set(targetRows.map((row) => String(row.sourceId || '')).filter(Boolean)))
-  const allPaperRows = sourceIds.length
-    ? await prisma.examQuestion.findMany({
+  const sourceIds = sources.map((s) => s.id)
+  const existingAnnotations = sourceIds.length
+    ? await prisma.questionAnnotation.findMany({
         where: { sourceId: { in: sourceIds } },
-        orderBy: [{ year: 'desc' }, { month: 'asc' }, { paper: 'asc' }, { questionNumber: 'asc' }],
-        select: {
-          id: true,
-          sourceId: true,
-          grade: true,
-          year: true,
-          month: true,
-          paper: true,
-          questionNumber: true,
-          questionDepth: true,
-          topic: true,
-          marks: true,
-          cognitiveLevel: true,
-          questionText: true,
-          latex: true,
-          imageUrl: true,
-          tableMarkdown: true,
-        },
-      }) as QuestionRow[]
+        select: { sourceId: true, questionNumber: true, topic: true, cognitiveLevel: true },
+      })
     : []
+
+  const existingMap = new Map<string, { topic: string | null; cognitiveLevel: number | null }>()
+  for (const row of existingAnnotations) {
+    const qNum = normalizeQuestionNumber(row.questionNumber)
+    if (!qNum) continue
+    existingMap.set(`${row.sourceId}::${qNum}`, {
+      topic: row.topic ?? null,
+      cognitiveLevel: row.cognitiveLevel ?? null,
+    })
+  }
 
   const rowsBySource = new Map<string, QuestionRow[]>()
-  for (const row of allPaperRows) {
-    if (!row.sourceId) continue
-    const bucket = rowsBySource.get(row.sourceId) || []
-    bucket.push(row)
-    rowsBySource.set(row.sourceId, bucket)
-  }
-  for (const rows of rowsBySource.values()) {
-    rows.sort((a, b) => compareQuestionNumbers(a.questionNumber, b.questionNumber))
-  }
-
-  const sourceRows = sourceIds.length
-    ? await prisma.resourceBankItem.findMany({ where: { id: { in: sourceIds } }, select: { id: true, parsedJson: true } })
-    : []
   const mmdBySource = new Map<string, string>()
-  for (const source of sourceRows) {
-    const parsed = source.parsedJson as any
-    const mmd = typeof parsed?.raw?.mmd === 'string' ? parsed.raw.mmd.trim() : ''
-    if (mmd) mmdBySource.set(source.id, mmd)
+
+  for (const source of sources) {
+    const mmd = typeof (source.parsedJson as any)?.raw?.mmd === 'string'
+      ? String((source.parsedJson as any).raw.mmd).trim()
+      : ''
+    if (!mmd) continue
+    if (typeof source.year !== 'number' || !source.sessionMonth || typeof source.paper !== 'number') continue
+    mmdBySource.set(source.id, mmd)
+
+    const sections = extractQuestionSectionsFromMmd(mmd)
+    const rows: QuestionRow[] = []
+    for (const [root, sectionMmd] of sections.entries()) {
+      const questionNumbers = extractQuestionNumbersFromSection(sectionMmd, root)
+      for (const questionNumber of questionNumbers) {
+        let block = questionNumber === root
+          ? sectionMmd
+          : sliceQuestionBlockFromSection(sectionMmd, questionNumber)
+        if (!block && questionNumber === root) block = sectionMmd
+
+        const normalized = normalizeExamQuestionContent(String(block || '').replace(/\s+/g, ' ').trim(), '')
+        const annotation = existingMap.get(`${source.id}::${questionNumber}`)
+
+        rows.push({
+          id: `synthetic:${source.id}:${questionNumber}`,
+          sourceId: source.id,
+          grade: source.grade,
+          year: source.year,
+          month: source.sessionMonth,
+          paper: source.paper,
+          questionNumber,
+          questionDepth: Math.max(0, questionNumber.split('.').filter(Boolean).length - 1),
+          topic: annotation?.topic ?? null,
+          marks: null,
+          cognitiveLevel: annotation?.cognitiveLevel ?? null,
+          questionText: normalized.questionText || normalized.latex || String(block || '').slice(0, 1200),
+          latex: null,
+          imageUrl: null,
+          tableMarkdown: null,
+        })
+      }
+    }
+
+    rows.sort((a, b) => compareQuestionNumbers(a.questionNumber, b.questionNumber))
+    rowsBySource.set(source.id, rows)
   }
 
-  const targetIds = new Set(targetRows.map((row) => row.id))
   const previews: PreviewItem[] = []
   let updated = 0
   let skipped = 0
   let missingContextCount = 0
   let missingPredictionCount = 0
+  let scanned = 0
 
   for (const sourceIdValue of sourceIds) {
     const paperRows = rowsBySource.get(sourceIdValue) || []
-    const paperTargetRows = paperRows.filter((row) => targetIds.has(row.id))
+    if (!paperRows.length) {
+      missingContextCount += 1
+      continue
+    }
+
+    const paperTargetRows = paperRows.filter((row) => {
+      if (useRepairSuspiciousLevel1) return isSuspiciousLevelOneRow(row)
+      if (useOnlyMissing) return row.cognitiveLevel == null
+      return true
+    })
+
     if (!paperTargetRows.length) continue
+    scanned += paperTargetRows.length
 
     const first = paperRows[0]
     const paperMmd = mmdBySource.get(sourceIdValue) || ''
@@ -664,7 +709,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     )
 
     for (const row of paperTargetRows) {
-      const proposedCognitiveLevel = proposedByNumber.get(normalizeQuestionNumber(row.questionNumber) || row.questionNumber) ?? null
+      const normalizedQuestionNumber = normalizeQuestionNumber(row.questionNumber) || row.questionNumber
+      const proposedCognitiveLevel = proposedByNumber.get(normalizedQuestionNumber) ?? null
       previews.push({
         id: row.id,
         questionNumber: row.questionNumber,
@@ -685,31 +731,62 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         continue
       }
 
-      await prisma.examQuestion.update({ where: { id: row.id }, data: { cognitiveLevel: proposedCognitiveLevel } })
+      await prisma.questionAnnotation.upsert({
+        where: {
+          sourceId_questionNumber: {
+            sourceId: row.sourceId,
+            questionNumber: normalizedQuestionNumber,
+          },
+        },
+        create: {
+          sourceId: row.sourceId,
+          questionNumber: normalizedQuestionNumber,
+          cognitiveLevel: proposedCognitiveLevel,
+          topic: row.topic,
+        },
+        update: {
+          cognitiveLevel: proposedCognitiveLevel,
+        },
+      })
       updated += 1
     }
   }
 
+  const nextSourceCursor = useProcessAll ? sources[sources.length - 1]?.id || null : null
+  let hasMoreSourceBatches = false
+  if (useProcessAll && nextSourceCursor) {
+    const nextWhere: any = {
+      parsedJson: { not: null },
+      id: { gt: nextSourceCursor },
+    }
+    if (normalizedGrade) nextWhere.grade = normalizedGrade
+    if (Number.isFinite(year)) nextWhere.year = Number(year)
+    if (typeof month === 'string' && month.trim()) nextWhere.sessionMonth = month.trim()
+    if (Number.isFinite(paper)) nextWhere.paper = Number(paper)
+    const more = await prisma.resourceBankItem.findFirst({ where: nextWhere, select: { id: true } })
+    hasMoreSourceBatches = Boolean(more)
+  }
+
   return res.status(200).json({
     message: useRepairSuspiciousLevel1
-      ? `AI suspicious-Level-1 repair complete for ${targetRows.length} question(s).`
-      : `AI cognitive-level backfill complete for ${targetRows.length} question(s).`,
-    scanned: targetRows.length,
+      ? `AI suspicious-Level-1 repair complete for ${scanned} question(s).`
+      : `AI cognitive-level backfill complete for ${scanned} question(s).`,
+    scanned,
     updated,
     skipped,
     dryRun: Boolean(dryRun),
     processAll: useProcessAll,
     onlyMissing: useOnlyMissing,
     sourceBatchSize: useProcessAll ? effectivePaperBatchSize : null,
-    nextSourceCursor: useProcessAll ? nextSourceCursor : null,
-    hasMoreSourceBatches: useProcessAll ? hasMoreSourceBatches : false,
-    scannedSourceIds: useProcessAll ? selectedSourceIds : sourceIds,
+    nextSourceCursor,
+    hasMoreSourceBatches,
+    scannedSourceIds: sources.map((s) => s.id),
     missingContextCount,
     missingPredictionCount,
     previews: previews.slice(0, 120),
     notes: [
       'AI classification is performed per paper and targets all listed questions and subquestions in that paper.',
-      'The model is instructed to use only DB cognitive levels 1-4: Knowledge, Routine procedures, Complex procedures, Problem-solving.',
+      'Results are persisted into QuestionAnnotation keyed by sourceId+questionNumber.',
       useRepairSuspiciousLevel1
         ? 'Repair mode targets only suspicious rows already labelled Level 1 and does not silently default unresolved outputs back to Level 1.'
         : 'Parser is permissive: arbitrary AI outputs are coerced into DB levels and missing items fall back by order/default.',

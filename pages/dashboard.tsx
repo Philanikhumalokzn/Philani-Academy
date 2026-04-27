@@ -16872,29 +16872,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   )
                 }
 
-                const buildQuestionMmdSection = (question: any, options?: { includeQuestionNumber?: boolean; sanitizeAnswerGuideLines?: boolean }) => {
+                const buildQuestionMmdSection = (question: any, options?: { includeQuestionNumber?: boolean }) => {
                   if (!question) return ''
-
-                  const isAnswerGuideLine = (line: string) => {
-                    const trimmed = String(line || '').trim()
-                    if (!trimmed) return false
-                    const compact = trimmed.replace(/\s+/g, '')
-                    if (/^[_\-.]{4,}$/.test(compact)) return true
-                    if (/^\$?(?:\\_){3,}\$?$/.test(compact)) return true
-                    if (/^\$?_{4,}\$?$/.test(compact)) return true
-                    return false
-                  }
-
-                  const stripAnswerGuideLines = (value: string) => {
-                    const text = String(value || '')
-                      .replace(/\$\s*(?:\\_){3,}\s*\$/g, ' ')
-                      .replace(/_{4,}/g, ' ')
-                      .replace(/[ \t]{2,}/g, ' ')
-                    const keptLines = text
-                      .split(/\r?\n/)
-                      .filter((line) => !isAnswerGuideLine(line))
-                    return keptLines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
-                  }
 
                   const normalizedQuestion = normalizeExamQuestionContent(
                     unwrapQuestionField(question?.questionText, ['questionText', 'text', 'prompt']),
@@ -16902,14 +16881,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   )
                   const qNum = typeof question?.questionNumber === 'string' ? question.questionNumber.trim() : ''
                   const includeQuestionNumber = options?.includeQuestionNumber !== false && !!qNum
-                  const sanitizeAnswerGuideLines = options?.sanitizeAnswerGuideLines !== false
                   let text = normalizedQuestion.questionText.trim()
 
                   if (text && qNum) {
                     text = text.replace(new RegExp(`^QUESTION\\s+${escapeRegExp(qNum)}\\b[:.\\-\\s]*`, 'i'), '').trim()
-                  }
-                  if (sanitizeAnswerGuideLines) {
-                    text = stripAnswerGuideLines(text)
                   }
 
                   const lines: string[] = []
@@ -16943,10 +16918,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   }
 
                   const tableMarkdown = typeof question?.tableMarkdown === 'string' ? question.tableMarkdown.trim() : ''
-                  if (tableMarkdown) {
-                    const cleanedTableMarkdown = sanitizeAnswerGuideLines ? stripAnswerGuideLines(tableMarkdown) : tableMarkdown
-                    if (cleanedTableMarkdown) lines.push(cleanedTableMarkdown)
-                  }
+                  if (tableMarkdown) lines.push(tableMarkdown)
 
                   return lines.join('\n\n').trim()
                 }
@@ -16956,39 +16928,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     .map((slice: unknown) => typeof slice === 'string' ? slice.trim() : '')
                     .filter(Boolean)
                   : []
-                const questionGrade = normalizeGradeInput(typeof q?.grade === 'string' ? q.grade : '')
-                const useGetRenderingGuards = questionGrade === 'GRADE_8' || questionGrade === 'GRADE_9'
                 const ancestorContextFallbackMmds = Array.isArray(q?.ancestorContexts)
                   ? q.ancestorContexts
-                    .map((ancestor: any) => buildQuestionMmdSection(ancestor, { includeQuestionNumber: true, sanitizeAnswerGuideLines: useGetRenderingGuards }))
+                    .map((ancestor: any) => buildQuestionMmdSection(ancestor, { includeQuestionNumber: true }))
                     .filter(Boolean)
                   : []
-                const branchScopedMmd = useGetRenderingGuards && typeof q?.branchMmd === 'string' ? q.branchMmd.trim() : ''
-                const visibleQuestionMmdRaw = branchScopedMmd || [
+                const visibleQuestionMmd = [
                   typeof q?.rootContextMmd === 'string' && q.rootContextMmd.trim()
                     ? q.rootContextMmd.trim()
-                    : (q?.rootContext ? buildQuestionMmdSection(q.rootContext, { includeQuestionNumber: false, sanitizeAnswerGuideLines: useGetRenderingGuards }) : ''),
+                    : (q?.rootContext ? buildQuestionMmdSection(q.rootContext, { includeQuestionNumber: false }) : ''),
                   ...(ancestorContextMmds.length > 0 ? ancestorContextMmds : ancestorContextFallbackMmds),
                   typeof q?.questionMmd === 'string' && q.questionMmd.trim()
                     ? q.questionMmd.trim()
-                    : buildQuestionMmdSection(q, { includeQuestionNumber: isSubquestion, sanitizeAnswerGuideLines: useGetRenderingGuards }),
+                    : buildQuestionMmdSection(q, { includeQuestionNumber: isSubquestion }),
                 ].filter(Boolean).join('\n\n')
-                const visibleQuestionMmd = useGetRenderingGuards
-                  ? visibleQuestionMmdRaw
-                    .split(/\r?\n/)
-                    .filter((line) => {
-                      const trimmed = String(line || '').trim()
-                      if (!trimmed) return true
-                      const compact = trimmed.replace(/\s+/g, '')
-                      if (/^[_\-.]{4,}$/.test(compact)) return false
-                      if (/^\$?(?:\\_){3,}\$?$/.test(compact)) return false
-                      if (/^\$?_{4,}\$?$/.test(compact)) return false
-                      return true
-                    })
-                    .join('\n')
-                    .replace(/\n{3,}/g, '\n\n')
-                    .trim()
-                  : visibleQuestionMmdRaw.trim()
 
                 return (
                   <li

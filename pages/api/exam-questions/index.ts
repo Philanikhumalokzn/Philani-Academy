@@ -300,7 +300,6 @@ function scoreExamQuestionSearch(
   parsed: ParsedExamQuestionSearch,
   sourceContext?: {
     questionMmd?: string
-    branchMmd?: string
     rootSectionMmd?: string
     sourceMmd?: string
   },
@@ -312,21 +311,20 @@ function scoreExamQuestionSearch(
   const topicKey = normalizeSearchValue(item.topic || '')
   const topicTokens = uniqStrings(tokenizeSearchValue(item.topic || ''))
   const sourceQuestionMmd = String(sourceContext?.questionMmd || '')
-  const sourceBranchMmd = String(sourceContext?.branchMmd || sourceQuestionMmd || '')
   const sourceRootSectionMmd = String(sourceContext?.rootSectionMmd || '')
   const sourceMmd = String(sourceContext?.sourceMmd || '')
-  const textTokens = uniqStrings(tokenizeSearchValue(`${normalizedQuestion.questionText} ${item.latex || ''} ${item.tableMarkdown || ''} ${sourceQuestionMmd} ${sourceBranchMmd}`)).slice(0, 260)
-  const sourceTokens = uniqStrings(tokenizeSearchValue(`${sourceMmd} ${sourceRootSectionMmd}`)).slice(0, 320)
+  const textTokens = uniqStrings(tokenizeSearchValue(`${normalizedQuestion.questionText} ${item.latex || ''} ${item.tableMarkdown || ''} ${sourceQuestionMmd} ${sourceRootSectionMmd}`)).slice(0, 260)
+  const sourceTokens = uniqStrings(tokenizeSearchValue(sourceMmd)).slice(0, 320)
   const metaTokens = uniqStrings(tokenizeSearchValue(`${item.year} ${item.month} paper ${item.paper} p${item.paper} ${item.topic || ''} level ${item.cognitiveLevel ?? ''} ${questionNumber}`))
   const phraseFields = [
     normalizeSearchValue(normalizedQuestion.questionText),
     normalizeSearchValue(item.latex || ''),
     normalizeSearchValue(item.tableMarkdown || ''),
     normalizeSearchValue(sourceQuestionMmd),
-    normalizeSearchValue(sourceBranchMmd),
+    normalizeSearchValue(sourceRootSectionMmd),
     normalizeSearchValue(`${item.year} ${item.month} paper ${item.paper} ${item.topic || ''} level ${item.cognitiveLevel ?? ''} ${questionNumber}`),
   ]
-  const sourcePhraseField = normalizeSearchValue(`${sourceMmd} ${sourceRootSectionMmd}`)
+  const sourcePhraseField = normalizeSearchValue(sourceMmd)
 
   let score = 0
   let exactStructuredMatches = 0
@@ -432,72 +430,6 @@ function scoreExamQuestionSearch(
     exactTokenMatches,
     phraseMatch,
   }
-}
-
-function isLikelyNonQuestionArtifact(
-  item: {
-    questionText: string
-    tableMarkdown: string | null
-  },
-  context?: {
-    questionMmd?: string
-    branchMmd?: string
-    rootSectionMmd?: string
-  },
-): boolean {
-  const raw = [
-    String(item.questionText || ''),
-    String(item.tableMarkdown || ''),
-    String(context?.questionMmd || ''),
-    String(context?.branchMmd || ''),
-    String(context?.rootSectionMmd || ''),
-  ].filter(Boolean).join('\n')
-
-  if (!raw.trim()) return false
-
-  const normalized = normalizeSearchValue(raw)
-  if (!normalized) return false
-
-  let score = 0
-
-  const strongMarkers = [
-    /\banswer sheet\b/i,
-    /\bname and surname\b/i,
-    /\bfill in the answer sheet\b/i,
-    /\bmultiple choice answer sheet\b/i,
-    /\bcircle the letter of the correct answer\b/i,
-  ]
-  for (const marker of strongMarkers) {
-    if (marker.test(normalized)) score += 3
-  }
-
-  const supportMarkers = [
-    /\bannexure\b/i,
-    /\bcandidate\b/i,
-    /\binvigilator\b/i,
-    /\bdo not write\b/i,
-    /\bexaminer\b/i,
-    /\banswer booklet\b/i,
-    /\bformula sheet\b/i,
-  ]
-  for (const marker of supportMarkers) {
-    if (marker.test(normalized)) score += 1
-  }
-
-  const optionGridRows = (normalized.match(/\b\d+\.\d+\b/g) || []).length
-  const abcdRuns = (normalized.match(/\ba\s+b\s+c\s+d\b/g) || []).length
-  if (optionGridRows >= 8 && abcdRuns >= 2) score += 4
-
-  const formulaSheetLike = /\bfull circle\b/i.test(normalized)
-    && /\brectangle\b/i.test(normalized)
-    && /\btriangle\b/i.test(normalized)
-    && /\bperimeter\b/i.test(normalized)
-  if (formulaSheetLike) score += 3
-
-  const hasQuestionCue = /\?|\b(solve|calculate|determine|find|simplify|factorise|factorize|prove|show|write|draw|construct|state|evaluate|expand|complete|sketch|classify|convert|round|estimate|use)\b/i.test(raw)
-  if (!hasQuestionCue) score += 1
-
-  return score >= 5 || (score >= 3 && !hasQuestionCue)
 }
 
 function pushUniqueUrl(target: string[], value: unknown) {
@@ -640,54 +572,19 @@ function escapeRegExp(value: string): string {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function extractLeadingHierarchyQuestionNumber(line: string): string {
-  const trimmed = String(line || '').trim()
-  if (!trimmed) return ''
-
-  const match = trimmed.match(/^[\s$`*_\-()>\[\](){}]*Q?\s*((?:\d+\s*(?:\.\s*\d+){0,6}))\b/i)
-  if (!match?.[1]) return ''
-  return normalizeHierarchyQuestionNumber(match[1].replace(/\s*\.\s*/g, '.'))
-}
-
-function getDirectChildQuestionNumbersFromSection(sectionMmd: string, rootQuestionNumber: string): string[] {
-  const root = normalizeHierarchyQuestionNumber(rootQuestionNumber)
-  if (!root) return []
-
-  const directChildren = new Set<string>()
-  const expectedDepth = getHierarchyQuestionParts(root).length + 1
-  const lines = String(sectionMmd || '').split(/\r?\n/)
-
-  for (const line of lines) {
-    const candidate = extractLeadingHierarchyQuestionNumber(line)
-    if (!candidate) continue
-    if (!candidate.startsWith(`${root}.`)) continue
-    if (getHierarchyQuestionParts(candidate).length !== expectedDepth) continue
-    directChildren.add(candidate)
-  }
-
-  return Array.from(directChildren).sort(compareHierarchyQuestionNumbers)
-}
-
 function buildRootPreambleMmdFromSection(sectionMmd: string, rootQuestionNumber: string): string {
   const lines = String(sectionMmd || '').split(/\r?\n/)
   if (lines.length === 0) return ''
 
-  const normalizedRoot = normalizeHierarchyQuestionNumber(rootQuestionNumber)
-  if (!normalizedRoot) return ''
-
-  let firstSubIndex = lines.findIndex((line, idx) => {
-    if (idx === 0) return false
-    const candidate = extractLeadingHierarchyQuestionNumber(line)
-    return !!candidate && candidate.startsWith(`${normalizedRoot}.`)
-  })
+  let firstSubIndex = lines.findIndex((line, idx) => idx > 0 && new RegExp(`^${escapeRegExp(rootQuestionNumber)}\\.\\d+\\b`).test(String(line || '').trim()))
   if (firstSubIndex < 0) firstSubIndex = lines.length
 
   const slice = lines.slice(0, firstSubIndex)
   if (slice.length === 0) return ''
 
   const firstRaw = String(slice[0] || '').trim()
-  const latexHeadingPattern = new RegExp(`^\\\\section\\s*\\*\\s*\\{\\s*QUESTION\\s+${escapeRegExp(normalizedRoot)}\\s*\\}\\s*`, 'i')
-  const plainHeadingPattern = new RegExp(`^QUESTION\\s+${escapeRegExp(normalizedRoot)}\\b\\s*`, 'i')
+  const latexHeadingPattern = new RegExp(`^\\\\section\\s*\\*\\s*\\{\\s*QUESTION\\s+${escapeRegExp(rootQuestionNumber)}\\s*\\}\\s*`, 'i')
+  const plainHeadingPattern = new RegExp(`^QUESTION\\s+${escapeRegExp(rootQuestionNumber)}\\b\\s*`, 'i')
   const firstLine = firstRaw
     .replace(latexHeadingPattern, '')
     .replace(plainHeadingPattern, '')
@@ -707,12 +604,13 @@ function sliceQuestionBlockFromSection(sectionMmd: string, questionNumber: strin
   const lines = String(sectionMmd || '').split(/\r?\n/)
   if (lines.length === 0) return ''
 
+  const startPattern = new RegExp(`^Q?${escapeRegExp(target)}\\b`)
+  const numberedPattern = /^Q?((?:\d+)(?:\.\d+){0,6})\b/
   const questionHeadingPattern = /(?:^|\s)QUESTION\s+\d+\b/i
 
   let start = -1
   for (let index = 0; index < lines.length; index += 1) {
-    const candidate = extractLeadingHierarchyQuestionNumber(lines[index])
-    if (candidate && candidate === target) {
+    if (startPattern.test(String(lines[index] || '').trim())) {
       start = index
       break
     }
@@ -728,8 +626,7 @@ function sliceQuestionBlockFromSection(sectionMmd: string, questionNumber: strin
       end = index
       break
     }
-    const candidate = extractLeadingHierarchyQuestionNumber(trimmed)
-    if (candidate) {
+    if (numberedPattern.test(trimmed)) {
       end = index
       break
     }
@@ -884,31 +781,7 @@ function shuffleInPlace<T>(items: T[]): T[] {
   return items
 }
 
-function buildQuestionBranchMmd(sectionMmd: string, questionNumber: string): string {
-  const normalizedQuestionNumber = normalizeHierarchyQuestionNumber(questionNumber)
-  if (!normalizedQuestionNumber) return ''
-
-  const rootQuestionNumber = getHierarchyRootQuestionNumber(normalizedQuestionNumber)
-  const ancestorQuestionNumbers = getHierarchyAncestorQuestionNumbers(normalizedQuestionNumber)
-  const branchParts: string[] = []
-
-  if (rootQuestionNumber && rootQuestionNumber !== normalizedQuestionNumber) {
-    const rootPreamble = buildRootPreambleMmdFromSection(sectionMmd, rootQuestionNumber)
-    if (rootPreamble) branchParts.push(rootPreamble)
-  }
-
-  for (const ancestorQuestionNumber of ancestorQuestionNumbers) {
-    const ancestorSlice = sliceQuestionBlockFromSection(sectionMmd, ancestorQuestionNumber)
-    if (ancestorSlice) branchParts.push(ancestorSlice)
-  }
-
-  const questionSlice = sliceQuestionBlockFromSection(sectionMmd, normalizedQuestionNumber)
-  if (questionSlice) branchParts.push(questionSlice)
-
-  return branchParts.join('\n\n').trim()
-}
-
-function shapeCompositeBranchItems<T extends {
+function shapeCompositeRootItems<T extends {
   id: string
   sourceId: string | null
   grade: string
@@ -918,54 +791,41 @@ function shapeCompositeBranchItems<T extends {
   questionNumber: string
   questionDepth: number
 }>(items: T[], scopeItems: T[]): T[] {
-  const scopeItemsByScope = new Map<string, T[]>()
+  const matchedByScope = new Map<string, T[]>()
 
-  for (const item of scopeItems) {
+  for (const item of items) {
     const scopeKey = buildQuestionScopeKey(item)
-    const list = scopeItemsByScope.get(scopeKey) || []
+    const list = matchedByScope.get(scopeKey) || []
     list.push(item)
-    scopeItemsByScope.set(scopeKey, list)
+    matchedByScope.set(scopeKey, list)
   }
 
   const shapedItems: T[] = []
 
   for (const item of items) {
     const normalized = normalizeHierarchyQuestionNumber(item.questionNumber)
-    if (!normalized) {
+    if (!normalized || item.questionDepth !== 0) {
       shapedItems.push(item)
       continue
     }
 
     const scopeKey = buildQuestionScopeKey(item)
-    const scopeSiblings = scopeItemsByScope.get(scopeKey) || []
-    const descendantsInScope = scopeSiblings
+    const matchedSiblings = matchedByScope.get(scopeKey) || []
+    const descendantsInMatchedSet = matchedSiblings
       .filter((candidate) => {
         const candidateNumber = normalizeHierarchyQuestionNumber(candidate.questionNumber)
         return candidate.id !== item.id && candidateNumber !== normalized && candidateNumber.startsWith(`${normalized}.`)
       })
       .sort((left, right) => compareHierarchyQuestionNumbers(left.questionNumber, right.questionNumber))
 
-    if (descendantsInScope.length === 0) {
+    if (descendantsInMatchedSet.length === 0) {
       shapedItems.push(item)
       continue
     }
 
-    const terminalDescendants = descendantsInScope.filter((candidate) => {
-      const candidateNumber = normalizeHierarchyQuestionNumber(candidate.questionNumber)
-      if (!candidateNumber) return false
-      return !descendantsInScope.some((other) => {
-        if (other.id === candidate.id) return false
-        const otherNumber = normalizeHierarchyQuestionNumber(other.questionNumber)
-        return otherNumber !== candidateNumber && otherNumber.startsWith(`${candidateNumber}.`)
-      })
-    })
-
-    if (terminalDescendants.length === 0) {
-      shapedItems.push(item)
-      continue
-    }
-
-    shapedItems.push(...terminalDescendants)
+    const directChildren = descendantsInMatchedSet.filter((candidate) => getHierarchyParentQuestionNumber(candidate.questionNumber) === normalized)
+    const preferredBranchItem = directChildren[0] || descendantsInMatchedSet[0]
+    shapedItems.push(preferredBranchItem)
   }
 
   return shapedItems.filter((item, index, array) => array.findIndex((candidate) => candidate.id === item.id) === index)
@@ -1305,8 +1165,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const sourceId = q.sourceId ? String(q.sourceId) : undefined
   const hideCompositeRoots = ['1', 'true', 'yes'].includes(String(q.hideCompositeRoots || '').toLowerCase())
   const randomize = ['1', 'true', 'yes'].includes(String(q.random || '').toLowerCase())
-  const includeArtifacts = ['1', 'true', 'yes'].includes(String(q.includeArtifacts || '').toLowerCase())
-  const isGetGrade = grade === 'GRADE_8' || grade === 'GRADE_9'
   const approvedOnly = role !== 'admin' // students only see approved questions
   const page = Math.max(1, parseInt(String(q.page || '1'), 10))
   const take = Math.min(100, Math.max(1, parseInt(String(q.take || '50'), 10)))
@@ -1412,9 +1270,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         })
       : []
 
-    const candidateItems = isGetGrade
-      ? shapeCompositeBranchItems(allItems, relatedContextItems)
-      : allItems
+    const candidateItems = hideCompositeRoots ? shapeCompositeRootItems(allItems, relatedContextItems) : allItems
     const candidateSourceIds = Array.from(new Set(candidateItems.map((item) => String(item.sourceId || '')).filter(Boolean)))
     const candidateSources = candidateSourceIds.length
       ? await prisma.resourceBankItem.findMany({
@@ -1437,32 +1293,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const rootSectionMmd = item.sourceId && rootQuestionNumber
           ? candidateSourceSectionMap.get(item.sourceId)?.get(rootQuestionNumber) || ''
           : ''
-        const directChildrenInSection = isGetGrade && rootSectionMmd && item.questionDepth === 0
-          ? getDirectChildQuestionNumbersFromSection(rootSectionMmd, normalizedQuestionNumber)
-          : []
-        if (isGetGrade && item.questionDepth === 0 && directChildrenInSection.length > 0) {
-          return null
-        }
         const questionMmd = rootSectionMmd
           ? sliceQuestionBlockFromSection(rootSectionMmd, normalizedQuestionNumber)
           : ''
-        const branchMmd = rootSectionMmd
-          ? buildQuestionBranchMmd(rootSectionMmd, normalizedQuestionNumber)
-          : ''
-        if (isGetGrade && !includeArtifacts && isLikelyNonQuestionArtifact(item, { questionMmd, branchMmd, rootSectionMmd })) {
-          return null
-        }
         return {
           item,
           ranking: scoreExamQuestionSearch(item, parsedSearch, {
             questionMmd,
-            branchMmd,
             rootSectionMmd,
             sourceMmd: item.sourceId ? candidateSourceMmdMap.get(item.sourceId) || '' : '',
           }),
         }
       })
-      .filter((entry): entry is { item: typeof candidateItems[number]; ranking: ReturnType<typeof scoreExamQuestionSearch> } => !!entry)
       .filter(({ ranking }) => ranking.score >= (parsedSearch.freeTokens.length > 0 ? 4 : 1) || ranking.exactStructuredMatches > 0 || ranking.phraseMatch)
       .sort((left, right) => {
         if (right.ranking.score !== left.ranking.score) return right.ranking.score - left.ranking.score
@@ -1507,37 +1349,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         })
       : []
 
-    const filteredItems = isGetGrade && hideCompositeRoots ? shapeCompositeBranchItems(allItems, relatedContextItems) : allItems
-    const visibleItems = isGetGrade && !includeArtifacts
-      ? filteredItems.filter((item) => !isLikelyNonQuestionArtifact(item))
-      : filteredItems
-    const orderedItems = randomize ? shuffleInPlace([...visibleItems]) : visibleItems
+    const filteredItems = hideCompositeRoots ? shapeCompositeRootItems(allItems, relatedContextItems) : allItems
+    const orderedItems = randomize ? shuffleInPlace([...filteredItems]) : filteredItems
     total = orderedItems.length
     items = orderedItems.slice(skip, skip + take)
   } else {
-    if (!isGetGrade || includeArtifacts) {
-      const [rawTotal, rawItems] = await Promise.all([
-        prisma.examQuestion.count({ where }),
-        prisma.examQuestion.findMany({
-          where,
-          orderBy,
-          skip,
-          take,
-          select: itemSelect,
-        }),
-      ])
-      total = rawTotal
-      items = rawItems
-    } else {
-      const allItems = await prisma.examQuestion.findMany({
+    const [rawTotal, rawItems] = await Promise.all([
+      prisma.examQuestion.count({ where }),
+      prisma.examQuestion.findMany({
         where,
         orderBy,
+        skip,
+        take,
         select: itemSelect,
-      })
-      const visibleItems = allItems.filter((item) => !isLikelyNonQuestionArtifact(item))
-      total = visibleItems.length
-      items = visibleItems.slice(skip, skip + take)
-    }
+      }),
+    ])
+    total = rawTotal
+    items = rawItems
   }
 
   const sourceIds = Array.from(new Set(items.map((item) => String(item.sourceId || '')).filter(Boolean)))
@@ -1646,9 +1474,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const questionMmd = rootSectionMmd
       ? sliceQuestionBlockFromSection(rootSectionMmd, normalizedQuestionNumber)
       : ''
-    const branchMmd = rootSectionMmd
-      ? buildQuestionBranchMmd(rootSectionMmd, normalizedQuestionNumber)
-      : ''
     const ancestorContexts = ancestorQuestionNumbers
       .map((ancestorQuestionNumber) => scopeItems.find((candidate) => normalizeHierarchyQuestionNumber(candidate.questionNumber) === ancestorQuestionNumber) || null)
       .filter(Boolean)
@@ -1665,7 +1490,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       rootContextMmd,
       parentContextMmd,
       questionMmd,
-      branchMmd,
     }
   })
 

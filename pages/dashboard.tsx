@@ -2509,6 +2509,36 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   const resourceBankFileInputRef = useRef<HTMLInputElement | null>(null)
   const resourceBankImportJsonFileRef = useRef<HTMLInputElement | null>(null)
 
+  const applyResourceBankTaxonomyPatch = useCallback((patch: Partial<ResourceTaxonomyDraft>) => {
+    const next = applyResourceTaxonomyRelationships({
+      authorityScope: patch.authorityScope ?? resourceBankAuthorityScope,
+      province: patch.province ?? resourceBankProvince,
+      examCycle: patch.examCycle ?? resourceBankExamCycle,
+      assessmentType: patch.assessmentType ?? resourceBankAssessmentType,
+      sessionMonth: patch.sessionMonth ?? resourceBankSessionMonth,
+    })
+    setResourceBankAuthorityScope(next.authorityScope)
+    setResourceBankProvince(next.province)
+    setResourceBankExamCycle(next.examCycle)
+    setResourceBankAssessmentType(next.assessmentType)
+    setResourceBankSessionMonth(next.sessionMonth)
+  }, [resourceBankAuthorityScope, resourceBankProvince, resourceBankExamCycle, resourceBankAssessmentType, resourceBankSessionMonth])
+
+  const applyResourceBankEditTaxonomyPatch = useCallback((patch: Partial<ResourceTaxonomyDraft>) => {
+    const next = applyResourceTaxonomyRelationships({
+      authorityScope: patch.authorityScope ?? resourceBankEditAuthorityScope,
+      province: patch.province ?? resourceBankEditProvince,
+      examCycle: patch.examCycle ?? resourceBankEditExamCycle,
+      assessmentType: patch.assessmentType ?? resourceBankEditAssessmentType,
+      sessionMonth: patch.sessionMonth ?? resourceBankEditSessionMonth,
+    })
+    setResourceBankEditAuthorityScope(next.authorityScope)
+    setResourceBankEditProvince(next.province)
+    setResourceBankEditExamCycle(next.examCycle)
+    setResourceBankEditAssessmentType(next.assessmentType)
+    setResourceBankEditSessionMonth(next.sessionMonth)
+  }, [resourceBankEditAuthorityScope, resourceBankEditProvince, resourceBankEditExamCycle, resourceBankEditAssessmentType, resourceBankEditSessionMonth])
+
   // Resource Bank initialization
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -14491,6 +14521,57 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     'Northern Cape',
     'Western Cape',
   ] as const
+  type ResourceTaxonomyDraft = {
+    authorityScope: string
+    province: string
+    examCycle: string
+    assessmentType: string
+    sessionMonth: string
+  }
+  const RESOURCE_CYCLE_TO_MONTH: Record<string, string> = {
+    PRELIM: 'September',
+    COMMON_TEST: 'June',
+    QUARTERLY: 'March',
+    FINAL: 'November',
+  }
+  const RESOURCE_MONTH_TO_CYCLE: Record<string, string> = {
+    September: 'PRELIM',
+    June: 'COMMON_TEST',
+    March: 'QUARTERLY',
+    November: 'FINAL',
+  }
+  const applyResourceTaxonomyRelationships = (draft: ResourceTaxonomyDraft): ResourceTaxonomyDraft => {
+    const next: ResourceTaxonomyDraft = {
+      authorityScope: String(draft.authorityScope || '').trim(),
+      province: String(draft.province || '').trim(),
+      examCycle: String(draft.examCycle || '').trim(),
+      assessmentType: String(draft.assessmentType || '').trim(),
+      sessionMonth: String(draft.sessionMonth || '').trim(),
+    }
+
+    if (next.province) {
+      next.authorityScope = 'PROVINCIAL'
+    }
+
+    const cycleFromMonth = next.sessionMonth ? RESOURCE_MONTH_TO_CYCLE[next.sessionMonth] : undefined
+    if (cycleFromMonth) {
+      next.examCycle = cycleFromMonth
+      next.assessmentType = 'EXAM'
+      next.sessionMonth = RESOURCE_CYCLE_TO_MONTH[cycleFromMonth] || next.sessionMonth
+    }
+
+    const monthFromCycle = next.examCycle ? RESOURCE_CYCLE_TO_MONTH[next.examCycle] : undefined
+    if (monthFromCycle) {
+      next.sessionMonth = monthFromCycle
+      next.assessmentType = 'EXAM'
+    }
+
+    return next
+  }
+  const filledFieldWrapClass = (value: unknown): string => {
+    const filled = String(value ?? '').trim().length > 0
+    return `rounded-xl border p-2 transition-colors ${filled ? 'border-emerald-400 bg-emerald-50/40' : 'border-transparent bg-transparent'}`
+  }
   const QB_LEVEL_OPTIONS = [
     { value: '1', label: '1 — Knowledge' },
     { value: '2', label: '2 — Routine procedures' },
@@ -17281,17 +17362,24 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [])
 
   const openResourceBankEdit = useCallback((item: ResourceBankItem) => {
+    const normalizedTaxonomy = applyResourceTaxonomyRelationships({
+      authorityScope: item?.authorityScope || '',
+      province: item?.province || '',
+      examCycle: item?.examCycle || '',
+      assessmentType: item?.assessmentType || '',
+      sessionMonth: item?.sessionMonth || '',
+    })
     setResourceBankEditItem(item)
     setResourceBankEditTitle(item?.title || '')
     setResourceBankEditTag(item?.tag || '')
     setResourceBankEditSourceName(item?.sourceName || '')
-    setResourceBankEditAuthorityScope(item?.authorityScope || '')
-    setResourceBankEditProvince(item?.province || '')
-    setResourceBankEditExamCycle(item?.examCycle || '')
-    setResourceBankEditAssessmentType(item?.assessmentType || '')
+    setResourceBankEditAuthorityScope(normalizedTaxonomy.authorityScope)
+    setResourceBankEditProvince(normalizedTaxonomy.province)
+    setResourceBankEditExamCycle(normalizedTaxonomy.examCycle)
+    setResourceBankEditAssessmentType(normalizedTaxonomy.assessmentType)
     setResourceBankEditAssessmentFormality(item?.assessmentFormality || '')
     setResourceBankEditYear(typeof item?.year === 'number' ? String(item.year) : '')
-    setResourceBankEditSessionMonth(item?.sessionMonth || '')
+    setResourceBankEditSessionMonth(normalizedTaxonomy.sessionMonth)
     setResourceBankEditPaper(typeof item?.paper === 'number' ? String(item.paper) : '')
     setResourceBankEditPaperMode(item?.paperMode || '')
     setResourceBankEditPaperLabelRaw(item?.paperLabelRaw || '')
@@ -17618,9 +17706,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 <div className="text-xs uppercase tracking-wide text-slate-600">Source Name</div>
                 <input className="input border-slate-300 bg-white text-slate-900 placeholder:text-slate-500" value={resourceBankEditSourceName} onChange={(e) => setResourceBankEditSourceName(e.target.value)} placeholder="e.g. Gauteng DoE (optional)" />
               </div>
-              <div className="space-y-1">
+              <div className={`space-y-1 ${filledFieldWrapClass(resourceBankEditProvince)}`}>
                 <div className="text-xs uppercase tracking-wide text-slate-600">Province</div>
-                <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankEditProvince} onChange={(e) => setResourceBankEditProvince(e.target.value)}>
+                <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankEditProvince} onChange={(e) => applyResourceBankEditTaxonomyPatch({ province: e.target.value })}>
                   <option value="">Unspecified (optional)</option>
                   {SA_PROVINCES.map((province) => (
                     <option key={province} value={province}>{province}</option>
@@ -17630,9 +17718,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </div>
             <div className="text-xs text-slate-500">All taxonomy fields below are optional.</div>
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="space-y-1">
+              <div className={`space-y-1 ${filledFieldWrapClass(resourceBankEditAuthorityScope)}`}>
                 <div className="text-xs uppercase tracking-wide text-slate-600">Authority</div>
-                <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankEditAuthorityScope} onChange={(e) => setResourceBankEditAuthorityScope(e.target.value)}>
+                <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankEditAuthorityScope} onChange={(e) => applyResourceBankEditTaxonomyPatch({ authorityScope: e.target.value })}>
                   <option value="">Unspecified (optional)</option>
                   <option value="NATIONAL">National</option>
                   <option value="PROVINCIAL">Provincial</option>
@@ -17641,9 +17729,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   <option value="INTERNAL">Internal</option>
                 </select>
               </div>
-              <div className="space-y-1">
+              <div className={`space-y-1 ${filledFieldWrapClass(resourceBankEditExamCycle)}`}>
                 <div className="text-xs uppercase tracking-wide text-slate-600">Cycle</div>
-                <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankEditExamCycle} onChange={(e) => setResourceBankEditExamCycle(e.target.value)}>
+                <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankEditExamCycle} onChange={(e) => applyResourceBankEditTaxonomyPatch({ examCycle: e.target.value })}>
                   <option value="">Unspecified (optional)</option>
                   <option value="FINAL">Final</option>
                   <option value="PRELIM">Prelim/Trial</option>
@@ -17664,9 +17752,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-4">
-              <div className="space-y-1">
+              <div className={`space-y-1 ${filledFieldWrapClass(resourceBankEditAssessmentType)}`}>
                 <div className="text-xs uppercase tracking-wide text-slate-600">Assessment Type</div>
-                <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankEditAssessmentType} onChange={(e) => setResourceBankEditAssessmentType(e.target.value)}>
+                <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankEditAssessmentType} onChange={(e) => applyResourceBankEditTaxonomyPatch({ assessmentType: e.target.value })}>
                   <option value="">Unspecified (optional)</option>
                   <option value="EXAM">Exam</option>
                   <option value="TEST">Test</option>
@@ -17680,9 +17768,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 <div className="text-xs uppercase tracking-wide text-slate-600">Year</div>
                 <input className="input border-slate-300 bg-white text-slate-900 placeholder:text-slate-500" type="number" min={1900} max={2100} value={resourceBankEditYear} onChange={(e) => setResourceBankEditYear(e.target.value)} placeholder="e.g. 2025 (optional)" />
               </div>
-              <div className="space-y-1">
+              <div className={`space-y-1 ${filledFieldWrapClass(resourceBankEditSessionMonth)}`}>
                 <div className="text-xs uppercase tracking-wide text-slate-600">Session Month</div>
-                <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankEditSessionMonth} onChange={(e) => setResourceBankEditSessionMonth(e.target.value)}>
+                <select className="input border-slate-300 bg-white text-slate-900" value={resourceBankEditSessionMonth} onChange={(e) => applyResourceBankEditTaxonomyPatch({ sessionMonth: e.target.value })}>
                   <option value="">Unspecified (optional)</option>
                   {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m) => (
                     <option key={m} value={m}>{m}</option>
@@ -18109,11 +18197,11 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white placeholder:text-[#7b87a4]"
               />
             </div>
-            <div>
+            <div className={filledFieldWrapClass(resourceBankProvince)}>
               <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Province (optional)</label>
               <select
                 value={resourceBankProvince}
-                onChange={(e) => setResourceBankProvince(e.target.value)}
+                onChange={(e) => applyResourceBankTaxonomyPatch({ province: e.target.value })}
                 className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white"
               >
                 <option value="">Unspecified</option>
@@ -18125,9 +18213,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
           </div>
           <div className="text-xs text-[#5c6b8a]">All taxonomy fields below are optional.</div>
           <div className="grid gap-3 sm:grid-cols-3">
-            <div>
+            <div className={filledFieldWrapClass(resourceBankAuthorityScope)}>
               <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Authority (optional)</label>
-              <select value={resourceBankAuthorityScope} onChange={(e) => setResourceBankAuthorityScope(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white">
+              <select value={resourceBankAuthorityScope} onChange={(e) => applyResourceBankTaxonomyPatch({ authorityScope: e.target.value })} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white">
                 <option value="">Unspecified</option>
                 <option value="NATIONAL">National</option>
                 <option value="PROVINCIAL">Provincial</option>
@@ -18136,9 +18224,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 <option value="INTERNAL">Internal</option>
               </select>
             </div>
-            <div>
+            <div className={filledFieldWrapClass(resourceBankExamCycle)}>
               <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Cycle (optional)</label>
-              <select value={resourceBankExamCycle} onChange={(e) => setResourceBankExamCycle(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white">
+              <select value={resourceBankExamCycle} onChange={(e) => applyResourceBankTaxonomyPatch({ examCycle: e.target.value })} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white">
                 <option value="">Unspecified</option>
                 <option value="FINAL">Final</option>
                 <option value="PRELIM">Prelim/Trial</option>
@@ -18159,9 +18247,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-5">
-            <div>
+            <div className={filledFieldWrapClass(resourceBankAssessmentType)}>
               <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Assessment Type (optional)</label>
-              <select value={resourceBankAssessmentType} onChange={(e) => setResourceBankAssessmentType(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white">
+              <select value={resourceBankAssessmentType} onChange={(e) => applyResourceBankTaxonomyPatch({ assessmentType: e.target.value })} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white">
                 <option value="">Unspecified</option>
                 <option value="EXAM">Exam</option>
                 <option value="TEST">Test</option>
@@ -18175,9 +18263,9 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
               <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Year (optional)</label>
               <input type="number" min={1900} max={2100} value={resourceBankSourceYear} onChange={(e) => setResourceBankSourceYear(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white" placeholder="2025" />
             </div>
-            <div>
+            <div className={filledFieldWrapClass(resourceBankSessionMonth)}>
               <label className="block text-xs font-semibold text-[#1c1e21] mb-1">Session Month (optional)</label>
-              <select value={resourceBankSessionMonth} onChange={(e) => setResourceBankSessionMonth(e.target.value)} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white">
+              <select value={resourceBankSessionMonth} onChange={(e) => applyResourceBankTaxonomyPatch({ sessionMonth: e.target.value })} className="w-full px-3 py-2 border border-[#d5def0] rounded-lg text-sm text-[#1c1e21] bg-white">
                 <option value="">Unspecified</option>
                 {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m) => (
                   <option key={m} value={m}>{m}</option>

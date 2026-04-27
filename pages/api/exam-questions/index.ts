@@ -574,19 +574,35 @@ function escapeRegExp(value: string): string {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+function extractLeadingHierarchyQuestionNumber(line: string): string {
+  const trimmed = String(line || '').trim()
+  if (!trimmed) return ''
+
+  const match = trimmed.match(/^Q?\s*((?:\d+\s*(?:\.\s*\d+){0,6}))\b/i)
+  if (!match?.[1]) return ''
+  return normalizeHierarchyQuestionNumber(match[1].replace(/\s*\.\s*/g, '.'))
+}
+
 function buildRootPreambleMmdFromSection(sectionMmd: string, rootQuestionNumber: string): string {
   const lines = String(sectionMmd || '').split(/\r?\n/)
   if (lines.length === 0) return ''
 
-  let firstSubIndex = lines.findIndex((line, idx) => idx > 0 && new RegExp(`^${escapeRegExp(rootQuestionNumber)}\\.\\d+\\b`).test(String(line || '').trim()))
+  const normalizedRoot = normalizeHierarchyQuestionNumber(rootQuestionNumber)
+  if (!normalizedRoot) return ''
+
+  let firstSubIndex = lines.findIndex((line, idx) => {
+    if (idx === 0) return false
+    const candidate = extractLeadingHierarchyQuestionNumber(line)
+    return !!candidate && candidate.startsWith(`${normalizedRoot}.`)
+  })
   if (firstSubIndex < 0) firstSubIndex = lines.length
 
   const slice = lines.slice(0, firstSubIndex)
   if (slice.length === 0) return ''
 
   const firstRaw = String(slice[0] || '').trim()
-  const latexHeadingPattern = new RegExp(`^\\\\section\\s*\\*\\s*\\{\\s*QUESTION\\s+${escapeRegExp(rootQuestionNumber)}\\s*\\}\\s*`, 'i')
-  const plainHeadingPattern = new RegExp(`^QUESTION\\s+${escapeRegExp(rootQuestionNumber)}\\b\\s*`, 'i')
+  const latexHeadingPattern = new RegExp(`^\\\\section\\s*\\*\\s*\\{\\s*QUESTION\\s+${escapeRegExp(normalizedRoot)}\\s*\\}\\s*`, 'i')
+  const plainHeadingPattern = new RegExp(`^QUESTION\\s+${escapeRegExp(normalizedRoot)}\\b\\s*`, 'i')
   const firstLine = firstRaw
     .replace(latexHeadingPattern, '')
     .replace(plainHeadingPattern, '')
@@ -606,13 +622,12 @@ function sliceQuestionBlockFromSection(sectionMmd: string, questionNumber: strin
   const lines = String(sectionMmd || '').split(/\r?\n/)
   if (lines.length === 0) return ''
 
-  const startPattern = new RegExp(`^Q?${escapeRegExp(target)}\\b`)
-  const numberedPattern = /^Q?((?:\d+)(?:\.\d+){0,6})\b/
   const questionHeadingPattern = /(?:^|\s)QUESTION\s+\d+\b/i
 
   let start = -1
   for (let index = 0; index < lines.length; index += 1) {
-    if (startPattern.test(String(lines[index] || '').trim())) {
+    const candidate = extractLeadingHierarchyQuestionNumber(lines[index])
+    if (candidate && candidate === target) {
       start = index
       break
     }
@@ -628,7 +643,8 @@ function sliceQuestionBlockFromSection(sectionMmd: string, questionNumber: strin
       end = index
       break
     }
-    if (numberedPattern.test(trimmed)) {
+    const candidate = extractLeadingHierarchyQuestionNumber(trimmed)
+    if (candidate) {
       end = index
       break
     }
@@ -1517,6 +1533,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const questionMmd = rootSectionMmd
       ? sliceQuestionBlockFromSection(rootSectionMmd, normalizedQuestionNumber)
       : ''
+    const branchMmd = rootSectionMmd
+      ? buildQuestionBranchMmd(rootSectionMmd, normalizedQuestionNumber)
+      : ''
     const ancestorContexts = ancestorQuestionNumbers
       .map((ancestorQuestionNumber) => scopeItems.find((candidate) => normalizeHierarchyQuestionNumber(candidate.questionNumber) === ancestorQuestionNumber) || null)
       .filter(Boolean)
@@ -1533,6 +1552,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       rootContextMmd,
       parentContextMmd,
       questionMmd,
+      branchMmd,
     }
   })
 

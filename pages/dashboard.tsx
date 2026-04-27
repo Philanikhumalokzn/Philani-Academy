@@ -16933,7 +16933,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     .map((ancestor: any) => buildQuestionMmdSection(ancestor, { includeQuestionNumber: true }))
                     .filter(Boolean)
                   : []
-                const visibleQuestionMmd = [
+                const branchScopedMmd = typeof q?.branchMmd === 'string' ? q.branchMmd.trim() : ''
+                const visibleQuestionMmd = branchScopedMmd || [
                   typeof q?.rootContextMmd === 'string' && q.rootContextMmd.trim()
                     ? q.rootContextMmd.trim()
                     : (q?.rootContext ? buildQuestionMmdSection(q.rootContext, { includeQuestionNumber: false }) : ''),

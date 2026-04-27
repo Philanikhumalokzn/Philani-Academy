@@ -16872,7 +16872,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   )
                 }
 
-                const buildQuestionMmdSection = (question: any, options?: { includeQuestionNumber?: boolean }) => {
+                const buildQuestionMmdSection = (question: any, options?: { includeQuestionNumber?: boolean; sanitizeAnswerGuideLines?: boolean }) => {
                   if (!question) return ''
 
                   const isAnswerGuideLine = (line: string) => {
@@ -16902,12 +16902,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   )
                   const qNum = typeof question?.questionNumber === 'string' ? question.questionNumber.trim() : ''
                   const includeQuestionNumber = options?.includeQuestionNumber !== false && !!qNum
+                  const sanitizeAnswerGuideLines = options?.sanitizeAnswerGuideLines !== false
                   let text = normalizedQuestion.questionText.trim()
 
                   if (text && qNum) {
                     text = text.replace(new RegExp(`^QUESTION\\s+${escapeRegExp(qNum)}\\b[:.\\-\\s]*`, 'i'), '').trim()
                   }
-                  text = stripAnswerGuideLines(text)
+                  if (sanitizeAnswerGuideLines) {
+                    text = stripAnswerGuideLines(text)
+                  }
 
                   const lines: string[] = []
                   if (text) {
@@ -16941,7 +16944,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
                   const tableMarkdown = typeof question?.tableMarkdown === 'string' ? question.tableMarkdown.trim() : ''
                   if (tableMarkdown) {
-                    const cleanedTableMarkdown = stripAnswerGuideLines(tableMarkdown)
+                    const cleanedTableMarkdown = sanitizeAnswerGuideLines ? stripAnswerGuideLines(tableMarkdown) : tableMarkdown
                     if (cleanedTableMarkdown) lines.push(cleanedTableMarkdown)
                   }
 
@@ -16953,35 +16956,39 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     .map((slice: unknown) => typeof slice === 'string' ? slice.trim() : '')
                     .filter(Boolean)
                   : []
+                const questionGrade = normalizeGradeInput(typeof q?.grade === 'string' ? q.grade : '')
+                const useGetRenderingGuards = questionGrade === 'GRADE_8' || questionGrade === 'GRADE_9'
                 const ancestorContextFallbackMmds = Array.isArray(q?.ancestorContexts)
                   ? q.ancestorContexts
-                    .map((ancestor: any) => buildQuestionMmdSection(ancestor, { includeQuestionNumber: true }))
+                    .map((ancestor: any) => buildQuestionMmdSection(ancestor, { includeQuestionNumber: true, sanitizeAnswerGuideLines: useGetRenderingGuards }))
                     .filter(Boolean)
                   : []
-                const branchScopedMmd = typeof q?.branchMmd === 'string' ? q.branchMmd.trim() : ''
+                const branchScopedMmd = useGetRenderingGuards && typeof q?.branchMmd === 'string' ? q.branchMmd.trim() : ''
                 const visibleQuestionMmdRaw = branchScopedMmd || [
                   typeof q?.rootContextMmd === 'string' && q.rootContextMmd.trim()
                     ? q.rootContextMmd.trim()
-                    : (q?.rootContext ? buildQuestionMmdSection(q.rootContext, { includeQuestionNumber: false }) : ''),
+                    : (q?.rootContext ? buildQuestionMmdSection(q.rootContext, { includeQuestionNumber: false, sanitizeAnswerGuideLines: useGetRenderingGuards }) : ''),
                   ...(ancestorContextMmds.length > 0 ? ancestorContextMmds : ancestorContextFallbackMmds),
                   typeof q?.questionMmd === 'string' && q.questionMmd.trim()
                     ? q.questionMmd.trim()
-                    : buildQuestionMmdSection(q, { includeQuestionNumber: isSubquestion }),
+                    : buildQuestionMmdSection(q, { includeQuestionNumber: isSubquestion, sanitizeAnswerGuideLines: useGetRenderingGuards }),
                 ].filter(Boolean).join('\n\n')
-                const visibleQuestionMmd = visibleQuestionMmdRaw
-                  .split(/\r?\n/)
-                  .filter((line) => {
-                    const trimmed = String(line || '').trim()
-                    if (!trimmed) return true
-                    const compact = trimmed.replace(/\s+/g, '')
-                    if (/^[_\-.]{4,}$/.test(compact)) return false
-                    if (/^\$?(?:\\_){3,}\$?$/.test(compact)) return false
-                    if (/^\$?_{4,}\$?$/.test(compact)) return false
-                    return true
-                  })
-                  .join('\n')
-                  .replace(/\n{3,}/g, '\n\n')
-                  .trim()
+                const visibleQuestionMmd = useGetRenderingGuards
+                  ? visibleQuestionMmdRaw
+                    .split(/\r?\n/)
+                    .filter((line) => {
+                      const trimmed = String(line || '').trim()
+                      if (!trimmed) return true
+                      const compact = trimmed.replace(/\s+/g, '')
+                      if (/^[_\-.]{4,}$/.test(compact)) return false
+                      if (/^\$?(?:\\_){3,}\$?$/.test(compact)) return false
+                      if (/^\$?_{4,}\$?$/.test(compact)) return false
+                      return true
+                    })
+                    .join('\n')
+                    .replace(/\n{3,}/g, '\n\n')
+                    .trim()
+                  : visibleQuestionMmdRaw.trim()
 
                 return (
                   <li

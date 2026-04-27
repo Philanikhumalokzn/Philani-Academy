@@ -1306,6 +1306,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const hideCompositeRoots = ['1', 'true', 'yes'].includes(String(q.hideCompositeRoots || '').toLowerCase())
   const randomize = ['1', 'true', 'yes'].includes(String(q.random || '').toLowerCase())
   const includeArtifacts = ['1', 'true', 'yes'].includes(String(q.includeArtifacts || '').toLowerCase())
+  const isGetGrade = grade === 'GRADE_8' || grade === 'GRADE_9'
   const approvedOnly = role !== 'admin' // students only see approved questions
   const page = Math.max(1, parseInt(String(q.page || '1'), 10))
   const take = Math.min(100, Math.max(1, parseInt(String(q.take || '50'), 10)))
@@ -1411,7 +1412,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         })
       : []
 
-    const candidateItems = shapeCompositeBranchItems(allItems, relatedContextItems)
+    const candidateItems = isGetGrade
+      ? shapeCompositeBranchItems(allItems, relatedContextItems)
+      : allItems
     const candidateSourceIds = Array.from(new Set(candidateItems.map((item) => String(item.sourceId || '')).filter(Boolean)))
     const candidateSources = candidateSourceIds.length
       ? await prisma.resourceBankItem.findMany({
@@ -1434,10 +1437,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const rootSectionMmd = item.sourceId && rootQuestionNumber
           ? candidateSourceSectionMap.get(item.sourceId)?.get(rootQuestionNumber) || ''
           : ''
-        const directChildrenInSection = rootSectionMmd && item.questionDepth === 0
+        const directChildrenInSection = isGetGrade && rootSectionMmd && item.questionDepth === 0
           ? getDirectChildQuestionNumbersFromSection(rootSectionMmd, normalizedQuestionNumber)
           : []
-        if (item.questionDepth === 0 && directChildrenInSection.length > 0) {
+        if (isGetGrade && item.questionDepth === 0 && directChildrenInSection.length > 0) {
           return null
         }
         const questionMmd = rootSectionMmd
@@ -1446,7 +1449,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const branchMmd = rootSectionMmd
           ? buildQuestionBranchMmd(rootSectionMmd, normalizedQuestionNumber)
           : ''
-        if (!includeArtifacts && isLikelyNonQuestionArtifact(item, { questionMmd, branchMmd, rootSectionMmd })) {
+        if (isGetGrade && !includeArtifacts && isLikelyNonQuestionArtifact(item, { questionMmd, branchMmd, rootSectionMmd })) {
           return null
         }
         return {
@@ -1504,13 +1507,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         })
       : []
 
-    const filteredItems = hideCompositeRoots ? shapeCompositeBranchItems(allItems, relatedContextItems) : allItems
-    const visibleItems = includeArtifacts ? filteredItems : filteredItems.filter((item) => !isLikelyNonQuestionArtifact(item))
+    const filteredItems = isGetGrade && hideCompositeRoots ? shapeCompositeBranchItems(allItems, relatedContextItems) : allItems
+    const visibleItems = isGetGrade && !includeArtifacts
+      ? filteredItems.filter((item) => !isLikelyNonQuestionArtifact(item))
+      : filteredItems
     const orderedItems = randomize ? shuffleInPlace([...visibleItems]) : visibleItems
     total = orderedItems.length
     items = orderedItems.slice(skip, skip + take)
   } else {
-    if (includeArtifacts) {
+    if (!isGetGrade || includeArtifacts) {
       const [rawTotal, rawItems] = await Promise.all([
         prisma.examQuestion.count({ where }),
         prisma.examQuestion.findMany({

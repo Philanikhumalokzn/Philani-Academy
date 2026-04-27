@@ -1,0 +1,578 @@
+[
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2019 NATIONAL SEPTEMBER P1 QP.pdf",
+    "title": "2019 NATIONAL SEPTEMBER P1 QP",
+    "year": 2019,
+    "province": "NATIONAL",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2019 NW SEPTEMBER P1 QP.pdf",
+    "title": "2019 NW SEPTEMBER P1 QP",
+    "year": 2019,
+    "province": "NW",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2019 NW SEPTEMBER P2 QP.pdf",
+    "title": "2019 NW SEPTEMBER P2 QP",
+    "year": 2019,
+    "province": "NW",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2019 WC SEPTEMBER P1 QP.pdf",
+    "title": "2019 WC SEPTEMBER P1 QP",
+    "year": 2019,
+    "province": "WC",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2019 WC SEPTEMBER P2 QP.pdf",
+    "title": "2019 WC SEPTEMBER P2 QP",
+    "year": 2019,
+    "province": "WC",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2020 FS SEPTEMBER P1 QP.pdf",
+    "title": "2020 FS SEPTEMBER P1 QP",
+    "year": 2020,
+    "province": "FS",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2020 FS SEPTEMBER P2 QP.pdf",
+    "title": "2020 FS SEPTEMBER P2 QP",
+    "year": 2020,
+    "province": "FS",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2020 KZN SEPTEMBER P1 QP.pdf",
+    "title": "2020 KZN SEPTEMBER P1 QP",
+    "year": 2020,
+    "province": "KZN",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2020 WC SEPTEMBER P1 QP.pdf",
+    "title": "2020 WC SEPTEMBER P1 QP",
+    "year": 2020,
+    "province": "WC",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2020 WC SEPTEMBER P2 QP.pdf",
+    "title": "2020 WC SEPTEMBER P2 QP",
+    "year": 2020,
+    "province": "WC",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2021 FS SEPTEMBER P1 QP.pdf",
+    "title": "2021 FS SEPTEMBER P1 QP",
+    "year": 2021,
+    "province": "FS",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2021 KZN JUNE P0 QP.pdf",
+    "title": "2021 KZN JUNE P0 QP",
+    "year": 2021,
+    "province": "KZN",
+    "paper": 0,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2021 KZN SEPTEMBER P1 QP.pdf",
+    "title": "2021 KZN SEPTEMBER P1 QP",
+    "year": 2021,
+    "province": "KZN",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2021 KZN SEPTEMBER P2 QP.pdf",
+    "title": "2021 KZN SEPTEMBER P2 QP",
+    "year": 2021,
+    "province": "KZN",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2022 FS SEPTEMBER P1 QP.pdf",
+    "title": "2022 FS SEPTEMBER P1 QP",
+    "year": 2022,
+    "province": "FS",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2022 FS SEPTEMBER P2 QP.pdf",
+    "title": "2022 FS SEPTEMBER P2 QP",
+    "year": 2022,
+    "province": "FS",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2022 GP JUNE P1 QP.pdf",
+    "title": "2022 GP JUNE P1 QP",
+    "year": 2022,
+    "province": "GP",
+    "paper": 1,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2022 KZN SEPTEMBER P1 QP.pdf",
+    "title": "2022 KZN SEPTEMBER P1 QP",
+    "year": 2022,
+    "province": "KZN",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2022 KZN SEPTEMBER P2 QP.pdf",
+    "title": "2022 KZN SEPTEMBER P2 QP",
+    "year": 2022,
+    "province": "KZN",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2022 NW SEPTEMBER P1 QP.pdf",
+    "title": "2022 NW SEPTEMBER P1 QP",
+    "year": 2022,
+    "province": "NW",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2022 NW SEPTEMBER P2 QP.pdf",
+    "title": "2022 NW SEPTEMBER P2 QP",
+    "year": 2022,
+    "province": "NW",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2022 WC SEPTEMBER P1 QP.pdf",
+    "title": "2022 WC SEPTEMBER P1 QP",
+    "year": 2022,
+    "province": "WC",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2022 WC SEPTEMBER P2 QP.pdf",
+    "title": "2022 WC SEPTEMBER P2 QP",
+    "year": 2022,
+    "province": "WC",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2023 GP JUNE P1 QP.pdf",
+    "title": "2023 GP JUNE P1 QP",
+    "year": 2023,
+    "province": "GP",
+    "paper": 1,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2023 GP JUNE P2 QP.pdf",
+    "title": "2023 GP JUNE P2 QP",
+    "year": 2023,
+    "province": "GP",
+    "paper": 2,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2023 MP JUNE P1 QP.pdf",
+    "title": "2023 MP JUNE P1 QP",
+    "year": 2023,
+    "province": "MP",
+    "paper": 1,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2023 MP JUNE P2 QP.pdf",
+    "title": "2023 MP JUNE P2 QP",
+    "year": 2023,
+    "province": "MP",
+    "paper": 2,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2009 EC SEPTEMBER P1 QP.pdf",
+    "title": "2009 EC SEPTEMBER P1 QP",
+    "year": 2009,
+    "province": "EC",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2017 NATIONAL JUNE P2 QP.pdf",
+    "title": "2017 NATIONAL JUNE P2 QP",
+    "year": 2017,
+    "province": "NATIONAL",
+    "paper": 2,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2016 NATIONAL JUNE P2 QP.pdf",
+    "title": "2016 NATIONAL JUNE P2 QP",
+    "year": 2016,
+    "province": "NATIONAL",
+    "paper": 2,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2016 NATIONAL SEPTEMBER P2 QP.pdf",
+    "title": "2016 NATIONAL SEPTEMBER P2 QP",
+    "year": 2016,
+    "province": "NATIONAL",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2017 NATIONAL SEPTEMBER P2 QP.pdf",
+    "title": "2017 NATIONAL SEPTEMBER P2 QP",
+    "year": 2017,
+    "province": "NATIONAL",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2015 GP SEPTEMBER P1 QP.pdf",
+    "title": "2015 GP SEPTEMBER P1 QP",
+    "year": 2015,
+    "province": "GP",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2019 GP SEPTEMBER P1 QP.pdf",
+    "title": "2019 GP SEPTEMBER P1 QP",
+    "year": 2019,
+    "province": "GP",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2020 GP SEPTEMBER P1 QP.pdf",
+    "title": "2020 GP SEPTEMBER P1 QP",
+    "year": 2020,
+    "province": "GP",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2022 GP SEPTEMBER P1 QP.pdf",
+    "title": "2022 GP SEPTEMBER P1 QP",
+    "year": 2022,
+    "province": "GP",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2023 GP SEPTEMBER P1 QP.pdf",
+    "title": "2023 GP SEPTEMBER P1 QP",
+    "year": 2023,
+    "province": "GP",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2016 GP SEPTEMBER P1 QP.pdf",
+    "title": "2016 GP SEPTEMBER P1 QP",
+    "year": 2016,
+    "province": "GP",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2017 GP SEPTEMBER P1 QP.pdf",
+    "title": "2017 GP SEPTEMBER P1 QP",
+    "year": 2017,
+    "province": "GP",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2015 GP SEPTEMBER P2 QP.pdf",
+    "title": "2015 GP SEPTEMBER P2 QP",
+    "year": 2015,
+    "province": "GP",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2020 GP SEPTEMBER P2 QP.pdf",
+    "title": "2020 GP SEPTEMBER P2 QP",
+    "year": 2020,
+    "province": "GP",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2022 GP SEPTEMBER P2 QP.pdf",
+    "title": "2022 GP SEPTEMBER P2 QP",
+    "year": 2022,
+    "province": "GP",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2016 GP SEPTEMBER P2 QP.pdf",
+    "title": "2016 GP SEPTEMBER P2 QP",
+    "year": 2016,
+    "province": "GP",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2017 GP SEPTEMBER P2 QP.pdf",
+    "title": "2017 GP SEPTEMBER P2 QP",
+    "year": 2017,
+    "province": "GP",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2020 NATIONAL SEPTEMBER P2 QP.pdf",
+    "title": "2020 NATIONAL SEPTEMBER P2 QP",
+    "year": 2020,
+    "province": "NATIONAL",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2018 NATIONAL JUNE P2 QP.pdf",
+    "title": "2018 NATIONAL JUNE P2 QP",
+    "year": 2018,
+    "province": "NATIONAL",
+    "paper": 2,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/Maths P1 Gr12 June QP 2018 Eng Flatend.pdf",
+    "title": "2018 EC JUNE P1 QP",
+    "year": 2018,
+    "province": "EC",
+    "paper": 1,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2017 NATIONAL SEPTEMBER P1 QP.pdf",
+    "title": "2017 NATIONAL SEPTEMBER P1 QP",
+    "year": 2017,
+    "province": "NATIONAL",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2016 NATIONAL JUNE P1 QP.pdf",
+    "title": "2016 NATIONAL JUNE P1 QP",
+    "year": 2016,
+    "province": "NATIONAL",
+    "paper": 1,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2015 NATIONAL SEPTEMBER P1 QP.pdf",
+    "title": "2015 NATIONAL SEPTEMBER P1 QP",
+    "year": 2015,
+    "province": "NATIONAL",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2017 NATIONAL JUNE P1 QP.pdf",
+    "title": "2017 NATIONAL JUNE P1 QP",
+    "year": 2017,
+    "province": "NATIONAL",
+    "paper": 1,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2019 NATIONAL JUNE P1 QP.pdf",
+    "title": "2019 NATIONAL JUNE P1 QP",
+    "year": 2019,
+    "province": "NATIONAL",
+    "paper": 1,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2022 NATIONAL JUNE P1 QP.pdf",
+    "title": "2022 NATIONAL JUNE P1 QP",
+    "year": 2022,
+    "province": "NATIONAL",
+    "paper": 1,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2023 NATIONAL JUNE P1 QP.pdf",
+    "title": "2023 NATIONAL JUNE P1 QP",
+    "year": 2023,
+    "province": "NATIONAL",
+    "paper": 1,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2021 NATIONAL JUNE P1 QP.pdf",
+    "title": "2021 NATIONAL JUNE P1 QP",
+    "year": 2021,
+    "province": "NATIONAL",
+    "paper": 1,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2018 NATIONAL SEPTEMBER P1 QP.pdf",
+    "title": "2018 NATIONAL SEPTEMBER P1 QP",
+    "year": 2018,
+    "province": "NATIONAL",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2019 NATIONAL SEPTEMBER P1 QP_ALT2.pdf",
+    "title": "2019 NATIONAL SEPTEMBER P1 QP_ALT2",
+    "year": 2019,
+    "province": "NATIONAL",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2021 NATIONAL SEPTEMBER P1 QP.pdf",
+    "title": "2021 NATIONAL SEPTEMBER P1 QP",
+    "year": 2021,
+    "province": "NATIONAL",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2022 NATIONAL SEPTEMBER P1 QP.pdf",
+    "title": "2022 NATIONAL SEPTEMBER P1 QP",
+    "year": 2022,
+    "province": "NATIONAL",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2023 NATIONAL SEPTEMBER P1 QP.pdf",
+    "title": "2023 NATIONAL SEPTEMBER P1 QP",
+    "year": 2023,
+    "province": "NATIONAL",
+    "paper": 1,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2018 GP SEPTEMBER P2 QP.pdf",
+    "title": "2018 GP SEPTEMBER P2 QP",
+    "year": 2018,
+    "province": "GP",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2019 NATIONAL SEPTEMBER P2 QP.pdf",
+    "title": "2019 NATIONAL SEPTEMBER P2 QP",
+    "year": 2019,
+    "province": "NATIONAL",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2015 NATIONAL SEPTEMBER P2 QP.pdf",
+    "title": "2015 NATIONAL SEPTEMBER P2 QP",
+    "year": 2015,
+    "province": "NATIONAL",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2018 NATIONAL SEPTEMBER P2 QP.pdf",
+    "title": "2018 NATIONAL SEPTEMBER P2 QP",
+    "year": 2018,
+    "province": "NATIONAL",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2019 NATIONAL JUNE P2 QP.pdf",
+    "title": "2019 NATIONAL JUNE P2 QP",
+    "year": 2019,
+    "province": "NATIONAL",
+    "paper": 2,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2022 NATIONAL JUNE P2 QP.pdf",
+    "title": "2022 NATIONAL JUNE P2 QP",
+    "year": 2022,
+    "province": "NATIONAL",
+    "paper": 2,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2023 NATIONAL JUNE P2 QP.pdf",
+    "title": "2023 NATIONAL JUNE P2 QP",
+    "year": 2023,
+    "province": "NATIONAL",
+    "paper": 2,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2021 NATIONAL JUNE P2 QP.pdf",
+    "title": "2021 NATIONAL JUNE P2 QP",
+    "year": 2021,
+    "province": "NATIONAL",
+    "paper": 2,
+    "month": "June"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2022 NATIONAL SEPTEMBER P2 QP.pdf",
+    "title": "2022 NATIONAL SEPTEMBER P2 QP",
+    "year": 2022,
+    "province": "NATIONAL",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2023 NATIONAL SEPTEMBER P2 QP.pdf",
+    "title": "2023 NATIONAL SEPTEMBER P2 QP",
+    "year": 2023,
+    "province": "NATIONAL",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2019 NATIONAL SEPTEMBER P2 QP_ALT2.pdf",
+    "title": "2019 NATIONAL SEPTEMBER P2 QP_ALT2",
+    "year": 2019,
+    "province": "NATIONAL",
+    "paper": 2,
+    "month": "September"
+  },
+  {
+    "path": "C:/Users/mandl/Desktop/toUp/2016 NATIONAL SEPTEMBER P1 QP.pdf",
+    "title": "2016 NATIONAL SEPTEMBER P1 QP",
+    "year": 2016,
+    "province": "NATIONAL",
+    "paper": 1,
+    "month": "September"
+  }
+]

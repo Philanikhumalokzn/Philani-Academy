@@ -17,6 +17,10 @@
     "questions:backfill-math": "node scripts/backfill_exam_question_math.js --write",
     "questions:backfill-source-ids": "node scripts/backfill_exam_question_source_ids.js --write --create-snapshots",
     "questions:dedupe-exact": "node scripts/dedupe_exact_exam_questions.js --write",
+    "questions:extract-grade12-missing": "node scripts/extract_unextracted_grade12.js",
+    "questions:extract-grade12-missing:dry": "node scripts/extract_unextracted_grade12.js --dryRun 1",
+    "resources:bulk-upload": "node scripts/bulk_upload_resources.js",
+    "resources:upload-manifest": "node scripts/upload_resources_manifest.js",
     "resend:domains": "node scripts/manage_resend_domain.js",
     "emis:import": "node scripts/import_emis_schools.js"
   },

@@ -14,7 +14,7 @@ export const config = {
 const VALID_TOPICS = [
   'Algebra', 'Functions', 'Number Patterns', 'Number, Operations and Relationships', 'Patterns and Functions', 'Transformation Geometry', '2D Geometry', '3D Geometry', 'Measurement', 'Data Handling', 'Finance', 'Trigonometry',
   'Euclidean Geometry', 'Analytical Geometry', 'Statistics', 'Probability',
-  'Calculus', 'Sequences and Series', 'Polynomials', 'Other',
+  'Calculus', 'Sequences and Series', 'Polynomials',
 ]
 
 const SEARCH_STOPWORDS = new Set([
@@ -96,7 +96,6 @@ const SEARCH_TOPIC_ALIASES = [
   ['sequences and series', 'Sequences and Series'],
   ['polynomial', 'Polynomials'],
   ['polynomials', 'Polynomials'],
-  ['other', 'Other'],
 ] as const
 
 type ParsedExamQuestionSearch = {

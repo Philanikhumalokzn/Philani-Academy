@@ -17431,7 +17431,22 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
   }, [resourceBankEditItem, resourceBankEditTitle, resourceBankEditTag, resourceBankEditSourceName, resourceBankEditAuthorityScope, resourceBankEditProvince, resourceBankEditExamCycle, resourceBankEditAssessmentType, resourceBankEditAssessmentFormality, resourceBankEditYear, resourceBankEditSessionMonth, resourceBankEditPaper, resourceBankEditPaperMode, resourceBankEditPaperLabelRaw, resourceBankEditGrade, resourceBankEditParse, resourceBankEditAiNormalize, fetchResourceBankItems, resourceBankEffectiveGrade])
 
   const openResourceBankExtract = useCallback((item: ResourceBankItem) => {
+    const nextYear = typeof item?.year === 'number' && Number.isFinite(item.year)
+      ? item.year
+      : new Date().getFullYear()
+    const cycleMonth = item?.examCycle ? RESOURCE_CYCLE_TO_MONTH[String(item.examCycle)] : undefined
+    const rawMonth = String(item?.sessionMonth || cycleMonth || '').trim()
+    const nextMonth = (QB_MONTHS as readonly string[]).includes(rawMonth)
+      ? rawMonth
+      : 'November'
+    const nextPaper = typeof item?.paper === 'number' && Number.isFinite(item.paper) && item.paper >= 0 && item.paper <= 3
+      ? item.paper
+      : 1
+
     setResourceBankExtractItem(item)
+    setResourceBankExtractYear(nextYear)
+    setResourceBankExtractMonth(nextMonth)
+    setResourceBankExtractPaper(nextPaper)
     setResourceBankExtractResult(null)
     setResourceBankExtractError(null)
     setResourceBankExtractOpen(true)

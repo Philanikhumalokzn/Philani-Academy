@@ -5176,9 +5176,17 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
   useEffect(() => {
     if (!booksOverlayOpen) return
-    if (booksHubTab !== 'papers' && booksHubTab !== 'pdfs' && booksHubTab !== 'resources') return
+    const shouldRefreshBooksMaterials =
+      booksHubTab === 'papers' || booksHubTab === 'pdfs' || (isAdmin && booksHubTab === 'resources')
+    if (!shouldRefreshBooksMaterials) return
     void fetchBooksForGrade()
-  }, [booksHubTab, booksOverlayOpen, fetchBooksForGrade])
+  }, [booksHubTab, booksOverlayOpen, fetchBooksForGrade, isAdmin])
+
+  useEffect(() => {
+    if (isAdmin) return
+    if (booksHubTab !== 'resources') return
+    setBooksHubTab('pdfs')
+  }, [booksHubTab, isAdmin])
 
   useEffect(() => {
     if (!booksOverlayOpen) return
@@ -18539,13 +18547,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
             >
               PDFs
             </button>
-            <button
-              type="button"
-              className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'resources' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
-              onClick={() => setBooksHubTab('resources')}
-            >
-              Resources
-            </button>
+            {isAdmin ? (
+              <button
+                type="button"
+                className={`inline-flex h-8 items-center justify-center rounded-full px-3 text-xs font-semibold transition ${booksHubTab === 'resources' ? 'bg-white text-[#1c1e21] shadow-sm' : 'text-[#4b5563] hover:text-[#1c1e21]'}`}
+                onClick={() => setBooksHubTab('resources')}
+              >
+                Resources
+              </button>
+            ) : null}
           </div>
         </section>
 
@@ -18595,7 +18605,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
         {booksHubTab === 'remixes' ? renderQuestionRemixesContent() : null}
         {booksHubTab === 'papers' ? renderBooksList('papers') : null}
         {booksHubTab === 'pdfs' ? renderBooksList('pdfs') : null}
-        {booksHubTab === 'resources' ? renderResourceBankContent() : null}
+        {isAdmin && booksHubTab === 'resources' ? renderResourceBankContent() : null}
       </div>
     )
   }

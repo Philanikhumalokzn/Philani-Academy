@@ -52,18 +52,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     },
   })
 
-  if (!visibleQuestion) {
-    return res.status(404).json({ message: 'No visible paper matched the request' })
-  }
-
-  if (!visibleQuestion.sourceId) {
-    return res.status(404).json({ message: 'This paper does not have a linked source document' })
-  }
-
-  const source = await prisma.resourceBankItem.findUnique({
-    where: { id: visibleQuestion.sourceId },
-    select: { id: true, title: true, url: true, parsedJson: true },
-  })
+  const source = requestedSourceId
+    ? await prisma.resourceBankItem.findFirst({
+        where: { id: requestedSourceId, grade: scopeGrade },
+        select: { id: true, title: true, url: true, parsedJson: true, grade: true, year: true, sessionMonth: true, paper: true },
+      })
+    : visibleQuestion?.sourceId
+      ? await prisma.resourceBankItem.findUnique({
+          where: { id: visibleQuestion.sourceId },
+          select: { id: true, title: true, url: true, parsedJson: true, grade: true, year: true, sessionMonth: true, paper: true },
+        })
+      : (Number.isFinite(requestedYear) && requestedMonth && Number.isFinite(requestedPaper)
+          ? await prisma.resourceBankItem.findFirst({
+              where: {
+                grade: scopeGrade,
+                year: requestedYear,
+                sessionMonth: requestedMonth,
+                paper: requestedPaper,
+              },
+              orderBy: { createdAt: 'desc' },
+              select: { id: true, title: true, url: true, parsedJson: true, grade: true, year: true, sessionMonth: true, paper: true },
+            })
+          : null)
 
   if (!source) {
     return res.status(404).json({ message: 'Source document not found' })
@@ -76,10 +86,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     sourceId: source.id,
     title: source.title || null,
     sourceUrl: source.url || null,
-    grade: visibleQuestion.grade,
-    year: visibleQuestion.year,
-    month: visibleQuestion.month,
-    paper: visibleQuestion.paper,
+    grade: visibleQuestion?.grade || source.grade || scopeGrade,
+    year: visibleQuestion?.year || source.year || null,
+    month: visibleQuestion?.month || source.sessionMonth || null,
+    paper: visibleQuestion?.paper ?? source.paper ?? null,
     hasMmd: mmd.trim().length > 0,
     mmd,
   })

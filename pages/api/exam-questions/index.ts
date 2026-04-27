@@ -760,6 +760,117 @@ function compareHierarchyQuestionNumbers(a: unknown, b: unknown): number {
   return String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' })
 }
 
+function extractQuestionNumbersFromSection(sectionMmd: string, rootQuestionNumber: string): string[] {
+  const values = new Set<string>()
+  const root = normalizeHierarchyQuestionNumber(rootQuestionNumber)
+  if (root) values.add(root)
+
+  const lines = String(sectionMmd || '').split(/\r?\n/)
+  for (const rawLine of lines) {
+    const line = String(rawLine || '').trim()
+    if (!line) continue
+    const m = line.match(/^Q?((?:\d+)(?:\.\d+){0,6})\b/)
+    const qNum = normalizeHierarchyQuestionNumber(m?.[1] || '')
+    if (!qNum) continue
+    if (root && !(qNum === root || qNum.startsWith(`${root}.`))) continue
+    values.add(qNum)
+  }
+
+  return Array.from(values).sort((a, b) => compareHierarchyQuestionNumbers(a, b))
+}
+
+function synthesizeQuestionsFromSourceMmd(opts: {
+  sourceId: string
+  grade: string
+  year: number
+  month: string
+  paper: number
+  mmd: string
+}): Array<{
+  id: string
+  grade: string
+  year: number
+  month: string
+  paper: number
+  questionNumber: string
+  questionDepth: number
+  topic: string | null
+  cognitiveLevel: number | null
+  marks: number | null
+  questionText: string
+  latex: string | null
+  imageUrl: string | null
+  tableMarkdown: string | null
+  approved: boolean
+  sourceId: string | null
+  createdAt: Date
+}> {
+  const { sourceId, grade, year, month, paper, mmd } = opts
+  const text = String(mmd || '').trim()
+  if (!text) return []
+
+  const sections = extractQuestionSectionsFromMmd(text)
+  const marksMap = buildQuestionMarksMapFromMmd(text)
+  const rootBlocks = buildRootPreambleBlocksFromMmd(text)
+  const items: Array<{
+    id: string
+    grade: string
+    year: number
+    month: string
+    paper: number
+    questionNumber: string
+    questionDepth: number
+    topic: string | null
+    cognitiveLevel: number | null
+    marks: number | null
+    questionText: string
+    latex: string | null
+    imageUrl: string | null
+    tableMarkdown: string | null
+    approved: boolean
+    sourceId: string | null
+    createdAt: Date
+  }> = []
+
+  for (const [root, sectionMmd] of sections.entries()) {
+    const qNums = extractQuestionNumbersFromSection(sectionMmd, root)
+    for (const qNum of qNums) {
+      let block = qNum === root
+        ? buildRootPreambleMmdFromSection(sectionMmd, root)
+        : sliceQuestionBlockFromSection(sectionMmd, qNum)
+      if (!block && qNum === root) block = sectionMmd
+
+      const normalized = normalizeExamQuestionContent(String(block || '').replace(/\s+/g, ' ').trim(), '')
+      const rootBlock = rootBlocks.get(root)
+      const questionText = normalized.questionText
+        || (qNum === root ? String(rootBlock?.preambleText || '').trim() : '')
+      if (!questionText) continue
+
+      items.push({
+        id: `synthetic:${sourceId}:${qNum}`,
+        grade,
+        year,
+        month,
+        paper,
+        questionNumber: qNum,
+        questionDepth: Math.max(0, qNum.split('.').filter(Boolean).length - 1),
+        topic: null,
+        cognitiveLevel: null,
+        marks: pickQuestionMarks(qNum, marksMap),
+        questionText,
+        latex: null,
+        imageUrl: null,
+        tableMarkdown: qNum === root && rootBlock?.tableMarkdown ? rootBlock.tableMarkdown : null,
+        approved: true,
+        sourceId,
+        createdAt: new Date(0),
+      })
+    }
+  }
+
+  return items.sort((a, b) => compareHierarchyQuestionNumbers(a.questionNumber, b.questionNumber))
+}
+
 function buildQuestionScopeKey(item: {
   sourceId: string | null
   grade: string
@@ -1366,6 +1477,69 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ])
     total = rawTotal
     items = rawItems
+  }
+
+  // Admin fallback: if extracted rows are missing for a selected paper/source,
+  // synthesize question rows directly from parsed MMD so Remix slicer still works.
+  if (
+    items.length === 0
+    && !searchQuery
+    && role === 'admin'
+    && (sourceId || (Number.isFinite(year as number) && !!month && Number.isFinite(paper as number)))
+  ) {
+    const source = sourceId
+      ? await prisma.resourceBankItem.findFirst({
+          where: { id: sourceId, grade },
+          select: {
+            id: true,
+            grade: true,
+            year: true,
+            sessionMonth: true,
+            paper: true,
+            parsedJson: true,
+          },
+        })
+      : await prisma.resourceBankItem.findFirst({
+          where: {
+            grade,
+            year: year as number,
+            sessionMonth: String(month),
+            paper: paper as number,
+          },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            grade: true,
+            year: true,
+            sessionMonth: true,
+            paper: true,
+            parsedJson: true,
+          },
+        })
+
+    const mmd = typeof (source?.parsedJson as any)?.raw?.mmd === 'string'
+      ? String((source?.parsedJson as any).raw.mmd)
+      : ''
+
+    if (
+      source
+      && source.grade
+      && typeof source.year === 'number'
+      && source.sessionMonth
+      && typeof source.paper === 'number'
+      && mmd.trim()
+    ) {
+      items = synthesizeQuestionsFromSourceMmd({
+        sourceId: source.id,
+        grade: source.grade,
+        year: source.year,
+        month: source.sessionMonth,
+        paper: source.paper,
+        mmd,
+      })
+      total = items.length
+      items = items.slice(skip, skip + take)
+    }
   }
 
   const sourceIds = Array.from(new Set(items.map((item) => String(item.sourceId || '')).filter(Boolean)))

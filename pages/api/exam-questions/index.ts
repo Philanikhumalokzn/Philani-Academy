@@ -578,9 +578,28 @@ function extractLeadingHierarchyQuestionNumber(line: string): string {
   const trimmed = String(line || '').trim()
   if (!trimmed) return ''
 
-  const match = trimmed.match(/^Q?\s*((?:\d+\s*(?:\.\s*\d+){0,6}))\b/i)
+  const match = trimmed.match(/^[\s$`*_\-()>\[\](){}]*Q?\s*((?:\d+\s*(?:\.\s*\d+){0,6}))\b/i)
   if (!match?.[1]) return ''
   return normalizeHierarchyQuestionNumber(match[1].replace(/\s*\.\s*/g, '.'))
+}
+
+function getDirectChildQuestionNumbersFromSection(sectionMmd: string, rootQuestionNumber: string): string[] {
+  const root = normalizeHierarchyQuestionNumber(rootQuestionNumber)
+  if (!root) return []
+
+  const directChildren = new Set<string>()
+  const expectedDepth = getHierarchyQuestionParts(root).length + 1
+  const lines = String(sectionMmd || '').split(/\r?\n/)
+
+  for (const line of lines) {
+    const candidate = extractLeadingHierarchyQuestionNumber(line)
+    if (!candidate) continue
+    if (!candidate.startsWith(`${root}.`)) continue
+    if (getHierarchyQuestionParts(candidate).length !== expectedDepth) continue
+    directChildren.add(candidate)
+  }
+
+  return Array.from(directChildren).sort(compareHierarchyQuestionNumbers)
 }
 
 function buildRootPreambleMmdFromSection(sectionMmd: string, rootQuestionNumber: string): string {
@@ -1348,6 +1367,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const rootSectionMmd = item.sourceId && rootQuestionNumber
           ? candidateSourceSectionMap.get(item.sourceId)?.get(rootQuestionNumber) || ''
           : ''
+        const directChildrenInSection = rootSectionMmd && item.questionDepth === 0
+          ? getDirectChildQuestionNumbersFromSection(rootSectionMmd, normalizedQuestionNumber)
+          : []
+        if (item.questionDepth === 0 && directChildrenInSection.length > 0) {
+          return null
+        }
         const questionMmd = rootSectionMmd
           ? sliceQuestionBlockFromSection(rootSectionMmd, normalizedQuestionNumber)
           : ''
@@ -1364,6 +1389,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }),
         }
       })
+      .filter((entry): entry is { item: typeof candidateItems[number]; ranking: ReturnType<typeof scoreExamQuestionSearch> } => !!entry)
       .filter(({ ranking }) => ranking.score >= (parsedSearch.freeTokens.length > 0 ? 4 : 1) || ranking.exactStructuredMatches > 0 || ranking.phraseMatch)
       .sort((left, right) => {
         if (right.ranking.score !== left.ranking.score) return right.ranking.score - left.ranking.score

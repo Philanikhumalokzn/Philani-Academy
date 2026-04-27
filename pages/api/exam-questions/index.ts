@@ -300,6 +300,7 @@ function scoreExamQuestionSearch(
   parsed: ParsedExamQuestionSearch,
   sourceContext?: {
     questionMmd?: string
+    branchMmd?: string
     rootSectionMmd?: string
     sourceMmd?: string
   },
@@ -311,20 +312,21 @@ function scoreExamQuestionSearch(
   const topicKey = normalizeSearchValue(item.topic || '')
   const topicTokens = uniqStrings(tokenizeSearchValue(item.topic || ''))
   const sourceQuestionMmd = String(sourceContext?.questionMmd || '')
+  const sourceBranchMmd = String(sourceContext?.branchMmd || sourceQuestionMmd || '')
   const sourceRootSectionMmd = String(sourceContext?.rootSectionMmd || '')
   const sourceMmd = String(sourceContext?.sourceMmd || '')
-  const textTokens = uniqStrings(tokenizeSearchValue(`${normalizedQuestion.questionText} ${item.latex || ''} ${item.tableMarkdown || ''} ${sourceQuestionMmd} ${sourceRootSectionMmd}`)).slice(0, 260)
-  const sourceTokens = uniqStrings(tokenizeSearchValue(sourceMmd)).slice(0, 320)
+  const textTokens = uniqStrings(tokenizeSearchValue(`${normalizedQuestion.questionText} ${item.latex || ''} ${item.tableMarkdown || ''} ${sourceQuestionMmd} ${sourceBranchMmd}`)).slice(0, 260)
+  const sourceTokens = uniqStrings(tokenizeSearchValue(`${sourceMmd} ${sourceRootSectionMmd}`)).slice(0, 320)
   const metaTokens = uniqStrings(tokenizeSearchValue(`${item.year} ${item.month} paper ${item.paper} p${item.paper} ${item.topic || ''} level ${item.cognitiveLevel ?? ''} ${questionNumber}`))
   const phraseFields = [
     normalizeSearchValue(normalizedQuestion.questionText),
     normalizeSearchValue(item.latex || ''),
     normalizeSearchValue(item.tableMarkdown || ''),
     normalizeSearchValue(sourceQuestionMmd),
-    normalizeSearchValue(sourceRootSectionMmd),
+    normalizeSearchValue(sourceBranchMmd),
     normalizeSearchValue(`${item.year} ${item.month} paper ${item.paper} ${item.topic || ''} level ${item.cognitiveLevel ?? ''} ${questionNumber}`),
   ]
-  const sourcePhraseField = normalizeSearchValue(sourceMmd)
+  const sourcePhraseField = normalizeSearchValue(`${sourceMmd} ${sourceRootSectionMmd}`)
 
   let score = 0
   let exactStructuredMatches = 0
@@ -781,7 +783,31 @@ function shuffleInPlace<T>(items: T[]): T[] {
   return items
 }
 
-function shapeCompositeRootItems<T extends {
+function buildQuestionBranchMmd(sectionMmd: string, questionNumber: string): string {
+  const normalizedQuestionNumber = normalizeHierarchyQuestionNumber(questionNumber)
+  if (!normalizedQuestionNumber) return ''
+
+  const rootQuestionNumber = getHierarchyRootQuestionNumber(normalizedQuestionNumber)
+  const ancestorQuestionNumbers = getHierarchyAncestorQuestionNumbers(normalizedQuestionNumber)
+  const branchParts: string[] = []
+
+  if (rootQuestionNumber && rootQuestionNumber !== normalizedQuestionNumber) {
+    const rootPreamble = buildRootPreambleMmdFromSection(sectionMmd, rootQuestionNumber)
+    if (rootPreamble) branchParts.push(rootPreamble)
+  }
+
+  for (const ancestorQuestionNumber of ancestorQuestionNumbers) {
+    const ancestorSlice = sliceQuestionBlockFromSection(sectionMmd, ancestorQuestionNumber)
+    if (ancestorSlice) branchParts.push(ancestorSlice)
+  }
+
+  const questionSlice = sliceQuestionBlockFromSection(sectionMmd, normalizedQuestionNumber)
+  if (questionSlice) branchParts.push(questionSlice)
+
+  return branchParts.join('\n\n').trim()
+}
+
+function shapeCompositeBranchItems<T extends {
   id: string
   sourceId: string | null
   grade: string
@@ -791,41 +817,54 @@ function shapeCompositeRootItems<T extends {
   questionNumber: string
   questionDepth: number
 }>(items: T[], scopeItems: T[]): T[] {
-  const matchedByScope = new Map<string, T[]>()
+  const scopeItemsByScope = new Map<string, T[]>()
 
-  for (const item of items) {
+  for (const item of scopeItems) {
     const scopeKey = buildQuestionScopeKey(item)
-    const list = matchedByScope.get(scopeKey) || []
+    const list = scopeItemsByScope.get(scopeKey) || []
     list.push(item)
-    matchedByScope.set(scopeKey, list)
+    scopeItemsByScope.set(scopeKey, list)
   }
 
   const shapedItems: T[] = []
 
   for (const item of items) {
     const normalized = normalizeHierarchyQuestionNumber(item.questionNumber)
-    if (!normalized || item.questionDepth !== 0) {
+    if (!normalized) {
       shapedItems.push(item)
       continue
     }
 
     const scopeKey = buildQuestionScopeKey(item)
-    const matchedSiblings = matchedByScope.get(scopeKey) || []
-    const descendantsInMatchedSet = matchedSiblings
+    const scopeSiblings = scopeItemsByScope.get(scopeKey) || []
+    const descendantsInScope = scopeSiblings
       .filter((candidate) => {
         const candidateNumber = normalizeHierarchyQuestionNumber(candidate.questionNumber)
         return candidate.id !== item.id && candidateNumber !== normalized && candidateNumber.startsWith(`${normalized}.`)
       })
       .sort((left, right) => compareHierarchyQuestionNumbers(left.questionNumber, right.questionNumber))
 
-    if (descendantsInMatchedSet.length === 0) {
+    if (descendantsInScope.length === 0) {
       shapedItems.push(item)
       continue
     }
 
-    const directChildren = descendantsInMatchedSet.filter((candidate) => getHierarchyParentQuestionNumber(candidate.questionNumber) === normalized)
-    const preferredBranchItem = directChildren[0] || descendantsInMatchedSet[0]
-    shapedItems.push(preferredBranchItem)
+    const terminalDescendants = descendantsInScope.filter((candidate) => {
+      const candidateNumber = normalizeHierarchyQuestionNumber(candidate.questionNumber)
+      if (!candidateNumber) return false
+      return !descendantsInScope.some((other) => {
+        if (other.id === candidate.id) return false
+        const otherNumber = normalizeHierarchyQuestionNumber(other.questionNumber)
+        return otherNumber !== candidateNumber && otherNumber.startsWith(`${candidateNumber}.`)
+      })
+    })
+
+    if (terminalDescendants.length === 0) {
+      shapedItems.push(item)
+      continue
+    }
+
+    shapedItems.push(...terminalDescendants)
   }
 
   return shapedItems.filter((item, index, array) => array.findIndex((candidate) => candidate.id === item.id) === index)
@@ -1270,7 +1309,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         })
       : []
 
-    const candidateItems = hideCompositeRoots ? shapeCompositeRootItems(allItems, relatedContextItems) : allItems
+    const candidateItems = shapeCompositeBranchItems(allItems, relatedContextItems)
     const candidateSourceIds = Array.from(new Set(candidateItems.map((item) => String(item.sourceId || '')).filter(Boolean)))
     const candidateSources = candidateSourceIds.length
       ? await prisma.resourceBankItem.findMany({
@@ -1296,10 +1335,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const questionMmd = rootSectionMmd
           ? sliceQuestionBlockFromSection(rootSectionMmd, normalizedQuestionNumber)
           : ''
+        const branchMmd = rootSectionMmd
+          ? buildQuestionBranchMmd(rootSectionMmd, normalizedQuestionNumber)
+          : ''
         return {
           item,
           ranking: scoreExamQuestionSearch(item, parsedSearch, {
             questionMmd,
+            branchMmd,
             rootSectionMmd,
             sourceMmd: item.sourceId ? candidateSourceMmdMap.get(item.sourceId) || '' : '',
           }),
@@ -1349,7 +1392,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         })
       : []
 
-    const filteredItems = hideCompositeRoots ? shapeCompositeRootItems(allItems, relatedContextItems) : allItems
+    const filteredItems = hideCompositeRoots ? shapeCompositeBranchItems(allItems, relatedContextItems) : allItems
     const orderedItems = randomize ? shuffleInPlace([...filteredItems]) : filteredItems
     total = orderedItems.length
     items = orderedItems.slice(skip, skip + take)

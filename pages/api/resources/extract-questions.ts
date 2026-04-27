@@ -343,6 +343,20 @@ export function getAllowedTopicsForGrade(grade: unknown): string[] {
   return topicsWithoutCalculus
 }
 
+// Detects whether a question is an MCQ by the presence of A/B/C/D lettered options.
+// MCQ sub-questions cover different topics independently and must NOT inherit their root's topic.
+export function looksLikeMcq(text: string): boolean {
+  const t = String(text || '')
+  // Match A)/A./A: or (A) style options, appearing after line-start, newline, or spaces.
+  // Two patterns to cover: "A) text" / "A. text" and "(A) text"
+  const unbracketed = /(?:^|[\n\r]|\s{2,})[A-Da-d][.):\s]/g
+  const bracketed = /(?:^|[\n\r]|\s)\([A-Da-d]\)/g
+  const m1 = t.match(unbracketed)
+  const m2 = t.match(bracketed)
+  const total = (m1?.length ?? 0) + (m2?.length ?? 0)
+  return total >= 2
+}
+
 function inferTopicFromRegex(questionText: string, latex: string | null, tableMarkdown: string | null, allowedTopics: string[]): string | null {
   const scoreMap = scoreTopicMap(questionText, latex, tableMarkdown)
   let bestTopic: string | null = null
@@ -1854,6 +1868,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     rootPreambleBlocks,
   })
 
+  // First pass: build a map of roots that have MCQ children so we can skip
+  // root-topic inheritance entirely for those roots (each MCQ is topically independent).
+  const mcqRoots = new Set<string>()
+  for (const rawItem of geminiResult) {
+    if (!rawItem || typeof rawItem !== 'object') continue
+    const qNum = (typeof rawItem.questionNumber === 'string' ? rawItem.questionNumber : String(rawItem.questionNumber || '')).trim()
+    const root = questionRootFromNumber(qNum)
+    if (root && qNum !== root && looksLikeMcq(typeof rawItem.questionText === 'string' ? rawItem.questionText : '')) {
+      mcqRoots.add(root)
+    }
+  }
+
   const rootTopicByRoot = new Map<string, string>()
   for (const rawItem of geminiResult) {
     if (!rawItem || typeof rawItem !== 'object') continue
@@ -1863,6 +1889,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const root = questionRootFromNumber(qNum)
     if (!root) continue
+
+    // Don't build a shared topic for MCQ roots — each child resolves its own topic.
+    if (mcqRoots.has(root)) continue
 
     const inferredTopic = resolveBestTopic({
       aiTopic: rawItem.topic,
@@ -1904,7 +1933,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const imageUrl = pickQuestionImageUrl(qNum, questionImageMap)
     const aiTableMarkdown = typeof item.tableMarkdown === 'string' && item.tableMarkdown.trim() ? item.tableMarkdown.trim() : null
     const tableMarkdown = aiTableMarkdown || pickQuestionTableMarkdown(qNum, questionTableMap)
-    const topic = (root ? rootTopicByRoot.get(root) : null)
+    // MCQ sub-questions each cover an independent topic — do NOT inherit the root's topic.
+    const isMcq = looksLikeMcq(qText)
+    const topic = (!isMcq && root ? rootTopicByRoot.get(root) : null)
       || resolveBestTopic({
         aiTopic: item.topic,
         questionText: qText,

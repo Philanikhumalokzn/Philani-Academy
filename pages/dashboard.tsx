@@ -16875,6 +16875,27 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                 const buildQuestionMmdSection = (question: any, options?: { includeQuestionNumber?: boolean }) => {
                   if (!question) return ''
 
+                  const isAnswerGuideLine = (line: string) => {
+                    const trimmed = String(line || '').trim()
+                    if (!trimmed) return false
+                    const compact = trimmed.replace(/\s+/g, '')
+                    if (/^[_\-.]{4,}$/.test(compact)) return true
+                    if (/^\$?(?:\\_){3,}\$?$/.test(compact)) return true
+                    if (/^\$?_{4,}\$?$/.test(compact)) return true
+                    return false
+                  }
+
+                  const stripAnswerGuideLines = (value: string) => {
+                    const text = String(value || '')
+                      .replace(/\$\s*(?:\\_){3,}\s*\$/g, ' ')
+                      .replace(/_{4,}/g, ' ')
+                      .replace(/[ \t]{2,}/g, ' ')
+                    const keptLines = text
+                      .split(/\r?\n/)
+                      .filter((line) => !isAnswerGuideLine(line))
+                    return keptLines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+                  }
+
                   const normalizedQuestion = normalizeExamQuestionContent(
                     unwrapQuestionField(question?.questionText, ['questionText', 'text', 'prompt']),
                     unwrapQuestionField(question?.latex, ['latex', 'equation', 'math']),
@@ -16886,6 +16907,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   if (text && qNum) {
                     text = text.replace(new RegExp(`^QUESTION\\s+${escapeRegExp(qNum)}\\b[:.\\-\\s]*`, 'i'), '').trim()
                   }
+                  text = stripAnswerGuideLines(text)
 
                   const lines: string[] = []
                   if (text) {
@@ -16918,7 +16940,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                   }
 
                   const tableMarkdown = typeof question?.tableMarkdown === 'string' ? question.tableMarkdown.trim() : ''
-                  if (tableMarkdown) lines.push(tableMarkdown)
+                  if (tableMarkdown) {
+                    const cleanedTableMarkdown = stripAnswerGuideLines(tableMarkdown)
+                    if (cleanedTableMarkdown) lines.push(cleanedTableMarkdown)
+                  }
 
                   return lines.join('\n\n').trim()
                 }
@@ -16934,7 +16959,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     .filter(Boolean)
                   : []
                 const branchScopedMmd = typeof q?.branchMmd === 'string' ? q.branchMmd.trim() : ''
-                const visibleQuestionMmd = branchScopedMmd || [
+                const visibleQuestionMmdRaw = branchScopedMmd || [
                   typeof q?.rootContextMmd === 'string' && q.rootContextMmd.trim()
                     ? q.rootContextMmd.trim()
                     : (q?.rootContext ? buildQuestionMmdSection(q.rootContext, { includeQuestionNumber: false }) : ''),
@@ -16943,6 +16968,20 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
                     ? q.questionMmd.trim()
                     : buildQuestionMmdSection(q, { includeQuestionNumber: isSubquestion }),
                 ].filter(Boolean).join('\n\n')
+                const visibleQuestionMmd = visibleQuestionMmdRaw
+                  .split(/\r?\n/)
+                  .filter((line) => {
+                    const trimmed = String(line || '').trim()
+                    if (!trimmed) return true
+                    const compact = trimmed.replace(/\s+/g, '')
+                    if (/^[_\-.]{4,}$/.test(compact)) return false
+                    if (/^\$?(?:\\_){3,}\$?$/.test(compact)) return false
+                    if (/^\$?_{4,}\$?$/.test(compact)) return false
+                    return true
+                  })
+                  .join('\n')
+                  .replace(/\n{3,}/g, '\n\n')
+                  .trim()
 
                 return (
                   <li

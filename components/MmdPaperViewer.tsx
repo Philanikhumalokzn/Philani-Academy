@@ -19,6 +19,10 @@ type Block =
   | { type: 'image'; key: string; url: string; alt: string; questionNumber?: string }
   | { type: 'table'; key: string; lines: string[]; tableKind: 'pipe' | 'latex'; questionNumber?: string }
 
+const SHOW_MMD_RENDER_DEBUG = ['1', 'true', 'yes', 'on'].includes(
+  String(process.env.NEXT_PUBLIC_MMD_RENDER_DEBUG || '').toLowerCase(),
+)
+
 function stripMetaMarkers(value: string): string {
   return String(value || '')
     .replace(/\s*\[Meta(?:[^\]]*)\]\s*/gi, ' ')
@@ -556,6 +560,7 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
   const contentRootId = useId().replace(/:/g, '-')
   const normalizedSelectedQuestionNumber = stripQuestionPrefix(String(selectedQuestionNumber || ''))
   const selectedRoot = normalizedSelectedQuestionNumber.split('.').filter(Boolean)[0] || ''
+  const renderModeLabel = useMathpixRenderer && renderedHtml ? 'Mathpix' : 'Fallback'
 
   useEffect(() => {
     let cancelled = false
@@ -679,6 +684,13 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
     if (useMathpixRenderer && renderedHtml) {
       return (
         <div className={`w-full bg-transparent [&_.katex]:!text-[#1c1e21] [&_.preview]:!max-w-none [&_.preview]:!mx-0 [&_.preview]:!px-0 [&_.preview-content]:!max-w-none [&_.preview-content]:!mx-0 [&_.preview-content]:!px-0 [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden [&_.katex-display]:max-w-full${centerInlineMath ? ' [&_.katex]:align-middle' : ''}`} style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+          {SHOW_MMD_RENDER_DEBUG ? (
+            <div className="mb-1 flex justify-end">
+              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide ${useMathpixRenderer && renderedHtml ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-amber-300 bg-amber-50 text-amber-700'}`}>
+                Renderer: {renderModeLabel}
+              </span>
+            </div>
+          ) : null}
           <section className="scroll-mt-24 rounded-xl px-0 py-1">
             <div
               id={contentRootId}
@@ -692,6 +704,13 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
 
     return (
       <div className={`w-full bg-transparent [&_.katex]:!text-[#1c1e21] [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden [&_.katex-display]:max-w-full${centerInlineMath ? ' [&_.katex]:align-middle' : ''}`} style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+        {SHOW_MMD_RENDER_DEBUG ? (
+          <div className="mb-1 flex justify-end">
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide ${useMathpixRenderer && renderedHtml ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-amber-300 bg-amber-50 text-amber-700'}`}>
+              Renderer: {renderModeLabel}
+            </span>
+          </div>
+        ) : null}
         <div className="space-y-1">
           {blocks.map((block) => {
             const isSelected = !!normalizedSelectedQuestionNumber && block.questionNumber === normalizedSelectedQuestionNumber
@@ -814,6 +833,13 @@ export default function MmdPaperViewer({ mmd, selectedQuestionNumber, compact = 
   return (
     <div className="px-0 pb-0 pt-0 h-full" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
       <div className="w-full h-full bg-[#fffdf7] shadow-none">
+        {SHOW_MMD_RENDER_DEBUG ? (
+          <div className="px-4 pt-2">
+            <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide ${useMathpixRenderer && renderedHtml ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-amber-300 bg-amber-50 text-amber-700'}`}>
+              Renderer: {renderModeLabel}
+            </span>
+          </div>
+        ) : null}
         <div className="border-b border-stone-200 bg-[linear-gradient(180deg,rgba(255,250,240,0.95),rgba(255,253,247,0.92))] px-4 py-3">
           <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-stone-500">Paper View</div>
           <div className="mt-1 text-sm text-stone-600">Continuous MMD rendering of the source paper, with math, tables, images, and question anchors.</div>

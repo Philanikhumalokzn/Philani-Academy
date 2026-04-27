@@ -434,6 +434,72 @@ function scoreExamQuestionSearch(
   }
 }
 
+function isLikelyNonQuestionArtifact(
+  item: {
+    questionText: string
+    tableMarkdown: string | null
+  },
+  context?: {
+    questionMmd?: string
+    branchMmd?: string
+    rootSectionMmd?: string
+  },
+): boolean {
+  const raw = [
+    String(item.questionText || ''),
+    String(item.tableMarkdown || ''),
+    String(context?.questionMmd || ''),
+    String(context?.branchMmd || ''),
+    String(context?.rootSectionMmd || ''),
+  ].filter(Boolean).join('\n')
+
+  if (!raw.trim()) return false
+
+  const normalized = normalizeSearchValue(raw)
+  if (!normalized) return false
+
+  let score = 0
+
+  const strongMarkers = [
+    /\banswer sheet\b/i,
+    /\bname and surname\b/i,
+    /\bfill in the answer sheet\b/i,
+    /\bmultiple choice answer sheet\b/i,
+    /\bcircle the letter of the correct answer\b/i,
+  ]
+  for (const marker of strongMarkers) {
+    if (marker.test(normalized)) score += 3
+  }
+
+  const supportMarkers = [
+    /\bannexure\b/i,
+    /\bcandidate\b/i,
+    /\binvigilator\b/i,
+    /\bdo not write\b/i,
+    /\bexaminer\b/i,
+    /\banswer booklet\b/i,
+    /\bformula sheet\b/i,
+  ]
+  for (const marker of supportMarkers) {
+    if (marker.test(normalized)) score += 1
+  }
+
+  const optionGridRows = (normalized.match(/\b\d+\.\d+\b/g) || []).length
+  const abcdRuns = (normalized.match(/\ba\s+b\s+c\s+d\b/g) || []).length
+  if (optionGridRows >= 8 && abcdRuns >= 2) score += 4
+
+  const formulaSheetLike = /\bfull circle\b/i.test(normalized)
+    && /\brectangle\b/i.test(normalized)
+    && /\btriangle\b/i.test(normalized)
+    && /\bperimeter\b/i.test(normalized)
+  if (formulaSheetLike) score += 3
+
+  const hasQuestionCue = /\?|\b(solve|calculate|determine|find|simplify|factorise|factorize|prove|show|write|draw|construct|state|evaluate|expand|complete|sketch|classify|convert|round|estimate|use)\b/i.test(raw)
+  if (!hasQuestionCue) score += 1
+
+  return score >= 5 || (score >= 3 && !hasQuestionCue)
+}
+
 function pushUniqueUrl(target: string[], value: unknown) {
   const url = typeof value === 'string' ? value.trim() : ''
   if (!url) return
@@ -1239,6 +1305,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const sourceId = q.sourceId ? String(q.sourceId) : undefined
   const hideCompositeRoots = ['1', 'true', 'yes'].includes(String(q.hideCompositeRoots || '').toLowerCase())
   const randomize = ['1', 'true', 'yes'].includes(String(q.random || '').toLowerCase())
+  const includeArtifacts = ['1', 'true', 'yes'].includes(String(q.includeArtifacts || '').toLowerCase())
   const approvedOnly = role !== 'admin' // students only see approved questions
   const page = Math.max(1, parseInt(String(q.page || '1'), 10))
   const take = Math.min(100, Math.max(1, parseInt(String(q.take || '50'), 10)))
@@ -1379,6 +1446,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const branchMmd = rootSectionMmd
           ? buildQuestionBranchMmd(rootSectionMmd, normalizedQuestionNumber)
           : ''
+        if (!includeArtifacts && isLikelyNonQuestionArtifact(item, { questionMmd, branchMmd, rootSectionMmd })) {
+          return null
+        }
         return {
           item,
           ranking: scoreExamQuestionSearch(item, parsedSearch, {
@@ -1435,22 +1505,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : []
 
     const filteredItems = hideCompositeRoots ? shapeCompositeBranchItems(allItems, relatedContextItems) : allItems
-    const orderedItems = randomize ? shuffleInPlace([...filteredItems]) : filteredItems
+    const visibleItems = includeArtifacts ? filteredItems : filteredItems.filter((item) => !isLikelyNonQuestionArtifact(item))
+    const orderedItems = randomize ? shuffleInPlace([...visibleItems]) : visibleItems
     total = orderedItems.length
     items = orderedItems.slice(skip, skip + take)
   } else {
-    const [rawTotal, rawItems] = await Promise.all([
-      prisma.examQuestion.count({ where }),
-      prisma.examQuestion.findMany({
+    if (includeArtifacts) {
+      const [rawTotal, rawItems] = await Promise.all([
+        prisma.examQuestion.count({ where }),
+        prisma.examQuestion.findMany({
+          where,
+          orderBy,
+          skip,
+          take,
+          select: itemSelect,
+        }),
+      ])
+      total = rawTotal
+      items = rawItems
+    } else {
+      const allItems = await prisma.examQuestion.findMany({
         where,
         orderBy,
-        skip,
-        take,
         select: itemSelect,
-      }),
-    ])
-    total = rawTotal
-    items = rawItems
+      })
+      const visibleItems = allItems.filter((item) => !isLikelyNonQuestionArtifact(item))
+      total = visibleItems.length
+      items = visibleItems.slice(skip, skip + take)
+    }
   }
 
   const sourceIds = Array.from(new Set(items.map((item) => String(item.sourceId || '')).filter(Boolean)))

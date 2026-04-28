@@ -1614,7 +1614,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         syntheticAll.push({
           ...item,
           topic: annotation?.topic ?? rootAnnotation?.topic ?? null,
-          cognitiveLevel: annotation?.cognitiveLevel ?? rootAnnotation?.cognitiveLevel ?? null,
+          cognitiveLevel: annotation?.cognitiveLevel ?? null,
         })
       }
     }

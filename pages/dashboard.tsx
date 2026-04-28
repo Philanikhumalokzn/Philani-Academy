@@ -10142,7 +10142,29 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       }
 
       if (String(activeDraft.threadKey || '').startsWith('qb:') && activeDraft.questionId) {
-        await saveQuestionToMySolves(activeDraft.questionId)
+        try {
+          await saveQuestionToMySolves(activeDraft.questionId)
+        } catch (saveErr) {
+          console.warn('Failed to add solved question to My Solves', saveErr)
+        }
+      }
+
+      if (String(activeDraft.threadKey || '').startsWith('qb:') && activeDraft.questionId) {
+        const solvedQuestionId = String(activeDraft.questionId)
+        setQbItems((prev) => Array.isArray(prev) ? prev.map((item: any) => {
+          if (String(item?.id || '') !== solvedQuestionId) return item
+          const previousAttemptCount = Number.isFinite(Number(item?.myAttemptCount)) ? Number(item.myAttemptCount) : 0
+          const previousSolutionCount = Number.isFinite(Number(item?.solutionCount)) ? Number(item.solutionCount) : 0
+          const alreadySolved = Boolean(item?.hasOwnResponse) || previousAttemptCount > 0
+          return {
+            ...item,
+            hasOwnResponse: true,
+            myAttemptCount: alreadySolved ? previousAttemptCount : previousAttemptCount + 1,
+            solutionCount: alreadySolved ? previousSolutionCount : previousSolutionCount + 1,
+            responseCount: alreadySolved ? Number(item?.responseCount || previousSolutionCount) : Number(item?.responseCount || previousSolutionCount) + 1,
+            threadResponseCount: alreadySolved ? Number(item?.threadResponseCount || previousSolutionCount) : Number(item?.threadResponseCount || previousSolutionCount) + 1,
+          }
+        }) : prev)
       }
 
       applyOwnPostResponseToFeeds(activeDraft, data)

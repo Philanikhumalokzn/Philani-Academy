@@ -6,6 +6,24 @@ import { buildSuggestedRemixName, resolveRemixName } from '../../../lib/remixNam
 
 const MY_SOLVES_NAME = 'My Solves'
 
+function normalizeQuestionNumber(value: unknown): string {
+  const text = String(value ?? '').trim()
+  if (!text) return ''
+  const match = text.match(/(\d+(?:\.\d+)*)/)
+  return match?.[1] ? match[1] : ''
+}
+
+function parseSyntheticQuestionId(rawId: string): { sourceId: string; questionNumber: string } | null {
+  const text = String(rawId || '').trim()
+  if (!text.toLowerCase().startsWith('synthetic:')) return null
+  const parts = text.split(':')
+  if (parts.length < 3) return null
+  const sourceId = String(parts[1] || '').trim()
+  const questionNumber = normalizeQuestionNumber(parts.slice(2).join(':'))
+  if (!sourceId || !questionNumber) return null
+  return { sourceId, questionNumber }
+}
+
 function firstNonEmpty(...values: unknown[]): string {
   for (const value of values) {
     const text = typeof value === 'string' ? value.trim() : ''
@@ -61,13 +79,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).end()
   }
 
-  const questionId = typeof req.body?.questionId === 'string' ? req.body.questionId.trim() : ''
-  if (!questionId) {
+  const rawQuestionId = typeof req.body?.questionId === 'string' ? req.body.questionId.trim() : ''
+  if (!rawQuestionId) {
     return res.status(400).json({ message: 'Question id is required' })
   }
 
-  const question = await prisma.examQuestion.findUnique({
-    where: { id: questionId },
+  let question = await prisma.examQuestion.findUnique({
+    where: { id: rawQuestionId },
     select: {
       id: true,
       grade: true,
@@ -78,8 +96,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       cognitiveLevel: true,
     },
   })
+
   if (!question) {
-    return res.status(404).json({ message: 'Question not found' })
+    const syntheticTarget = parseSyntheticQuestionId(rawQuestionId)
+    if (syntheticTarget) {
+      question = await prisma.examQuestion.findFirst({
+        where: {
+          sourceId: syntheticTarget.sourceId,
+          questionNumber: syntheticTarget.questionNumber,
+        },
+        select: {
+          id: true,
+          grade: true,
+          year: true,
+          month: true,
+          paper: true,
+          topic: true,
+          cognitiveLevel: true,
+        },
+      })
+    }
+  }
+
+  if (!question) {
+    return res.status(404).json({ message: 'Question not found for My Solves save' })
   }
 
   let remix = await prisma.questionRemix.findFirst({

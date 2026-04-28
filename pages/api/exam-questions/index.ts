@@ -1607,10 +1607,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       for (const item of synthesized) {
         const key = buildQuestionAnnotationKey(source.id, item.questionNumber)
         const annotation = annotationMap.get(key)
+        const rootQuestionNumber = getHierarchyRootQuestionNumber(item.questionNumber)
+        const rootAnnotation = rootQuestionNumber
+          ? annotationMap.get(buildQuestionAnnotationKey(source.id, rootQuestionNumber))
+          : null
         syntheticAll.push({
           ...item,
-          topic: annotation?.topic ?? null,
-          cognitiveLevel: annotation?.cognitiveLevel ?? null,
+          topic: annotation?.topic ?? rootAnnotation?.topic ?? null,
+          cognitiveLevel: annotation?.cognitiveLevel ?? rootAnnotation?.cognitiveLevel ?? null,
         })
       }
     }

@@ -9487,6 +9487,10 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       return urls
     })()
     const qNumber = String(question?.questionNumber || '').trim()
+    const sourceId = String(question?.sourceId || '').trim()
+    const syntheticQuestionId = sourceId && qNumber ? `synthetic:${sourceId}:${qNumber}` : ''
+    const stableQuestionId = String(question?.id || '').trim() || syntheticQuestionId
+    const stableThreadId = stableQuestionId || (sourceId && qNumber ? `${sourceId}:${qNumber}` : qNumber)
     const qLabel = qNumber ? `Q${qNumber}` : 'Question'
     const titleBits = [qLabel, String(question?.year || '').trim(), String(question?.month || '').trim(), `Paper ${String(question?.paper || '').trim()}`]
       .map((part) => part.trim())
@@ -9499,15 +9503,15 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     ]
 
     return {
-      id: `qb-${String(question?.id || qNumber || Date.now())}`,
-      threadKey: `qb:${String(question?.id || qNumber || Date.now())}`,
+      id: `qb-${String(stableThreadId || 'question')}`,
+      threadKey: `qb:${String(stableThreadId || 'question')}`,
       title: titleBits.join(' · ') || qLabel,
       prompt: questionText || qLabel,
       imageUrl: imageUrls[0] || null,
       contentBlocks,
-      sourceId: question?.sourceId ? String(question.sourceId) : null,
+      sourceId: sourceId || null,
       questionNumber: qNumber || null,
-      questionId: question?.id ? String(question.id) : null,
+      questionId: stableQuestionId || null,
     }
   }, [])
 

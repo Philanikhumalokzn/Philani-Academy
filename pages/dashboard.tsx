@@ -10098,10 +10098,8 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     }
   }, [openPostSolveComposer, router])
 
-  const submitPostTextSolve = useCallback(async () => {
-    const activeDraft = activePostReplyComposerDraft
+  const submitPostReplyWithBlocks = useCallback(async (activeDraft: PostSolveOverlayState, blocks: PostReplyBlock[]) => {
     if (!activeDraft?.postId || !activeDraft?.threadKey) return
-    const draftText = String(postSolveText || '')
     const replyThreadMeta = activeDraft.replyTarget ? {
       parentResponseId: activeDraft.replyTarget.responseId,
       rootResponseId: activeDraft.replyTarget.rootResponseId || activeDraft.replyTarget.responseId,
@@ -10109,7 +10107,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       replyToUserName: activeDraft.replyTarget.userName || null,
     } : null
     const payload = buildPostReplyPayloadFromBlocks(
-      composePostSolveBlocksWithDraftText(postSolveBlocks, draftText, postSolveEditingTarget),
+      composePostSolveBlocksWithDraftText(blocks, '', null),
       replyThreadMeta,
     )
     if (!payload.contentBlocks.length) {
@@ -10149,28 +10147,39 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
       applyOwnPostResponseToFeeds(activeDraft, data)
       setPostSolveModeOverlay(null)
+      setPostSolveOverlay(null)
+      setPostSolvePreviewOverlay(null)
+      setPostTypedSolveOverlay(null)
+      setPostTypedOverlayChromeVisible(false)
       setPostSolveBlocks([])
       setPostSolveText('')
+      setPostTypedSolveLatex('')
       setPostSolveEditingTarget(null)
       setComposerBlockCrudTarget(null)
 
-      if (!String(activeDraft.threadKey || '').startsWith('qb:')) {
-        await openPostThread({
-          id: activeDraft.postId,
-          threadKey: activeDraft.threadKey,
-          title: activeDraft.title,
-          prompt: activeDraft.prompt,
-          imageUrl: activeDraft.imageUrl || null,
-          authorName: activeDraft.authorName || null,
-          authorAvatarUrl: activeDraft.authorAvatarUrl || null,
-        }, { forceOpen: true })
-      }
+      await openPostThread({
+        id: activeDraft.postId,
+        threadKey: activeDraft.threadKey,
+        title: activeDraft.title,
+        prompt: activeDraft.prompt,
+        imageUrl: activeDraft.imageUrl || null,
+        authorName: activeDraft.authorName || null,
+        authorAvatarUrl: activeDraft.authorAvatarUrl || null,
+      }, { forceOpen: true })
     } catch (err: any) {
       setPostSolveError(err?.message || 'Failed to submit reply')
     } finally {
       setPostSolveSubmitting(false)
     }
-  }, [activePostReplyComposerDraft, applyOwnPostResponseToFeeds, buildPostReplyPayloadFromBlocks, openPostThread, postSolveBlocks, postSolveText])
+  }, [applyOwnPostResponseToFeeds, buildPostReplyPayloadFromBlocks, composePostSolveBlocksWithDraftText, openPostThread])
+
+  const submitPostTextSolve = useCallback(async () => {
+    const activeDraft = activePostReplyComposerDraft
+    if (!activeDraft?.postId || !activeDraft?.threadKey) return
+    const draftText = String(postSolveText || '')
+    const committedBlocks = composePostSolveBlocksWithDraftText(postSolveBlocks, draftText, postSolveEditingTarget)
+    await submitPostReplyWithBlocks(activeDraft, committedBlocks)
+  }, [activePostReplyComposerDraft, composePostSolveBlocksWithDraftText, postSolveBlocks, postSolveEditingTarget, postSolveText, submitPostReplyWithBlocks])
 
   const submitPostSolve = useCallback(async (scene: any) => {
     const activeDraft = postSolveOverlay || postSolvePreviewOverlay?.draft || null
@@ -10197,14 +10206,21 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
 
     if (!activeDraft.threadKey) return
 
-    setPostSolveBlocks((prev) => {
+    const nextBlocks = (() => {
       if (postSolveEditingTarget?.type === 'canvas') {
-        return upsertPostSolveBlock(prev, { id: postSolveEditingTarget.blockId, type: 'canvas', scene: preparedPreviewScene }, 'canvas')
+        return upsertPostSolveBlock(postSolveBlocks, { id: postSolveEditingTarget.blockId, type: 'canvas', scene: preparedPreviewScene }, 'canvas')
       }
-      const nextBlocks: PostReplyBlock[] = prev.filter((block) => block.type !== 'canvas')
-      nextBlocks.push({ id: createPostReplyBlockId(), type: 'canvas', scene: preparedPreviewScene })
-      return nextBlocks
-    })
+      const appendedBlocks: PostReplyBlock[] = postSolveBlocks.filter((block) => block.type !== 'canvas')
+      appendedBlocks.push({ id: createPostReplyBlockId(), type: 'canvas', scene: preparedPreviewScene })
+      return appendedBlocks
+    })()
+
+    if (String(activeDraft.threadKey || '').startsWith('qb:')) {
+      await submitPostReplyWithBlocks(activeDraft, nextBlocks)
+      return
+    }
+
+    setPostSolveBlocks(nextBlocks)
 
     setPostSolvePreviewOverlay(null)
     setPostSolveOverlay(null)
@@ -10215,7 +10231,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       initialStudentText: '',
     })
     setPostSolveError(null)
-  }, [createKind, createOverlayOpen, postSolveBlocks, postSolveEditingTarget, postSolveOverlay, postSolvePreviewOverlay, upsertPostSolveBlock])
+  }, [createKind, createOverlayOpen, postSolveBlocks, postSolveEditingTarget, postSolveOverlay, postSolvePreviewOverlay, submitPostReplyWithBlocks, upsertPostSolveBlock])
 
   const submitTypedPostSolve = useCallback(async () => {
     const activeDraft = postTypedSolveOverlay
@@ -10226,7 +10242,16 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
       return
     }
 
-    setPostSolveBlocks((prev) => upsertPostSolveBlock(prev, { id: createPostReplyBlockId(), type: 'latex', latex }, 'latex'))
+    const nextBlocks = postSolveEditingTarget?.type === 'latex'
+      ? upsertPostSolveBlock(postSolveBlocks, { id: postSolveEditingTarget.blockId, type: 'latex', latex }, 'latex')
+      : upsertPostSolveBlock(postSolveBlocks, { id: createPostReplyBlockId(), type: 'latex', latex }, 'latex')
+
+    if (String(activeDraft.threadKey || '').startsWith('qb:')) {
+      await submitPostReplyWithBlocks(activeDraft, nextBlocks)
+      return
+    }
+
+    setPostSolveBlocks(nextBlocks)
     if (!(createOverlayOpen && createKind === 'post')) {
       setPostSolveModeOverlay({
         ...activeDraft,
@@ -10239,7 +10264,7 @@ export default function Dashboard({ initialIsMobile = false }: { initialIsMobile
     setPostTypedSolveLatex('')
     setPostSolveEditingTarget(null)
     setPostSolveError(null)
-  }, [createKind, createOverlayOpen, postTypedSolveLatex, postTypedSolveOverlay, upsertPostSolveBlock])
+  }, [createKind, createOverlayOpen, postSolveBlocks, postSolveEditingTarget, postTypedSolveLatex, postTypedSolveOverlay, submitPostReplyWithBlocks, upsertPostSolveBlock])
 
   const removePostReplyImageBlock = useCallback((blockId: string) => {
     setPostSolveBlocks((prev) => prev.filter((block) => !(block.type === 'image' && block.id === blockId)))
